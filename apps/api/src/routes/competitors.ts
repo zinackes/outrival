@@ -17,12 +17,11 @@ import {
   jobPostings,
   reviews,
   techStackEntries,
-  organizations,
   products,
   productCompetitors,
 } from "@outrival/db";
-import { scoreOverlap } from "@outrival/ai";
 import { db } from "../lib/db";
+import { scoreCompetitorOverlap } from "../lib/overlap";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
@@ -561,24 +560,24 @@ competitorsRouter.post("/", async (c) => {
 
   // Score the competitive overlap against the org's product profile (best-effort,
   // fire-and-forget). The manual-add path had no overlap at all — unlike the
-  // discovery-add path, which carries the score from discovery. Reuses the same
-  // scorer as /recompute-overlap; the list/overview refetch (while the first scrape
-  // runs) picks the value up. Skipped silently if the org has no profile yet.
+  // discovery-add path, which carries the score from discovery. Shares the scorer
+  // (and its evidence ladder) with /recompute-overlap; the list/overview refetch
+  // (while the first scrape runs) picks the value up. Nothing is written when the
+  // org has no profile, or when the competitor carries no description to judge:
+  // a competitor added without one is scored on its first Recompute instead,
+  // once refresh-competitor-summary has given it an aiSummary.
   void (async () => {
     try {
-      const org = await db.query.organizations.findFirst({
-        where: eq(organizations.id, orgId),
-        columns: { productProfile: true },
+      const outcome = await scoreCompetitorOverlap(orgId, {
+        name: competitor.name,
+        url: safeUrl.url,
+        description: competitor.description,
+        aiSummary: competitor.aiSummary,
       });
-      if (!org?.productProfile) return;
-      const scored = await scoreOverlap(org.productProfile, [
-        { url: safeUrl.url, title: competitor.name, snippet: competitor.description ?? "" },
-      ]);
-      const overlapScore = scored[0]?.overlapScore ?? null;
-      if (overlapScore == null) return;
+      if (outcome.status !== "scored") return;
       await db
         .update(competitors)
-        .set({ overlapScore, updatedAt: new Date() })
+        .set({ overlapScore: outcome.overlapScore, updatedAt: new Date() })
         .where(eq(competitors.id, competitor.id));
     } catch (e) {
       console.error("Failed to score competitor overlap", {
@@ -2024,7 +2023,9 @@ competitorsRouter.patch("/:id/alerts", async (c) => {
 
 // Recompute the overlap score (kebab → Recompute overlap). Re-scores this single
 // competitor against the org's current product profile — useful after the profile
-// changed. Synchronous AI call (like discovery), reusing the discovery scorer.
+// changed. Synchronous AI call (like discovery), reusing the discovery scorer
+// through the shared evidence ladder (lib/overlap.ts) so a solo re-score is judged
+// on the same kind of material discovery had, against the same anchored scale.
 competitorsRouter.post("/:id/recompute-overlap", aiIntensiveRateLimit, async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
@@ -2032,29 +2033,21 @@ competitorsRouter.post("/:id/recompute-overlap", aiIntensiveRateLimit, async (c)
 
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor || competitor.deletedAt) return c.json({ error: "Not found" }, 404);
-  if (!competitor.url) return c.json({ error: "no_url" }, 400);
 
-  const org = await db.query.organizations.findFirst({
-    where: eq(organizations.id, orgId),
-    columns: { productProfile: true },
-  });
-  if (!org?.productProfile) return c.json({ error: "missing_profile" }, 400);
-
-  let scored: Awaited<ReturnType<typeof scoreOverlap>>;
-  try {
-    scored = await scoreOverlap(org.productProfile, [
-      { url: competitor.url, title: competitor.name, snippet: competitor.description ?? "" },
-    ]);
-  } catch {
-    return c.json({ error: "scoring_failed" }, 502);
-  }
-  const overlapScore = scored[0]?.overlapScore ?? null;
+  const outcome = await scoreCompetitorOverlap(orgId, competitor);
+  if (outcome.status === "no_url") return c.json({ error: "no_url" }, 400);
+  if (outcome.status === "no_profile") return c.json({ error: "missing_profile" }, 400);
+  // Nothing to judge the competitor on yet (no summary, no description). Keep the
+  // score it already has rather than replace it with one the model produced from a
+  // bare domain — that swap is exactly what turned discovery's 85 into a 5.
+  if (outcome.status === "no_evidence") return c.json({ error: "no_evidence" }, 400);
+  if (outcome.status === "failed") return c.json({ error: "scoring_failed" }, 502);
 
   await db
     .update(competitors)
-    .set({ overlapScore, updatedAt: new Date() })
+    .set({ overlapScore: outcome.overlapScore, updatedAt: new Date() })
     .where(eq(competitors.id, id));
-  return c.json({ overlapScore, reason: scored[0]?.reason ?? null });
+  return c.json({ overlapScore: outcome.overlapScore, reason: outcome.reason });
 });
 
 // Product memberships for the "Assign to products" dialog (patch-28): every org

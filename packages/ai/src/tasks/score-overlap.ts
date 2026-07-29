@@ -27,6 +27,13 @@ export interface ScoredCandidate {
   url: string;
   overlapScore: number;
   reason: string;
+  /**
+   * False when the model returned nothing usable for this candidate (call failed,
+   * or the reply carried no row for it). The 0 that comes with it is the ABSENCE
+   * of a score, not a judgement of "no overlap" — callers that persist the score
+   * must skip these rather than write a zero over a real one.
+   */
+  scored: boolean;
 }
 
 export async function scoreOverlap(
@@ -49,11 +56,26 @@ ${JSON.stringify(candidates, null, 2)}
 </candidates>
 
 <task>
-For each candidate, rate its competitive overlap with my product (0-100).
-High overlap = same audience, same problem solved, same market.
+For each candidate, rate its competitive overlap with my product against the
+fixed scale below.
+
+Score every candidate INDEPENDENTLY against that scale. Do not spread the
+scores across the candidate list, and do not reserve the top band for the best
+candidate in the list: a candidate scored alone must get the same number it
+would get inside a list of thirty.
+
+Judge what the candidate DOES, not how much text you were given about it.
 Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 Write the "reason" in English.
 </task>
+
+<scale>
+90-100: direct substitute. Same job, same buyer, a prospect picks one or the other.
+70-89: same job for a different segment, packaging or go-to-market. Lands on the same shortlist.
+40-69: partial overlap. One shared capability, or the same buyer with a different problem solved.
+10-39: adjacent. Same market, never competing on a deal.
+0-9: unrelated.
+</scale>
 
 <format>
 {
@@ -76,12 +98,20 @@ Write the "reason" in English.
     // recall sources, so budget for the widened list instead of truncating the
     // JSON (a truncated reply parses to null → every candidate scored 0).
     maxTokens: 4096,
-    cache: { input: cacheInput, namespace: "score-overlap", ttlSeconds: CACHE_TTL_SECONDS },
+    // Namespace bumped with the anchored scale: `withAiCache` never revalidates a
+    // stored entry, so entries written under the old free-form prompt would keep
+    // serving spread-across-the-list scores for the whole 30-day TTL.
+    cache: { input: cacheInput, namespace: "score-overlap-v2", ttlSeconds: CACHE_TTL_SECONDS },
   });
 
   if (!result) {
     return attachQuality(
-      candidates.map((c) => ({ url: c.url, overlapScore: 0, reason: "scoring failed" })),
+      candidates.map((c) => ({
+        url: c.url,
+        overlapScore: 0,
+        reason: "scoring failed",
+        scored: false,
+      })),
       emptyQuality("low"),
     );
   }
@@ -108,8 +138,8 @@ Write the "reason" in English.
           })()
         : undefined);
     return hit
-      ? { url: c.url, overlapScore: hit.overlapScore, reason: hit.reason }
-      : { url: c.url, overlapScore: 0, reason: "not scored" };
+      ? { url: c.url, overlapScore: hit.overlapScore, reason: hit.reason, scored: true }
+      : { url: c.url, overlapScore: 0, reason: "not scored", scored: false };
   });
 
   return attachQuality(scored, result.quality);

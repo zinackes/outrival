@@ -25,7 +25,10 @@ beforeAll(async () => {
   A = await seedOrg(testDb, { plan: "free" });
   B = await seedOrg(testDb, { plan: "free" });
   await testDb.insert(competitors).values({ id: "comp-a", orgId: A.orgId, name: "Acme" });
-});
+  // Explicit timeout: booting PGlite + migrations + the router's module graph sits
+  // around 4.5s on a slow machine, so bun's 5s default for hooks was one import
+  // away from timing out and failing the whole file at once.
+}, 30_000);
 
 const enable = (userId: string, email: string, competitorId: string, sourceType: string) =>
   app.request(
@@ -426,5 +429,51 @@ describe("custom-page monitors", () => {
     expect(body.error).toBe("plan_limit_custom_monitors");
     expect(body.limit).toBe(0);
     expect(await countCustoms("comp-a-url")).toBe(0);
+  });
+});
+
+// A recompute with nothing to judge the competitor on must not touch the stored
+// score. Discovery scores a candidate on the text Exa returned for its page; the
+// solo re-score only ever had `description`, which the candidate-add path never
+// writes — so an 85 from discovery came back as a single-digit guess made from a
+// bare domain. The guard short-circuits before the AI call, so no mock is needed.
+describe("POST /competitors/:id/recompute-overlap evidence guard", () => {
+  test("no summary and no description → 400 no_evidence, score untouched", async () => {
+    await testDb.insert(competitors).values({
+      id: "comp-no-evidence",
+      orgId: A.orgId,
+      name: "Blind Co",
+      url: "https://blind.example",
+      overlapScore: 85,
+    });
+
+    const res = await app.request(
+      "/api/competitors/comp-no-evidence/recompute-overlap",
+      asUser(A.userId, A.email, { method: "POST" }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("no_evidence");
+
+    const row = await testDb.query.competitors.findFirst({
+      where: eq(competitors.id, "comp-no-evidence"),
+      columns: { overlapScore: true },
+    });
+    expect(row?.overlapScore).toBe(85);
+  });
+
+  test("a competitor with no URL is rejected before the evidence check", async () => {
+    await testDb.insert(competitors).values({
+      id: "comp-no-url-overlap",
+      orgId: A.orgId,
+      name: "Urlless Co",
+      aiSummary: "Plenty of evidence, but nothing to score against.",
+    });
+
+    const res = await app.request(
+      "/api/competitors/comp-no-url-overlap/recompute-overlap",
+      asUser(A.userId, A.email, { method: "POST" }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("no_url");
   });
 });

@@ -454,6 +454,15 @@ export function CompetitorDetailView({ id }: { id: string }) {
         });
         return;
       }
+      // The API refuses to score on an empty page rather than overwrite a good
+      // score with one guessed from a bare domain.
+      if ((e as { code?: string })?.code === "no_evidence") {
+        toast.error("Nothing to score yet", {
+          id: toastId,
+          description: "Wait for the first scan of this competitor, then try again.",
+        });
+        return;
+      }
       toast.dismiss(toastId);
       toastApiError(e, { title: "Couldn't recompute overlap" });
     }

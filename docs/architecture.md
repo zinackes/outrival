@@ -340,6 +340,32 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     lirait « tout supprimé, tout ajouté »). `no_docs_surface` = fait
                     neutre (NO_TARGET_MARKERS → `not_available`), `no_docs_index` =
                     échec actionnable (l'user peut pointer une URL). 📄 docs/docs-source.md
+                  — roadmap : portail public de roadmap / feedback du concurrent
+                    (user-selectable, pro+, weekly, override d'URL optionnel). Pur L0,
+                    ZÉRO IA. Trois adaptateurs, du plus précis au plus large.
+                    (1) **Canny** : `window.__data` server-rendered. (2) **ProductBoard** :
+                    endpoint `portal.productboard.com/api/portal/all` scopé par le seul
+                    header `x-portal-path`. (3) **Générique** : lit N'IMPORTE QUELLE page
+                    qui SSR son état en JSON (`<script type=application/json>`, flux RSC
+                    `self.__next_f`, `window.__X = {…}`) et y cherche la FORME d'une
+                    roadmap, c'est-à-dire un tableau d'objets portant id stable, titre,
+                    statut-enum et votes. Couvre Featurebase, Gleap, Productlane et les
+                    vendeurs jamais nommés, sans navigateur ni IA.
+                    La barre de qualification EST la feature (≥3 entrées, ids uniques,
+                    ≤8 statuts distincts, votes ou vocabulaire roadmap) : sous la barre →
+                    `no_roadmap_portal`, jamais une extraction devinée, parce qu'un
+                    listing inventé se diffe comme une réécriture complète de roadmap.
+                    Découverte en 5 rungs (URL vendeur donnée → `{brand}.canny.io` →
+                    sous-domaines feedback./roadmap./… → lien nav/footer → la page donnée
+                    elle-même). Toute adresse DEVINÉE est confirmée en la LISANT, jamais
+                    par un HEAD : Canny répond 200 sur tout sous-domaine, et `feedback.`
+                    existe souvent en servant un help center, donc s'y engager arrêtait
+                    la recherche avant le vrai portail.
+                    Snapshot trié par id stable, votes en BANDE (compte exact en metadata,
+                    jamais diffé). `no_roadmap_portal` / `portal_private` / `portal_empty`
+                    sont des faits neutres (NO_TARGET_MARKERS → `not_available`) ; un
+                    parse raté sur un portail VENDEUR atteint reste un échec bruyant et
+                    retryé.
                   — custom : page arbitraire du domaine enregistrable (eTLD+1) du
                     concurrent, user-selectable via un flow DÉDIÉ (« Watch a custom page »,
                     POST /:id/custom-monitors — pas la liste standard d'enable). config =

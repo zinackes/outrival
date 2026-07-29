@@ -1,3 +1,4 @@
+import { parseLooseJson, scanObjectLiteral } from "./islands";
 import type { RoadmapEntry, RoadmapParse } from "./types";
 
 /**
@@ -41,41 +42,13 @@ export function isCannyHost(url: string): boolean {
 export function extractStateIsland(html: string): Record<string, unknown> | null {
   const marker = /window\.__data\s*=\s*/.exec(html);
   if (!marker) return null;
-  const start = marker.index + marker[0].length;
-  if (html[start] !== "{") return null;
-
-  // Brace scan that skips over string literals, so a `{` inside a post title cannot
-  // unbalance the object.
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  let end = -1;
-  for (let i = start; i < html.length; i++) {
-    const c = html[i];
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (c === "\\") escaped = true;
-      else if (c === '"') inString = false;
-      continue;
-    }
-    if (c === '"') inString = true;
-    else if (c === "{") depth++;
-    else if (c === "}" && --depth === 0) {
-      end = i;
-      break;
-    }
-  }
-  if (end === -1) return null;
-
-  // The only non-JSON token Canny emits is a bare `undefined` in value position.
-  // Anchoring on the preceding `:`/`,`/`[` keeps the substitution to value slots.
-  const json = html.slice(start, end + 1).replace(/([:,[]\s*)undefined\b/g, "$1null");
-  try {
-    const parsed: unknown = JSON.parse(json);
-    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
+  // The brace scan and the tolerant `undefined` substitution live in `islands.ts`:
+  // Canny is not the only portal that inlines a JS object literal, and the generic
+  // adapter reads the same shapes.
+  const raw = scanObjectLiteral(html, marker.index + marker[0].length);
+  if (raw === null) return null;
+  const parsed = parseLooseJson(raw);
+  return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
 }
 
 function rec(x: unknown): Record<string, unknown> | null {

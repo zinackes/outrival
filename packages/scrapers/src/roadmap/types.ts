@@ -4,7 +4,8 @@
  * and therefore the diff the pipeline reads — is vendor-agnostic.
  */
 
-export type RoadmapVendor = "canny" | "productboard";
+/** `generic` = read by shape from an embedded JSON island, vendor unidentified. */
+export type RoadmapVendor = "canny" | "productboard" | "generic";
 
 export interface RoadmapEntry {
   /**

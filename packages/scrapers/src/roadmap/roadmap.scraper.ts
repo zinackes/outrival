@@ -2,6 +2,7 @@ import type { ScrapeOptions, ScrapeOutcome } from "../types";
 import { safeFetch } from "../lib/guarded-fetch";
 import { discoverRoadmapPortal, type RoadmapDiscoverDeps } from "./discover";
 import { parseCannyPortal } from "./canny";
+import { parseGenericPortal } from "./generic";
 import {
   PORTAL_API_URL,
   matchProductboardPortal,
@@ -170,6 +171,13 @@ async function readProductboard(
  * Read an HTML-served portal. Canny renders its state island on its own subdomains
  * AND on customer custom domains, so the same parse covers both — which is why a
  * candidate discovered by subdomain probe (`vendor: null`) is tried here too.
+ *
+ * When the host does not name Canny, a failed Canny parse is not the end: most other
+ * portals (Featurebase, Gleap, Productlane, whoever ships next) server-render the same
+ * SHAPE as JSON, which `parseGenericPortal` reads without knowing the vendor. That
+ * fallback runs only on a guessed host — on `{brand}.canny.io` the Canny adapter is
+ * authoritative, and a shape-match elsewhere in that page would be a worse answer than
+ * the honest "this board is private".
  */
 async function readHtmlPortal(
   url: string,
@@ -184,16 +192,21 @@ async function readHtmlPortal(
   const parsed = parseCannyPortal(res.text, url);
   if (parsed.ok) return parsed.portal;
 
-  // A page we merely GUESSED might be a portal (a `feedback.` subdomain, a nav link)
-  // and could not read is not a breakage — it is evidence there is no portal here.
-  // Only a host that NAMES its vendor earns a loud parse failure.
-  if (!vendorIsCanny && parsed.reason === "unparsable") {
-    if (looksLikeProductboardShell(res.text)) {
-      // ProductBoard on a customer domain: the portal API is scoped by a portal path
-      // we cannot derive from this URL, so there is nothing here we can read.
-      fail("no_roadmap_portal (productboard custom domain is not readable)");
+  if (!vendorIsCanny) {
+    const generic = parseGenericPortal(res.text, url);
+    if (generic.ok) return generic.portal;
+
+    // A page we merely GUESSED might be a portal (a `feedback.` subdomain, a nav link)
+    // and could not read is not a breakage — it is evidence there is no portal here.
+    // Only a host that NAMES its vendor earns a loud parse failure.
+    if (parsed.reason === "unparsable") {
+      if (looksLikeProductboardShell(res.text)) {
+        // ProductBoard on a customer domain: the portal API is scoped by a portal path
+        // we cannot derive from this URL, so there is nothing here we can read.
+        fail("no_roadmap_portal (productboard custom domain is not readable)");
+      }
+      fail("no_roadmap_portal");
     }
-    fail("no_roadmap_portal");
   }
   failParse(parsed, "canny");
 }

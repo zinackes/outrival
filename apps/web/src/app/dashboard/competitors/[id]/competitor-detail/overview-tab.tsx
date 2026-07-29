@@ -36,6 +36,7 @@ import {
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
+import { MobileAppsFact, type MobileApps } from "./mobile-apps";
 import { formatTierPrice, logoLabel, isRenderableLogoSrc } from "./helpers";
 import { scrapeActivity } from "./shared";
 import type { TabKey } from "./types";
@@ -226,9 +227,12 @@ export function OverviewTab({
   onRun,
   onOpenTab,
   techStack,
+  mobileApps,
 }: {
   competitorId: string;
   overview: CompetitorOverview;
+  // Detected without AI from the captures we already take; a fact, never a signal.
+  mobileApps: MobileApps | null;
   /** Already loaded by the page; the 30-day count costs no extra query. */
   signals: CompetitorSignal[];
   monitors: Monitor[];
@@ -622,6 +626,19 @@ export function OverviewTab({
               ))}
             </div>
           )}
+        </TabSection>
+      )}
+
+      {mobileApps && (
+        <TabSection
+          title="Mobile apps"
+          action={
+            <span className="shrink-0 text-xs text-muted-foreground">
+              detected on their site
+            </span>
+          }
+        >
+          <MobileAppsFact apps={mobileApps} name={competitorName} />
         </TabSection>
       )}
 

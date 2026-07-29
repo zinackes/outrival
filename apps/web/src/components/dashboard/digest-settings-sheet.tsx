@@ -71,7 +71,7 @@ export function DigestSettingsSheet({
             Digest settings
           </SheetTitle>
           <SheetDescription className="text-dense">
-            Sent every Monday at 09:00 UTC. Customize destination and
+            Sent every Monday at 08:00 UTC. Customize destination and
             activation.
           </SheetDescription>
         </SheetHeader>
@@ -108,7 +108,7 @@ export function DigestSettingsSheet({
                   placeholder="you@company.com"
                 />
                 <p className="text-meta text-muted-foreground">
-                  Address that will receive the weekly digest.
+                  Address that receives your briefings and alerts.
                 </p>
               </div>
 
@@ -122,10 +122,11 @@ export function DigestSettingsSheet({
                 />
                 <span>
                   <span className="block font-medium">
-                    Enable weekly digest
+                    Enable digests
                   </span>
                   <span className="block text-meta text-muted-foreground mt-0.5">
-                    Disabling stops sending but keeps history.
+                    Covers the weekly brief and the daily briefing. Disabling
+                    stops sending but keeps history.
                   </span>
                 </span>
               </label>

@@ -543,6 +543,21 @@ carte (état live uniquement).
   └─ upload R2 (toujours AVANT insert DB)
   └─ insert snapshot (homepage → + homepage_structure jsonb patch-16, + screenshot_phash
        + content_size patch-17)
+  └─ mobile apps (fait, JAMAIS un signal) : sur une capture homepage ou wellknown,
+       `recordMobileApps` lit la présence d'app mobile du concurrent et l'écrit sur
+       `competitors.metadata.mobileApps` = { ios, android }. Zéro IA, zéro scrape en
+       plus. Homepage = badges de store dans le pied de page + smart app banner
+       (`<meta name="apple-itunes-app">`) ; le lien App Store porte l'ID NUMÉRIQUE
+       d'Apple, donc la détection pré-remplit aussi l'URL que `appstore_reviews`
+       faisait coller à la main. Wellknown = repli sur le fingerprint déjà capturé :
+       un package Android EST une URL Play (déterministe), un bundle iOS passe par le
+       lookup public sans clé d'Apple (même famille que le flux RSS des reviews).
+       Les bundles de providers d'identité sont filtrés (cf. wellknown), et une
+       moitié déjà connue n'est jamais effacée par une page qui n'affiche pas de
+       badge. Écriture seulement quand l'app change, merge jsonb en SQL pour ne pas
+       écraser `ambiguousName`. Rendu sur l'onglet Overview + Positioning de la fiche.
+       Les reviews Play Store restent HORS périmètre (retirées, collection doctrine :
+       pas d'équivalent public au flux RSS d'Apple)
   └─ diff :
        homepage + 2 structures → diff STRUCTURÉ (diffHomepages) ; enrichissements patch-17
          (poussés dans structuredChanges) : visual_redesign (pHash), numeric_claim_changed

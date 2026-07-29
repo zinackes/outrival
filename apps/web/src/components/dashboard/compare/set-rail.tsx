@@ -108,7 +108,8 @@ export function CompareSetRail({
   pickYou,
   pickComps,
   selectedIds,
-  max,
+  maxCompetitors,
+  maxTotal,
   onToggle,
 }: {
   /** In display order — your products first, then the competitors. */
@@ -116,11 +117,16 @@ export function CompareSetRail({
   pickYou: PickEntity[];
   pickComps: PickEntity[];
   selectedIds: Set<string>;
-  max: number;
+  /** Competitor slots. Your own products share the roster but don't consume one. */
+  maxCompetitors: number;
+  /** Ceiling on the whole set, matching the API's column cap. Bites only on multi-SKU. */
+  maxTotal: number;
   onToggle: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const full = selectedIds.size >= max;
+  const usedComps = pickComps.reduce((n, e) => (selectedIds.has(e.id) ? n + 1 : n), 0);
+  const atTotal = selectedIds.size >= maxTotal;
+  const compsFull = atTotal || usedComps >= maxCompetitors;
 
   return (
     <div className="border-border flex flex-wrap items-center gap-1.5 border-b pb-4">
@@ -155,7 +161,7 @@ export function CompareSetRail({
                       key={e.id}
                       entity={e}
                       on={selectedIds.has(e.id)}
-                      full={full}
+                      full={atTotal}
                       onToggle={onToggle}
                     />
                   ))}
@@ -167,7 +173,7 @@ export function CompareSetRail({
                     key={e.id}
                     entity={e}
                     on={selectedIds.has(e.id)}
-                    full={full}
+                    full={compsFull}
                     onToggle={onToggle}
                   />
                 ))}
@@ -178,7 +184,7 @@ export function CompareSetRail({
       </Popover>
 
       <span className="text-muted-foreground ml-0.5 font-mono text-meta tabular-nums">
-        {selectedIds.size}/{max}
+        {usedComps}/{maxCompetitors}
       </span>
     </div>
   );

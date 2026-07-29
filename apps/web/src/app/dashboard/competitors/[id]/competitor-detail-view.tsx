@@ -126,6 +126,7 @@ import { ReviewsTab } from "./competitor-detail/reviews-tab";
 import { OverviewTab } from "./competitor-detail/overview-tab";
 import { ActivityTab } from "./competitor-detail/activity-tab";
 import { ProductTab } from "./competitor-detail/product-tab";
+import { readMobileApps } from "./competitor-detail/mobile-apps";
 import { PRODUCT_SOURCES } from "./competitor-detail/product-lenses";
 import { useMonitorActions } from "./competitor-detail/use-monitor-actions";
 import { resolveTabParam } from "./competitor-detail/tab-migration";
@@ -140,7 +141,7 @@ import type { TabKey } from "./competitor-detail/types";
 // lens on data. Tech stack became an Overview card, battle cards their own page.
 const TABS: Array<{ key: TabKey; label: string; icon: typeof PulseIcon }> = [
   { key: "overview", label: "Overview", icon: GridFourIcon },
-  { key: "activity", label: "PulseIcon", icon: PulseIcon },
+  { key: "activity", label: "Activity", icon: PulseIcon },
   { key: "pricing", label: "Pricing", icon: CurrencyDollarIcon },
   { key: "hiring", label: "Hiring", icon: BriefcaseIcon },
   { key: "reviews", label: "Reviews", icon: StarIcon },
@@ -613,6 +614,9 @@ export function CompetitorDetailView({ id }: { id: string }) {
 
   const { competitor, monitors, recentChanges, recentSignals, techStack, overview, plan } = data;
   const detectedTargets = detectedTargetsOf(techStack);
+  // Store listings the worker detected off captures we already take. Informational:
+  // it never alerts, it just spares the user a trip to the App Store search box.
+  const mobileApps = readMobileApps(competitor.metadata);
   const lastRunMs = monitors
     .map((m) => (m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0))
     .reduce((a, b) => Math.max(a, b), 0);
@@ -737,6 +741,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 onRun={requestRunMonitor}
                 onOpenTab={selectTab}
                 techStack={techStack}
+                mobileApps={mobileApps}
               />
             </TabsContent>
             <TabsContent value="activity" className={TAB_PANEL_CLASS}>
@@ -781,6 +786,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 onLockedSource={(source) =>
                   setPaywall({ code: "plan_locked_source", source, plan })
                 }
+                detectedAppStoreUrl={mobileApps?.ios?.url ?? null}
               />
             </TabsContent>
             <TabsContent value="product" className={TAB_PANEL_CLASS}>
@@ -793,6 +799,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 scrapingIds={scrapingIds}
                 onRun={requestRunMonitor}
                 competitorUrl={competitor.url}
+                mobileApps={mobileApps}
               />
             </TabsContent>
             </div>

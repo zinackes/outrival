@@ -14,7 +14,7 @@ import { PLAN_LIMITS, hashSignalIdSet } from "@outrival/shared";
 import { loggedAi } from "../lib/analytics";
 import { decideDispatch } from "../lib/notification-dispatcher";
 import { evaluateFreshAnswer, matchesStandingQuery } from "../lib/standing-queries";
-import { getResend, ALERT_FROM } from "../lib/resend";
+import { sendEmail, ALERT_FROM } from "../lib/resend";
 import { emailShell, e } from "../lib/email-shell";
 import { escapeHtml } from "../lib/escape-html";
 
@@ -119,7 +119,7 @@ async function alertStandingQuery(
   ${changeSummary ? `<p ${e("muted", "margin:0 0 16px;")}>${escapeHtml(changeSummary)}</p>` : ""}
   <a href="${WEB_URL}/dashboard/ask" ${e("accent")}>See the updated answer →</a>`,
       );
-      await getResend().emails.send({
+      await sendEmail({
         from: ALERT_FROM,
         to: org.digestEmail,
         subject: "A question you watch has a new answer",

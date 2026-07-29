@@ -229,7 +229,8 @@ export function NotificationSettingsForm() {
           placeholder="you@company.com"
         />
         <p className="text-xs text-muted-foreground">
-          Weekly digests are sent here every Monday at 8am UTC.
+          Where every briefing and alert is sent. The weekly one goes out every
+          Monday at 8am UTC.
         </p>
       </div>
 
@@ -241,7 +242,7 @@ export function NotificationSettingsForm() {
               setSettings({ ...settings, digestEnabled: c === true })
             }
           />
-          Enable weekly digest
+          Enable digests (weekly brief and daily briefing)
         </label>
 
         <label className="flex items-center gap-3 text-sm cursor-pointer">

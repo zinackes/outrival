@@ -74,10 +74,14 @@ function ReviewEnableState({
   plan,
   onEnable,
   onLockedSource,
+  detectedAppStoreUrl,
 }: {
   plan: Plan;
   onEnable?: (source: SourceType, url?: string) => Promise<void>;
   onLockedSource?: (source: ReviewSourceType) => void;
+  // App Store listing already detected on their site, so the field starts filled
+  // instead of asking the user to go and find the id themselves.
+  detectedAppStoreUrl?: string | null;
 }) {
   // Default to a source the plan actually covers so the form is usable out of the
   // gate; falls back to the first option when the plan covers none — then the form
@@ -86,7 +90,13 @@ function ReviewEnableState({
     REVIEW_SOURCE_OPTIONS.find((o) => planIncludesSource(plan, o.value))?.value ??
     REVIEW_SOURCE_OPTIONS[0]!.value;
   const [source, setSource] = useState<ReviewSourceType>(firstAllowed);
-  const [url, setUrl] = useState("");
+  // Only prefill what actually validates: a detection that somehow produced a
+  // malformed URL must not seed a field the user then has to notice and clear.
+  const prefill =
+    detectedAppStoreUrl && validateReviewUrl("appstore_reviews", detectedAppStoreUrl).ok
+      ? detectedAppStoreUrl
+      : "";
+  const [url, setUrl] = useState(prefill);
   const [busy, setBusy] = useState(false);
   const active = REVIEW_SOURCE_OPTIONS.find((o) => o.value === source)!;
   const sourceLocked = !planIncludesSource(plan, source);
@@ -162,7 +172,9 @@ function ReviewEnableState({
           <p className="text-xs text-muted-foreground">
             {sourceLocked
               ? `${active.label} reviews are included in the ${PLAN_LABELS[minPlanForSource(active.value)]} plan.`
-              : `Must be a ${active.host} URL.`}
+              : prefill && trimmed === prefill
+                ? "We found this app on their site. Change it if it is the wrong one."
+                : `Must be a ${active.host} URL.`}
           </p>
         </div>
       </div>
@@ -208,12 +220,15 @@ export function ReviewsTab({
   onEnable,
   plan,
   onLockedSource,
+  detectedAppStoreUrl,
 }: {
   competitorId: string;
   /** Already on the page; carries the review-shift anchor the chart marks. */
   signals: CompetitorSignal[];
   plan: Plan;
   onLockedSource?: (source: ReviewSourceType) => void;
+  /** Their App Store listing, if the mobile-app detector found one. */
+  detectedAppStoreUrl?: string | null;
 } & MonitorSourceProps) {
   // The shared QueryClient serves the cache instantly on tab re-switch (no skeleton
   // flash); keepPreviousData keeps the last result during a refetch. A forced
@@ -244,7 +259,14 @@ export function ReviewsTab({
 
   // No review monitor yet → collect the review-page URL before enabling.
   if (!reviewMonitor) {
-    return <ReviewEnableState plan={plan} onEnable={onEnable} onLockedSource={onLockedSource} />;
+    return (
+      <ReviewEnableState
+        plan={plan}
+        onEnable={onEnable}
+        onLockedSource={onLockedSource}
+        detectedAppStoreUrl={detectedAppStoreUrl}
+      />
+    );
   }
 
   const hasData = reviews.recent.length > 0 || scores.length > 0;

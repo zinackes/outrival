@@ -20,6 +20,7 @@ import { CatBadge } from "@/components/outrival/data-marks";
 import { sourceShortLabel } from "@/lib/source-labels";
 import { cn } from "@/lib/utils";
 import { PositioningDrift } from "./positioning-drift";
+import { MobileAppsFact, type MobileApps } from "./mobile-apps";
 import { Empty, scrapeActivity, type MonitorSourceProps } from "./shared";
 import {
   PRODUCT_SOURCES,
@@ -67,12 +68,16 @@ export function ProductTab({
   scrapingIds,
   onRun,
   competitorUrl,
+  mobileApps,
 }: {
   competitorId: string;
   competitorName: string;
   changes: ChangeRow[];
   signals: CompetitorSignal[];
   competitorUrl: string;
+  // Which platforms they ship on. A standing fact about their positioning, so it
+  // sits with the narrative rather than in the chronology below it.
+  mobileApps: MobileApps | null;
 } & MonitorSourceProps) {
   const [lens, setLens] = useState<ProductLens | null>(null);
 
@@ -184,6 +189,12 @@ export function ProductTab({
               {verdict.basis}
             </p>
           )}
+        </TabSection>
+      )}
+
+      {mobileApps && (
+        <TabSection title="Mobile apps">
+          <MobileAppsFact apps={mobileApps} name={competitorName} />
         </TabSection>
       )}
 

@@ -53,7 +53,41 @@ import {
  * it shows the evidence. The grid still exists, as the export.
  */
 
-const MAX = 6;
+/**
+ * How many COMPETITORS can be compared at once. Your own products share the roster but
+ * do not consume a slot: the page reads "you vs them", so spending one of the six on
+ * yourself left a pro account (15 competitors) able to line up only five of them.
+ */
+const MAX_COMPETITORS = 6;
+/**
+ * Hard ceiling on the whole set, matching the API's own column cap (routes/compare.ts
+ * MAX_COLUMNS). Past it the request is truncated silently, so the picker stops first.
+ * Only reachable with several SKUs selected at once.
+ */
+const MAX_COLUMNS = 12;
+
+/** id → kind. An id we don't know counts as a competitor, i.e. against the tighter cap. */
+function kindsOf(entities: PickEntity[]): Map<string, PickEntity["kind"]> {
+  return new Map(entities.map((e) => [e.id, e.kind]));
+}
+
+/**
+ * Trim a selection to both caps, keeping the incoming order. Anything that would breach
+ * a cap is dropped, so appending a candidate last is also how an add is refused.
+ */
+function capSelection(ids: string[], kinds: Map<string, PickEntity["kind"]>): string[] {
+  const kept: string[] = [];
+  let comps = 0;
+  for (const id of ids) {
+    if (kept.length >= MAX_COLUMNS) break;
+    if (kinds.get(id) !== "you") {
+      if (comps >= MAX_COMPETITORS) continue;
+      comps += 1;
+    }
+    kept.push(id);
+  }
+  return kept;
+}
 
 const EXPORT_STORAGE = "compare:export";
 // Persisted column selection. Keyed by the active product scope: with several SKUs the
@@ -67,7 +101,7 @@ function selectionKey(productId: string | undefined): string {
 
 /**
  * The selection the user left behind, filtered to entities that still exist (a
- * competitor can be deleted, or belong to another product scope) and capped at MAX.
+ * competitor can be deleted, or belong to another product scope) and capped.
  * Null when nothing survives — the caller then seeds the ranked defaults, so a stale
  * selection can never leave the page with nothing to compare.
  */
@@ -75,10 +109,11 @@ function readStoredSelection(key: string, entities: PickEntity[]): string[] | nu
   try {
     const raw: unknown = JSON.parse(localStorage.getItem(key) ?? "null");
     if (!Array.isArray(raw)) return null;
-    const known = new Set(entities.map((e) => e.id));
-    const kept = [
-      ...new Set(raw.filter((id): id is string => typeof id === "string" && known.has(id))),
-    ].slice(0, MAX);
+    const kinds = kindsOf(entities);
+    const kept = capSelection(
+      [...new Set(raw.filter((id): id is string => typeof id === "string" && kinds.has(id)))],
+      kinds,
+    );
     return kept.length ? kept : null;
   } catch {
     /* corrupt prefs — fall back to the defaults */
@@ -133,7 +168,9 @@ function buildPickList(
     }),
   );
   const pinned = you.find((e) => e.id === scopedSelf) ?? you[0];
-  const seed = pinned ? [pinned, ...comps.slice(0, MAX - 1)] : comps.slice(0, MAX);
+  const seed = pinned
+    ? [pinned, ...comps.slice(0, MAX_COMPETITORS)]
+    : comps.slice(0, MAX_COMPETITORS);
   return { entities: [...you, ...comps], selected: seed.map((e) => e.id) };
 }
 
@@ -295,13 +332,11 @@ export function CompareView() {
   }, [selected, matrixReloadKey, selectionRestored]);
 
   function toggle(id: string) {
-    setSelected((prev) =>
-      prev.includes(id)
-        ? prev.filter((x) => x !== id)
-        : prev.length >= MAX
-          ? prev
-          : [...prev, id],
-    );
+    setSelected((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      // Appended last, so capSelection drops it (and only it) when a cap is reached.
+      return capSelection([...prev, id], kindsOf(entities ?? []));
+    });
   }
 
   function toggleRow(lens: string, id: string) {
@@ -537,7 +572,8 @@ export function CompareView() {
             pickYou={pickYou}
             pickComps={pickComps}
             selectedIds={selectedIds}
-            max={MAX}
+            maxCompetitors={MAX_COMPETITORS}
+            maxTotal={MAX_COLUMNS}
             onToggle={toggle}
           />
 

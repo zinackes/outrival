@@ -94,23 +94,32 @@ const InputSchema = z.object({
 // missing profile changes nothing) and was wrong for everyone else: the run wrote no
 // card, sent no notification and left no reason, so the user's page simply fell back
 // to the "no card yet" template and they clicked Generate again. Prod 2026-07-29:
-// three consecutive runs against LangChain, three silent nothings. The wrapper below
+// three consecutive runs against LangChain, three silent nothings. The hook below
 // makes the giving-up visible — the reason reaches the bell for a user who navigated
 // away, and the throw still carries it into the job's output for a post-mortem.
 export async function runGenerateBattleCard(payload: z.input<typeof InputSchema>) {
-  const parsed = InputSchema.safeParse(payload);
-  try {
-    return await generate(payload);
-  } catch (err) {
-    if (parsed.success && parsed.data.notifyOnComplete) {
-      await notifyBattleCardFailed(parsed.data, err);
-    }
-    throw err;
-  }
+  return generate(payload);
 }
 
-/** The bell entry for a run that gave up. Best-effort, like every notify here: it
- * must never replace the real error with an insert failure. */
+/**
+ * The bell entry for a run that gave up. Called by the pg-boss handler on the
+ * TERMINAL attempt only — same rule as onScrapeMonitorFailure — because a
+ * retryable error (a rate limit, a provider 5xx) fires this body once per attempt,
+ * and one click produced three identical "could not be generated" toasts before
+ * the retries were done. The user asked for one card; they get one verdict.
+ *
+ * Best-effort, like every notify here: it must never replace the real error with
+ * an insert failure.
+ */
+export async function onGenerateBattleCardFailure(opts: {
+  payload: z.input<typeof InputSchema>;
+  error: unknown;
+}): Promise<void> {
+  const parsed = InputSchema.safeParse(opts.payload);
+  if (!parsed.success || !parsed.data.notifyOnComplete) return;
+  await notifyBattleCardFailed(parsed.data, opts.error);
+}
+
 async function notifyBattleCardFailed(
   input: z.output<typeof InputSchema>,
   err: unknown,

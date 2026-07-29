@@ -1,6 +1,11 @@
 import { test, expect } from "bun:test";
 import OpenAI from "openai";
-import { resolveReasoningEffort, isConfigError, rateLimitBackoffSec } from "./provider";
+import {
+  resolveReasoningEffort,
+  isConfigError,
+  isTooLarge,
+  rateLimitBackoffSec,
+} from "./provider";
 
 test("non-reasoning models (Llama) never receive reasoning_effort", () => {
   expect(resolveReasoningEffort("llama-3.3-70b-versatile")).toBeUndefined();
@@ -82,4 +87,19 @@ test("an absurd or hostile wait is capped", () => {
 
 test("a sub-second wait still parks the provider for at least a second", () => {
   expect(rateLimitBackoffSec(rateLimitError("Please try again in 0.3s"))).toBe(1);
+});
+
+test("a 413 is a too-large refusal, not a broken provider", () => {
+  // Groq's free tier counts prompt + max_tokens against 8000 TPM, so a big request
+  // is refused outright. Parking the provider over it would push every SMALL task
+  // off a provider that is working perfectly well.
+  expect(isTooLarge(apiError(413))).toBe(true);
+  expect(isConfigError(apiError(413))).toBe(false);
+});
+
+test("nothing else is mistaken for a too-large refusal", () => {
+  for (const status of [400, 401, 403, 404, 429, 500, 503]) {
+    expect(isTooLarge(apiError(status))).toBe(false);
+  }
+  expect(isTooLarge(new Error("boom"))).toBe(false);
 });

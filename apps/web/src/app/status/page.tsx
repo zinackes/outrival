@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/metadata";
+import { serverApiBase } from "@/lib/api-base";
 import { DocPage } from "@/components/landing/doc-page";
 
 export const metadata: Metadata = pageMetadata({
@@ -54,7 +55,7 @@ const HEADLINE: Record<State, string> = {
 };
 
 async function getStatus(): Promise<StatusPayload | null> {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+  const base = serverApiBase();
   try {
     const res = await fetch(`${base}/api/public/status`, {
       cache: "no-store",

@@ -123,6 +123,26 @@ NEXT_PUBLIC_ONBOARDING_DISCOVERY_DEBOUNCE_MS=3000
 SENTRY_AUTH_TOKEN= / SENTRY_ORG= / SENTRY_PROJECT_WEB=   # optional, source maps
 ```
 
+### `web` (runtime, server-to-API hop)
+```
+INTERNAL_API_URL=http://api:3001
+```
+Runtime, **not** a build arg and **not** `NEXT_PUBLIC_`: it is the address the Next
+*server* uses to reach the API, and the browser must never see it. Without it, every
+server-side fetch goes to `https://api.outrival.io`, which is Cloudflare-proxied: it
+leaves the VPS, crosses the edge and comes back in through Traefik to a container on
+the same host. A dashboard render makes 8 to 14 of those calls, so that hairpin is
+paid 8 to 14 times per navigation.
+
+Setting it in Coolify: enable **Connect to Predefined Network** on both the `web` and
+`api` apps, then use the api container's name and internal port. Verify from inside
+the web container before relying on it:
+```
+curl -sS -o /dev/null -w '%{http_code} %{time_total}\n' http://api:3001/health
+```
+A non-200 (or a DNS failure) means the two apps are not on the same network. Leave
+the variable unset rather than half-set: the fallback is the working public URL.
+
 ### `api` (runtime)
 ```
 NODE_ENV=production

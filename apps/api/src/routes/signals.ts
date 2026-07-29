@@ -298,31 +298,38 @@ signalsRouter.get("/facets", async (c) => {
     base.push(sql`${signals.productIds} @> ${JSON.stringify([productId])}::jsonb`);
   }
 
-  const [counts] = await db
-    .select({
-      all: sql<number>`count(*)`,
-      unread: sql<number>`count(*) filter (where ${signals.isRead} = false)`,
-      alerts: sql<number>`count(*) filter (where ${signals.severity} in ('critical','high'))`,
-      critical: sql<number>`count(*) filter (where ${signals.severity} = 'critical')`,
-      week: sql<number>`count(*) filter (where ${signals.createdAt} >= date_trunc('week', now()))`,
-      actions: sql<number>`count(*) filter (where ${signals.actionStatus} in ('todo','doing'))`,
-    })
-    .from(signals)
-    .innerJoin(competitors, eq(competitors.id, signals.competitorId))
-    .where(and(...base));
+  // Three reads over the same rows with the same filter — the counts, the distinct
+  // categories, the distinct competitors. They were issued one after the other, so
+  // the facets bar cost three sequential round-trips to say one thing. Nothing here
+  // depends on anything else here.
+  const [countRows, catRows, compRows] = await Promise.all([
+    db
+      .select({
+        all: sql<number>`count(*)`,
+        unread: sql<number>`count(*) filter (where ${signals.isRead} = false)`,
+        alerts: sql<number>`count(*) filter (where ${signals.severity} in ('critical','high'))`,
+        critical: sql<number>`count(*) filter (where ${signals.severity} = 'critical')`,
+        week: sql<number>`count(*) filter (where ${signals.createdAt} >= date_trunc('week', now()))`,
+        actions: sql<number>`count(*) filter (where ${signals.actionStatus} in ('todo','doing'))`,
+      })
+      .from(signals)
+      .innerJoin(competitors, eq(competitors.id, signals.competitorId))
+      .where(and(...base)),
 
-  const catRows = await db
-    .selectDistinct({ category: signals.category })
-    .from(signals)
-    .innerJoin(competitors, eq(competitors.id, signals.competitorId))
-    .where(and(...base));
+    db
+      .selectDistinct({ category: signals.category })
+      .from(signals)
+      .innerJoin(competitors, eq(competitors.id, signals.competitorId))
+      .where(and(...base)),
 
-  const compRows = await db
-    .selectDistinct({ id: signals.competitorId, name: competitors.name })
-    .from(signals)
-    .innerJoin(competitors, eq(competitors.id, signals.competitorId))
-    .where(and(...base))
-    .orderBy(competitors.name);
+    db
+      .selectDistinct({ id: signals.competitorId, name: competitors.name })
+      .from(signals)
+      .innerJoin(competitors, eq(competitors.id, signals.competitorId))
+      .where(and(...base))
+      .orderBy(competitors.name),
+  ]);
+  const counts = countRows[0];
 
   return c.json({
     counts: {

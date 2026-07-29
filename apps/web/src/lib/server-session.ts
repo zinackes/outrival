@@ -2,7 +2,9 @@
 // layouts. Not a client module — they forward the incoming request's cookies to
 // the API and are only ever called from Server Components.
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { serverApiBase } from "./api-base";
+
+const API_URL = serverApiBase();
 
 // Better Auth's /get-session returns `{ session, user }` (or null when signed
 // out). Kept loose — callers only reach for `user.{id,name,email,twoFactorEnabled}`.

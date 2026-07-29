@@ -2,6 +2,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { endOfDay, startOfDay, subDays } from "date-fns";
 import type { Plan } from "@outrival/shared";
+import { serverApiBase } from "./api-base";
 import { OVERVIEW_SIGNALS_LIMIT, SIGNALS_PAGE_SIZE } from "./queries";
 import type {
   Signal,
@@ -38,7 +39,7 @@ import type {
 } from "./api";
 import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor-detail-view";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const BASE = serverApiBase();
 
 // Request-scoped GET, deduped by path via React.cache: when the layout and the
 // page (or two loaders) fetch the same endpoint within one render — e.g. /api/products
@@ -134,22 +135,33 @@ export async function getOverviewData(productId?: string): Promise<{
  * that widget fetch client-side as before. Seeded once in the layout so these
  * don't cost three client round-trips on every dashboard navigation.
  */
-export async function getShellData(): Promise<{
+export async function getShellData(productId?: string): Promise<{
   products: ProductSummary[] | null;
   structuralChanges: StructuralChangeRow[] | null;
   aiStatus: AiStatus | null;
+  competitors: Competitor[] | null;
 }> {
-  const [products, structural, aiStatus] = await Promise.all([
+  // Same query string the page-level seeds build, so React.cache collapses the two
+  // into ONE round-trip when a page seeds the roster too (overview, competitors,
+  // compare) rather than fetching it twice per render.
+  const compScope = productId ? `?productId=${encodeURIComponent(productId)}` : "";
+  const [products, structural, aiStatus, competitors] = await Promise.all([
     tryGet<{ products: ProductSummary[] }>(`/api/products`),
     tryGet<{ changes: StructuralChangeRow[] }>(
       `/api/structural-changes?status=detected`,
     ),
     tryGet<AiStatus>(`/api/system/ai-status`),
+    // The sidebar's competitor roster. It mounts on EVERY dashboard page, and
+    // without a seed it fired the heaviest endpoint in the API from the browser
+    // after hydration — so the sidebar sat empty through the whole first paint on
+    // every cold navigation, on every page. Seeded here it lands with the shell.
+    tryGet<{ competitors: Competitor[] }>(`/api/competitors${compScope}`),
   ]);
   return {
     products: products?.products ?? null,
     structuralChanges: structural?.changes ?? null,
     aiStatus: aiStatus ?? null,
+    competitors: competitors?.competitors ?? null,
   };
 }
 

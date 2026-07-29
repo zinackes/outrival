@@ -10,13 +10,14 @@ import {
   StarIcon,
 } from "@/components/icons";
 import { RecapDeck } from "@/components/dashboard/recap-wrapped";
+import { serverApiBase } from "@/lib/api-base";
 import type { MonthlyRecap } from "@/lib/api";
 
 // Public, read-only share view (Lever 8/9). Rendered from a share token — no auth, no
 // cookies. Always noindex + never in the sitemap: the token is the only capability.
 // Resolves to a "Competitive Snapshot Report" (landscape) or a "Wrapped" recap.
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API = serverApiBase();
 
 export const metadata: Metadata = {
   title: "Competitive Snapshot | Outrival",

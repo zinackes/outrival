@@ -300,23 +300,28 @@ function ScoreScale({
   median: number | null;
 }) {
   return (
-    <div className="relative h-2.5">
-      <span aria-hidden className="bg-border absolute inset-x-0 top-1 h-px" />
+    // The same 8px lane Track draws in, so a rating row and a price row put their
+    // measure on the same line — the lane used to be 10px tall with the hairline
+    // 4px down, which left every score sitting a couple of pixels off the bars.
+    <div className="relative h-2">
+      <span
+        aria-hidden
+        className="bg-border absolute inset-x-0 top-1/2 h-px -translate-y-1/2"
+      />
       {[0, 1, 2, 3, 4, 5].map((t) => (
         <span
           key={t}
           aria-hidden
-          className="bg-border absolute top-0 h-2 w-px"
+          className={cn(
+            "bg-border absolute inset-y-0 w-px",
+            // The ends stay flush with the lane; the steps are centred on the score
+            // they mark, which is where the axis label under them now sits too.
+            t > 0 && t < RATING_MAX && "-translate-x-1/2",
+          )}
           style={t === RATING_MAX ? { right: 0 } : { left: `${(t / RATING_MAX) * 100}%` }}
         />
       ))}
-      {median != null && (
-        <span
-          aria-hidden
-          className="border-border-strong absolute -inset-y-1 border-l border-dashed"
-          style={{ left: `${pct(median, RATING_MAX)}%` }}
-        />
-      )}
+      {median != null && <MedianMark left={pct(median, RATING_MAX)} />}
       {children}
     </div>
   );
@@ -329,7 +334,7 @@ function ScoreDot({ entity, score }: { entity: CompareEntity; score: number }) {
     <span
       aria-hidden
       className={cn(
-        "ring-background absolute top-[-2px] -ml-[5.5px] size-[11px] rounded-full ring-2 motion-safe:transition-[left] motion-safe:duration-300",
+        "ring-background absolute top-1/2 size-[11px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 motion-safe:transition-[left] motion-safe:duration-300",
         entity.mine ? "bg-primary" : !vars && "bg-border-strong",
       )}
       style={{

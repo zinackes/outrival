@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { myProductQuery } from "@/lib/queries";
 import {
+  ArrowSquareOutIcon,
   CaretRightIcon,
   GridFourIcon,
   StarIcon,
@@ -86,6 +87,35 @@ function Big({ children }: { children: React.ReactNode }) {
 /** An absence. Never a bare "Not captured", which reads as a scrape failure. */
 function Absent({ children }: { children: React.ReactNode }) {
   return <span className="text-sm text-muted-foreground">{children}</span>;
+}
+
+/**
+ * One captured call to action: our label for its slot, then their words verbatim.
+ * Linked only when the parser resolved an absolute URL — a relative href stored by
+ * an older capture would resolve against OUR domain and send the reader to a page
+ * of ours that looks like theirs.
+ */
+function CtaRow({ label, cta }: { label: string; cta: { text: string; href: string | null } }) {
+  const href = cta.href && /^https?:\/\//i.test(cta.href) ? cta.href : null;
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3">
+      <dt className="w-[6.5rem] shrink-0 text-xs text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-sm">
+        {href ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="inline-flex items-center gap-1 text-link hover:underline"
+          >
+            {cta.text} <ArrowSquareOutIcon size={14} />
+          </a>
+        ) : (
+          cta.text
+        )}
+      </dd>
+    </div>
+  );
 }
 
 function LogoChip({ logo }: { logo: { name: string | null; src: string | null } }) {
@@ -366,6 +396,29 @@ export function OverviewTab({
     }
     return out;
   })();
+  // The verdict for "How they sell". Null when the main button asks for neither
+  // motion ("Learn more", "Explore the platform"), in which case its label shows on
+  // its own rather than under a claim the label does not support.
+  const motionRead = (() => {
+    const gtm = homepage?.gtm;
+    if (!gtm?.motion) return null;
+    const alt =
+      gtm.alternate === "sales_led"
+        ? " They keep a sales path next to it."
+        : gtm.alternate === "self_serve"
+          ? " They keep a self-serve path next to it."
+          : "";
+    return gtm.motion === "self_serve"
+      ? {
+          label: "Self-serve",
+          basis: `The call to action on their homepage lets a visitor start on their own, without talking to anyone.${alt}`,
+        }
+      : {
+          label: "Sales-led",
+          basis: `The call to action on their homepage asks for a conversation before a visitor can use the product.${alt}`,
+        };
+  })();
+
   const hasFacts =
     !!homepage &&
     !!(
@@ -373,7 +426,12 @@ export function OverviewTab({
       homepage.subheadline ||
       homepage.valueProps.length > 0 ||
       homepage.customerLogos.length > 0 ||
-      homepage.testimonials.length > 0
+      homepage.testimonials.length > 0 ||
+      // The GTM read counts only when it produced a verdict, since that is the
+      // condition its section renders under. Optional-chained because web and api
+      // deploy separately: a new page can briefly read a payload without these two.
+      !!motionRead ||
+      (homepage.navItems?.length ?? 0) > 0
     );
   const hasAnything =
     hasFacts ||
@@ -595,6 +653,65 @@ export function OverviewTab({
               {dSubheadline}
             </p>
           )}
+        </TabSection>
+      )}
+
+      {/* The hero's calls to action. Their labels have sat in the stored homepage
+          structure since patch-16 without ever being read, and they are the shortest
+          honest read of a go-to-market motion there is: "Start free" and "Book a
+          demo" are the same button in the same place, and they describe two
+          different companies.
+
+          Gated on the VERDICT, not on the CTA existing. The parser falls back to the
+          first link in the hero when no candidate looks like a button, so a label
+          naming no motion is as likely to be a nav item, and "Main button: Login" is
+          worse than silence. Verdict first, then their words, so the reader can
+          check us against the page. */}
+      {motionRead && homepage?.gtm?.primary && (
+        <TabSection
+          title="How they sell"
+          action={
+            <span className="shrink-0 text-xs text-muted-foreground">
+              read off their homepage
+            </span>
+          }
+        >
+          <p className="max-w-[70ch] text-sm leading-relaxed">
+            <span className="font-medium">{motionRead.label}.</span>{" "}
+            <span className="text-muted-foreground">{motionRead.basis}</span>
+          </p>
+          <dl className="flex flex-col gap-1">
+            <CtaRow label="Their words" cta={homepage.gtm.primary} />
+            {homepage.gtm.secondary && (
+              <CtaRow label="Also offers" cta={homepage.gtm.secondary} />
+            )}
+          </dl>
+        </TabSection>
+      )}
+
+      {/* Their own nav, with the labels every SaaS ships stripped out, so what is
+          left is the vocabulary they chose for their own product. Empty for a nav
+          that says nothing specific, which is why this renders nothing rather than
+          echoing "Product, Pricing, Blog" back at the reader. */}
+      {homepage && (homepage.navItems?.length ?? 0) > 0 && (
+        <TabSection
+          title="What their product covers"
+          action={
+            <span className="shrink-0 text-xs text-muted-foreground">
+              their own navigation
+            </span>
+          }
+        >
+          <div className="flex flex-wrap gap-1.5">
+            {homepage.navItems.map((item) => (
+              <span
+                key={item}
+                className="rounded-sm border border-border px-2 py-0.5 text-dense text-muted-foreground"
+              >
+                {item}
+              </span>
+            ))}
+          </div>
         </TabSection>
       )}
 

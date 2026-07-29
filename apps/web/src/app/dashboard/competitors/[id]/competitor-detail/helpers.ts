@@ -64,6 +64,32 @@ export function formatTierPrice(p: {
   return `${amount}${per}`;
 }
 
+/**
+ * The per-month reading of an annual tier: "≈ $16/mo billed annually", or null
+ * when the tier isn't a priced yearly one.
+ *
+ * A `yearly` price is stored as the amount charged for a YEAR (the annual total),
+ * which is the only reading the price ladder and the medians can compare — but
+ * "$192/yr" is not how the pricing page phrased it, and not how a buyer thinks
+ * about it. Showing the division alongside means the number on screen matches the
+ * number on the competitor's site without the stored value having to.
+ */
+export function annualPerMonthLabel(p: {
+  price: number | null;
+  currency: string;
+  billing_period: string;
+}): string | null {
+  if (p.billing_period !== "yearly" || p.price == null || p.price <= 0) return null;
+  const perMonth = p.price / 12;
+  const rounded = perMonth >= 10 ? Math.round(perMonth) : Math.round(perMonth * 100) / 100;
+  const monthly = formatTierPrice({
+    price: rounded,
+    currency: p.currency,
+    billing_period: "monthly",
+  });
+  return `≈ ${monthly} billed annually`;
+}
+
 // A captured customer logo carries a brand name (from <img alt>) and/or a resolved
 // absolute image URL (`src`). Prefer rendering the real logo image — it reads far
 // better than a text badge — and fall back to the name only when there's no usable

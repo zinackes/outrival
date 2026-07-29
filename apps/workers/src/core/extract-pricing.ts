@@ -15,6 +15,7 @@ import { getFromR2, PRICING_STATUSES } from "@outrival/shared";
 import { pricingFromStructured } from "@outrival/scrapers/structured-data";
 import {
   pricingRatiosPlausible,
+  reconcileBillingPeriods,
   detectTrial,
   detectFreePlan,
   harvestPricing,
@@ -94,9 +95,16 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
         // price 0 is a "free to try" marker, not the pricing table — and a monthly↔yearly
         // ratio that betrays a mis-parse, so a weak structured/cached result falls
         // through to the AI floor (patch-32). `.some` also covers the empty case.
-        plausible: (d) =>
-          d.plans.some((p) => p.price != null && p.price > 0) &&
-          pricingRatiosPlausible(d.plans),
+        // The ratio is judged on RECONCILED plans: a stage that read "$16/mo billed
+        // annually" as a $16 yearly is repairable arithmetic, not a mis-parse, and must
+        // not cost an AI call. Reconciling here without page text uses the ratio rule only.
+        plausible: (d) => {
+          const reconciled = reconcileBillingPeriods(d.plans);
+          return (
+            reconciled.some((p) => p.price != null && p.price > 0) &&
+            pricingRatiosPlausible(reconciled)
+          );
+        },
         structuredFn: (h) => pricingFromStructured(h),
         aiFallback: (t) => extractPricing(t),
         aiFallbackTask: "extract_pricing",
@@ -126,7 +134,18 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
       }
       collected.push(...sectionPlans);
     }
-    const plans = dedupePlans(collected).slice(0, MAX_TOTAL_PLANS);
+    // Canonicalize the billing periods before anything reads them: a `yearly` row
+    // must be the amount charged for a YEAR. Whatever stage produced the plans —
+    // schema.org, cached parser, AI floor, harvest — a "$16/mo billed annually"
+    // read as a $16 yearly is restated as $192/year (and the per-month figure kept
+    // as the monthly row), so monthlyEquivalent, the price ladder, medians and
+    // battle cards stop reading a 12x-understated price. See
+    // @outrival/scrapers/pricing normalize-periods. AI-free, runs before dedupe so
+    // a derived row can still collapse against an identical detected one.
+    const plans = dedupePlans(reconcileBillingPeriods(collected, text)).slice(
+      0,
+      MAX_TOTAL_PLANS,
+    );
     logger.log("Pricing plans extracted", { count: plans.length, sections: sections.length });
     if (plans.length === 0) {
       // Nothing structured AND no visible price to harvest in any section.

@@ -19,10 +19,18 @@ test("annual total at full 12× is plausible", () => {
   ).toBe(true);
 });
 
-test("yearly shown as discounted per-month rate is plausible", () => {
+// The reconciler restates "$16/mo billed annually" as $192/year BEFORE this gate
+// runs, so a yearly still sitting at or below the monthly price is a real defect.
+test("yearly at a per-month rate is a mis-parse → implausible", () => {
   expect(
     pricingRatiosPlausible([plan("Pro", 20, "monthly"), plan("Pro", 16, "yearly")]),
-  ).toBe(true);
+  ).toBe(false);
+});
+
+test("same number scraped for both periods → implausible", () => {
+  expect(
+    pricingRatiosPlausible([plan("Pro", 20, "monthly"), plan("Pro", 20, "yearly")]),
+  ).toBe(false);
 });
 
 test("dead-zone ratio (3×) is a mis-parse → implausible", () => {

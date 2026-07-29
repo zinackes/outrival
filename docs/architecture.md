@@ -574,7 +574,24 @@ carte (état live uniquement).
                    patch-33 : `detectTrial` AI-free sur le texte de la page → free-trial
                    (présence / durée / CB requise) stampé sur les rows pricing_history,
                    indépendant de l'étage d'extraction ; alimente le badge pricing tab +
-                   le contexte battle-card)
+                   le contexte battle-card.
+                   CANON DE PÉRIODE (`reconcileBillingPeriods`, AI-free, après extraction) :
+                   `billing_period` nomme la période que le PRIX COUVRE, jamais l'engagement.
+                   `yearly` = le TOTAL ANNUEL. Une page qui affiche « $16/mo billed annually »
+                   était lue `yearly: 16` par n'importe quel étage, et tout l'aval divisait
+                   encore par 12 (monthlyEquivalent, price ladder, médianes sectorielles,
+                   battle cards lisaient $1.33/mois). Le réconciliateur restitue $192/an sur
+                   deux preuves indépendantes : RATIO (un « annuel » strictement inférieur au
+                   mensuel du même plan est impossible, donc ×12) et TEXTE (le montant est
+                   suivi d'un token /mois dans la page, donc c'est un taux mensuel ; avec
+                   « billed annually » à proximité, le total annuel dérivé est ajouté en 2e
+                   ligne, si bien que les DEUX prix existent). Seul le sens yearly vers
+                   monthly est réparé, celui qui SOUS-ESTIME d'un facteur 12. Le gate
+                   `plausible` juge des plans réconciliés et exige donc désormais un ratio
+                   9-13× ; la bande « annuel ≤ mensuel » qu'il tolérait ÉTAIT le bug. Le bloc
+                   du toggle de facturation capturé au scrape est légendé « ANNUAL billing
+                   selected » : sans étiquette, l'extracteur voyait un 2e jeu de montants nus,
+                   indiscernable de plans mensuels moins chers)
        jobs    → extract-jobs    → diff actives + Postgres job_counts
                   (structured-first = ATS API JSON island puis JobPosting JSON-LD ; pipeline complet.
                    patch-32 : 7 ATS — Greenhouse/Lever/Ashby/SmartRecruiters/Recruitee/Workable +

@@ -24,7 +24,19 @@ export type PricingStatus = (typeof PRICING_STATUSES)[number];
 // ---------------------------------------------------------------------------
 // billing_period taxonomy (pricing_history.billing_period is a free-text column).
 //
+// It names the period the `price` COVERS — never the commitment the plan is sold
+// under. That distinction is the whole reason this comment exists: pricing pages
+// print "$16/mo billed annually", and reading that as a $16 YEARLY price divides
+// the competitor's real price by 12 everywhere downstream (monthlyEquivalent, the
+// price ladder, sectoral medians, battle cards). `reconcileBillingPeriods`
+// (@outrival/scrapers/pricing) enforces the canon on every extraction.
+//
 //   monthly | yearly | one_time  → a comparable currency amount on a price axis
+//     monthly                     → the amount charged for ONE MONTH, whatever the term
+//     yearly                      → the amount charged for ONE YEAR: the annual TOTAL.
+//                                   A plan sold both ways is TWO rows sharing a
+//                                   plan_name (monthly 20, yearly 192), so the annual
+//                                   discount stays derivable (192/12 = 16 < 20)
 //   custom                        → quote-based, price null ("Contact sales")
 //   usage                         → a per-`unit` RATE, not a per-time subscription
 //                                   ($0.10 / API call, $0.99 / resolved ticket).

@@ -23,7 +23,7 @@ import { myProductQuery } from "@/lib/queries";
 import { buildPricingSeries } from "./charts";
 import { PricingPlansEditor } from "./pricing-plans-editor";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatTierPrice } from "./helpers";
+import { formatTierPrice, annualPerMonthLabel } from "./helpers";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Empty,
@@ -712,6 +712,7 @@ function TierCell({
   rates?: Record<string, number> | null;
 }) {
   const conv = convertedTo ? convertedLabel(tier, convertedTo, rates ?? null) : null;
+  const perMonth = annualPerMonthLabel(tier);
   return (
     <div className={cn("flex min-w-0 flex-col gap-0.5", align === "end" && "sm:items-end")}>
       <div
@@ -727,6 +728,9 @@ function TierCell({
       </div>
       {conv && (
         <span className="font-mono text-xs tabular-nums text-muted-foreground">{conv}</span>
+      )}
+      {perMonth && (
+        <span className="font-mono text-xs tabular-nums text-muted-foreground">{perMonth}</span>
       )}
     </div>
   );

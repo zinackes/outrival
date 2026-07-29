@@ -60,9 +60,8 @@ async function getResumeSession(
 async function getBilling(h: Headers): Promise<{
   plan?: string;
   competitorsUsed?: number;
-  competitorsLimit?: number | null;
 } | null> {
-  // ?summary=1 — the layout only needs plan + seat usage (DB-backed). This skips the
+  // ?summary=1 — the layout only needs plan + competitor usage (DB-backed). This skips the
   // two sequential Stripe round-trips the full endpoint makes, which were the single
   // slowest fetch gating the dashboard's first paint on hard loads.
   const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/billing?summary=1`, {
@@ -72,13 +71,9 @@ async function getBilling(h: Headers): Promise<{
   if (!res.ok) return null;
   const data = (await res.json()) as {
     plan?: string;
-    usage?: { competitors?: { used?: number; limit?: number | null } };
+    usage?: { competitors?: { used?: number } };
   };
-  return {
-    plan: data.plan,
-    competitorsUsed: data.usage?.competitors?.used,
-    competitorsLimit: data.usage?.competitors?.limit ?? null,
-  };
+  return { plan: data.plan, competitorsUsed: data.usage?.competitors?.used };
 }
 
 export default async function DashboardLayout({
@@ -122,12 +117,8 @@ export default async function DashboardLayout({
     email: session?.user?.email ?? null,
   };
   const org = {
-    name: session?.user?.name
-      ? `${session.user.name.split(" ")[0]} workspace`
-      : "Workspace",
     plan: billing?.plan ? billing.plan : "Free",
-    seatsUsed: billing?.competitorsUsed,
-    seatsLimit: billing?.competitorsLimit ?? undefined,
+    competitorsUsed: billing?.competitorsUsed,
   };
 
   const sidebarCookie = cookieStore.get("sidebar_state")?.value;

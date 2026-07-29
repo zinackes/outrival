@@ -74,6 +74,29 @@ const listingWithNavHtml = listingHtml.replace(
   </nav></body>`,
 );
 
+// A careers hub that links BOTH an enterprise ATS board (Workday, thousands of
+// global postings) and the site's own localised job search. accenture.com/at-de is
+// exactly this.
+const hubWithBoardHtml = hubHtml.replace(
+  "</nav>",
+  `<a href="https://acme.wd3.myworkdayjobs.com/acmecareers/userHome">Open your application</a>
+   </nav>`,
+);
+
+// A Workable board on a VANITY domain: an empty SPA shell whose only tell is the
+// `apply.workable.com/<token>` alternate in its head. careers.exotec.com is this.
+const vanityBoardShellHtml = `<html><head>
+  <title>Acme - Current Openings</title>
+  <link rel="alternate" hreflang="en" href="https://apply.workable.com/acme/?lng=en">
+  </head><body><div id="app"></div></body></html>`;
+
+// A careers page whose only route to the roles is a button to that vanity board.
+const careersToVanityHtml = `<html><body>
+  <h1>Careers at Acme</h1>
+  <p>Life at Acme: join our team of builders.</p>
+  <a href="https://careers.acme.com/">See job openings</a>
+</body></html>`;
+
 const scrapePage = mock(async (u: string): Promise<ScrapeOutcome> => {
   if (u.includes("/jobs-with-links")) return outcome(listingWithNavHtml, u);
   if (u.includes("/careers/all-jobs")) return outcome(listingHtml, u);
@@ -141,6 +164,81 @@ describe("jobs scraper — careers discovery routing", () => {
     const res = await scrape("comp-5", "https://acme.com/jobs-with-links");
     expect(res.metadata.careersFollowed).toBeUndefined();
     expect(res.text).toContain("Founding Engineer - Auth");
+  });
+
+  it("leaves an UNREADABLE ATS board for the listing the page links itself", async () => {
+    // Regression (accenture.com/at-de/careers): a detected board used to short-circuit
+    // the whole link-follow path, so when its API turned out to be unusable — here an
+    // enterprise Workday board declaring more roles than the page cap can cover — the
+    // scraper fell back to the marketing hub and threw away the site's own job search
+    // sitting one click away. It must not hop into the oversized board either: any
+    // entry point on it is an arbitrary 20-row slice of a global, multi-country list.
+    const fetched: string[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (u: string) => {
+      fetched.push(String(u));
+      return new Response(
+        JSON.stringify({ total: 2000, jobPostings: [{ title: "Engineer", externalPath: "/j/1" }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+    scrapePage.mockImplementationOnce(async (u: string) => outcome(hubWithBoardHtml, u));
+    try {
+      const res = await scrape("comp-6", "https://acme.com/careers");
+      expect(res.metadata.careersFollowed).toBe("https://acme.com/careers/all-jobs");
+      expect(res.text).toContain("Founding Engineer - Auth");
+      expect(scrapePage.mock.calls.some(([u]) => String(u).includes("myworkdayjobs"))).toBe(false);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("re-detects the ATS on the page it hops to (board on a vanity domain)", async () => {
+    // Regression (exotec.com/careers → careers.exotec.com): the board lives on the
+    // company's own subdomain, so the careers page carries no ATS tell at all and
+    // detection — which only ever ran on the FIRST page — found nothing. The hop
+    // landed on an empty SPA shell and the run ended with marketing copy. The shell's
+    // head still names the board, so detecting again after the hop pulls the postings
+    // from the API, without a browser render.
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          jobs: [
+            {
+              title: "Robotics Engineer",
+              department: "Engineering",
+              url: "https://apply.workable.com/j/ABC",
+              published_on: "2026-07-27",
+              locations: [{ city: "Lille", country: "France" }],
+            },
+            { title: "Account Executive", function: "Sales", telecommuting: true },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as unknown as typeof fetch;
+    scrapePage.mockImplementation(async (u: string) => {
+      if (u.includes("careers.acme.com")) return outcome(vanityBoardShellHtml, u);
+      return outcome(careersToVanityHtml, u);
+    });
+    try {
+      const res = await scrape("comp-7", "https://acme.com/careers");
+      expect(res.metadata.careersFollowed).toBe("https://careers.acme.com/");
+      expect(res.metadata.atsDetected).toBe("workable");
+      expect(res.metadata.atsJobs).toBe(2);
+      expect(res.text).toContain("Robotics Engineer");
+      expect(res.text).toContain("Lille, France");
+    } finally {
+      globalThis.fetch = realFetch;
+      scrapePage.mockImplementation(async (u: string) => {
+        if (u.includes("/jobs-with-links")) return outcome(listingWithNavHtml, u);
+        if (u.includes("/careers/all-jobs")) return outcome(listingHtml, u);
+        if (u.includes("/careers")) return outcome(hubHtml, u);
+        if (u.includes("/about-us")) return outcome(listingHtml, u);
+        if (u.includes("jobs.wttj.com")) return outcome(listingHtml, u);
+        return outcome(homepageHtml, HOMEPAGE);
+      });
+    }
   });
 
   it("does NOT wander off an already-found careers page to another same-host link", async () => {

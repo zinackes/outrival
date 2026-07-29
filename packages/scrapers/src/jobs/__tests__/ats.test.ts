@@ -254,7 +254,7 @@ describe("fetchAtsJobs — paginated boards", () => {
 
   it("walks pages and stops at the first one that adds nothing new", async () => {
     const seen = stubIcims([icimsCard("1", "Engineer A"), icimsCard("2", "Engineer B"), ""]);
-    const jobs = await fetchAtsJobs(board);
+    const { jobs } = await fetchAtsJobs(board);
     expect(jobs?.map((j) => j.title)).toEqual(["Engineer A", "Engineer B"]);
     // 3 requests: two productive pages plus the empty one that ended the walk.
     expect(seen).toHaveLength(3);
@@ -264,7 +264,7 @@ describe("fetchAtsJobs — paginated boards", () => {
     // Real shape: one "Financial Services Representative" per branch. Keying the
     // dedup on the title alone would collapse them and under-count the board.
     stubIcims([icimsCard("1", "Rep") + icimsCard("2", "Rep"), ""]);
-    expect(await fetchAtsJobs(board)).toHaveLength(2);
+    expect((await fetchAtsJobs(board)).jobs).toHaveLength(2);
   });
 
   it("discards a board that was still yielding when the page cap ran out", async () => {
@@ -277,7 +277,9 @@ describe("fetchAtsJobs — paginated boards", () => {
         headers: { "content-type": "text/html" },
       });
     }) as unknown as typeof fetch;
-    expect(await fetchAtsJobs(board)).toBeNull();
+    // `truncated` is what tells the scraper the BOARD PAGE is an arbitrary slice
+    // too, so following its link is not a useful fallback either.
+    expect(await fetchAtsJobs(board)).toEqual({ jobs: null, truncated: true });
   });
 
   it("bails after one request when the board declares more roles than the cap covers", async () => {
@@ -299,7 +301,7 @@ describe("fetchAtsJobs — paginated boards", () => {
       token: "acme.wd3.myworkdayjobs.com/acmecareers",
       boardUrl: "https://acme.wd3.myworkdayjobs.com/acmecareers",
     };
-    expect(await fetchAtsJobs(wd)).toBeNull();
+    expect(await fetchAtsJobs(wd)).toEqual({ jobs: null, truncated: true });
     expect(calls).toBe(1);
   });
 
@@ -312,6 +314,6 @@ describe("fetchAtsJobs — paginated boards", () => {
         headers: { "content-type": "text/html" },
       });
     }) as unknown as typeof fetch;
-    expect((await fetchAtsJobs(board))?.map((j) => j.title)).toEqual(["Engineer A"]);
+    expect((await fetchAtsJobs(board)).jobs?.map((j) => j.title)).toEqual(["Engineer A"]);
   });
 });

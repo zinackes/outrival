@@ -505,14 +505,44 @@ const PROVIDERS: ProviderDef[] = [
     },
   },
   {
-    // Workable has no clean public board API → detected for the link-follow
-    // fallback only (the worker LLM-extracts from the rendered board page).
+    // Workable — its own careers frontend reads an UNAUTHENTICATED widget endpoint
+    // that returns the whole board in one request, so we query the same one. This
+    // matters well beyond Workable-hosted URLs: a Workable board routinely lives on
+    // a VANITY domain (`careers.acme.com`), whose page is an empty SPA shell but
+    // whose <head> still carries the `apply.workable.com/<token>` alternates the
+    // patterns below match — so the board is only recognisable once we've landed
+    // on it, which is why the scraper re-detects after a hop.
     name: "workable",
     patterns: [
       /apply\.workable\.com\/(?:j\/)?([a-z0-9][a-z0-9_-]{1,49})/i,
       /([a-z0-9][a-z0-9_-]{1,49})\.workable\.com/i,
     ],
     boardUrl: (t) => `https://apply.workable.com/${t}/`,
+    api: {
+      url: (t) => `https://apply.workable.com/api/v1/widget/accounts/${t}?details=true`,
+      parse: (data) => {
+        const jobs = (data as { jobs?: unknown })?.jobs;
+        if (!Array.isArray(jobs)) return [];
+        return jobs
+          .map((j: Record<string, unknown>) => {
+            const title = str(j?.title);
+            const loc = (j?.locations as Record<string, unknown>[] | undefined)?.[0] ?? j;
+            const location = [str(loc?.city), str(loc?.region ?? j?.state), str(loc?.country)]
+              .filter(Boolean)
+              .join(", ");
+            return mkJob({
+              title,
+              department: str(j?.department) || str(j?.function),
+              // A fully remote posting carries no city; say so rather than null.
+              location: location || (j?.telecommuting === true ? "Remote" : null),
+              url: str(j?.url) || str(j?.shortlink) || null,
+              postedAt: toIso(j?.published_on ?? j?.created_at),
+              seniority: normalizeSeniority(title, str(j?.experience) || str(j?.employment_type)),
+            });
+          })
+          .filter((j) => j.title);
+      },
+    },
   },
   {
     // Workday (myworkdayjobs.com) — the ATS behind a large share of enterprise
@@ -721,14 +751,26 @@ async function fetchText(url: string, timeoutMs = 8000): Promise<string | null> 
   }
 }
 
+export interface AtsFetch {
+  /** The board's postings, or null when unreadable (no API, failure, empty, over-cap). */
+  jobs: AtsJob[] | null;
+  /**
+   * The board declared more postings than the page cap can cover, so what we could
+   * read is a PREFIX of it. Distinct from a plain failure: the board page itself is
+   * then an arbitrary slice of a global listing too, so following its link is not a
+   * useful fallback either — the site's own (localised) job search is.
+   */
+  truncated: boolean;
+}
+
 /**
- * Fetch postings from the ATS public API. Returns null on any failure or when
- * the provider has no API mapping / the board is empty — the caller then falls
- * back to following the board link (fail-soft: never worse than today).
+ * Fetch postings from the ATS public API. `jobs` is null on any failure or when
+ * the provider has no API mapping / the board is empty / the board is over-cap —
+ * the caller then falls back to following a link (fail-soft: never worse than today).
  */
-export async function fetchAtsJobs(board: AtsBoard): Promise<AtsJob[] | null> {
+export async function fetchAtsJobs(board: AtsBoard): Promise<AtsFetch> {
   const def = PROVIDERS.find((p) => p.name === board.provider);
-  if (!def?.api) return null;
+  if (!def?.api) return { jobs: null, truncated: false };
   const api = def.api;
   const jobs: AtsJob[] = [];
   // Dedup key: the apply URL is unique per posting, which matters because a board
@@ -785,8 +827,8 @@ export async function fetchAtsJobs(board: AtsBoard): Promise<AtsJob[] | null> {
   // diffed as newly closed. Falling back to the careers-page path reports fewer
   // roles but never invents a wave of closures. (Single-request providers can't
   // trip this — one call is the whole board by contract.)
-  if (truncated) return null;
-  return jobs.length > 0 ? jobs : null;
+  if (truncated) return { jobs: null, truncated: true };
+  return { jobs: jobs.length > 0 ? jobs : null, truncated: false };
 }
 
 /**

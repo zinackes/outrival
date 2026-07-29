@@ -143,7 +143,8 @@ function buildPickList(
       name: pr.name,
       kind: "you",
       color: null,
-      url: null,
+      // Same favicon source as the portfolio tiles: the site, else the watched repo.
+      url: pr.url ?? pr.repoUrl ?? null,
     }),
   );
   // The self-competitor pinned first by default: the scoped product's, else the

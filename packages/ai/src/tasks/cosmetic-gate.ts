@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { formatDiffForPrompt } from "@outrival/shared";
 import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
 
@@ -32,6 +33,8 @@ export interface CosmeticGateResult {
 
 const GATE_SYSTEM = `You decide whether a detected change on a competitor's page carries NEW INFORMATION, or whether it is the same information expressed differently.
 
+Compare the two sides of the change: what the page NO LONGER shows against what it NOW shows. The question is whether the FACT moved between them.
+
 Answer "substantive": false ONLY when every difference is one of:
 - rewording that preserves the meaning (synonyms, tone, shorter/longer phrasing)
 - reordering of sections, list items, or navigation entries
@@ -62,7 +65,9 @@ export async function isSubstantiveChange(
   context: { sourceType?: string; competitorName?: string } = {},
 ): Promise<CosmeticGateResult | null> {
   const where = [context.competitorName, context.sourceType].filter(Boolean).join(" — ");
-  const source = diffText.slice(0, 8000);
+  // Slice the raw diff FIRST, then label: capping the formatted string could cut a
+  // block open and leave the model reading a side that never closes.
+  const source = formatDiffForPrompt(diffText.slice(0, 8000));
   const prompt = `${where ? `This change was detected on: ${where}.\n` : ""}<change>
 ${source}
 </change>`;
@@ -75,8 +80,11 @@ ${source}
     sourceText: source,
     schema: GateSchema,
     cache: {
+      // Namespace bumped for the labelled-diff prompt: withAiCache returns a stored
+      // entry without re-deriving it, so verdicts answered from the unlabelled blob
+      // would keep flowing in under the new prompt. A new namespace retires them.
       input: [context.sourceType ?? "", diffText].join("\n"),
-      namespace: "cosmetic-gate",
+      namespace: "cosmetic-gate-polarity",
       ttlSeconds: CACHE_TTL_SECONDS,
     },
   });

@@ -36,6 +36,7 @@ import {
   PLAN_LIMITS,
   PRICING_STATUSES,
   PRICING_STATUS_LABELS,
+  formatDiffForPrompt,
   renderCelebrationEmail,
 } from "@outrival/shared";
 import { insertSignalFeed, loggedAi } from "../lib/analytics";
@@ -376,11 +377,17 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
     // Verified against the FULL diff, not the 8000-char slice the generator saw: a
     // wider source can only ever make a claim easier to support, so it removes false
     // blocks without letting an invented one through.
+    //
+    // LABELLED, like every other consumer. An unlabelled diff makes the check blind
+    // to the one hallucination a diff invites: an insight built on a line the
+    // competitor DELETED quotes text that really does occur in the source, so it
+    // scored "verbatim" and published at ratio 1. The sides have to be nameable for
+    // the extractor to cite the right one and for the judge to rule on it.
     const faithfulness =
       severity === "critical" || severity === "high"
         ? await checkFaithfulness({
             output: insight,
-            sourceText: diffText,
+            sourceText: formatDiffForPrompt(diffText),
             outputKind: "competitive intelligence signal insight",
             context: { changeId: input.changeId, competitorId: competitor.id, severity },
             attribution,

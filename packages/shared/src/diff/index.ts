@@ -43,6 +43,24 @@ export interface TextDiffResult {
   diffText: string;
 }
 
+/**
+ * Prefix EVERY physical line of a hunk, not just its first.
+ *
+ * `diffLines` groups consecutive changed lines into ONE part, so `part.value` is
+ * routinely multi-line. Marking only the first line left every continuation line
+ * bare, and a bare line has no polarity: readers downstream either guessed
+ * (the AI prompts, which is how a REMOVED headline got reported as a competitor's
+ * new announcement) or dropped it (the web diff preview, which skips any line
+ * without a marker). One marker per line makes the side of a line a property of
+ * the text instead of a convention only the first line carries.
+ */
+function prefixLines(block: string, marker: "-" | "+"): string {
+  return block
+    .split("\n")
+    .map((line) => `${marker} ${line}`)
+    .join("\n");
+}
+
 export function computeTextDiff(before: string, after: string): TextDiffResult {
   const changes: DiffChange[] = diffLines(before, after);
   const added: string[] = [];
@@ -54,8 +72,8 @@ export function computeTextDiff(before: string, after: string): TextDiffResult {
   }
 
   const diffText = [
-    ...removed.map((l) => `- ${l}`),
-    ...added.map((l) => `+ ${l}`),
+    ...removed.map((l) => prefixLines(l, "-")),
+    ...added.map((l) => prefixLines(l, "+")),
   ].join("\n");
 
   return {
@@ -64,4 +82,99 @@ export function computeTextDiff(before: string, after: string): TextDiffResult {
     removed,
     diffText,
   };
+}
+
+/**
+ * Split a persisted `changes.diff_text` back into its two sides.
+ *
+ * Tolerant of BOTH formats on purpose: rows written before per-line prefixing
+ * carry continuation lines with no marker, and those belong to the side the last
+ * marker opened. Reading them as their own side (or dropping them) would
+ * misattribute exactly the text that caused the inversions this split exists to
+ * prevent. A leading unmarked line has no side yet and is discarded.
+ */
+export function splitDiffText(diffText: string): { removed: string[]; added: string[] } {
+  const removed: string[] = [];
+  const added: string[] = [];
+  let side: "removed" | "added" | null = null;
+
+  for (const raw of diffText.split("\n")) {
+    const line = raw.trimEnd();
+    if (!line.trim()) continue;
+    if (line.startsWith("- ") || line === "-") {
+      side = "removed";
+      removed.push(line.slice(1).trim());
+    } else if (line.startsWith("+ ") || line === "+") {
+      side = "added";
+      added.push(line.slice(1).trim());
+    } else if (side === "removed") {
+      removed.push(line.trim());
+    } else if (side === "added") {
+      added.push(line.trim());
+    }
+  }
+
+  return { removed, added };
+}
+
+/**
+ * The ONE representation of a lexical diff handed to a model.
+ *
+ * A bare `-`/`+` blob asks the model to know a convention that nothing in the
+ * prompt states, and the two sides are not symmetric in consequence: describing
+ * ADDED text as the competitor's new position is right, describing REMOVED text
+ * the same way inverts the story. Labelled blocks make the side explicit, and the
+ * legend states what each one MEANS so the rule is in the prompt rather than in
+ * the reader's assumptions.
+ *
+ * Used for the prompt AND as the `sourceText` every grounding/faithfulness check
+ * verifies against, so a quote can be traced back to the side it came from
+ * instead of matching anywhere in an unlabelled blob.
+ */
+export function formatDiffForPrompt(diffText: string): string {
+  const { removed, added } = splitDiffText(diffText);
+  // Nothing parseable (an empty or marker-less blob) — hand it back untouched
+  // rather than wrapping it in labels that would claim a side it doesn't have.
+  if (removed.length === 0 && added.length === 0) return diffText;
+
+  const blocks: string[] = [];
+  if (removed.length > 0) {
+    blocks.push(`<removed>\n${removed.join("\n")}\n</removed>`);
+  }
+  if (added.length > 0) {
+    blocks.push(`<added>\n${added.join("\n")}\n</added>`);
+  }
+
+  return `${DIFF_POLARITY_LEGEND}\n${blocks.join("\n")}`;
+}
+
+/**
+ * Stated once, next to the blocks it describes. Exported so the prompts that
+ * reason about polarity and the tests that assert it read the same sentence.
+ *
+ * Deliberately names the blocks in prose instead of quoting the tags: this line is
+ * PREPENDED to the text `parseLabelledDiff` reads back, so a literal `<removed>`
+ * here would open a block the parser then closes at the real block's tag, and every
+ * side would come back wrong.
+ */
+export const DIFF_POLARITY_LEGEND = `The removed block below is text the page NO LONGER shows. The added block is text the page NOW shows.`;
+
+// Anchored to whole lines: a scraped page can itself contain the literal string
+// "<added>", and only the block WE emit sits alone on its own line.
+const REMOVED_BLOCK = /^<removed>\n([\s\S]*?)\n<\/removed>$/m;
+const ADDED_BLOCK = /^<added>\n([\s\S]*?)\n<\/added>$/m;
+
+/**
+ * Read back the two sides of a `formatDiffForPrompt` output, so a verifier can ask
+ * WHICH side a quote came from instead of only whether it occurs somewhere.
+ *
+ * Returns null for anything that is not a labelled diff — a battle card's evidence,
+ * a digest's signal list — so callers keep their exact prior behaviour on every
+ * source that has no sides to confuse.
+ */
+export function parseLabelledDiff(text: string): { removed: string; added: string } | null {
+  const removed = text.match(REMOVED_BLOCK)?.[1];
+  const added = text.match(ADDED_BLOCK)?.[1];
+  if (removed === undefined && added === undefined) return null;
+  return { removed: removed ?? "", added: added ?? "" };
 }

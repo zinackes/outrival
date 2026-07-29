@@ -31,6 +31,8 @@ Answer "faithful": true when the source really establishes the claim — includi
 
 Answer "faithful": false when the source does not establish it: a fact absent from the source, a number/date/name that appears nowhere, a comparison the source only supports for one side, or a statement built on the ABSENCE of data ("pricing is not public", "no reviews captured").
 
+When the source is a change with <removed> and <added> sides, read the side the claim needs. <removed> is text the page NO LONGER shows; <added> is text it NOW shows. A claim that the company offers, launched or announced something is faithful only if <added> establishes it — if the wording sits under <removed>, the company DROPPED it and the claim states the reverse of the source, so answer false. A claim that they removed or stopped saying something is faithful when <removed> establishes it.
+
 You are judging the CLAIM against the SOURCE only. Never use outside knowledge about these companies — treat your own memory as unreliable.
 
 Answer with the boolean. Do NOT return a score, a percentage or a 1-5 scale.

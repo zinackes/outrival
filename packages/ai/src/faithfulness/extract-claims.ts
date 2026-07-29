@@ -39,6 +39,7 @@ An atomic claim is ONE self-contained sentence stating ONE verifiable fact: a pr
 For every claim, quote the passage of the SOURCE that supports it:
 - Quote it VERBATIM — copy the characters from the source, never rewrite them.
 - If NOTHING in the source supports the claim, set "source_quote" to "" (empty string). Do not invent a quote, do not quote the output itself, and do not quote a passage that is merely about the same topic.
+- When the source is a change with <removed> and <added> sides, they are NOT interchangeable. <removed> is text that was DELETED. A claim that something IS the case, was launched, or was announced is supported ONLY by <added>. Quoting <removed> for it is exactly the mistake this check exists to catch, so set "source_quote" to "" instead and let the claim be judged. Quote <removed> only for a claim that the competitor DROPPED or STOPPED saying something.
 
 Ignore pure opinion, advice and recommendations that state no fact ("consider positioning against them"), and ignore section labels. Extract at most ${MAX_CLAIMS} claims, the most consequential first.
 

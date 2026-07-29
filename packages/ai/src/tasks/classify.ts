@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { formatDiffForPrompt } from "@outrival/shared";
 import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
 import { attachQuality, type WithQuality } from "../grounding/types";
@@ -182,6 +183,9 @@ Write all text values in English.
 Also identify the SINGLE most important change and describe just that one:
   - humanChangeBefore: the value BEFORE, phrased naturally (e.g. "Standard · $99/mo")
   - humanChangeAfter:  the value AFTER, phrased naturally (e.g. "Standard · $79/mo")
+The BEFORE side comes from what the page no longer shows, the AFTER side from what
+it now shows. Never read one side as the other: a headline the competitor DELETED is
+not something they just announced.
 Keep each side to a short phrase (at most ~8 words); describe only that one change,
 never concatenate several. If you can't extract a clean before/after, return null
 for BOTH fields.
@@ -204,8 +208,11 @@ export async function classifyChange(
 
   // Variable payload only (context + diff) — the static instructions ride in
   // CLASSIFY_SYSTEM so the cacheable prefix stays byte-identical (F2).
+  // Slice the raw diff FIRST, then label: capping the formatted string could cut a
+  // block open and leave the model reading a side that never closes.
+  const evidence = formatDiffForPrompt(diffText.slice(0, 8000));
   const prompt = `${contextBlock}<change>
-${diffText.slice(0, 8000)}
+${evidence}
 </change>`;
 
   // Key on the context too: the same diff on different page types / competitors /
@@ -222,13 +229,19 @@ ${diffText.slice(0, 8000)}
     config: AI_CONFIG.classificationFast,
     system: CLASSIFY_SYSTEM,
     prompt,
-    sourceText: diffText.slice(0, 8000),
+    sourceText: evidence,
     schema: ModelClassificationSchema,
     // Namespace bumped to "-materiality": withAiCache returns a stored entry
     // WITHOUT re-validating it, so entries written by the pre-materiality prompt
     // (a model-chosen severity, no sub-scores) would flow into the new resolver as
-    // undefined materiality. A new namespace retires them instead.
-    cache: { input: cacheKey, namespace: "classify-materiality", ttlSeconds: CACHE_TTL_SECONDS },
+    // undefined materiality. A new namespace retires them instead. "-polarity"
+    // retires the entries answered from the unlabelled diff blob for the same
+    // reason: their before/after may be the two sides swapped.
+    cache: {
+      input: cacheKey,
+      namespace: "classify-materiality-polarity",
+      ttlSeconds: CACHE_TTL_SECONDS,
+    },
   });
   if (!result) return null;
   return attachQuality(resolveClassification(result.output, diffText), result.quality);

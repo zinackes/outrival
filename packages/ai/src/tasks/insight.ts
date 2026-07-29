@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { formatDiffForPrompt } from "@outrival/shared";
 import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
 import { unsupportedNumbers } from "../grounding/numeric-grounding";
@@ -74,11 +75,16 @@ Change type: ${classification.category} (severity ${classification.severity})
 </context>
 
 <change>
-${diffText.slice(0, 8000)}
+${formatDiffForPrompt(diffText.slice(0, 8000))}
 </change>
 ${myProductBlock}
 <task>
 Generate a strategic insight for this competitor change.
+
+State what the competitor's page NOW says, and what it STOPPED saying. Text under
+<removed> was DELETED: never report it as something they announced, launched or
+introduced. Dropping a claim is itself the news — say they removed it.
+
 Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 Write all text values in English.
 </task>
@@ -111,7 +117,10 @@ export async function generateInsight(
     myProduct,
   );
 
-  const source = diffText.slice(0, 8000);
+  // The SAME labelled evidence the prompt showed. Grounding compares the model's
+  // quotes against this, so an unlabelled source would let a quote lifted from the
+  // deleted side validate as freely as one from the live side.
+  const source = formatDiffForPrompt(diffText.slice(0, 8000));
   const callParams = {
     taskName: "generate_signal",
     config: AI_CONFIG.insights,

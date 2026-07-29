@@ -1,25 +1,40 @@
 // Pure, JSX-free helpers shared across the competitor-detail tabs. No React, no
 // app-local type coupling — safe to import from any tab module.
 
+import { splitDiffText } from "@outrival/shared";
+
 export type DiffLine = { kind: "add" | "remove"; text: string };
 
+/**
+ * Render a persisted diff as sided lines.
+ *
+ * Side assignment is delegated to `splitDiffText` so the preview and the AI
+ * pipeline read a diff the same way. The local loop this replaces demanded a
+ * marker on every line and skipped anything without one, which silently hid the
+ * continuation lines of every multi-line hunk: before per-line prefixing landed,
+ * only a hunk's FIRST line ever carried a marker. Rows written then are still in
+ * the table, so tolerating them is not a transitional nicety.
+ */
 export function parseDiff(
   diffText: string,
   maxLines = 18,
 ): { lines: DiffLine[]; truncated: boolean } {
+  const { removed, added } = splitDiffText(diffText);
   const lines: DiffLine[] = [];
-  for (const raw of diffText.split("\n")) {
-    const trimmed = raw.trimEnd();
-    if (!trimmed) continue;
-    const kind: "add" | "remove" | null =
-      trimmed.startsWith("+ ") ? "add" : trimmed.startsWith("- ") ? "remove" : null;
-    if (!kind) continue;
-    const text = stripHtml(trimmed.slice(2)).trim();
-    if (!text) continue;
-    lines.push({ kind, text });
-    if (lines.length >= maxLines) break;
+
+  for (const [kind, block] of [
+    ["remove", removed],
+    ["add", added],
+  ] as const) {
+    for (const raw of block) {
+      const text = stripHtml(raw).trim();
+      if (!text) continue;
+      lines.push({ kind, text });
+      if (lines.length >= maxLines) return { lines, truncated: true };
+    }
   }
-  return { lines, truncated: lines.length >= maxLines };
+
+  return { lines, truncated: false };
 }
 
 export function stripHtml(input: string): string {

@@ -316,13 +316,13 @@ export function PricingPlansEditor({
                 </div>
                 {p.drift && (
                   <span className="inline-flex items-center gap-1 text-meta text-muted-foreground">
-                    <SparkleIcon className="size-4" /> Source now shows{" "}
+                    <SparkleIcon className="size-3.5" /> Source now shows{" "}
                     {priceLabel(p.drift.price, p.drift.currency, p.drift.billingPeriod)}
                   </span>
                 )}
                 {p.noLongerDetected && (
                   <span className="inline-flex items-center gap-1 text-meta text-muted-foreground">
-                    <WarningIcon className="size-4" /> No longer on their pricing page
+                    <WarningIcon className="size-3.5" /> No longer on their pricing page
                   </span>
                 )}
               </li>

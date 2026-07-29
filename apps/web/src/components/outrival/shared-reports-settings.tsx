@@ -79,7 +79,7 @@ export function SharedReportsSettings() {
       ) : (
         links.map((link) => (
           <Card key={link.id} className="flex items-center gap-3 px-5 py-4">
-            <LinkIcon className="size-4 shrink-0 text-muted-foreground" />
+            <LinkIcon className="size-3.5 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-dense font-mono">{link.url}</div>
               <div className="text-meta text-muted-foreground mt-0.5">

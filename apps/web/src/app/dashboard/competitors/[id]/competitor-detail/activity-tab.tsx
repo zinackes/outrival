@@ -295,7 +295,7 @@ export function ActivityTab({
           className="inline-flex items-center gap-1.5 text-dense text-link hover:underline"
         >
           Every check we ran, including no-change runs
-          <ArrowRightIcon size={16} aria-hidden />
+          <ArrowRightIcon size={14} aria-hidden />
         </Link>
       </div>
     </Card>
@@ -431,7 +431,7 @@ function SignalRow({
             rel="noreferrer noopener"
             className="inline-flex items-center gap-1 text-xs text-link hover:underline"
           >
-            View page <ArrowSquareOutIcon size={16} />
+            View page <ArrowSquareOutIcon size={14} />
           </a>
         </dd>
       </dl>

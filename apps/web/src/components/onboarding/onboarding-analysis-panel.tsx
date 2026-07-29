@@ -44,9 +44,9 @@ export function OnboardingAnalysisPanel({
             className="flex items-center gap-2 text-sm animate-in fade-in duration-500"
           >
             {c.ready ? (
-              <CheckIcon size={16} className="shrink-0 text-positive" />
+              <CheckIcon size={14} className="shrink-0 text-positive" />
             ) : (
-              <SpinnerIcon size={16} className="shrink-0 animate-spin text-muted-foreground" />
+              <SpinnerIcon size={14} className="shrink-0 animate-spin text-muted-foreground" />
             )}
             <span className="truncate">{c.name}</span>
             <span className="ml-auto text-meta capitalize text-muted-foreground">

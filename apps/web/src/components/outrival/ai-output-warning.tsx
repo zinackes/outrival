@@ -72,7 +72,7 @@ export function AiOutputWarning({ targetType, targetId, onResolved, className }:
       )}
     >
       <div className="flex items-start gap-2.5">
-        <WarningIcon size={16} className="mt-0.5 shrink-0 text-medium" />
+        <WarningIcon size={14} className="mt-0.5 shrink-0 text-medium" />
         <div className="space-y-1.5">
           <p className="font-medium text-foreground">
             This {LABEL[targetType]} couldn&apos;t be fully verified

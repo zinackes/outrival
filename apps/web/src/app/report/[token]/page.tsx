@@ -151,9 +151,9 @@ function PoweredBy() {
         href="https://outrival.app"
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
-        <SparkleIcon className="size-4 text-link" />
+        <SparkleIcon className="size-3.5 text-link" />
         Powered by <span className="font-semibold text-foreground">Outrival</span>
-        <ArrowUpRightIcon className="size-4" />
+        <ArrowUpRightIcon className="size-3.5" />
       </Link>
       <p className="mt-2 text-meta text-muted-foreground">
         Automated competitive intelligence: monitor competitors, get strategic insights.

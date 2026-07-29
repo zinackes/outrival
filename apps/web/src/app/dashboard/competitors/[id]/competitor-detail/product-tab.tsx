@@ -252,7 +252,7 @@ export function ProductTab({
                     rel="noreferrer noopener"
                     className="inline-flex items-center gap-1 text-link hover:underline"
                   >
-                    Read their page <ArrowSquareOutIcon size={16} />
+                    Read their page <ArrowSquareOutIcon size={14} />
                   </a>
                 </div>
               </div>
@@ -381,7 +381,7 @@ function LogList({
                   rel="noreferrer noopener"
                   className="inline-flex items-center gap-1 text-xs text-link hover:underline"
                 >
-                  {linkLabel} <ArrowSquareOutIcon size={16} />
+                  {linkLabel} <ArrowSquareOutIcon size={14} />
                 </a>
               )}
             </span>

@@ -233,7 +233,7 @@ function CustomMonitorRow({
               className="inline-flex min-w-0 items-center gap-1 font-mono hover:text-foreground"
             >
               <span className="truncate">{url}</span>
-              <ArrowSquareOutIcon size={16} className="shrink-0" />
+              <ArrowSquareOutIcon size={14} className="shrink-0" />
             </a>
           )}
           <span aria-hidden className="text-muted-foreground/40">

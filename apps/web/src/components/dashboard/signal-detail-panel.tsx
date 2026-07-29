@@ -450,7 +450,7 @@ export function SignalDetailPanel({
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-surface-2 px-2 py-0.5 text-meta font-medium text-muted-foreground">
-                          <ArchiveIcon className="size-4" />
+                          <ArchiveIcon className="size-3.5" />
                           From archive
                         </span>
                       </TooltipTrigger>
@@ -583,7 +583,7 @@ export function SignalDetailPanel({
                     aria-expanded={showContext}
                     className="flex items-center gap-1.5 rounded-sm text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
-                    <SparkleIcon size={16} className="shrink-0" aria-hidden />
+                    <SparkleIcon size={14} className="shrink-0" aria-hidden />
                     Full context
                     <CaretDownIcon
                       className={cn(
@@ -702,7 +702,7 @@ export function SignalDetailPanel({
               className="mt-3 inline-flex items-center gap-1 rounded-sm text-dense text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               View {signal.competitorName} profile
-              <ArrowUpRightIcon size={16} />
+              <ArrowUpRightIcon size={14} />
             </Link>
           </Section>
 

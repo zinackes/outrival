@@ -66,7 +66,7 @@ function Metric({
     >
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
         {label}
-        <CaretRightIcon size={16} className="opacity-60" aria-hidden />
+        <CaretRightIcon size={14} className="opacity-60" aria-hidden />
       </span>
       <span className="block">{children}</span>
       {foot && <span className="flex min-h-4 items-center gap-1.5 text-xs">{foot}</span>}

@@ -323,7 +323,7 @@ export function NotificationModerationForm() {
 
       {saved && !dirty && (
         <p className="flex items-center gap-1.5 text-sm text-positive">
-          <CheckIcon className="size-4" /> Saved
+          <CheckIcon className="size-3.5" /> Saved
         </p>
       )}
 

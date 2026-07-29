@@ -225,7 +225,7 @@ export function SelfChangesPanel({
                     {preview}
                   </span>
                 )}
-                <CaretRightIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                <CaretRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
               </button>
               <button
                 type="button"
@@ -351,7 +351,7 @@ function DiffRow({ item, kind }: { item: DiffItem; kind: "added" | "removed" | "
             className="ml-1.5 inline-flex items-center gap-0.5 align-baseline text-dense font-medium text-link no-underline hover:underline"
           >
             View
-            <ArrowUpRightIcon className="size-4" />
+            <ArrowUpRightIcon className="size-3.5" />
           </a>
         )}
       </span>

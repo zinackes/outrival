@@ -180,12 +180,12 @@ export function CompetitorPricingCard({
       {blurb && <p className="text-dense text-muted-foreground">{blurb}</p>}
       {capture === "scraping" && (
         <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <ArrowsClockwiseIcon className="size-4 animate-spin" /> Capturing pricing…
+          <ArrowsClockwiseIcon className="size-3.5 animate-spin" /> Capturing pricing…
         </p>
       )}
       {capture === "queued" && (
         <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <ClockIcon className="size-4" /> Pricing scan queued, waiting for a scanner
+          <ClockIcon className="size-3.5" /> Pricing scan queued, waiting for a scanner
         </p>
       )}
       {status === "gated_demo" && competitor.pricingDemoUrl && (
@@ -195,7 +195,7 @@ export function CompetitorPricingCard({
           rel="noreferrer"
           className="inline-flex items-center gap-1 text-dense text-primary hover:underline"
         >
-          <ArrowSquareOutIcon className="size-4" /> Demo / contact page
+          <ArrowSquareOutIcon className="size-3.5" /> Demo / contact page
         </a>
       )}
 

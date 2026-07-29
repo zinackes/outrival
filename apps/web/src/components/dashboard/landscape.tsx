@@ -131,7 +131,7 @@ function PriceCell({
         </>
       ) : (
         <span className="inline-flex items-center gap-1.5 text-meta text-muted-foreground">
-          <ClockIcon size={16} aria-hidden /> {summary.secondary}
+          <ClockIcon size={14} aria-hidden /> {summary.secondary}
         </span>
       )}
     </span>
@@ -319,11 +319,11 @@ function SourcesCoverage({
                       className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-meta text-muted-foreground"
                     >
                       {s.status === "captured" ? (
-                        <CheckIcon size={16} className="text-primary" aria-hidden />
+                        <CheckIcon size={14} className="text-primary" aria-hidden />
                       ) : s.status === "pending" ? (
-                        <ClockIcon size={16} aria-hidden />
+                        <ClockIcon size={14} aria-hidden />
                       ) : (
-                        <WarningIcon size={16} aria-hidden />
+                        <WarningIcon size={14} aria-hidden />
                       )}
                       {SOURCE_LABELS[s.sourceType] ?? s.sourceType.replace(/_/g, " ")}
                     </span>
@@ -416,7 +416,7 @@ export function LandscapeSection({
                   href="/dashboard/compare"
                   className="inline-flex items-center gap-1 text-xs text-link underline-offset-2 hover:underline"
                 >
-                  Compare pricing <ArrowRightIcon size={16} />
+                  Compare pricing <ArrowRightIcon size={14} />
                 </Link>
               </div>
               <div>

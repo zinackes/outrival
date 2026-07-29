@@ -199,7 +199,7 @@ export function CompetitorRail({
             href={`/dashboard/competitors/${competitor.id}/sources`}
             className="inline-flex items-center gap-1.5 text-xs text-link hover:underline"
           >
-            <SlidersHorizontalIcon size={16} /> Manage sources
+            <SlidersHorizontalIcon size={14} /> Manage sources
           </Link>
         </div>
       </Card>

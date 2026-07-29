@@ -338,7 +338,7 @@ export function HiringTab({
                     "flat"
                   ) : (
                     <span className="inline-flex items-center justify-end gap-0.5">
-                      {delta > 0 ? <ArrowUpIcon className="size-4" /> : <ArrowDownIcon className="size-4" />}
+                      {delta > 0 ? <ArrowUpIcon className="size-3.5" /> : <ArrowDownIcon className="size-3.5" />}
                       {Math.abs(delta)}
                     </span>
                   )}

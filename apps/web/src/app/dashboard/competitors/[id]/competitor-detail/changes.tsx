@@ -70,7 +70,7 @@ export function ChangeCard({
             rel="noreferrer noopener"
             className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
-            View page <ArrowSquareOutIcon size={16} />
+            View page <ArrowSquareOutIcon size={14} />
           </a>
         )}
       </div>
@@ -109,7 +109,7 @@ export function ChangeCard({
             onClick={() => setOpen((v) => !v)}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
-            {open ? <CaretDownIcon size={16} /> : <CaretRightIcon size={16} />}
+            {open ? <CaretDownIcon size={14} /> : <CaretRightIcon size={14} />}
             {open ? "Hide raw diff" : "Show raw diff"}
           </button>
           {open && (

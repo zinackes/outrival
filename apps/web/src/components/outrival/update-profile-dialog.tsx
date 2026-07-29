@@ -365,7 +365,7 @@ export function UpdateProfileDialog({
             {/* Selected stage recap — change it via Back */}
             {activeStage && ActiveStageIcon && (
               <div className="flex items-center gap-2 text-dense">
-                <ActiveStageIcon size={16} className="text-primary" />
+                <ActiveStageIcon size={14} className="text-primary" />
                 <span className="font-medium text-foreground">{activeStage.label}</span>
                 <span className="text-muted-foreground">stage</span>
               </div>
@@ -443,7 +443,7 @@ export function UpdateProfileDialog({
               <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/[0.04] px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-meta font-medium text-primary">
-                    <SparkleIcon size={16} /> Re-analysis · review {diffRows.length} change
+                    <SparkleIcon size={14} /> Re-analysis · review {diffRows.length} change
                     {diffRows.length > 1 ? "s" : ""}
                   </div>
                   <button
@@ -468,7 +468,7 @@ export function UpdateProfileDialog({
                         <span className="text-muted-foreground line-through">
                           {before || "—"}
                         </span>
-                        <ArrowRightIcon className="mx-1.5 inline size-4 text-muted-foreground" />
+                        <ArrowRightIcon className="mx-1.5 inline size-3.5 text-muted-foreground" />
                         <span className="text-foreground">{after || "—"}</span>
                       </div>
                       <div className="flex gap-1.5 mt-0.5">

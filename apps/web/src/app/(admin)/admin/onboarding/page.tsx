@@ -70,7 +70,7 @@ export default async function OnboardingMetricsPage() {
                   className="inline-flex items-center gap-1 text-meta font-medium"
                   style={{ color: "var(--critical)" }}
                 >
-                  <WarningIcon className="size-4" />
+                  <WarningIcon className="size-3.5" />
                   last 3 onboardings all missed
                 </span>
               )}

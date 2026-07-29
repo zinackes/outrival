@@ -326,7 +326,7 @@ export function MyProductView({
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 hover:text-foreground"
               >
-                {prettyUrl(p.url ?? p.repoUrl!)} <ArrowSquareOutIcon className="size-4" />
+                {prettyUrl(p.url ?? p.repoUrl!)} <ArrowSquareOutIcon className="size-3.5" />
               </a>
             ) : (
               <span>No site or repo yet</span>
@@ -334,17 +334,17 @@ export function MyProductView({
             <span className="text-[var(--muted-2)]">·</span>
             {p.scanning ? (
               <span className="inline-flex items-center gap-1 text-foreground">
-                <SpinnerIcon className="size-4 animate-spin" /> Scanning…
+                <SpinnerIcon className="size-3.5 animate-spin" /> Scanning…
               </span>
             ) : p.scanQueued ? (
               // A clock, not a spinner: nothing is turning while the job waits its
               // turn, and the wait routinely runs into the tens of minutes.
               <span className="inline-flex items-center gap-1 text-muted-foreground">
-                <ClockIcon className="size-4" /> Queued for a scan
+                <ClockIcon className="size-3.5" /> Queued for a scan
               </span>
             ) : p.scanError ? (
               <span className="inline-flex items-center gap-1 text-destructive">
-                <WarningIcon className="size-4" /> Last scan failed
+                <WarningIcon className="size-3.5" /> Last scan failed
               </span>
             ) : (
               <span>
@@ -494,7 +494,7 @@ export function MyProductView({
                       className="inline-flex items-center gap-1 hover:text-foreground underline"
                     >
                       {p.repoUrl.replace(/^https?:\/\//, "")}
-                      <ArrowSquareOutIcon className="size-4" />
+                      <ArrowSquareOutIcon className="size-3.5" />
                     </a>
                   </p>
                 ) : (

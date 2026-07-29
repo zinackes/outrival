@@ -1043,7 +1043,7 @@ function Header({
                 className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
               >
                 {hostOf(competitor.url)}
-                <ArrowSquareOutIcon size={16} />
+                <ArrowSquareOutIcon size={14} />
               </a>
             )}
             {competitor.pausedByPlan ? (
@@ -1051,7 +1051,7 @@ function Header({
                 <span aria-hidden className="text-border-strong">·</span>
                 <StatusDot tone="warn">
                   <span className="inline-flex items-center gap-1">
-                    <PauseCircleIcon size={16} /> Paused, plan limit
+                    <PauseCircleIcon size={14} /> Paused, plan limit
                   </span>
                 </StatusDot>
               </>
@@ -1218,7 +1218,7 @@ function Header({
                 className="inline-flex items-center gap-1.5 rounded-sm transition-colors hover:text-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span className="font-mono tabular-nums">{sourceCount}</span> tracked
-                <CaretRightIcon size={16} className="text-muted-foreground" />
+                <CaretRightIcon size={14} className="text-muted-foreground" />
               </Link>
             </Fact>
           )}
@@ -1539,7 +1539,7 @@ function AssignProductsDialog({
                       Primary
                     </span>
                   )}
-                  {isPending && <SpinnerIcon size={16} className="animate-spin text-muted-foreground" />}
+                  {isPending && <SpinnerIcon size={14} className="animate-spin text-muted-foreground" />}
                 </label>
               );
             })}

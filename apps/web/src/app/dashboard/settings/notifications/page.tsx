@@ -58,7 +58,7 @@ export default async function NotificationSettingsPage() {
             className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             View past digests
-            <ArrowRightIcon size={16} />
+            <ArrowRightIcon size={14} />
           </Link>
         </div>
 

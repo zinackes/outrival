@@ -545,7 +545,7 @@ function DeltaCell({ cmp, from, to }: { cmp: TierCmp | null; from?: string; to?:
       title={cmp.converted ? `Converted ${from} to ${to} at the ECB reference rate` : undefined}
     >
       {cmp.converted && <span className="opacity-70">≈</span>}
-      {cmp.pct < 0 ? <ArrowDownIcon className="size-4" /> : <ArrowUpIcon className="size-4" />}
+      {cmp.pct < 0 ? <ArrowDownIcon className="size-3.5" /> : <ArrowUpIcon className="size-3.5" />}
       {Math.abs(cmp.pct).toFixed(0)}%
     </span>
   );

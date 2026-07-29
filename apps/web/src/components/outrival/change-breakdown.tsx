@@ -99,7 +99,7 @@ function ChangeItem({ change: ch }: { change: SignalChange }) {
           {ch.before && <p className="text-muted-foreground">{ch.before}</p>}
           {ch.after && (
             <p className="flex gap-1.5 text-foreground">
-              <ArrowElbowDownRightIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <ArrowElbowDownRightIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
               <span>{ch.after}</span>
             </p>
           )}

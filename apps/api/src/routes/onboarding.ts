@@ -19,6 +19,7 @@ import {
   validatePublicUrl,
   resolveDetectionConfig,
   deriveCompetitorName,
+  withAiCache,
 } from "@outrival/shared";
 import {
   scoreOverlap,
@@ -410,6 +411,23 @@ const DiscoverSchema = z.object({
   region: z.string().length(2).nullable().optional(),
 });
 
+// The two AI legs of discovery (nameKnownCompetitors, scoreOverlap) cache on their
+// own inputs, but the Exa reads and the reachability sweep are re-paid on every
+// call. The wizard re-asks the same question routinely — market toggled back and
+// forth, page reloaded, a prefetch the client aborted after the server had already
+// searched — so the assembled result is cached under the same identity the client
+// keys its own memo on. Short TTL: a market's roster moves in weeks, and an
+// onboarding attempt lasts minutes.
+const DISCOVER_CACHE_TTL_SECONDS = 6 * 3600;
+
+type DiscoveredRow = {
+  url: string;
+  title: string;
+  snippet: string;
+  overlapScore: number;
+  reason: string;
+};
+
 onboardingRouter.post("/discover", async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = DiscoverSchema.safeParse(body);
@@ -417,53 +435,69 @@ onboardingRouter.post("/discover", async (c) => {
     return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
   }
 
-  // Recall source #3 (Exa search + findSimilar are the other two, inside
-  // findSimilarCompanies): the model names the rivals it already knows. Exa's
-  // semantic reads systematically miss the market leaders for a well-known
-  // product, which is what made onboarding report "no obvious competitors".
-  // Best-effort — a miss just narrows the pool.
-  const namedSeeds = await nameKnownCompetitors(
-    parsed.data.profile,
-    parsed.data.productUrl ?? null,
-  ).catch(() => []);
+  const cacheInput = JSON.stringify({
+    profile: parsed.data.profile,
+    productUrl: parsed.data.productUrl ?? null,
+    region: parsed.data.region ?? null,
+  });
 
-  let candidates: Awaited<ReturnType<typeof findSimilarCompanies>>;
+  let found: DiscoveredRow[] | null;
   try {
-    candidates = await findSimilarCompanies(
-      parsed.data.productUrl ?? null,
-      buildDiscoveryQuery(parsed.data.profile),
-      // Over-fetch: Exa ranks by query-text similarity, not competitor quality, so
-      // well-known rivals (e.g. Supabase for a Postgres product) can sit past the
-      // first page. Pull a wider pool, then let the LLM overlap score + sort below
-      // promote the real competitors to the top.
-      30,
-      [],
-      parsed.data.region ?? null,
-      namedSeeds,
+    const cached = await withAiCache<DiscoveredRow[] | null>(
+      cacheInput,
+      { namespace: "onboarding-discover", ttlSeconds: DISCOVER_CACHE_TTL_SECONDS },
+      async () => {
+        // Recall source #3 (Exa search + findSimilar are the other two, inside
+        // findSimilarCompanies): the model names the rivals it already knows. Exa's
+        // semantic reads systematically miss the market leaders for a well-known
+        // product, which is what made onboarding report "no obvious competitors".
+        // Best-effort — a miss just narrows the pool.
+        const namedSeeds = await nameKnownCompetitors(
+          parsed.data.profile,
+          parsed.data.productUrl ?? null,
+        ).catch(() => []);
+
+        const candidates = await findSimilarCompanies(
+          parsed.data.productUrl ?? null,
+          buildDiscoveryQuery(parsed.data.profile),
+          // Over-fetch: Exa ranks by query-text similarity, not competitor quality, so
+          // well-known rivals (e.g. Supabase for a Postgres product) can sit past the
+          // first page. Pull a wider pool, then let the LLM overlap score + sort below
+          // promote the real competitors to the top.
+          30,
+          [],
+          parsed.data.region ?? null,
+          namedSeeds,
+        );
+
+        // Null, not []: an empty pool is the one result a user retries on the spot
+        // (they widen the market, then ask again), and withAiCache stores anything
+        // non-null — freezing "no competitors found" for the whole TTL.
+        if (candidates.length === 0) return null;
+
+        const scored = await scoreOverlap(parsed.data.profile, candidates);
+        const byUrl = new Map(scored.map((s) => [s.url, s]));
+
+        return candidates
+          .map((c) => {
+            const s = byUrl.get(c.url);
+            return {
+              url: c.url,
+              title: c.title,
+              snippet: c.snippet,
+              overlapScore: s?.overlapScore ?? 0,
+              reason: s?.reason ?? "",
+            };
+          })
+          .sort((a, b) => b.overlapScore - a.overlapScore);
+      },
     );
+    found = cached.value;
   } catch (e) {
     return c.json({ error: `Discovery failed: ${String(e)}` }, 502);
   }
 
-  if (candidates.length === 0) return c.json({ competitors: [] });
-
-  const scored = await scoreOverlap(parsed.data.profile, candidates);
-  const byUrl = new Map(scored.map((s) => [s.url, s]));
-
-  const out = candidates
-    .map((c) => {
-      const s = byUrl.get(c.url);
-      return {
-        url: c.url,
-        title: c.title,
-        snippet: c.snippet,
-        overlapScore: s?.overlapScore ?? 0,
-        reason: s?.reason ?? "",
-      };
-    })
-    .sort((a, b) => b.overlapScore - a.overlapScore);
-
-  return c.json({ competitors: out });
+  return c.json({ competitors: found ?? [] });
 });
 
 // Keep the My Product self-profile in step with the org product profile when the

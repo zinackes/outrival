@@ -282,10 +282,15 @@ export function OnboardingForm({
   const sources: SourceType[] = ["homepage", "pricing", "blog"];
 
   // Background discovery prefetch (patch-25): status drives the discreet profile
-  // indicator; refs hold the in-flight controller and the last completed result.
+  // indicator; refs hold the in-flight controllers.
   const [discoveryStatus, setDiscoveryStatus] = useState<"idle" | "running" | "completed">("idle");
-  const prefetchRef = useRef<{ key: string; competitors: DiscoveredCompetitor[] } | null>(null);
   const prefetchAbort = useRef<AbortController | null>(null);
+  const discoverAbort = useRef<AbortController | null>(null);
+  // Every result set fetched during this wizard, keyed by discovery input identity
+  // (profile + URL + market). It used to hold ONE entry, readable only by the
+  // profile step, so toggling the market away and back on the discover step paid a
+  // fresh Exa search plus the reachability sweep for a set already on screen.
+  const discoveryCache = useRef(new Map<string, DiscoveredCompetitor[]>());
 
   // Onboarding mode (patch-25): always quick_start now that the advanced monitoring
   // step is gone; still adopted from a resumed session and reported in the funnel.
@@ -483,18 +488,38 @@ export function OnboardingForm({
         );
         return;
       }
+      // Replay an input we already searched (market toggled back, step re-entered)
+      // instead of re-billing Exa for a set we still hold.
+      const key = profileKey(p, url, regionArg);
+      const memo = discoveryCache.current.get(key);
+      if (memo) {
+        applyDiscovered(memo);
+        return;
+      }
+      // Two market switches in a row leave two searches in flight; without this the
+      // slower one lands last and shows a market the select no longer names.
+      discoverAbort.current?.abort();
+      const controller = new AbortController();
+      discoverAbort.current = controller;
       setBusy("discover");
       trackOnboarding(ONBOARDING_EVENTS.DISCOVERY_STARTED, sessionId, { trigger: "confirm" });
       void updateSession({
         timings: { [milestoneKey(ONBOARDING_EVENTS.DISCOVERY_STARTED)]: Date.now() },
       });
       try {
-        const res = await api.discoverCompetitors(p, url, regionArg);
+        const res = await api.discoverCompetitors(p, url, regionArg, controller.signal);
+        if (discoverAbort.current !== controller) return;
+        discoveryCache.current.set(key, res.competitors);
         applyDiscovered(res.competitors);
       } catch (e) {
+        if (discoverAbort.current !== controller) return;
         setError(extractMessage(e));
       } finally {
-        setBusy(null);
+        // A superseded run must not clear the newer run's spinner.
+        if (discoverAbort.current === controller) {
+          discoverAbort.current = null;
+          setBusy(null);
+        }
       }
     },
     [discoveryDisabled, sessionId, updateSession, applyDiscovered],
@@ -514,7 +539,7 @@ export function OnboardingForm({
   useEffect(() => {
     if (!PARALLEL_DISCOVERY || screen !== "profile" || !profile || discoveryDisabled) return;
     const key = profileKey(profile, committedUrl, region);
-    if (prefetchRef.current?.key === key) {
+    if (discoveryCache.current.has(key)) {
       setDiscoveryStatus("completed");
       return;
     }
@@ -528,7 +553,7 @@ export function OnboardingForm({
         .discoverCompetitors(profile, committedUrl, region, controller.signal)
         .then((res) => {
           if (prefetchAbort.current !== controller) return;
-          prefetchRef.current = { key, competitors: res.competitors };
+          discoveryCache.current.set(key, res.competitors);
           setDiscoveryStatus("completed");
         })
         .catch(() => {
@@ -565,15 +590,10 @@ export function OnboardingForm({
     void updateSession({
       timings: { [milestoneKey(ONBOARDING_EVENTS.PRODUCT_PROFILE_CONFIRMED)]: Date.now() },
     });
-    const key = profileKey(profile, committedUrl, region);
     goTo("discover");
-    // If the background prefetch already resolved for this exact profile, use it
-    // (instant); otherwise fall back to a synchronous discovery on the next screen.
-    if (prefetchRef.current?.key === key) {
-      applyDiscovered(prefetchRef.current.competitors);
-    } else {
-      await runDiscovery(profile, committedUrl, region);
-    }
+    // runDiscovery replays the background prefetch when it already resolved for
+    // this exact input (instant), and searches otherwise.
+    await runDiscovery(profile, committedUrl, region);
   }
 
   // Auto-run discovery when entering an empty discover screen (resume / back-nav).

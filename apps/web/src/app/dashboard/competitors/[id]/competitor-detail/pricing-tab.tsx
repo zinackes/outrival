@@ -106,13 +106,26 @@ export function PricingTab({
         }))
       : latest;
 
-  // The price-trend chart is for comparable subscription prices — a "usage" rate
-  // ($0.10 / API call) must never share the axis with a $99 plan (and on a hybrid
-  // plan its overage row would zig-zag the plan's own line). Exclude usage rows here;
-  // they're surfaced separately below the comparison.
+  // The trend chart plots ONE billing period at a time. A `yearly` row holds the
+  // annual TOTAL, and the toggle-capture scrape stores both periods of the same
+  // plan in one batch under the same plan name — so a single line per plan mixed
+  // two quantities an order of magnitude apart and drew a 10x cliff on whichever
+  // row happened to be written last. Default to whichever period was captured
+  // more, so a competitor priced only annually still gets a chart.
+  const [periodChoice, setPeriodChoice] = useState<PeriodChoice | null>(null);
+  const periodCounts = useMemo(() => {
+    const counts = { monthly: 0, yearly: 0 };
+    for (const p of history ?? []) {
+      if (p.billing_period === "monthly") counts.monthly++;
+      else if (p.billing_period === "yearly") counts.yearly++;
+    }
+    return counts;
+  }, [history]);
+  const chartPeriod: PeriodChoice =
+    periodChoice ?? (periodCounts.yearly > periodCounts.monthly ? "yearly" : "monthly");
   const series = useMemo(
-    () => (history ? buildPricingSeries(history.filter((p) => p.billing_period !== "usage")) : null),
-    [history],
+    () => (history ? buildPricingSeries(history.filter((p) => isChartable(p, chartPeriod))) : null),
+    [history, chartPeriod],
   );
 
   // A pricing scrape in flight (client-triggered or server-side, refresh-safe)
@@ -292,7 +305,28 @@ export function PricingTab({
       {/* Analysis and editing are different modes and no longer share a row: the
           chart takes the full width it needs, the form follows it. */}
       {hasTrend && (
-        <TabSection title="Price over time">
+        <TabSection
+          title="Price over time"
+          action={
+            periodCounts.monthly > 0 && periodCounts.yearly > 0 ? (
+              <ToggleGroup
+                type="single"
+                size="sm"
+                variant="outline"
+                value={chartPeriod}
+                onValueChange={(v) => v && setPeriodChoice(v as PeriodChoice)}
+                aria-label="Billing period plotted"
+              >
+                <ToggleGroupItem value="monthly" className="text-xs">
+                  Monthly
+                </ToggleGroupItem>
+                <ToggleGroupItem value="yearly" className="text-xs">
+                  Yearly
+                </ToggleGroupItem>
+              </ToggleGroup>
+            ) : null
+          }
+        >
           <MultiLineChart data={series.points} seriesKeys={numericPlans} height={260} />
         </TabSection>
       )}
@@ -391,6 +425,24 @@ function convertedLabel(
 }
 
 type PeriodChoice = "monthly" | "yearly";
+
+/**
+ * Whether a captured tier belongs on the trend chart for a given period.
+ *
+ * Two kinds of row are kept off it. A `usage` rate ($0.10 / API call) shares no
+ * axis with a $99 plan, and on a hybrid plan its overage row zig-zags the plan's
+ * own line. And the OTHER period's rows: a `yearly` price is the annual total, so
+ * plotting it on the same per-plan line as its monthly twin draws a 10-12x jump
+ * that is a unit change, not a price change. Period-neutral tiers (one_time /
+ * custom) have no twin to collide with, so they show in either view.
+ */
+function isChartable(p: { billing_period: string }, period: PeriodChoice): boolean {
+  if (p.billing_period === "usage") return false;
+  if (p.billing_period === "monthly" || p.billing_period === "yearly") {
+    return p.billing_period === period;
+  }
+  return true;
+}
 
 // One offer billed monthly and the same offer billed yearly are the SAME plan,
 // not two tiers — but the toggle-capture scrape stores them as two rows, so

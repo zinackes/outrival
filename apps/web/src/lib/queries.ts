@@ -100,6 +100,18 @@ export function competitorDetailQuery(id: string) {
   });
 }
 
+// Whether a battle card exists for this competitor and whether it has aged behind
+// newer signals. Read by the competitor header so its button can say which of the
+// three states it leads to; the card view keeps its own copy of the same call,
+// which it refetches around generation. Best-effort on the header side: a failed
+// read leaves a plain "Battle card" label rather than blocking the way there.
+export function battleCardStalenessQuery(competitorId: string, productId?: string) {
+  return queryOptions({
+    queryKey: ["competitor", competitorId, "battleCardStaleness", productId ?? null] as const,
+    queryFn: () => api.getBattleCardStaleness(competitorId, productId),
+  });
+}
+
 // Digests list (weekly + daily records).
 export function digestsQuery() {
   return queryOptions({

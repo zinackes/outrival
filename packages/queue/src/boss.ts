@@ -1,6 +1,6 @@
 import { PgBoss } from "pg-boss";
-import type { Job, Queue, SendOptions, WorkOptions } from "pg-boss";
-import { sendSlackMessage } from "@outrival/shared";
+import type { Job, Queue, QueueResult, SendOptions, WorkOptions } from "pg-boss";
+import { logger, sendSlackMessage } from "@outrival/shared";
 
 // ---------------------------------------------------------------------------
 // @outrival/queue — pg-boss v12 foundation shared by @outrival/api (send-only)
@@ -215,10 +215,58 @@ export function defineJob<P extends object>(name: string, config: JobConfig = {}
   return def;
 }
 
-/** v12: every queue must exist before send/work. Call once on the worker boot. */
+/**
+ * v12: every queue must exist before send/work. Call once on the worker boot.
+ *
+ * `createQueue` is create-IF-NOT-EXISTS, so on any environment that already has the
+ * queue it silently ignores the options passed to it. Editing a job's config in
+ * jobs.ts was therefore inert everywhere it mattered: prod still runs
+ * `scrape-monitor` at `expire_seconds` 300 against a registry that has said 900
+ * since the run measured at 302.7s, and the queue rows are the ones pg-boss
+ * actually enforces. The declared config drifting from the enforced one is the
+ * worst shape for this to take — the file reads as the source of truth and is not.
+ *
+ * So reconcile after creating: `updateQueue` writes retry/expiry/retention/notify
+ * onto the existing row, making jobs.ts the source of truth on every boot. `policy`
+ * and `partition` are excluded because pg-boss refuses to change them after
+ * creation (they decide the queue's table shape) — a policy change still needs the
+ * queue dropped and recreated, deliberately.
+ */
 export async function registerQueues(): Promise<void> {
   const boss = getBoss();
   for (const def of registry) await boss.createQueue(def.name, def.queueOptions);
+
+  // Read the queues back and repair only what actually drifted. Comparing first
+  // rather than updating blindly is the point: the failure mode here is a config
+  // that is silently not what the file says, so the repair has to SAY what it
+  // repaired. A queue that was just created matches and logs nothing, which is why
+  // a fresh environment stays quiet.
+  let live: QueueResult[] = [];
+  try {
+    live = await boss.getQueues(registry.map((d) => d.name));
+  } catch (err) {
+    // Never block a worker boot on reconciliation: the queues exist either way,
+    // they just keep whatever options they already had.
+    logger.error({ err }, "queue option reconciliation skipped");
+    return;
+  }
+  const byName = new Map(live.map((q) => [q.name, q as unknown as Record<string, unknown>]));
+
+  for (const def of registry) {
+    const current = byName.get(def.name);
+    if (!current) continue;
+    const { policy: _policy, ...desired } = def.queueOptions;
+    const drift = Object.entries(desired).filter(([k, v]) => current[k] !== v);
+    if (drift.length === 0) continue;
+    await boss.updateQueue(def.name, desired);
+    logger.warn(
+      {
+        queue: def.name,
+        changed: Object.fromEntries(drift.map(([k, v]) => [k, { was: current[k], now: v }])),
+      },
+      "queue options reconciled from the job registry",
+    );
+  }
 }
 
 /**

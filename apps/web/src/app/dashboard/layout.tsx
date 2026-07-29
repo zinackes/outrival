@@ -6,11 +6,13 @@ import { AppProviders } from "@/components/app-providers";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { PageReveal } from "@/components/dashboard/page-reveal";
 import { makeServerQueryClient } from "@/lib/server-query";
+import { serverApiBase } from "@/lib/api-base";
 import { getShellData } from "@/lib/api-server";
 import {
   productsListQuery,
   structuralChangesQuery,
   aiStatusQuery,
+  competitorsQuery,
 } from "@/lib/queries";
 import { PostHogIdentitySync } from "@/lib/posthog/identity-sync";
 import { TimezoneSync } from "@/components/outrival/timezone-sync";
@@ -48,10 +50,10 @@ async function getOnboardingStatus(
 async function getResumeSession(
   h: Headers,
 ): Promise<OnboardingSession | null> {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/api/onboarding-session/current`,
-    { headers: h, cache: "no-store" },
-  );
+  const res = await fetch(`${serverApiBase()}/api/onboarding-session/current`, {
+    headers: h,
+    cache: "no-store",
+  });
   if (!res.ok) return null;
   const data = (await res.json()) as { session: OnboardingSession | null };
   return data.session;
@@ -64,7 +66,7 @@ async function getBilling(h: Headers): Promise<{
   // ?summary=1 — the layout only needs plan + competitor usage (DB-backed). This skips the
   // two sequential Stripe round-trips the full endpoint makes, which were the single
   // slowest fetch gating the dashboard's first paint on hard loads.
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/billing?summary=1`, {
+  const res = await fetch(`${serverApiBase()}/api/billing?summary=1`, {
     headers: h,
     cache: "no-store",
   });
@@ -95,11 +97,17 @@ export default async function DashboardLayout({
   if (sessionOutcome.state === "indeterminate") return <SessionReconnect />;
   const session = sessionOutcome.session;
 
+  // Active product scope read server-side from the cookie → seeds the client provider
+  // so the first paint already knows the scope (no flash, no reconciliation effect).
+  // Resolved BEFORE the shell fetch so the roster seed is scoped exactly like the
+  // sidebar's own query key — a mismatch would write a cache entry it never reads.
+  const productScope = normalizeScope(cookieStore.get(PRODUCT_COOKIE)?.value);
+
   const [status, billing, resumeSession, shell] = await Promise.all([
     getOnboardingStatus(h),
     getBilling(h),
     getResumeSession(h),
-    getShellData(),
+    getShellData(productScope ?? undefined),
   ]);
 
   // Skip mode grants dashboard access without completing onboarding.
@@ -124,10 +132,6 @@ export default async function DashboardLayout({
   const sidebarCookie = cookieStore.get("sidebar_state")?.value;
   const defaultOpen = sidebarCookie == null ? true : sidebarCookie === "true";
 
-  // Active product scope read server-side from the cookie → seeds the client provider
-  // so the first paint already knows the scope (no flash, no reconciliation effect).
-  const productScope = normalizeScope(cookieStore.get(PRODUCT_COOKIE)?.value);
-
   const userId = session?.user?.id as string | undefined;
   // Read from the server session (same field SecuritySettings uses) and pass it down
   // so the nudge banner doesn't fire its own client get-session on every page.
@@ -150,6 +154,12 @@ export default async function DashboardLayout({
   }
   if (shell.aiStatus) {
     queryClient.setQueryData(aiStatusQuery().queryKey, shell.aiStatus);
+  }
+  if (shell.competitors) {
+    queryClient.setQueryData(
+      competitorsQuery(productScope ?? undefined).queryKey,
+      shell.competitors,
+    );
   }
 
   return (

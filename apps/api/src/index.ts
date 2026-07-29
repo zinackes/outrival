@@ -4,6 +4,7 @@ import { Sentry } from "./lib/sentry";
 import { Hono } from "hono";
 import { getPostHog } from "./lib/posthog";
 import { cors } from "hono/cors";
+import { compress } from "hono/compress";
 import { contextStorage } from "hono/context-storage";
 import { logger as honoLogger } from "hono/logger";
 import { logger } from "@outrival/shared";
@@ -73,6 +74,36 @@ app.use(
     credentials: true,
   }),
 );
+
+// Response compression. The API answers in JSON and some of those payloads are
+// large (a signals page carries insight + soWhat + recommendedAction + narrative per
+// row). Cloudflare compresses edge→browser, but it fetches from this origin over the
+// public internet, and that hop was shipping every byte raw.
+//
+// SSE is safe: the middleware's content-type filter excludes text/event-stream, so
+// the notifications bell and Ask still deliver each event as it happens instead of
+// stalling behind a compressor waiting for a full block.
+app.use("*", compress());
+
+// How long the API itself spent on a request, readable from the browser's Network
+// tab. The API runs on Bun, where @sentry/node's HTTP auto-instrumentation does not
+// attach — so until now there was no server-side timing anywhere, and "the app feels
+// slow" could not be split into network, API and database without guessing.
+// Timing-Allow-Origin is required for the number to survive the cross-origin trip to
+// outrival.app; without it the browser hides the detail.
+const WEB_ORIGIN = process.env.WEB_URL ?? "http://localhost:3000";
+app.use("*", async (c, next) => {
+  const started = performance.now();
+  await next();
+  const ms = Math.round((performance.now() - started) * 10) / 10;
+  try {
+    c.res.headers.set("Server-Timing", `api;dur=${ms}`);
+    c.res.headers.set("Timing-Allow-Origin", WEB_ORIGIN);
+  } catch {
+    // A Response whose header guard is immutable (a proxied upstream response)
+    // rejects the write. A timing number is never worth failing a request over.
+  }
+});
 
 // Custom auth flow routes (patch-19). MUST be registered before Better Auth's
 // catch-all below, or the wildcard handler swallows them.

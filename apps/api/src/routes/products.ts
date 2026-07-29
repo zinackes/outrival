@@ -182,40 +182,56 @@ productsRouter.get("/", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
-  const rows = await db
-    .select({
-      id: products.id,
-      name: products.name,
-      isPrimary: products.isPrimary,
-      status: products.status,
-      position: products.position,
-      url: competitors.url,
-      selfCompetitorId: products.selfCompetitorId,
-      selfOverrides: competitors.overrides,
-    })
-    .from(products)
-    .innerJoin(competitors, eq(competitors.id, products.selfCompetitorId))
-    .where(eq(products.orgId, orgId))
-    .orderBy(asc(products.position), asc(products.name));
+  // The four org-scoped reads this response is built from. Each only needs the org
+  // id, so their previous one-after-another ordering bought nothing but latency —
+  // and this endpoint is fetched by the shell on EVERY dashboard navigation (the
+  // product switcher's roster), so it pays that latency more often than any other.
+  const [rows, plan, links, counts] = await Promise.all([
+    db
+      .select({
+        id: products.id,
+        name: products.name,
+        isPrimary: products.isPrimary,
+        status: products.status,
+        position: products.position,
+        url: competitors.url,
+        selfCompetitorId: products.selfCompetitorId,
+        selfOverrides: competitors.overrides,
+      })
+      .from(products)
+      .innerJoin(competitors, eq(competitors.id, products.selfCompetitorId))
+      .where(eq(products.orgId, orgId))
+      .orderBy(asc(products.position), asc(products.name)),
 
-  const plan = await getOrgPlan(orgId);
+    getOrgPlan(orgId),
+
+    db
+      .select({
+        productId: productCompetitors.productId,
+        competitorId: productCompetitors.competitorId,
+        name: competitors.name,
+        url: competitors.url,
+        color: competitors.color,
+        overrides: competitors.overrides,
+      })
+      .from(productCompetitors)
+      .innerJoin(products, eq(products.id, productCompetitors.productId))
+      .innerJoin(competitors, eq(competitors.id, productCompetitors.competitorId))
+      .where(and(eq(products.orgId, orgId), isNull(competitors.deletedAt))),
+
+    db
+      .select({ productId: productCompetitors.productId, value: count() })
+      .from(productCompetitors)
+      .innerJoin(products, eq(products.id, productCompetitors.productId))
+      .innerJoin(competitors, eq(competitors.id, productCompetitors.competitorId))
+      .where(and(eq(products.orgId, orgId), isNull(competitors.deletedAt)))
+      .groupBy(productCompetitors.productId),
+  ]);
+
   if (rows.length === 0) {
     return c.json({ products: [], plan, limit: productLimit(plan) });
   }
-
-  const links = await db
-    .select({
-      productId: productCompetitors.productId,
-      competitorId: productCompetitors.competitorId,
-      name: competitors.name,
-      url: competitors.url,
-      color: competitors.color,
-      overrides: competitors.overrides,
-    })
-    .from(productCompetitors)
-    .innerJoin(products, eq(products.id, productCompetitors.productId))
-    .innerJoin(competitors, eq(competitors.id, productCompetitors.competitorId))
-    .where(and(eq(products.orgId, orgId), isNull(competitors.deletedAt)));
+  const countBy = new Map(counts.map((r) => [r.productId, r.value]));
 
   const competitorsByProduct = new Map<string, typeof links>();
   for (const l of links) {
@@ -236,9 +252,19 @@ productsRouter.get("/", async (c) => {
   // by two products is then counted for both, which is what the column means.
   const linkedIds = [...new Set(links.map((l) => l.competitorId))];
   const dayExpr = sql`date_trunc('day', ${signals.createdAt})`;
-  const [aggregates, dailyRows] = linkedIds.length
-    ? await Promise.all([
-        db
+  // The anchors we scrape for the product itself (its own site / repo), which is
+  // what "are we still watching this product" means here. Internal anchors are
+  // dropped; unscrapable rows are kept, because a refusal is the thing to name.
+  const anchorIds = rows.map((p) => p.selfCompetitorId);
+  const noLinks = linkedIds.length === 0;
+
+  // Second and last wave: everything that needed the ids resolved above. The two
+  // signal reads keep their empty-set short-circuit (a literal [] is a valid
+  // Promise.all member), so an org with no linked competitors still issues nothing.
+  const [aggregates, dailyRows, monitorRows, pricingByCompetitor] = await Promise.all([
+    noLinks
+      ? []
+      : db
           .select({
             competitorId: signals.competitorId,
             signals7d: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp)::int`,
@@ -255,7 +281,9 @@ productsRouter.get("/", async (c) => {
             ),
           )
           .groupBy(signals.competitorId),
-        db
+    noLinks
+      ? []
+      : db
           .select({
             competitorId: signals.competitorId,
             day: sql<string>`${dayExpr}::date::text`,
@@ -270,8 +298,30 @@ productsRouter.get("/", async (c) => {
             ),
           )
           .groupBy(signals.competitorId, dayExpr),
-      ])
-    : [[], []];
+
+    db
+      .select({
+        competitorId: monitors.competitorId,
+        sourceType: monitors.sourceType,
+        config: monitors.config,
+        lastRunAt: monitors.lastRunAt,
+        lastFailedAt: monitors.lastFailedAt,
+        markedUnscrapable: monitors.markedUnscrapable,
+      })
+      .from(monitors)
+      .where(
+        and(
+          inArray(monitors.competitorId, anchorIds),
+          eq(monitors.isActive, true),
+          notInArray(monitors.sourceType, [...INTERNAL_SOURCES]),
+        ),
+      ),
+
+    // One pricing read for the whole page: every product's own anchor plus every
+    // competitor any of them tracks. Best-effort, so a slow analytics read costs the
+    // price column and nothing else.
+    latestPricingByCompetitor([...anchorIds, ...linkedIds]),
+  ]);
 
   const aggByCompetitor = new Map(aggregates.map((a) => [a.competitorId, a]));
   const dailyByCompetitor = new Map<string, Map<string, number>>();
@@ -286,50 +336,12 @@ productsRouter.get("/", async (c) => {
     dayKeys.push(new Date(now - i * day).toISOString().slice(0, 10));
   }
 
-  // The anchors we scrape for the product itself (its own site / repo), which is
-  // what "are we still watching this product" means here. Internal anchors are
-  // dropped; unscrapable rows are kept, because a refusal is the thing to name.
-  const anchorIds = rows.map((p) => p.selfCompetitorId);
-  const monitorRows = await db
-    .select({
-      competitorId: monitors.competitorId,
-      sourceType: monitors.sourceType,
-      config: monitors.config,
-      lastRunAt: monitors.lastRunAt,
-      lastFailedAt: monitors.lastFailedAt,
-      markedUnscrapable: monitors.markedUnscrapable,
-    })
-    .from(monitors)
-    .where(
-      and(
-        inArray(monitors.competitorId, anchorIds),
-        eq(monitors.isActive, true),
-        notInArray(monitors.sourceType, [...INTERNAL_SOURCES]),
-      ),
-    );
   const monitorsByAnchor = new Map<string, typeof monitorRows>();
   for (const m of monitorRows) {
     const arr = monitorsByAnchor.get(m.competitorId) ?? [];
     arr.push(m);
     monitorsByAnchor.set(m.competitorId, arr);
   }
-
-  const counts = await db
-    .select({ productId: productCompetitors.productId, value: count() })
-    .from(productCompetitors)
-    .innerJoin(products, eq(products.id, productCompetitors.productId))
-    .innerJoin(competitors, eq(competitors.id, productCompetitors.competitorId))
-    .where(and(eq(products.orgId, orgId), isNull(competitors.deletedAt)))
-    .groupBy(productCompetitors.productId);
-  const countBy = new Map(counts.map((r) => [r.productId, r.value]));
-
-  // One pricing read for the whole page: every product's own anchor plus every
-  // competitor any of them tracks. Best-effort, so a slow analytics read costs the
-  // price column and nothing else.
-  const pricingByCompetitor = await latestPricingByCompetitor([
-    ...anchorIds,
-    ...linkedIds,
-  ]);
 
   const enriched = rows.map((p) => {
     const anchors = monitorsByAnchor.get(p.selfCompetitorId) ?? [];

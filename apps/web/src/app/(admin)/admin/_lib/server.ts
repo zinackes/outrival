@@ -1,7 +1,8 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { serverApiBase } from "@/lib/api-base";
 
-const API = process.env.NEXT_PUBLIC_API_URL;
+const API = serverApiBase();
 
 // Allowlist of operator emails — NEVER the org "owner" role. The API re-gates
 // every /api/admin/* call; this is the UX gate (clean 404, no shell render).

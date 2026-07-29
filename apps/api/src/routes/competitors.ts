@@ -370,128 +370,150 @@ async function buildHomepageFacts(
 // surfacing of existing data: no AI call, no scrape. Analytics reads are
 // best-effort (return [] on error), so the fact sheet degrades gracefully.
 async function buildOverview(competitorId: string) {
-  // Positioning + value props + social proof from the latest homepage snapshot's
-  // parsed structure (only homepage snapshots carry it; null pre-patch).
-  const { capturedAt, homepage } = await buildHomepageFacts(competitorId);
+  // Eight independent reads about ONE competitor, previously issued one at a time.
+  // None of them feeds another — they are eight separate questions about the same
+  // competitor id — so the handler paid eight network round-trips to answer them in
+  // a fixed order nothing required. This sits on the competitor detail page's
+  // critical path, the page the product is actually read from.
+  const [
+    facts,
+    numericClaims,
+    pricingNow,
+    reviews,
+    hiringRows,
+    pricingMovedRows,
+    rolesDeltaRows,
+    scoreDeltaRows,
+  ] = await Promise.all([
+    // Positioning + value props + social proof from the latest homepage snapshot's
+    // parsed structure (only homepage snapshots carry it; null pre-patch).
+    buildHomepageFacts(competitorId),
 
-  const numericClaims = await analyticsQuery<{
-    pattern: string;
-    value: number | null;
-    unit: string | null;
-    raw_text: string;
-  }>(sql`
-    SELECT pattern, value, unit, raw_text
-    FROM (
-      SELECT DISTINCT ON (pattern) pattern, value, unit, raw_text, observed_at
-      FROM numeric_claims
-      WHERE competitor_id = ${competitorId}
-        AND observed_at >= now() - make_interval(days => 90)
-      ORDER BY pattern, observed_at DESC
-    ) t
-    ORDER BY observed_at DESC
-    LIMIT 8
-  `);
-
-  // Current tier set = the most recent recorded_at batch for this competitor.
-  const pricingNow = await analyticsQuery<{
-    plan_name: string;
-    price: number | null;
-    currency: string;
-    billing_period: string;
-  }>(sql`
-    SELECT plan_name, price, currency, billing_period
-    FROM pricing_history
-    WHERE competitor_id = ${competitorId}
-      AND recorded_at = (
-        SELECT max(recorded_at) FROM pricing_history
+    analyticsQuery<{
+      pattern: string;
+      value: number | null;
+      unit: string | null;
+      raw_text: string;
+    }>(sql`
+      SELECT pattern, value, unit, raw_text
+      FROM (
+        SELECT DISTINCT ON (pattern) pattern, value, unit, raw_text, observed_at
+        FROM numeric_claims
         WHERE competitor_id = ${competitorId}
-      )
-    ORDER BY price ASC
-  `);
+          AND observed_at >= now() - make_interval(days => 90)
+        ORDER BY pattern, observed_at DESC
+      ) t
+      ORDER BY observed_at DESC
+      LIMIT 8
+    `),
 
-  const reviews = await analyticsQuery<{
-    source: string;
-    score: number;
-    review_count: number;
-    sentiment_score: number;
-  }>(sql`
-    SELECT source, score, review_count, sentiment_score
-    FROM (
-      SELECT DISTINCT ON (source) source, score, review_count, sentiment_score, recorded_at
-      FROM review_scores
-      WHERE competitor_id = ${competitorId}
-      ORDER BY source, recorded_at DESC
-    ) t
-    ORDER BY recorded_at DESC
-  `);
-
-  const [hiringRow] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(jobPostings)
-    .where(and(eq(jobPostings.competitorId, competitorId), eq(jobPostings.isActive, true)));
-
-  // --- Movement ---------------------------------------------------------------
-  // The overview stated levels only, and on a monitoring product the derivative is
-  // the product: "3 open roles" is inventory, "+2 this month" is the finding. Each
-  // of these is best-effort like everything else here, so a missing series simply
-  // leaves its delta null and the cell renders as a level.
-
-  // When the entry price last differed from today's. Compared on the CHEAPEST
-  // priced tier per batch, not on the batch as a whole: a competitor adding a top
-  // tier has not moved its entry point, and reading any row would call that a
-  // price change.
-  const [pricingMoved] = await analyticsQuery<{ changed_at: string | null }>(sql`
-    WITH entry AS (
-      SELECT recorded_at, min(price) AS price
+    // Current tier set = the most recent recorded_at batch for this competitor.
+    analyticsQuery<{
+      plan_name: string;
+      price: number | null;
+      currency: string;
+      billing_period: string;
+    }>(sql`
+      SELECT plan_name, price, currency, billing_period
       FROM pricing_history
       WHERE competitor_id = ${competitorId}
-        AND price IS NOT NULL AND price > 0
-      GROUP BY recorded_at
-    )
-    SELECT max(recorded_at)::text AS changed_at
-    FROM entry
-    WHERE price IS DISTINCT FROM (SELECT price FROM entry ORDER BY recorded_at DESC LIMIT 1)
-  `);
+        AND recorded_at = (
+          SELECT max(recorded_at) FROM pricing_history
+          WHERE competitor_id = ${competitorId}
+        )
+      ORDER BY price ASC
+    `),
 
-  // Open-role movement over 30 days, from the job_counts series rather than from
-  // the live postings table, so it reflects what we OBSERVED rather than what
-  // happens to be flagged active right now.
-  const [rolesDelta] = await analyticsQuery<{ delta: number | null }>(sql`
-    WITH totals AS (
-      SELECT recorded_at, sum(count) AS total
-      FROM job_counts
-      WHERE competitor_id = ${competitorId}
-        AND recorded_at >= now() - make_interval(days => 30)
-      GROUP BY recorded_at
-    )
-    SELECT (
-      (SELECT total FROM totals ORDER BY recorded_at DESC LIMIT 1) -
-      (SELECT total FROM totals ORDER BY recorded_at ASC LIMIT 1)
-    )::int AS delta
-    FROM totals
-    LIMIT 1
-  `);
-
-  // Rating movement over 90 days for the source the headline rating comes from.
-  // Mixing sources would compare an App Store score against a Trustpilot one.
-  const [scoreDelta] = await analyticsQuery<{ delta: number | null }>(sql`
-    WITH latest AS (
-      SELECT source, score, recorded_at
-      FROM review_scores
-      WHERE competitor_id = ${competitorId}
-      ORDER BY recorded_at DESC
-      LIMIT 1
-    )
-    SELECT (
-      (SELECT score FROM latest) -
-      (SELECT score FROM review_scores
+    analyticsQuery<{
+      source: string;
+      score: number;
+      review_count: number;
+      sentiment_score: number;
+    }>(sql`
+      SELECT source, score, review_count, sentiment_score
+      FROM (
+        SELECT DISTINCT ON (source) source, score, review_count, sentiment_score, recorded_at
+        FROM review_scores
         WHERE competitor_id = ${competitorId}
-          AND source = (SELECT source FROM latest)
-          AND recorded_at >= now() - make_interval(days => 90)
-        ORDER BY recorded_at ASC LIMIT 1)
-    )::real AS delta
-    FROM latest
-  `);
+        ORDER BY source, recorded_at DESC
+      ) t
+      ORDER BY recorded_at DESC
+    `),
+
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(jobPostings)
+      .where(and(eq(jobPostings.competitorId, competitorId), eq(jobPostings.isActive, true))),
+
+    // --- Movement ---------------------------------------------------------------
+    // The overview stated levels only, and on a monitoring product the derivative is
+    // the product: "3 open roles" is inventory, "+2 this month" is the finding. Each
+    // of these is best-effort like everything else here, so a missing series simply
+    // leaves its delta null and the cell renders as a level.
+
+    // When the entry price last differed from today's. Compared on the CHEAPEST
+    // priced tier per batch, not on the batch as a whole: a competitor adding a top
+    // tier has not moved its entry point, and reading any row would call that a
+    // price change.
+    analyticsQuery<{ changed_at: string | null }>(sql`
+      WITH entry AS (
+        SELECT recorded_at, min(price) AS price
+        FROM pricing_history
+        WHERE competitor_id = ${competitorId}
+          AND price IS NOT NULL AND price > 0
+        GROUP BY recorded_at
+      )
+      SELECT max(recorded_at)::text AS changed_at
+      FROM entry
+      WHERE price IS DISTINCT FROM (SELECT price FROM entry ORDER BY recorded_at DESC LIMIT 1)
+    `),
+
+    // Open-role movement over 30 days, from the job_counts series rather than from
+    // the live postings table, so it reflects what we OBSERVED rather than what
+    // happens to be flagged active right now.
+    analyticsQuery<{ delta: number | null }>(sql`
+      WITH totals AS (
+        SELECT recorded_at, sum(count) AS total
+        FROM job_counts
+        WHERE competitor_id = ${competitorId}
+          AND recorded_at >= now() - make_interval(days => 30)
+        GROUP BY recorded_at
+      )
+      SELECT (
+        (SELECT total FROM totals ORDER BY recorded_at DESC LIMIT 1) -
+        (SELECT total FROM totals ORDER BY recorded_at ASC LIMIT 1)
+      )::int AS delta
+      FROM totals
+      LIMIT 1
+    `),
+
+    // Rating movement over 90 days for the source the headline rating comes from.
+    // Mixing sources would compare an App Store score against a Trustpilot one.
+    analyticsQuery<{ delta: number | null }>(sql`
+      WITH latest AS (
+        SELECT source, score, recorded_at
+        FROM review_scores
+        WHERE competitor_id = ${competitorId}
+        ORDER BY recorded_at DESC
+        LIMIT 1
+      )
+      SELECT (
+        (SELECT score FROM latest) -
+        (SELECT score FROM review_scores
+          WHERE competitor_id = ${competitorId}
+            AND source = (SELECT source FROM latest)
+            AND recorded_at >= now() - make_interval(days => 90)
+          ORDER BY recorded_at ASC LIMIT 1)
+      )::real AS delta
+      FROM latest
+    `),
+  ]);
+
+  const { capturedAt, homepage } = facts;
+  const hiringRow = hiringRows[0];
+  const pricingMoved = pricingMovedRows[0];
+  const rolesDelta = rolesDeltaRows[0];
+  const scoreDelta = scoreDeltaRows[0];
 
   return {
     capturedAt,
@@ -887,73 +909,175 @@ competitorsRouter.get("/", async (c) => {
   const sevenIso = sevenDaysAgo.toISOString();
   const fourteenIso = fourteenDaysAgo.toISOString();
 
-  const aggregates = await db
-    .select({
-      competitorId: signals.competitorId,
-      signals7d: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp)::int`,
-      signalsPrev: sql<number>`count(*) filter (where ${signals.createdAt} >= ${fourteenIso}::timestamp and ${signals.createdAt} < ${sevenIso}::timestamp)::int`,
-      lastSignalAt: sql<string | null>`max(${signals.createdAt})`,
-      catPricing: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'pricing')::int`,
-      catProduct: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'product')::int`,
-      catHiring: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'hiring')::int`,
-      catReviews: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'reviews')::int`,
-      catContent: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'content')::int`,
-      catFunding: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'funding')::int`,
-    })
-    .from(signals)
-    .where(
-      and(
-        eq(signals.orgId, orgId),
-        gte(signals.createdAt, fourteenDaysAgo),
-        // When scoped to a product, only aggregate that product's competitors
-        // instead of scanning the whole org's 14-day signals.
-        restrictIds ? inArray(signals.competitorId, restrictIds) : undefined,
+  const ids = list.map((c) => c.id);
+  const dayExpr = sql`date_trunc('day', ${signals.createdAt})`;
+
+  // Every read below answers a question about the SAME org and the SAME competitor
+  // ids, and none of them feeds another's input, yet they used to run one after the
+  // other — nine sequential round-trips to a database that sits across a network. On
+  // this endpoint that ordering was pure latency: it is requested by the roster, the
+  // sidebar, the overview seed and the compare picker, and re-requested by a 30s
+  // poll, so it is the single most-fetched handler in the product. Issued together,
+  // the wall-clock cost collapses to the slowest one instead of their sum.
+  const [
+    aggregates,
+    latestRows,
+    dailyRows,
+    monitorRows,
+    homepageRows,
+    linkRows,
+    activeProductRows,
+    planAndCap,
+  ] = await Promise.all([
+    db
+      .select({
+        competitorId: signals.competitorId,
+        signals7d: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp)::int`,
+        signalsPrev: sql<number>`count(*) filter (where ${signals.createdAt} >= ${fourteenIso}::timestamp and ${signals.createdAt} < ${sevenIso}::timestamp)::int`,
+        lastSignalAt: sql<string | null>`max(${signals.createdAt})`,
+        catPricing: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'pricing')::int`,
+        catProduct: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'product')::int`,
+        catHiring: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'hiring')::int`,
+        catReviews: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'reviews')::int`,
+        catContent: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'content')::int`,
+        catFunding: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'funding')::int`,
+      })
+      .from(signals)
+      .where(
+        and(
+          eq(signals.orgId, orgId),
+          gte(signals.createdAt, fourteenDaysAgo),
+          // When scoped to a product, only aggregate that product's competitors
+          // instead of scanning the whole org's 14-day signals.
+          restrictIds ? inArray(signals.competitorId, restrictIds) : undefined,
+        ),
+      )
+      .groupBy(signals.competitorId),
+
+    // What each competitor last DID, not how many times they did something. The
+    // roster leads with the finding now, so the row carries the latest signal's own
+    // text. Deliberately NOT bounded by the 14 day window above: a competitor that
+    // has been silent for three weeks still has a last move, and "quiet since" is
+    // the most useful thing its row can say. `distinct on` walks
+    // signals_competitor_created_idx once and stops at the first row per competitor.
+    db
+      .selectDistinctOn([signals.competitorId], {
+        competitorId: signals.competitorId,
+        insight: signals.insight,
+        severity: signals.severity,
+        category: signals.category,
+        createdAt: signals.createdAt,
+      })
+      .from(signals)
+      .where(and(eq(signals.orgId, orgId), inArray(signals.competitorId, ids)))
+      .orderBy(signals.competitorId, desc(signals.createdAt)),
+
+    // Daily counts for the row's sparkline. A percentage cannot tell "eleven quiet
+    // days then four loud ones" from a steady hum, and that shape is what says
+    // whether something is building. Same window and same index as the aggregate.
+    db
+      .select({
+        competitorId: signals.competitorId,
+        day: sql<string>`${dayExpr}::date::text`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(signals)
+      .where(
+        and(
+          eq(signals.orgId, orgId),
+          gte(signals.createdAt, fourteenDaysAgo),
+          restrictIds ? inArray(signals.competitorId, restrictIds) : undefined,
+        ),
+      )
+      .groupBy(signals.competitorId, dayExpr),
+
+    // Per-competitor freshness for the global list dot (patch-14). A competitor is
+    // only as fresh as its STALEST active source, and a failed last scan wins. We
+    // ship the (lastScrapedAt, status) pair the FreshnessDot expects and let the
+    // shared computeFreshness derive the level client-side.
+    // Two sources are kept OUT of the aggregate, matching the detail view's Sources
+    // filter so the dot reflects exactly what the user sees scrape:
+    //   - markedUnscrapable monitors — a dead/abandoned source keeps its old
+    //     lastFailedAt forever, which otherwise pins the whole competitor to
+    //     "Last scan failed" and drags the shown date back to its last success
+    //     (the bug: a blog stuck since Jun 5 made an otherwise-fresh competitor
+    //     read "last scan failed · Jun 5"). It has its own "unavailable" state.
+    //   - internal anchors (tech_stack/sitemap/news) — infra, not user-facing.
+    // markedUnscrapable rows ARE selected here (they were filtered out in SQL before)
+    // because the roster's coverage cell has to name a blocked source; they are
+    // dropped again before aggregateFreshness, so the dot behaves exactly as it did.
+    db
+      .select({
+        competitorId: monitors.competitorId,
+        sourceType: monitors.sourceType,
+        lastRunAt: monitors.lastRunAt,
+        lastFailedAt: monitors.lastFailedAt,
+        markedUnscrapable: monitors.markedUnscrapable,
+      })
+      .from(monitors)
+      .where(
+        and(
+          inArray(monitors.competitorId, ids),
+          eq(monitors.isActive, true),
+          notInArray(monitors.sourceType, ["tech_stack", "sitemap", "news", "subdomains"]),
+        ),
       ),
-    )
-    .groupBy(signals.competitorId);
+
+    // Homepage monitor per competitor — the anchor whose scrape feeds the AI summary.
+    // Kept separate from the freshness aggregate (which excludes unscrapable rows):
+    // here we WANT markedUnscrapable so a blocked homepage reads as "needs attention".
+    db
+      .select({
+        competitorId: monitors.competitorId,
+        lastRunAt: monitors.lastRunAt,
+        lastFailedAt: monitors.lastFailedAt,
+        scrapeStartedAt: monitors.scrapeStartedAt,
+        scrapePickedUpAt: monitors.scrapePickedUpAt,
+        markedUnscrapable: monitors.markedUnscrapable,
+        isActive: monitors.isActive,
+      })
+      .from(monitors)
+      .where(and(inArray(monitors.competitorId, ids), eq(monitors.sourceType, "homepage"))),
+
+    // Per-competitor product attribution for the all-products chip (patch-28): the
+    // products a competitor is linked to. This used to list only the ones it was
+    // *specific* to, but every link was written shared, so the chips were empty for
+    // every competitor and the surface answered nothing. Org-joined so a forged
+    // productId can't leak.
+    db
+      .select({
+        competitorId: productCompetitors.competitorId,
+        productId: productCompetitors.productId,
+      })
+      .from(productCompetitors)
+      .innerJoin(products, eq(products.id, productCompetitors.productId))
+      .where(
+        and(
+          eq(products.orgId, orgId),
+          ne(products.status, "archived"),
+          inArray(productCompetitors.competitorId, ids),
+        ),
+      ),
+
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(products)
+      .where(and(eq(products.orgId, orgId), ne(products.status, "archived"))),
+
+    // Competitors frozen by the plan cap (over-cap after a downgrade). Org-level and
+    // independent of any product scope — the oldest `maxCompetitors` stay monitored,
+    // everything newer is paused. Empty set for orgs within their cap / unlimited.
+    // The cap read needs the plan, so this pair stays ordered — but it runs beside
+    // everything above instead of after it.
+    (async () => {
+      const plan = await getOrgPlan(orgId);
+      return { plan, overCap: await pausedByPlanCap(orgId, plan) };
+    })(),
+  ]);
 
   const byCompetitor = new Map(aggregates.map((a) => [a.competitorId, a]));
-
-  const ids = list.map((c) => c.id);
-
-  // What each competitor last DID, not how many times they did something. The
-  // roster leads with the finding now, so the row carries the latest signal's own
-  // text. Deliberately NOT bounded by the 14 day window above: a competitor that
-  // has been silent for three weeks still has a last move, and "quiet since" is
-  // the most useful thing its row can say. `distinct on` walks
-  // signals_competitor_created_idx once and stops at the first row per competitor.
-  const latestRows = await db
-    .selectDistinctOn([signals.competitorId], {
-      competitorId: signals.competitorId,
-      insight: signals.insight,
-      severity: signals.severity,
-      category: signals.category,
-      createdAt: signals.createdAt,
-    })
-    .from(signals)
-    .where(and(eq(signals.orgId, orgId), inArray(signals.competitorId, ids)))
-    .orderBy(signals.competitorId, desc(signals.createdAt));
   const latestByCompetitor = new Map(latestRows.map((r) => [r.competitorId, r]));
-
-  // Daily counts for the row's sparkline. A percentage cannot tell "eleven quiet
-  // days then four loud ones" from a steady hum, and that shape is what says
-  // whether something is building. Same window and same index as the aggregate.
-  const dayExpr = sql`date_trunc('day', ${signals.createdAt})`;
-  const dailyRows = await db
-    .select({
-      competitorId: signals.competitorId,
-      day: sql<string>`${dayExpr}::date::text`,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(signals)
-    .where(
-      and(
-        eq(signals.orgId, orgId),
-        gte(signals.createdAt, fourteenDaysAgo),
-        restrictIds ? inArray(signals.competitorId, restrictIds) : undefined,
-      ),
-    )
-    .groupBy(signals.competitorId, dayExpr);
+  const homepageByCompetitor = new Map(homepageRows.map((m) => [m.competitorId, m]));
 
   // Oldest day first, so the bar chart reads left to right like a calendar.
   const dayKeys: string[] = [];
@@ -966,63 +1090,6 @@ competitorsRouter.get("/", async (c) => {
     byDay.set(r.day, r.count);
     dailyByCompetitor.set(r.competitorId, byDay);
   }
-
-  // Per-competitor freshness for the global list dot (patch-14). A competitor is
-  // only as fresh as its STALEST active source, and a failed last scan wins. We
-  // ship the (lastScrapedAt, status) pair the FreshnessDot expects and let the
-  // shared computeFreshness derive the level client-side.
-  // Two sources are kept OUT of the aggregate, matching the detail view's Sources
-  // filter so the dot reflects exactly what the user sees scrape:
-  //   - markedUnscrapable monitors — a dead/abandoned source keeps its old
-  //     lastFailedAt forever, which otherwise pins the whole competitor to
-  //     "Last scan failed" and drags the shown date back to its last success
-  //     (the bug: a blog stuck since Jun 5 made an otherwise-fresh competitor
-  //     read "last scan failed · Jun 5"). It has its own "unavailable" state.
-  //   - internal anchors (tech_stack/sitemap/news) — infra, not user-facing.
-  // markedUnscrapable rows ARE selected here (they were filtered out in SQL before)
-  // because the roster's coverage cell has to name a blocked source; they are
-  // dropped again before aggregateFreshness, so the dot behaves exactly as it did.
-  const monitorRows = await db
-    .select({
-      competitorId: monitors.competitorId,
-      sourceType: monitors.sourceType,
-      lastRunAt: monitors.lastRunAt,
-      lastFailedAt: monitors.lastFailedAt,
-      markedUnscrapable: monitors.markedUnscrapable,
-    })
-    .from(monitors)
-    .where(
-      and(
-        inArray(monitors.competitorId, ids),
-        eq(monitors.isActive, true),
-        notInArray(monitors.sourceType, ["tech_stack", "sitemap", "news", "subdomains"]),
-      ),
-    );
-
-  // Homepage monitor per competitor — the anchor whose scrape feeds the AI summary.
-  // Kept separate from the freshness aggregate (which excludes unscrapable rows):
-  // here we WANT markedUnscrapable so a blocked homepage reads as "needs attention".
-  const homepageRows = await db
-    .select({
-      competitorId: monitors.competitorId,
-      lastRunAt: monitors.lastRunAt,
-      lastFailedAt: monitors.lastFailedAt,
-      scrapeStartedAt: monitors.scrapeStartedAt,
-      scrapePickedUpAt: monitors.scrapePickedUpAt,
-      markedUnscrapable: monitors.markedUnscrapable,
-      isActive: monitors.isActive,
-    })
-    .from(monitors)
-    .where(
-      and(
-        inArray(
-          monitors.competitorId,
-          list.map((c) => c.id),
-        ),
-        eq(monitors.sourceType, "homepage"),
-      ),
-    );
-  const homepageByCompetitor = new Map(homepageRows.map((m) => [m.competitorId, m]));
 
   const monitorsByCompetitor = new Map<string, typeof monitorRows>();
   for (const m of monitorRows) {
@@ -1052,36 +1119,11 @@ competitorsRouter.get("/", async (c) => {
     return { sources: rows.length, failing, failingSource };
   }
 
-  // Per-competitor product attribution for the all-products chip (patch-28): the
-  // products a competitor is linked to. This used to list only the ones it was
-  // *specific* to, but every link was written shared, so the chips were empty for
-  // every competitor and the surface answered nothing. Org-joined so a forged
-  // productId can't leak.
-  const linkRows = await db
-    .select({
-      competitorId: productCompetitors.competitorId,
-      productId: productCompetitors.productId,
-    })
-    .from(productCompetitors)
-    .innerJoin(products, eq(products.id, productCompetitors.productId))
-    .where(
-      and(
-        eq(products.orgId, orgId),
-        ne(products.status, "archived"),
-        inArray(
-          productCompetitors.competitorId,
-          list.map((c) => c.id),
-        ),
-      ),
-    );
   // A competitor linked to EVERY product is relevant everywhere: chips would repeat
   // the same row on every competitor and disambiguate nothing, so it gets none. That
   // keeps the anti-noise intent the isSpecific filter was reaching for, without
   // hiding the attribution that actually distinguishes one competitor from another.
-  const [{ n: activeProductCount } = { n: 0 }] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(products)
-    .where(and(eq(products.orgId, orgId), ne(products.status, "archived")));
+  const activeProductCount = activeProductRows[0]?.n ?? 0;
   const productsByCompetitor = new Map<string, string[]>();
   for (const r of linkRows) {
     const arr = productsByCompetitor.get(r.competitorId) ?? [];
@@ -1093,11 +1135,7 @@ competitorsRouter.get("/", async (c) => {
     return ids.length >= activeProductCount ? [] : ids;
   };
 
-  // Competitors frozen by the plan cap (over-cap after a downgrade). Org-level and
-  // independent of any product scope — the oldest `maxCompetitors` stay monitored,
-  // everything newer is paused. Empty set for orgs within their cap / unlimited.
-  const plan = await getOrgPlan(orgId);
-  const pausedByPlan = new Set((await pausedByPlanCap(orgId, plan)).map((p) => p.id));
+  const pausedByPlan = new Set(planAndCap.overCap.map((p) => p.id));
 
   const nowMs = Date.now();
   const enriched = list.map((c) => {

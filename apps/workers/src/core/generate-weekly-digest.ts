@@ -21,7 +21,7 @@ import {
 import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfulness-gate";
 import { signDigestFeedbackToken, signUnsubscribeToken } from "@outrival/shared";
 import { renderDigestEmail, renderAllQuietDigest } from "../lib/digest-email";
-import { getResend, ALERT_FROM } from "../lib/resend";
+import { sendEmail, ALERT_FROM } from "../lib/resend";
 import { loggedAi } from "../lib/analytics";
 import { getAllQuietCounts } from "../lib/digest-counts";
 
@@ -183,7 +183,7 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
         });
 
         try {
-          await getResend().emails.send({
+          await sendEmail({
             from: ALERT_FROM,
             to: org.digestEmail,
             subject: `Your Monday Competitive Briefing — all quiet (week of ${isoDate(weekStart)})`,
@@ -398,7 +398,7 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
             undefined,
             `${webUrl}/dashboard/digests/${stored.id}?src=digest_weekly`,
           );
-          await getResend().emails.send({
+          await sendEmail({
             from: ALERT_FROM,
             to: org.digestEmail,
             // Lever 11 — the weekly send IS the product's habit surface; brand

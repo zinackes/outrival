@@ -3,7 +3,7 @@ import { z } from "zod";
 import { and, eq, ne, isNull, gte, lt } from "drizzle-orm";
 import { db, organizations, competitors, signals } from "@outrival/db";
 import { renderMonthlyRecapEmail } from "@outrival/shared";
-import { getResend, ALERT_FROM } from "../lib/resend";
+import { sendEmail, ALERT_FROM } from "../lib/resend";
 
 // Lever 9 — monthly "Competitive Recap" teaser email. Triggered (idempotency-keyed per
 // org+month) from generate-daily-digest at each org's local first-of-month morning, so
@@ -88,7 +88,7 @@ export async function runSendMonthlyRecap(payload: z.input<typeof InputSchema>) 
       biggestInsight: biggest?.insight ?? null,
       recapUrl: `${webUrl}/dashboard/recap?month=${month}`,
     });
-    await getResend().emails.send({
+    await sendEmail({
       from: ALERT_FROM,
       to: org.digestEmail,
       subject: email.subject,

@@ -14,7 +14,7 @@ import {
 import { PLAN_LIMITS, sendWebhook } from "@outrival/shared";
 import { sendSlackMessage } from "../lib/slack";
 import { pushWebhook } from "../lib/crm-webhook";
-import { getResend, ALERT_FROM } from "../lib/resend";
+import { sendEmail, ALERT_FROM } from "../lib/resend";
 import { escapeHtml } from "../lib/escape-html";
 import { emailShell, e } from "../lib/email-shell";
 
@@ -178,7 +178,7 @@ export async function runSendAlert(payload: z.input<typeof InputSchema>) {
   ${signal.soWhat ? `<p ${e("accent", "margin:0 0 12px;")}>→ ${escapeHtml(signal.soWhat)}</p>` : ""}
   ${signal.recommendedAction ? `<p ${e("muted", "margin:0;")}><strong>Action:</strong> ${escapeHtml(signal.recommendedAction)}</p>` : ""}`,
         );
-        await getResend().emails.send({
+        await sendEmail({
           from: ALERT_FROM,
           to: org.digestEmail,
           subject: `${emoji} ${competitor.name} — ${signal.category}`,

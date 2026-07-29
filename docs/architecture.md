@@ -101,6 +101,10 @@ passkey (public_key, credential_id, counter, device_type, backed_up, transports,
 organizations          id, name, slug, plan, stripe_customer_id, stripe_subscription_id,
                        plan_period, slack_webhook_url, digest_email, digest_enabled,
                        alerts_enabled, product_url, product_profile (jsonb),
+                       default_sources (jsonb SourceType[] — migration 0053, sources
+                       semées sur un NOUVEAU competitor ; null = jeu built-in, donc
+                       élargir le défaut atteint toute org qui n'a rien personnalisé.
+                       Narrowed par le plan au moment du semis, cf. Provisioning),
                        onboarding_completed, created_at, updated_at
 
 competitors            id, org_id, name, url, description, overlap_score, category,
@@ -470,10 +474,39 @@ Codes d'erreur structurés sur les routes gating : `plan_limit_competitors`,
 Un competitor n'a pas automatiquement un monitor par source. Trois chemins de création :
 
 - **Création manuelle** (`POST /api/competitors`) et **ajout depuis candidate**
-  (`candidates.ts`) → sèment `homepage` (daily), `pricing` (daily), `blog` (weekly)
-  + l'ancre interne `news` (weekly) ; la création manuelle sème en plus `sitemap`
-  (weekly). Sources figées, non gated (toutes incluses dès le plan free) ; les ancres
-  internes (`sitemap`/`news`) ne sont jamais user-selectable.
+  (`candidates.ts`) → même helper (`apps/api/src/lib/seed-monitors.ts`, une seule
+  liste : les deux chemins avaient divergé, `sitemap` n'était semé que par le manuel).
+  Sème le **jeu de sources par défaut de l'org** narrowed par le plan
+  (`resolveSeedSources`, `@outrival/shared/sources/defaults`) + les ancres internes
+  (`sitemap`/`news`/`subdomains`/`youtube`/`hackernews`/`wellknown`, weekly, jamais
+  user-selectable).
+  - Jeu par défaut (`organizations.default_sources` null = built-in) = `homepage`,
+    `pricing`, `blog`, `jobs`, `docs`, `roadmap` — **le gating par plan est le
+    garde-fou** : free retombe exactement sur les 3 sources historiques, starter
+    ajoute `jobs`, pro/business ajoutent `docs` + `roadmap`. `homepage` est toujours
+    semée (ancre de la détection plateforme, de l'extraction de profil, de la
+    découverte pricing et du diff visuel).
+  - Ne sont JAMAIS semés à l'aveugle : `status`/`changelog` (la détection plateforme
+    les sème déjà **avec l'URL résolue** quand la surface existe),
+    `appstore_reviews`/`github_repo` (URL obligatoire → la ligne ne pourrait
+    qu'échouer), `trustpilot_public` (dépend de `TRUSTPILOT_API_KEY`), `custom` (flow
+    dédié).
+  - Réglage + rattrapage : `GET/PATCH /api/settings/sources` (liste cochable dans
+    Settings → General, une source au-dessus du plan est **stockée quand même** →
+    elle s'applique le jour de l'upgrade) et `POST /api/settings/sources/apply`
+    (ajoute les sources manquantes sur les competitors existants — ADD only,
+    idempotent, jamais le self-product ni un competitor soft-deleted). Le même
+    payload (`gaps`) alimente le bandeau dashboard « votre plan couvre X sources que
+    N concurrents ne surveillent pas encore » : acheter un plan n'ouvrait aucune
+    source sur l'existant, la capacité restait à réclamer à la main, concurrent par
+    concurrent.
+  - `docs`/`roadmap` étant désormais semés en masse, leurs absences stables
+    (`no_docs_surface`, `no_roadmap_portal`, `portal_private`, `portal_empty`) sont
+    des **benign skips** dans `scrape-monitor` : pas de 3-strike, pas de
+    `markedUnscrapable`, statut `skipped`. Le motif reste écrit dans
+    `monitors.last_error` (avec `last_failed_at` nettoyé) — c'est la seule évidence
+    que la surface n'existe pas, et ce que `sourceState` lit pour afficher
+    `not_available` au lieu de prétendre collecter.
 - **Onboarding** (`POST /api/onboarding/complete`) → sème les sources choisies par
   l'utilisateur, gated par plan (`isSourceAllowed` → `plan_locked_source`).
 - **Enable à la demande** (`POST /api/competitors/:id/monitors`) → ajoute une source

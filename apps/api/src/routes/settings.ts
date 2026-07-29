@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import {
   organizations,
   users,
@@ -17,7 +17,18 @@ import {
   reviews,
 } from "@outrival/db";
 import { ProductProfileSchema } from "@outrival/ai";
+import {
+  SOURCE_TYPES,
+  SEEDABLE_SOURCES,
+  DEFAULT_SEED_SOURCES,
+  resolveSeedSources,
+  seedableSourcesForPlan,
+} from "@outrival/shared";
 import { db } from "../lib/db";
+import {
+  applyDefaultSourcesToExisting,
+  defaultSourceGaps,
+} from "../lib/seed-monitors";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, isChannelAllowed } from "../lib/plan";
@@ -213,6 +224,112 @@ settingsRouter.delete("/account", async (c) => {
   await db.delete(authUser).where(eq(authUser.id, user.id));
 
   return c.json({ ok: true });
+});
+
+// Monitoring defaults — which sources a NEW competitor starts with, plus the
+// retroactive half (existing competitors predate the setting, and an upgrade widens
+// what the plan allows without touching anything already created).
+
+const SourceDefaultsSchema = z.object({
+  // null resets to the built-in default set, so an org that opts back in keeps
+  // inheriting future additions instead of freezing today's list.
+  defaultSources: z.array(z.enum(SOURCE_TYPES)).nullable(),
+});
+
+/** The org's competitor ids — the population every gap/apply operation runs over. */
+async function orgCompetitorIds(orgId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: competitors.id })
+    .from(competitors)
+    .where(
+      and(
+        eq(competitors.orgId, orgId),
+        isNull(competitors.deletedAt),
+        // The self-product is monitored through its own flow (My Product), with a
+        // source set that depends on the project stage. It must never be swept up
+        // by a competitor-wide default.
+        ne(competitors.type, "self"),
+      ),
+    );
+  return rows.map((r) => r.id);
+}
+
+settingsRouter.get("/sources", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const plan = await getOrgPlan(orgId);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { defaultSources: true },
+  });
+  const stored = org?.defaultSources ?? null;
+  const competitorIds = await orgCompetitorIds(orgId);
+  const gaps = await defaultSourceGaps({ plan, orgDefaultSources: stored, competitorIds });
+
+  return c.json({
+    plan,
+    // Three distinct things, and the UI needs all three: what the org stored (null =
+    // following the built-in default), what it INTENDS (stored, or the built-in set)
+    // — the checkbox state, and what a plan-locked source must be saved back as so
+    // toggling a neighbour can't silently erase it — and what that resolves to on
+    // this plan today.
+    defaultSources: stored,
+    intendedSources: stored ?? [...DEFAULT_SEED_SOURCES],
+    effectiveSources: resolveSeedSources(plan, stored),
+    // Everything offerable at this plan, plus the whole catalogue so the screen can
+    // show what an upgrade would add rather than hiding it.
+    availableSources: seedableSourcesForPlan(plan),
+    seedableSources: SEEDABLE_SOURCES,
+    competitorCount: competitorIds.length,
+    gaps,
+  });
+});
+
+settingsRouter.patch("/sources", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = SourceDefaultsSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+  }
+
+  // Store only sources that can actually be seeded blind. A source above the plan is
+  // KEPT on purpose (it starts applying the day the org upgrades); one that needs a
+  // per-competitor URL, or that detection seeds with evidence, is dropped — a stored
+  // value nothing ever reads is a lie the settings screen would keep showing.
+  const next =
+    parsed.data.defaultSources === null
+      ? null
+      : parsed.data.defaultSources.filter((s) => SEEDABLE_SOURCES.includes(s));
+
+  await db
+    .update(organizations)
+    .set({ defaultSources: next, updatedAt: new Date() })
+    .where(eq(organizations.id, orgId));
+
+  return c.json({ ok: true, defaultSources: next });
+});
+
+settingsRouter.post("/sources/apply", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const plan = await getOrgPlan(orgId);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { defaultSources: true },
+  });
+  const competitorIds = await orgCompetitorIds(orgId);
+  const result = await applyDefaultSourcesToExisting({
+    plan,
+    orgDefaultSources: org?.defaultSources ?? null,
+    competitorIds,
+  });
+
+  return c.json(result);
 });
 
 settingsRouter.get("/notifications", async (c) => {

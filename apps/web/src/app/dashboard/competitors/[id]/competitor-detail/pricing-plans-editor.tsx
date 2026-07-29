@@ -149,6 +149,20 @@ export function PricingPlansEditor({
     }
   }
 
+  // Drop the overlay wholesale so every plan flows from detection again. Saving an
+  // edit that leaves no rows hides every detected plan, and the list then offers
+  // nothing to edit back: this is the way out of that state.
+  async function restoreDetected() {
+    setSaving(true);
+    try {
+      await api.putCompetitorPricingPlans(competitorId, []);
+      await qc.invalidateQueries({ queryKey: ["competitor", competitorId, "pricingPlans"] });
+      onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const action =
     !editing && !plansQuery.isLoading ? (
       <div className="flex items-center gap-2">
@@ -238,6 +252,16 @@ export function PricingPlansEditor({
               Cancel
             </Button>
           </div>
+        </div>
+      ) : resolved.length === 0 && detected.length > 0 ? (
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-sm text-muted-foreground">
+            Your edits hide every plan on their pricing page. We still detect{" "}
+            {detected.length} {detected.length === 1 ? "plan" : "plans"} there.
+          </p>
+          <Button size="sm" variant="outline" onClick={restoreDetected} disabled={saving}>
+            {saving ? "Restoring…" : "Restore detected plans"}
+          </Button>
         </div>
       ) : resolved.length === 0 ? (
         <p className="text-sm text-muted-foreground">

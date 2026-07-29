@@ -1,5 +1,13 @@
 import * as cheerio from "cheerio";
 import type { BillingPeriodValue } from "@outrival/shared";
+import {
+  USAGE_UNIT,
+  YEARLY,
+  MONTHLY,
+  ONE_TIME,
+  PER_SEAT,
+  ANNUAL_COMMITMENT,
+} from "./period-vocab";
 
 // cheerio 1.x doesn't re-export its node type; derive an element selection type
 // from the API surface (`load().root().find()` → Cheerio<Element>) so we avoid
@@ -102,31 +110,10 @@ const PRICE_CLASS = /(price|amount|cost|pricing|montant|tarif)/i;
 const PRICE_EYEBROW =
   /^(from|starting\s+(at|from)|starting|as\s+low\s+as|up\s+to|only|[àa]\s+partir\s+de|d[èe]s\b|jusqu'?[àa]|desde|a\s+partire\s+da|vanaf)\b/i;
 
-// Period / unit vocabulary. Order matters: usage units win over a bare period so
-// "$0.10 / GB" is `usage`, not `monthly`. EN + FR + the EU languages Outrival
-// monitors (DE/ES/IT/NL/PT) — a German "49 € pro Monat" is as monthly as "$49/mo",
-// and reading it is what keeps the period default below honest on those pages.
-// Every non-EN form is ANCHORED to a slash or a preposition: a bare `\bmes\b` would
-// fire on the French possessive ("mes données"), `\ban(no)?\b` on ordinary prose.
-// Longer alternatives precede their prefixes ("mese" before "mes", "anno" before
-// "an"), otherwise the shorter one matches and its \b fails.
-const USAGE_UNIT =
-  /\/\s?(gb|go|tb|to|request|req|api\s?call|call|lookup|credit|message|token|email|sms|minute|core|vcpu|slot|player)\b/i;
-const YEARLY =
-  /\/\s?(yr|year|ann?[ée]e?|anno|a[ñn]o|jahr|jaar|an)\b|per\s+year|\byearly\b|\bannual(ly)?\b|par\s+an\b|pro\s+jahr\b|\bj[äa]hrlich\b|al\s+a[ñn]o\b|por\s+ano\b|all'anno\b|per\s+jaar\b|\banual(mente)?\b|\bannuale\b|\bjaarlijks\b/i;
-const MONTHLY =
-  /\/\s?(mo|month|mois|monat|mese|m[eê]s|maand)\b|per\s+month|\bmonthly\b|par\s+mois\b|pro\s+monat\b|\bmonatlich\b|al\s+mes\b|al\s+mese\b|por\s+m[eê]s\b|per\s+maand\b|\bmensual(mente)?\b|\bmensile\b|\bmensal\b|\bmaandelijks\b/i;
-const ONE_TIME = /\bone[-\s]?time\b|\blifetime\b|\bune\s+fois\b|\b[àa]\s+vie\b|\bsetup\s+fee\b/i;
-// Per-seat/user is a subscription with a unit, not metered usage.
-const PER_SEAT =
-  /\/\s?(user|seat|utilisateur|si[èe]ge|member|nutzer|usuario|utente|gebruiker)\b|per\s+(user|seat)\b|pro\s+nutzer\b|por\s+usuario\b/i;
-// "billed annually" states the COMMITMENT, not the period of the amount shown:
-// "$10/mo billed annually" is a MONTHLY rate. YEARLY is tested before MONTHLY (so
-// "/year" wins over "/mo" when both appear, as in "$1,188/year ($99/mo)"), and its
-// `\bannual(ly)?\b` branch matched "annually" — flipping that $10 into $10/YEAR, a
-// 12x error. Detect the phrase so an explicit per-month token can override it.
-const ANNUAL_COMMITMENT =
-  /\b(billed|paid|invoiced|charged)\s+(annually|yearly)\b|\bfactur[ée]s?\s+annuellement\b/i;
+// Period / unit vocabulary lives in ./period-vocab (shared with the reconciler).
+// Order matters below: usage units win over a bare period so "$0.10 / GB" is
+// `usage`, not `monthly`; YEARLY is tested before MONTHLY so "/year" wins over
+// "/mo" when both appear ("$1,188/year ($99/mo)").
 
 // Recurring vocabulary, tested against the context of EVERY price on the page —
 // never the whole page text, where prose ("nettoyer vos panneaux 1 à 2 fois par

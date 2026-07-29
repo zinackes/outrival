@@ -559,5 +559,14 @@ async function captureBillingToggleBlock(page: Page): Promise<string> {
   if (fresh.length === 0) return ""; // toggle did nothing visible → don't duplicate
 
   const block = fresh.slice(0, 60).join(" • ").replace(/[<>&]/g, " ");
-  return `<div data-outrival-billing="alternate" hidden>${block}</div>`;
+  // Label the block. Unlabelled, the extractor saw a second set of bare amounts
+  // with no way to tell which period they belong to — and a discounted per-month
+  // rate ("$16") looks exactly like a cheaper monthly plan. The caption says which
+  // toggle state produced them AND restates the canon, since these lines are the
+  // usual source of the "/mo billed annually read as /yr" 12x error.
+  const caption =
+    "Prices shown with the ANNUAL billing option selected. A figure written per " +
+    "month here is a per-month rate under a yearly commitment: its yearly price is " +
+    "that figure multiplied by 12.";
+  return `<div data-outrival-billing="alternate" hidden>${caption} ${block}</div>`;
 }

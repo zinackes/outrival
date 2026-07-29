@@ -1,10 +1,16 @@
 /**
- * Monthly↔yearly ratio sanity check (patch-32). A yearly price is legitimately
- * EITHER ~10–12× the monthly one (an annual total, often with 1–2 months free)
- * OR ≤ the monthly one (sites that show the discounted per-month rate behind a
- * "billed yearly" toggle). A yearly that sits between those bands — or one absurdly
- * larger than ~12× — is almost always an extraction error (a /mo read as /yr, or
- * the same number scraped for both periods).
+ * Monthly↔yearly ratio sanity check (patch-32). A `yearly` price is the amount
+ * charged for a YEAR (see ./normalize-periods for the canon), so against the same
+ * plan's monthly price it must land at ~10–12× — an annual total, often with 1–2
+ * months free. Anything else is an extraction error: a /mo figure read as /yr, the
+ * same number scraped for both periods, or a mangled amount.
+ *
+ * This check runs on RECONCILED plans (`reconcileBillingPeriods` first), which is
+ * what makes it strict: the "yearly ≤ monthly" band this used to tolerate was the
+ * discounted per-month rate behind a "billed yearly" toggle, and tolerating it is
+ * precisely what let `$16/mo billed annually` reach the database as `$16/year`.
+ * The reconciler turns that into $192/year before we get here, so a yearly that is
+ * still ≤ monthly is now a genuine defect and must fail.
  *
  * Used as part of the staged-extraction `plausible` gate for pricing: when a
  * structured-first or cached-parser result fails this check it is treated as a
@@ -20,8 +26,6 @@ export interface PricingRatioPlan {
 // A yearly total normally lands at 10–12× monthly; allow slack on both sides.
 const ANNUAL_MIN = 9;
 const ANNUAL_MAX = 13;
-// Yearly shown as a discounted per-month rate is ≤ the monthly rate.
-const DISCOUNT_MAX = 1.05;
 
 /**
  * True unless a plan exposes both a monthly and a yearly price whose ratio is
@@ -42,8 +46,7 @@ export function pricingRatiosPlausible(plans: PricingRatioPlan[]): boolean {
   for (const { monthly, yearly } of byName.values()) {
     if (monthly == null || yearly == null) continue;
     const ratio = yearly / monthly;
-    if (ratio > ANNUAL_MAX) return false;
-    if (ratio > DISCOUNT_MAX && ratio < ANNUAL_MIN) return false;
+    if (ratio > ANNUAL_MAX || ratio < ANNUAL_MIN) return false;
   }
   return true;
 }

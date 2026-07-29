@@ -16,6 +16,8 @@ export {
 } from "./product-lines";
 export { pricingRatiosPlausible } from "./validate-ratios";
 export type { PricingRatioPlan } from "./validate-ratios";
+export { reconcileBillingPeriods } from "./normalize-periods";
+export type { ReconcilablePlan } from "./normalize-periods";
 export { detectTrial, NO_TRIAL } from "./detect-trial";
 export type { TrialInfo } from "./detect-trial";
 export { detectFreePlan } from "./detect-free-plan";

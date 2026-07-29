@@ -56,11 +56,22 @@ Extract the structured pricing plans from this pricing page. Write all text valu
 - "plan_name": exact plan name (e.g. Free, Starter, Pro, Enterprise)
 - "price": numeric amount (0 for free, strip the currency symbol). Use null for quote-based plans with no public price (e.g. "Contact sales", "Custom"). For a "usage" plan, this is the per-unit RATE (e.g. 0.10 for "$0.10 per API call").
 - "currency": ISO code ("USD", "EUR", "GBP"...) — default to "USD" if ambiguous
-- "billing_period": one of:
-    - "monthly" / "yearly": a recurring subscription price for that period
+- "billing_period" — the period the "price" COVERS, one of:
+    - "monthly": the amount charged for ONE MONTH
+    - "yearly": the amount charged for ONE YEAR — the annual TOTAL, never a per-month rate
     - "one_time": a one-off purchase or lifetime deal, and credit packs bought once
     - "custom": quote-based tier with no public price (Enterprise / "Contact sales")
     - "usage": a per-unit RATE, not a per-time subscription — metered usage ("$0.10 per API call", "per credit", "per GB") OR outcome-based pricing ("$0.99 per resolved ticket", "$2 per conversation")
+- BILLING PERIOD vs COMMITMENT — the most common mistake on these pages. "billed annually",
+  "billed yearly", "/mo billed annually", "per month, paid yearly" describe HOW the plan is
+  invoiced; they do NOT make the amount next to them a yearly price. A figure written per
+  month stays a MONTHLY price:
+    - "$16/mo billed annually" → the yearly row is 16 x 12 = 192, NOT 16
+    - "$39/month, paid for a year ($468/yr)" → monthly 39, yearly 468 (use the printed total when shown)
+  A plan showing BOTH a month-to-month price and a discounted annual one → emit TWO entries with
+  the SAME plan_name: the month-to-month figure as "monthly", and the ANNUAL TOTAL as "yearly".
+  A "yearly" price is therefore always ~10-12x that plan's "monthly" price. Never emit a "yearly"
+  price lower than, or equal to, the same plan's "monthly" price.
 - "unit": for a "usage" price OR a per-seat price, WHAT the price applies to ("API call", "resolved conversation", "credit", "seat", "user", "GB", "transaction"). Use null for a flat price.
 - "included_quantity": units bundled INTO the plan when stated — a credit pack's size (1000 for "$99 for 1000 credits"), or a tier's included calls (100 for "100 API calls included"). Use null when not stated.
 - HYBRID plans (a subscription base PLUS a usage/overage rate) → emit TWO entries with the SAME plan_name: the base as "monthly"/"yearly", and the overage as "usage" with its unit.
@@ -74,6 +85,7 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 {
   "plans": [
     { "plan_name": "Pro", "price": 29, "currency": "USD", "billing_period": "monthly", "unit": null, "included_quantity": null },
+    { "plan_name": "Pro", "price": 290, "currency": "USD", "billing_period": "yearly", "unit": null, "included_quantity": null },
     { "plan_name": "Team", "price": 15, "currency": "USD", "billing_period": "monthly", "unit": "seat", "included_quantity": null },
     { "plan_name": "Business", "price": 99, "currency": "USD", "billing_period": "monthly", "unit": null, "included_quantity": 10000 },
     { "plan_name": "Business", "price": 0.05, "currency": "USD", "billing_period": "usage", "unit": "API call", "included_quantity": null },

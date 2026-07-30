@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   PlusIcon,
   CheckIcon,
+  MinusIcon,
   MagnifyingGlassIcon,
   ArrowRightIcon,
   SpinnerIcon,
@@ -96,16 +97,21 @@ type Bucket = "all" | "moving" | "quiet" | "attention";
 // dropping the headline to muted. Matches the 7 day window the counts run on.
 const QUIET_AFTER_DAYS = 7;
 
-// The row's seven slots. Tracks are dropped from the right as the content column
+// The row's eight slots. Tracks are dropped from the right as the content column
 // narrows (the dashboard rail eats ~256px), each one paired with the cell's own
 // `hidden @Nxl:flex` so the grid never holds an empty track. Order follows the
-// DOM: gauge, identity, latest move, activity, overlap, coverage, actions.
+// DOM: select, gauge, identity, latest move, activity, overlap, coverage, actions.
+//
+// The selection checkbox owns the leading track rather than sharing the gauge's:
+// a table whose select-all sits over the header of a column that means something
+// else reads as an overlay, and the box only appeared on hover, so a whole roster
+// worth of rows looked unselectable until the pointer found one.
 const GRID = cn(
   "grid items-center gap-x-3.5",
-  "grid-cols-[0.625rem_minmax(0,1.15fr)_minmax(0,1.6fr)_1.75rem]",
-  "@2xl:grid-cols-[0.625rem_minmax(0,1.15fr)_minmax(0,1.7fr)_7rem_1.75rem]",
-  "@4xl:grid-cols-[0.625rem_minmax(0,1.15fr)_minmax(0,1.75fr)_7rem_9rem_1.75rem]",
-  "@5xl:grid-cols-[0.625rem_minmax(0,1.15fr)_minmax(0,1.8fr)_7rem_4rem_9rem_1.75rem]",
+  "grid-cols-[1rem_0.625rem_minmax(0,1.15fr)_minmax(0,1.6fr)_1.75rem]",
+  "@2xl:grid-cols-[1rem_0.625rem_minmax(0,1.15fr)_minmax(0,1.7fr)_7rem_1.75rem]",
+  "@4xl:grid-cols-[1rem_0.625rem_minmax(0,1.15fr)_minmax(0,1.75fr)_7rem_9rem_1.75rem]",
+  "@5xl:grid-cols-[1rem_0.625rem_minmax(0,1.15fr)_minmax(0,1.8fr)_7rem_4rem_9rem_1.75rem]",
 );
 
 // Marks a competitor the plan cap froze (over-cap after a downgrade). The scheduler
@@ -577,11 +583,12 @@ export function CompetitorsList() {
               "group border-b border-border px-2 pb-2 text-meta font-medium text-muted-foreground",
             )}
           >
-            {/* Select-all sits in the same slot as each row's box, so the column reads
-                as one control rather than two. */}
-            <SelectCell
-              show={selectionActive}
+            {/* Select-all heads its own column, directly above every row's box. Mixed
+                shows a dash rather than a tick: a half-selected roster that reads
+                "checked" invites a click that silently deselects the rest. */}
+            <SelectBox
               checked={allVisibleSelected}
+              mixed={selectionActive && !allVisibleSelected}
               label={
                 allVisibleSelected
                   ? "Deselect all competitors"
@@ -589,6 +596,7 @@ export function CompetitorsList() {
               }
               onToggle={toggleSelectAll}
             />
+            <span />
             <span>Competitor</span>
             <span>Latest move</span>
             <ColumnLabel
@@ -619,7 +627,6 @@ export function CompetitorsList() {
                   row={row}
                   allProducts={allProducts}
                   selected={selectedIds.has(row.id)}
-                  selectionActive={selectionActive}
                   onToggleSelect={(range) => toggleSelect(row.id, range)}
                   onColor={(v) => void setColor(row.id, v)}
                   onDelete={() => setDeleteTarget(row)}
@@ -698,7 +705,6 @@ function CompetitorRow({
   row,
   allProducts,
   selected,
-  selectionActive,
   onToggleSelect,
   onColor,
   onDelete,
@@ -706,7 +712,6 @@ function CompetitorRow({
   row: Row;
   allProducts: boolean;
   selected: boolean;
-  selectionActive: boolean;
   onToggleSelect: (range: boolean) => void;
   onColor: (value: string | null) => void;
   onDelete: () => void;
@@ -715,7 +720,6 @@ function CompetitorRow({
   const href = `/dashboard/competitors/${row.id}`;
   const cov = row.coverage;
   const live = cov.sources - cov.failing;
-  const showBox = selectionActive || selected;
 
   return (
     <div
@@ -725,14 +729,12 @@ function CompetitorRow({
         selected && "bg-surface-2",
       )}
     >
-      <SelectCell
-        show={showBox}
+      <SelectBox
         checked={selected}
         label={selected ? `Deselect ${row.name}` : `Select ${row.name}`}
         onToggle={(e) => onToggleSelect(e.shiftKey)}
-      >
-        <SeverityGauge severity={row.move && !row.stale ? row.move.severity : null} />
-      </SelectCell>
+      />
+      <SeverityGauge severity={row.move && !row.stale ? row.move.severity : null} />
 
       <div className="flex min-w-0 items-center gap-2.5">
         <CompAvatar name={row.name} url={row.url} size={28} />
@@ -914,77 +916,33 @@ function CompetitorRow({
 }
 
 /**
- * The roster's leading slot: a severity gauge at rest, a selection checkbox once the row
- * is hovered or a selection is live. ONE grid child on purpose — a reserved selection
- * gutter would read as a permanently empty column, and adding a second child would make
- * the row's column template carry a track for a control that is usually invisible.
+ * The selection column's box, used both by the header (select-all) and by every row.
+ * Always rendered, always a tab stop: a checkbox that only exists on hover can't be
+ * found by a keyboard, and can't be found at all on a touch screen, which is what made
+ * the whole roster look like it had no selection at all.
  *
- * Reveal-on-hover is gated to hover-capable devices, like the signals feed: globals.css
- * drops the hover media gate from `hover:` project-wide for tap feedback, which on touch
- * would make the first tap reveal this overlay and swallow the tap that opens the
- * competitor. Selecting is a pointer affordance here; a tap opens the row.
+ * `mixed` is the header's third state — some rows selected, not all — and maps to
+ * aria-checked="mixed", the value a screen reader needs to not announce a partial
+ * selection as a complete one.
  */
-function SelectCell({
-  show,
-  checked,
-  label,
-  onToggle,
-  children,
-}: {
-  // A selection is live (or this row is in it) → the box stays put and the gauge fades.
-  show: boolean;
-  checked: boolean;
-  label: string;
-  onToggle: (e: React.MouseEvent) => void;
-  children?: React.ReactNode;
-}) {
-  return (
-    <span className="relative flex items-center">
-      {/* The gauge gets out of the way whenever the box is in front of it — hover
-          included, otherwise the four severity bars would read through a 16px box
-          sitting on top of them. */}
-      <span
-        className={cn(
-          "flex w-2.5 transition-opacity",
-          show ? "opacity-0" : "[@media(hover:hover)]:group-hover:opacity-0",
-        )}
-      >
-        {children}
-      </span>
-      <span
-        className={cn(
-          "absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 transition-opacity",
-          show
-            ? "opacity-100"
-            : "pointer-events-none opacity-0 [@media(hover:hover)]:group-hover:pointer-events-auto [@media(hover:hover)]:group-hover:opacity-100",
-        )}
-      >
-        <SelectBox checked={checked} active={show} label={label} onToggle={onToggle} />
-      </span>
-    </span>
-  );
-}
-
-// The box itself. Not a tab stop until a selection is live or it is checked, so an
-// invisible-at-rest overlay never traps keyboard focus on the way through the roster.
 function SelectBox({
   checked,
-  active,
+  mixed,
   label,
   onToggle,
 }: {
   checked: boolean;
-  active: boolean;
+  mixed?: boolean;
   label: string;
   onToggle: (e: React.MouseEvent) => void;
 }) {
+  const on = checked || mixed === true;
   return (
     <button
       type="button"
       role="checkbox"
-      aria-checked={checked}
+      aria-checked={mixed ? "mixed" : checked}
       aria-label={label}
-      tabIndex={active || checked ? 0 : -1}
       onClick={(e) => {
         // The row is navigated by a stretched link covering it; this box sits above
         // that overlay, so the click must not also reach it.
@@ -993,13 +951,13 @@ function SelectBox({
         onToggle(e);
       }}
       className={cn(
-        "flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
-        checked
+        "relative z-10 flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+        on
           ? "border-primary bg-primary text-primary-foreground"
-          : "border-border text-transparent hover:border-foreground/50",
+          : "border-border-strong text-transparent hover:border-foreground/50",
       )}
     >
-      <CheckIcon size={16} />
+      {mixed ? <MinusIcon size={16} /> : <CheckIcon size={16} />}
     </button>
   );
 }

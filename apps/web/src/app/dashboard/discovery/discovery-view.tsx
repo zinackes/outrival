@@ -300,6 +300,66 @@ function BandHead({
   );
 }
 
+/**
+ * The weak band's own head, and its disclosure control. The band starts OPEN — a band
+ * that collapses itself hides rows the user never chose to hide, and the only way back
+ * in used to be a "Show 3" button sitting inside the very block being summarised.
+ *
+ * The whole title is the toggle here (caret, name, count, range), so the hit area is the
+ * line you would already aim at rather than a small button beside it. The bulk dismiss
+ * lives on the head as a sibling button, reachable in both states — hung off the
+ * collapsed block, it disappeared the moment the band was open.
+ */
+function WeakBandHead({
+  title,
+  range,
+  count,
+  open,
+  onToggle,
+  onDismissAll,
+}: {
+  title: string;
+  range: string;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+  onDismissAll: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 pb-2 pt-[18px]">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className={cn(
+          "-mx-1.5 flex min-w-0 items-center gap-x-2.5 rounded-md px-1.5 py-1 text-left",
+          "transition-colors hover:bg-surface-2",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        )}
+      >
+        <CaretRightIcon
+          size={16}
+          className={cn(
+            "shrink-0 text-muted-foreground transition-transform duration-150",
+            open && "rotate-90",
+          )}
+        />
+        <h3 className="m-0 text-sm font-semibold tracking-tight">{title}</h3>
+        <span className="text-meta tabular-nums text-muted-foreground">{count}</span>
+        <span className="text-meta tabular-nums text-muted-foreground">{range}</span>
+      </button>
+      <span className="ml-auto flex items-center gap-2">
+        <span className="hidden text-dense text-muted-foreground @xl:inline">
+          Kept for the record, never notified
+        </span>
+        <Button variant="ghost" size="sm" onClick={onDismissAll}>
+          Dismiss all {count}
+        </Button>
+      </span>
+    </div>
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /* Candidate row                                                               */
 /* -------------------------------------------------------------------------- */
@@ -752,7 +812,7 @@ export function DiscoveryView() {
   const [addOpen, setAddOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("queue");
   const [openId, setOpenId] = useState<string | null>(null);
-  const [showWeak, setShowWeak] = useState(false);
+  const [showWeak, setShowWeak] = useState(true);
   // Read the live tab inside async callbacks (a toast's Undo can fire after a switch).
   const tabRef = useRef<Tab>("queue");
 
@@ -1276,36 +1336,38 @@ export function DiscoveryView() {
 
           {bands.weak.length > 0 && (
             <section>
-              <BandHead
+              <WeakBandHead
                 title="Weak"
                 range={`below ${WORTH_MIN}`}
-                aside="Kept for the record, never notified"
+                count={bands.weak.length}
+                open={showWeak}
+                onToggle={() => setShowWeak((v) => !v)}
+                onDismissAll={() => void dismissMany(bands.weak)}
               />
-              {showWeak ? (
-                <AnimatePresence initial={false} mode="popLayout">
-                  {bands.weak.map((c) => (
-                    <motion.div key={c.id} {...feedItemMotion} layout="position">
-                      <CandidateRow {...rowProps(c)} />
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              ) : (
-                <div className="flex flex-wrap items-center gap-2 border-t border-border py-3 text-dense text-muted-foreground">
-                  <span>{summariseWeak(bands.weak)}</span>
-                  <span className="ml-auto flex items-center gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => setShowWeak(true)}>
-                      Show {bands.weak.length}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => void dismissMany(bands.weak)}
-                    >
-                      Dismiss all {bands.weak.length}
-                    </Button>
-                  </span>
-                </div>
-              )}
+              {/* popLayout: the branch on its way out leaves the flow at once, so the
+                  rows and the summary never stack into a double-height band mid-swap. */}
+              <AnimatePresence initial={false} mode="popLayout">
+                {showWeak ? (
+                  <motion.div key="rows" {...disclosureMotion}>
+                    <AnimatePresence initial={false} mode="popLayout">
+                      {bands.weak.map((c) => (
+                        <motion.div key={c.id} {...feedItemMotion} layout="position">
+                          <CandidateRow {...rowProps(c)} />
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </motion.div>
+                ) : (
+                  // Collapsed, the band still names what it is holding — a bare count
+                  // would make the user reopen it just to find out whether anything real
+                  // is in there.
+                  <motion.div key="summary" {...disclosureMotion}>
+                    <p className="m-0 border-t border-border py-3 text-dense text-muted-foreground">
+                      {summariseWeak(bands.weak)}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </section>
           )}
 

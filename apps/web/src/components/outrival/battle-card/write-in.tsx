@@ -15,13 +15,22 @@ import { planWriteIn, visibleAt, writeInRate } from "@/lib/write-in-cursor";
 //
 // PACE: the writing is part of the generation, not a flourish after it. The page
 // reveals the card the moment its TEXT lands, while the worker is still rendering the
-// PDF, so the steady pass is sized to cover that tail (~15s: Chromium launch, the
-// print, the R2 upload, plus up to one 3s poll gap) instead of burning through the
-// card in a second and leaving the reader waiting again. It is a target, never a
-// promise: `finishNow` (the PDF landed — the work really is done) rebases the cursor
-// onto a quick run-out, so the animation can never outlive the thing it describes.
-const TARGET_DURATION_MS = 15_000;
-const MIN_CHARS_PER_SECOND = 60; // floor, so a short card doesn't crawl for 15s
+// PDF, so the steady pass is sized to cover that tail instead of burning through the
+// card in a second and leaving the reader waiting again.
+//
+// The tail is MEASURED, not guessed (prod, 2026-07-30, 27 cards — battle_cards
+// updated_at minus generated_at, which is exactly the PDF step): p50 2.6s, and the
+// page only learns of either end on a 3s poll, so what the reader waits through after
+// the reveal is about one tick. The target tracks that median, NOT the p90 (59s — a
+// cold Chromium on a busy worker): a minute of typing would be a punishment, and the
+// text is complete and usable the moment it is on screen.
+//
+// It stays a target, never a promise: `finishNow` (the PDF landed, the work really is
+// done) rebases the cursor onto a short run-out, so the animation can't outlive the
+// thing it describes. At these numbers the run-out is a ~1.5x nudge on the last third,
+// not a dash — which is why the target is not set even lower.
+const TARGET_DURATION_MS = 5000;
+const MIN_CHARS_PER_SECOND = 60; // floor, so a short card doesn't crawl for 5s
 const FINISH_MS = 1200; // run-out once the PDF has landed
 const TICK_MS = 33; // ~30fps: fast enough to read as typing, a third of the renders
 

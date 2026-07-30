@@ -89,7 +89,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
@@ -1118,7 +1117,7 @@ function Header({
               </DropdownMenuSubContent>
             </DropdownMenuSub>
             <DropdownMenuItem onClick={() => setAssignOpen(true)}>
-              <CardsThreeIcon size={16} /> Assign to products
+              <CardsThreeIcon size={16} /> Move to product
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onRefreshSummary}>
@@ -1241,7 +1240,7 @@ function Header({
       competitor={competitor}
       onSave={onEditSave}
     />
-    <AssignProductsDialog open={assignOpen} onOpenChange={setAssignOpen} competitor={competitor} />
+    <MoveToProductDialog open={assignOpen} onOpenChange={setAssignOpen} competitor={competitor} />
     </>
   );
 }
@@ -1429,7 +1428,14 @@ function EditDetailsDialog({
   );
 }
 
-function AssignProductsDialog({
+/**
+ * Move this competitor to a product. A competitor belongs to exactly ONE product, so
+ * the choice is single: picking a product REPLACES the membership rather than adding a
+ * second link. It posts to the roster's bulk endpoint with a selection of one, because
+ * that endpoint swaps the junction row in a single request — a client-side detach then
+ * attach can fail between the two and leave the competitor in no product at all.
+ */
+function MoveToProductDialog({
   open,
   onOpenChange,
   competitor,
@@ -1438,12 +1444,13 @@ function AssignProductsDialog({
   onOpenChange: (open: boolean) => void;
   competitor: Competitor;
 }) {
+  const queryClient = useQueryClient();
   const [products, setProducts] = useState<
     Array<{ id: string; name: string; isPrimary: boolean; status: string }> | null
   >(null);
-  const [linked, setLinked] = useState<Set<string>>(new Set());
+  const [current, setCurrent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [pending, setPending] = useState<Set<string>>(new Set());
+  const [pending, setPending] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -1455,7 +1462,10 @@ function AssignProductsDialog({
       .then((res) => {
         if (cancelled) return;
         setProducts(res.products);
-        setLinked(new Set(res.links.map((l) => l.productId)));
+        // One membership, so the first link IS the membership. A competitor carrying
+        // several links predates the single-product rule; the first one is shown as
+        // current and picking anything here collapses it back to one.
+        setCurrent(res.links[0]?.productId ?? null);
       })
       .catch((e) => {
         if (!cancelled) toastApiError(e, { title: "Couldn't load products" });
@@ -1468,32 +1478,20 @@ function AssignProductsDialog({
     };
   }, [open, competitor.id]);
 
-  async function toggle(productId: string, next: boolean) {
-    setPending((p) => new Set(p).add(productId));
-    setLinked((s) => {
-      const n = new Set(s);
-      if (next) n.add(productId);
-      else n.delete(productId);
-      return n;
-    });
+  async function move(productId: string, name: string) {
+    if (pending) return;
+    setPending(productId);
     try {
-      if (next) await api.attachCompetitorToProduct(productId, competitor.id);
-      else await api.detachCompetitorFromProduct(productId, competitor.id);
+      await api.bulkMoveCompetitorsToProduct([competitor.id], productId);
+      setCurrent(productId);
+      toast.success(`${competitor.name} moved to ${name}`);
+      // The roster's product chips and every product-scoped list read this cache.
+      await queryClient.invalidateQueries({ queryKey: ["competitors"] });
+      onOpenChange(false);
     } catch (e) {
-      // Revert the optimistic flip on failure.
-      setLinked((s) => {
-        const n = new Set(s);
-        if (next) n.delete(productId);
-        else n.add(productId);
-        return n;
-      });
-      toastApiError(e, { title: "Couldn't update the assignment" });
+      toastApiError(e, { title: "Couldn't move this competitor" });
     } finally {
-      setPending((p) => {
-        const n = new Set(p);
-        n.delete(productId);
-        return n;
-      });
+      setPending(null);
     }
   }
 
@@ -1503,10 +1501,11 @@ function AssignProductsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Assign to products</DialogTitle>
+          <DialogTitle>Move to product</DialogTitle>
           <DialogDescription>
-            Pick which of your products track {competitor.name}. Its signals show in each selected
-            product&apos;s feed.
+            Pick which product tracks {competitor.name}. Its signals show in that
+            product&apos;s feed; signals already detected keep the product they were
+            filed under.
           </DialogDescription>
         </DialogHeader>
         {loading || !products ? (
@@ -1516,37 +1515,34 @@ function AssignProductsDialog({
         ) : visible.length === 0 ? (
           <p className="py-4 text-sm text-muted-foreground">You don&apos;t have any products yet.</p>
         ) : (
-          <div className="space-y-1">
+          <div className="flex flex-col gap-0.5" role="radiogroup" aria-label="Product">
             {visible.map((p) => {
-              const checked = linked.has(p.id);
-              const isPending = pending.has(p.id);
+              const isCurrent = current === p.id;
               return (
-                <label
+                <button
                   key={p.id}
-                  className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-accent cursor-pointer"
+                  type="button"
+                  role="radio"
+                  aria-checked={isCurrent}
+                  // Nothing to do on the product it already belongs to, and a click
+                  // that changes nothing shouldn't spend a request to say so.
+                  disabled={isCurrent || pending !== null}
+                  onClick={() => void move(p.id, p.name)}
+                  className="flex items-center gap-3 rounded-md px-2 py-2 text-left outline-none transition-colors hover:bg-accent focus-visible:bg-accent disabled:cursor-default disabled:hover:bg-transparent"
                 >
-                  <Checkbox
-                    checked={checked}
-                    disabled={isPending}
-                    onCheckedChange={(v) => toggle(p.id, v === true)}
-                  />
-                  <span className="flex-1 text-sm font-medium">{p.name}</span>
+                  <span className="flex-1 truncate text-sm font-medium">{p.name}</span>
                   {p.isPrimary && (
-                    <span className="text-meta uppercase tracking-wide text-muted-foreground">
-                      Primary
-                    </span>
+                    <span className="text-meta text-muted-foreground">Primary</span>
                   )}
-                  {isPending && <SpinnerIcon size={14} className="animate-spin text-muted-foreground" />}
-                </label>
+                  {isCurrent && <span className="text-meta text-muted-foreground">Current</span>}
+                  {pending === p.id && (
+                    <SpinnerIcon size={14} className="animate-spin text-muted-foreground" />
+                  )}
+                </button>
               );
             })}
           </div>
         )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Done
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

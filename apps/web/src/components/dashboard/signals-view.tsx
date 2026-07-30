@@ -8,7 +8,7 @@ import {
   keepPreviousData,
   type InfiniteData,
 } from "@tanstack/react-query";
-import { signalsFeedQuery, signalsFacetsQuery } from "@/lib/queries";
+import { signalsFeedQuery, signalsFacetsQuery, competitorsQuery } from "@/lib/queries";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
@@ -138,6 +138,26 @@ export function SignalsView() {
   // patch-28 — scope the feed to the active product (cookie-backed switcher, URL
   // ?product= overrides); absent = aggregate "All products".
   const productId = useProductScope();
+
+  // A competitor filter names competitors of the scope it was set in. Switching the
+  // product left those ids in the URL: the feed came back empty and the chip printed
+  // a raw uuid (no name to resolve). Drop the ids the new scope doesn't track, keep
+  // the rest. Read against the product's ROSTER, not the feed's facets: a tracked
+  // competitor with no signals yet must keep filtering (an empty feed is the honest
+  // answer) — only one that belongs to another product is meaningless here. Shares
+  // the sidebar's scoped query, so it costs no extra request.
+  const scopedRosterQ = useQuery({
+    ...competitorsQuery(productId ?? undefined),
+    enabled: !sample && Boolean(productId) && comp.size > 0,
+  });
+  const scopedRoster = scopedRosterQ.data;
+  useEffect(() => {
+    if (sample || !scopedRoster || !comp.size) return;
+    const tracked = new Set(scopedRoster.map((c) => c.id));
+    const kept = [...comp].filter((id) => tracked.has(id));
+    if (kept.length === comp.size) return;
+    setParam({ competitor: kept.length ? kept.join(",") : null });
+  }, [sample, scopedRoster, comp, setParam]);
 
   // P0 — feed ordering. Default "threat" (server ranks by severity × overlap ×
   // relevance); "recent" restores the chronological feed. Server-side, so changing

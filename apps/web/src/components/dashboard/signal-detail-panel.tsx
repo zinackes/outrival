@@ -252,7 +252,12 @@ export function SignalDetailPanel({
   const diffLineCount = diffText
     ? diffText.split("\n").filter((l) => l.trim().length > 0).length
     : 0;
-  const hasEvidence = hasVisual || changes.length > 0 || Boolean(diffText);
+  // Hacker News only: the numbers that say whether the post landed, plus the
+  // thread. Stored on the change since the source shipped, read here for the
+  // first time.
+  const engagement = detail?.engagement ?? null;
+  const hasEvidence =
+    hasVisual || changes.length > 0 || Boolean(diffText) || Boolean(engagement);
   const heldBack =
     signal.filteredReason && signal.filteredReason !== "backfill"
       ? signal.filteredReason
@@ -630,6 +635,35 @@ export function SignalDetailPanel({
 
           {hasEvidence && (
             <Section label="Evidence">
+              {engagement && (
+                <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-dense">
+                  {engagement.points !== null && (
+                    <span className="text-foreground">
+                      <span className="tabular-nums font-medium">
+                        {engagement.points}
+                      </span>{" "}
+                      points
+                    </span>
+                  )}
+                  {engagement.comments !== null && (
+                    <span className="text-muted-foreground">
+                      <span className="tabular-nums">{engagement.comments}</span>{" "}
+                      comments
+                    </span>
+                  )}
+                  {engagement.url && (
+                    <a
+                      href={engagement.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      Read the thread
+                      <ArrowSquareOutIcon size={14} aria-hidden />
+                    </a>
+                  )}
+                </div>
+              )}
               {hasVisual && (
                 <VisualDiff
                   signalId={signal.id}

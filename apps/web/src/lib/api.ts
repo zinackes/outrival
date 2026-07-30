@@ -466,6 +466,13 @@ export interface SignalDetail {
     corroboration: number;
     explanation: string;
   } | null;
+  // The discussion the signal is about: Hacker News only, and only on captures
+  // taken after the engagement figures started being stored. null elsewhere.
+  engagement: {
+    points: number | null;
+    comments: number | null;
+    url: string | null;
+  } | null;
   // Composite relevance score (patch-17), max across the change set. null when
   // not scored (lexical / pre-patch). Shown discreetly.
   relevanceScore: number | null;

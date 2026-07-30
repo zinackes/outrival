@@ -608,6 +608,12 @@ signalsRouter.get("/:id/detail", async (c) => {
       // The three sub-scores the severity band was computed from. Null on the
       // deterministically synthesized paths and on pre-materiality signals.
       materiality: signals.materiality,
+      // Engagement, projected out of rawDiff rather than shipping the blob. Only
+      // Hacker News writes these, and only on captures taken after they were added;
+      // the same projection the competitor product tab uses.
+      engagementPoints: sql<number | null>`(${changes.rawDiff}->>'points')::int`,
+      engagementComments: sql<number | null>`(${changes.rawDiff}->>'numComments')::int`,
+      threadUrl: sql<string | null>`${changes.rawDiff}->>'threadUrl'`,
       competitorId: competitors.id,
       competitorName: competitors.name,
       sourceType: monitors.sourceType,
@@ -693,6 +699,16 @@ signalsRouter.get("/:id/detail", async (c) => {
             }),
           }
         : null,
+      // The discussion a Hacker News signal is about: the numbers that say whether
+      // it landed, and a link to the thread. Absent for every other source.
+      engagement:
+        row.threadUrl || row.engagementPoints !== null
+          ? {
+              points: row.engagementPoints,
+              comments: row.engagementComments,
+              url: row.threadUrl,
+            }
+          : null,
       relevanceScore,
       sourceType: row.sourceType,
       sourceUrl: row.sourceUrl,

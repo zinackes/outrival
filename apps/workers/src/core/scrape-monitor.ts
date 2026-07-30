@@ -1477,9 +1477,15 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
           changedAt = new Date();
           // Synthesized classification: forces the deterministic category/severity
           // via generate-signal's existing `classification` input (same shape the AI
-          // returns), so no change to generate-signal / no new prompt. The thread URL
-          // rides in humanChangeAfter → shown on the signal card as its proof link,
-          // and in diffText → grounds the insight.
+          // returns), so no change to generate-signal / no new prompt. The post
+          // title rides in humanChangeAfter and the thread stays in diffText, which
+          // grounds the insight.
+          //
+          // The URL used to be concatenated onto the title here, which put a raw
+          // link in a field the ledger renders as a phrase. The points, the comment
+          // count and the thread URL are all on the change's rawDiff (stored for
+          // exactly this), so the detail route serves them as data and the panel
+          // renders a real link.
           await generateSignal.enqueue({
             changeId: newChange.id,
             classification: {
@@ -1488,7 +1494,7 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
               is_significant: true,
               reason: line,
               humanChangeBefore: null,
-              humanChangeAfter: `${hit.title} — ${hit.threadUrl}`,
+              humanChangeAfter: hit.title,
             },
           });
         }
@@ -1633,12 +1639,19 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
             line: string;
             category: "product" | "api_developer";
             severity: "high" | "low";
+            // The fact, short enough for the signal's before/after ledger. This
+            // branch used to send null for both sides, so a mobile-app launch
+            // rendered no fact at all: the app identifier it is ABOUT was in the
+            // delta and went nowhere. There is no "before" here by nature (the
+            // file did not exist), and the ledger handles a one-sided pair.
+            after: string;
           }[] = [];
           for (const app of delta.newApps) {
             emissions.push({
               line: `${competitor.name} published a mobile-app association for "${app}" on its domain — a mobile app launch (the .well-known app-links file appeared, typically before any press).`,
               category: "product",
               severity: "high",
+              after: `Mobile app registered: ${app}`,
             });
           }
           if (delta.llmsAppeared) {
@@ -1646,6 +1659,7 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
               line: `${competitor.name} published an llms.txt manifest on its domain — an AI/devtools positioning move exposing curated pages to LLMs.`,
               category: "api_developer",
               severity: "low",
+              after: "llms.txt manifest published",
             });
           }
           for (const e of emissions) {
@@ -1672,7 +1686,7 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
                 is_significant: true,
                 reason: e.line,
                 humanChangeBefore: null,
-                humanChangeAfter: null,
+                humanChangeAfter: e.after,
               },
             });
           }

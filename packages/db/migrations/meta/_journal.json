@@ -386,6 +386,13 @@
       "when": 1785342853148,
       "tag": "0054_minor_namora",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1785445483026,
+      "tag": "0055_vengeful_menace",
+      "breakpoints": true
     }
   ]
 }

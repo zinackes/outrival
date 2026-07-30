@@ -89,17 +89,36 @@ export function BattleCardBuild({
               no worker has picked it up yet
             </span>
           )}
-          <span className="ml-auto text-meta tabular-nums text-muted-foreground">
+          <span className="ml-auto flex items-center gap-2 text-meta tabular-nums text-muted-foreground">
+            {active >= 0 && (
+              <span>
+                step {active + 1} of {STAGES.length}
+              </span>
+            )}
             {formatElapsed(elapsed)}
           </span>
         </div>
-        <div className="flex gap-1" aria-hidden>
+        {/* Four segments, one per stage: done, running, not started. At 2px it read as
+            a hairline nobody could measure progress on — 6px and rounded is a bar you
+            can actually see fill, in the same row height as before. The running one
+            carries a travelling highlight (.progress-active) because its stage has no
+            percentage to show: it is observed, not timed. */}
+        <div
+          className="flex gap-1"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={STAGES.length}
+          aria-valuenow={Math.max(0, active)}
+          aria-valuetext={active >= 0 ? STAGES[active]!.label : "Working on it"}
+        >
           {STAGES.map((s, i) => (
             <span
               key={s.key}
               className={cn(
-                "h-0.5 flex-1 rounded-full transition-colors duration-300",
-                i < active ? "bg-positive" : i === active ? "bg-primary" : "bg-border",
+                "h-1.5 flex-1 rounded-full transition-colors duration-300",
+                i < active && "bg-positive",
+                i === active && "progress-active",
+                i > active && "bg-border",
               )}
             />
           ))}

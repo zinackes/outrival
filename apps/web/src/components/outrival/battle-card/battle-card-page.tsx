@@ -147,8 +147,11 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
   // "no card yet" template they used to be dropped back into with no explanation.
   const [failure, setFailure] = useState<string | null>(null);
   // Write the card in only when it lands from a generation we watched, never when
-  // reopening one that was already stored.
+  // reopening one that was already stored. `writeInFinish` flips when the run's PDF
+  // lands: the writing is paced against the work still running behind it, so it has
+  // to run out the moment that work is done.
   const [writeIn, setWriteIn] = useState(false);
+  const [writeInFinish, setWriteInFinish] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const competitorQ = useQuery(competitorDetailQuery(competitorId));
@@ -291,6 +294,7 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
       if (fresh && fresh.generatedAt !== prevGeneratedAt) {
         setStatus("ready");
         setWriteIn(true); // it just landed → write it in rather than pop it on
+        setWriteInFinish(false);
         revealed = true;
         clearGenMarker(competitorId, productId); // content landed → nothing to resume
         // The card was written from freshly gathered evidence; re-read it so the
@@ -300,6 +304,9 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
         });
       }
       if (fresh && fresh.pdfR2Key && fresh.pdfR2Key !== prevR2) {
+        // The whole run is done. Whatever text is still being written out was paced
+        // for this tail, so let it finish now rather than hold the reader to it.
+        setWriteInFinish(true);
         stopPolling();
         void refreshStaleness(); // regenerated → should now read "fresh"
         return;
@@ -348,6 +355,7 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
     setFailure(null);
     setJob(null);
     setWriteIn(false);
+    setWriteInFinish(false);
     try {
       const { runId } = await api.generateBattleCard(competitorId, productId);
       track("battle_card_generated", { competitorId });
@@ -676,6 +684,7 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
             draft={draft}
             setDraft={setDraft}
             writeIn={writeIn}
+            writeInFinish={writeInFinish}
           />
 
           <div className="flex items-center justify-between gap-3 px-5 py-3.5">

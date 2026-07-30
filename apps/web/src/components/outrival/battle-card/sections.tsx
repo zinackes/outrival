@@ -390,6 +390,7 @@ export function BattleCardSections({
   draft,
   setDraft,
   writeIn = false,
+  writeInFinish = false,
 }: {
   content: BattleCardContent;
   editing: boolean;
@@ -398,6 +399,9 @@ export function BattleCardSections({
   /** Write the card in line by line — true only on the arrival of a fresh
    *  generation, never when reopening a card that was already stored. */
   writeIn?: boolean;
+  /** The generation is over (its PDF landed) — write out whatever is left quickly.
+   *  The steady pace is sized for the work that was still running behind it. */
+  writeInFinish?: boolean;
 }) {
   // Every written line, in the order the sections render, so one shared cursor can
   // walk the whole card. Objections contribute two lines each (quote, then answer).
@@ -412,7 +416,7 @@ export function BattleCardSections({
     ],
     [content],
   );
-  const read = useWriteIn(lines, writeIn && !editing);
+  const read = useWriteIn(lines, writeIn && !editing, writeInFinish);
   // Where each section starts on that shared cursor. Editing renders inputs, which
   // are never animated, so the offsets are only ever read on the display path.
   const at = {

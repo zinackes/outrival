@@ -3,6 +3,7 @@ import { getActiveProvider, getActiveModel, consumeUsage, withAiContext } from "
 import {
   db,
   pricingHistory,
+  planEntitlements,
   jobCounts,
   hiringMetrics,
   reviewScores,
@@ -403,6 +404,80 @@ export async function insertPricingHistory(rows: PricingHistoryRow[]): Promise<v
       })),
     ),
   );
+}
+
+// One features × plans matrix row (Pricing Intelligence P2), snake_case like
+// PricingHistoryRow so the shared differ reads both sides without mapping.
+// recorded_at MUST be the same batch timestamp as the pricing_history rows of
+// the same run — the two tables describe one capture.
+export interface PlanEntitlementRow {
+  competitor_id: string;
+  plan_name: string;
+  feature_slug: string;
+  feature_label: string;
+  kind: string;
+  value_num: number | null;
+  value_text: string | null;
+  unit: string | null;
+  reset_period: string | null;
+  is_canonical: number;
+  recorded_at: Date;
+}
+
+export async function insertPlanEntitlements(rows: PlanEntitlementRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await bestEffort("plan_entitlements insert", () =>
+    db.insert(planEntitlements).values(
+      rows.map((r) => ({
+        competitorId: r.competitor_id,
+        planName: r.plan_name,
+        featureSlug: r.feature_slug,
+        featureLabel: r.feature_label,
+        kind: r.kind,
+        valueNum: r.value_num,
+        valueText: r.value_text,
+        unit: r.unit,
+        resetPeriod: r.reset_period,
+        isCanonical: r.is_canonical,
+        recordedAt: r.recorded_at,
+      })),
+    ),
+  );
+}
+
+// The latest stored entitlement batch — the diff baseline. Called BEFORE the
+// fresh batch is inserted, like getPreviousPricing. Best-effort: null on miss.
+export async function getPreviousEntitlements(
+  competitorId: string,
+): Promise<PlanEntitlementRow[] | null> {
+  const rows = await bestEffortRead<PlanEntitlementRow>("getPreviousEntitlements", () =>
+    db
+      .select({
+        competitor_id: planEntitlements.competitorId,
+        plan_name: planEntitlements.planName,
+        feature_slug: planEntitlements.featureSlug,
+        feature_label: planEntitlements.featureLabel,
+        kind: planEntitlements.kind,
+        value_num: planEntitlements.valueNum,
+        value_text: planEntitlements.valueText,
+        unit: planEntitlements.unit,
+        reset_period: planEntitlements.resetPeriod,
+        is_canonical: planEntitlements.isCanonical,
+        recorded_at: planEntitlements.recordedAt,
+      })
+      .from(planEntitlements)
+      .where(
+        and(
+          eq(planEntitlements.competitorId, competitorId),
+          eq(
+            planEntitlements.recordedAt,
+            sql`(select max(recorded_at) from plan_entitlements where competitor_id = ${competitorId})`,
+          ),
+        ),
+      )
+      .orderBy(planEntitlements.planName, planEntitlements.featureLabel),
+  );
+  return rows && rows.length > 0 ? rows : null;
 }
 
 export interface LatestTrial {

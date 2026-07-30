@@ -14,6 +14,7 @@ import { usePersistedOpen } from "@/hooks/use-persisted-open";
 import { feedItemMotion } from "@/lib/motion";
 import { sourceLabel } from "@/lib/source-labels";
 import { competitorNameColor } from "@/lib/competitor-color";
+import { CompAvatar } from "@/components/dashboard/comp-avatar";
 import { Button } from "@/components/ui/button";
 
 // Sources that have stopped answering, named. Nothing on this page could say so
@@ -188,7 +189,7 @@ function AttentionRow({
     // match every row's only child and the hairlines would all disappear.
     <motion.div
       {...feedItemMotion}
-      className="grid grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1.5 border-b border-border py-2.5 pl-1 transition-colors last:border-b-0 hover:bg-surface-2 max-sm:grid-cols-[8px_minmax(0,1fr)]"
+      className="grid grid-cols-[8px_18px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1.5 border-b border-border py-2.5 pl-1 transition-colors last:border-b-0 hover:bg-surface-2 max-sm:grid-cols-[8px_18px_minmax(0,1fr)]"
     >
       <span
         className={
@@ -198,6 +199,9 @@ function AttentionRow({
         }
         aria-hidden
       />
+      {/* The competitor's own mark, so a row is recognised before it is read. The
+          dot beside it still carries the state; this only carries the name. */}
+      <CompAvatar name={source.competitorName} url={source.competitorUrl} size={18} />
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-0.5 text-dense">
         <span className="text-sm font-medium">
           <Link
@@ -211,7 +215,7 @@ function AttentionRow({
         </span>
         <span className="text-muted-foreground">{explain(source)}</span>
       </div>
-      <div className="flex shrink-0 items-center gap-1 max-sm:col-start-2">
+      <div className="flex shrink-0 items-center gap-1 max-sm:col-start-3">
         {source.status === "failing" ? (
           <Button size="sm" variant="secondary" onClick={forceRescan} loading={isRescanning}>
             Check now

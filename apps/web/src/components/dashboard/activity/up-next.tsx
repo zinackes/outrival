@@ -10,6 +10,7 @@ import { feedItemMotion } from "@/lib/motion";
 import { formatDate, formatTime } from "@/lib/format-date";
 import { sourceLabel } from "@/lib/source-labels";
 import { competitorNameColor } from "@/lib/competitor-color";
+import { CompAvatar } from "@/components/dashboard/comp-avatar";
 import { usePersistedOpen } from "@/hooks/use-persisted-open";
 
 // The queue, named. The strip already draws the checks due in its next three
@@ -185,8 +186,13 @@ export function UpNext({ upcoming }: { upcoming: ActivityUpcoming[] }) {
                   )}
                   <motion.div
                     {...feedItemMotion}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 border-b border-border py-2 pl-1 transition-colors last:border-b-0 hover:bg-surface-2"
+                    className="grid grid-cols-[18px_minmax(0,1fr)_auto] items-baseline gap-x-2.5 border-b border-border py-2 pl-1 transition-colors last:border-b-0 hover:bg-surface-2"
                   >
+                    {/* The competitor's own mark. Centred rather than sat on the
+                        row's baseline, which an 18px tile would overshoot. */}
+                    <span className="self-center">
+                      <CompAvatar name={r.u.competitorName} url={r.u.competitorUrl} size={18} />
+                    </span>
                     <span className="min-w-0 truncate text-dense">
                       <Link
                         href={

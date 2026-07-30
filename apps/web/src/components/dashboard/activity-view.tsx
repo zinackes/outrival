@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { PulseIcon, XIcon } from "@/components/icons";
@@ -65,6 +65,7 @@ export function ActivityView() {
   const [hour, setHour] = useState<WatchHour | null>(null);
 
   const logRef = useRef<HTMLDivElement>(null);
+  const pendingScroll = useRef(false);
 
   const productId = useProductScope() ?? undefined;
 
@@ -129,12 +130,28 @@ export function ActivityView() {
     }
     setHour(h);
     // The log sits below the fold on most screens, so a filter applied where the
-    // reader cannot see it would read as the page having gone quiet.
+    // reader cannot see it would read as the page having gone quiet. The scroll
+    // itself waits for the narrowed log (see below).
+    pendingScroll.current = true;
+  };
+
+  // Scrolling on the click landed the reader on the section ABOVE the log: one
+  // hour holds a handful of runs, so the page got shorter right after the scroll
+  // started and the browser clamped it back up to the new maximum. Two things fix
+  // that together — waiting for the narrowed log to be the thing on screen, and
+  // the reserved height below (`min-h`), without which the anchor cannot reach
+  // the top of a short page at all.
+  useEffect(() => {
+    if (!pendingScroll.current || feedQ.isFetching) return;
+    pendingScroll.current = false;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     requestAnimationFrame(() =>
       logRef.current?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" }),
     );
-  };
+    // `hour` is a dependency because an hour whose rows are already cached never
+    // flips isFetching, so keying on the fetch alone would leave that click
+    // without its scroll.
+  }, [hour, feedQ.isFetching]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -243,44 +260,51 @@ export function ActivityView() {
             </div>
           </div>
 
-          {feedQ.isError ? (
-            <p className="text-sm text-muted-foreground">
-              Couldn&apos;t load activity.{" "}
-              <button
-                type="button"
-                onClick={() => void feedQ.refetch()}
-                className="text-link underline underline-offset-2"
-              >
-                Retry
-              </button>
-            </p>
-          ) : events === null ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : events.length === 0 &&
-            // The unfiltered view still has something to say with no findings at
-            // all: the day tallies carry the quiet work. Anything else is empty.
-            (!foldable || (summaryQ.data?.days ?? []).length === 0) ? (
-            <p className="text-sm text-muted-foreground">
-              {segment === "problems"
-                ? "No failed checks here. Every source answered."
-                : filtered || segment !== "all"
-                  ? "No activity matches these filters."
-                  : "No activity yet. The first checks run within the hour."}
-            </p>
-          ) : (
-            <div className={cn("transition-opacity", feedQ.isFetching && !feedQ.isFetchingNextPage && "opacity-60")}>
-              <ActivityLog
-                events={events}
-                days={summaryQ.data?.days ?? []}
-                foldable={foldable}
-                filters={{ competitorId: feedParams.competitorId, sourceType: feedParams.sourceType }}
-                productId={productId}
-                hasMore={feedQ.hasNextPage}
-                loadingMore={feedQ.isFetchingNextPage}
-                onLoadMore={() => void feedQ.fetchNextPage()}
-              />
-            </div>
-          )}
+          {/* An hour's worth of runs is a short list, and a page that cannot
+              scroll a screen further leaves the filters stuck mid-viewport with
+              the sections above them still on screen. The reserved screen only
+              exists while an hour is picked, which is the only time the page is
+              scrolled to an anchor rather than read from the top. */}
+          <div className={cn(hour && "min-h-[70svh]")}>
+            {feedQ.isError ? (
+              <p className="text-sm text-muted-foreground">
+                Couldn&apos;t load activity.{" "}
+                <button
+                  type="button"
+                  onClick={() => void feedQ.refetch()}
+                  className="text-link underline underline-offset-2"
+                >
+                  Retry
+                </button>
+              </p>
+            ) : events === null ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : events.length === 0 &&
+              // The unfiltered view still has something to say with no findings at
+              // all: the day tallies carry the quiet work. Anything else is empty.
+              (!foldable || (summaryQ.data?.days ?? []).length === 0) ? (
+              <p className="text-sm text-muted-foreground">
+                {segment === "problems"
+                  ? "No failed checks here. Every source answered."
+                  : filtered || segment !== "all"
+                    ? "No activity matches these filters."
+                    : "No activity yet. The first checks run within the hour."}
+              </p>
+            ) : (
+              <div className={cn("transition-opacity", feedQ.isFetching && !feedQ.isFetchingNextPage && "opacity-60")}>
+                <ActivityLog
+                  events={events}
+                  days={summaryQ.data?.days ?? []}
+                  foldable={foldable}
+                  filters={{ competitorId: feedParams.competitorId, sourceType: feedParams.sourceType }}
+                  productId={productId}
+                  hasMore={feedQ.hasNextPage}
+                  loadingMore={feedQ.isFetchingNextPage}
+                  onLoadMore={() => void feedQ.fetchNextPage()}
+                />
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>

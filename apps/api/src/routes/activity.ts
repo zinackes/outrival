@@ -70,6 +70,9 @@ activityRouter.get("/health", async (c) => {
       monitorId: monitors.id,
       competitorId: competitors.id,
       competitorName: competitors.name,
+      // The site the favicon is drawn from, so a row names WHO by mark and not
+      // by first letter. Null on a competitor with no URL (idea-stage product).
+      competitorUrl: competitors.url,
       competitorColor: competitors.color,
       competitorType: competitors.type,
       sourceType: monitors.sourceType,
@@ -104,6 +107,7 @@ activityRouter.get("/health", async (c) => {
       monitorId: r.monitorId,
       competitorId: r.competitorId,
       competitorName: r.competitorName,
+      competitorUrl: r.competitorUrl,
       competitorColor: r.competitorColor,
       isSelf: r.competitorType === "self",
       sourceType: r.sourceType,
@@ -146,6 +150,7 @@ activityRouter.get("/health", async (c) => {
       monitorId: r.monitorId,
       competitorId: r.competitorId,
       competitorName: r.competitorName,
+      competitorUrl: r.competitorUrl,
       competitorColor: r.competitorColor,
       isSelf: r.competitorType === "self",
       sourceType: r.sourceType,

@@ -579,6 +579,8 @@ export interface ActivitySource {
   monitorId: string;
   competitorId: string;
   competitorName: string;
+  // The competitor's site, which is what the row's favicon is drawn from.
+  competitorUrl?: string | null;
   competitorColor?: string | null;
   // True for the org's own product (self-competitor): the UI badges it and links to
   // the products page instead of a competitor detail page.
@@ -638,6 +640,8 @@ export interface ActivityUpcoming {
   monitorId: string;
   competitorId: string;
   competitorName: string;
+  // The competitor's site, which is what the row's favicon is drawn from.
+  competitorUrl?: string | null;
   competitorColor?: string | null;
   isSelf?: boolean;
   sourceType: string;

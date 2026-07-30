@@ -146,7 +146,11 @@ prompt is instructed to answer with null.
 Three waves, cheapest and highest coverage first. Wave 1 alone fixes the
 screenshot for thirteen sources at once.
 
-### Wave 1: ship what is already stored (0 AI calls, 0 migrations)
+### Wave 1 (DONE): ship what is already stored, 0 AI calls, 0 migrations
+
+All four items shipped on `feat/signal-diff-evidence`. What the build changed
+about the plan is recorded inline below, since two of the three surprises were
+only visible once the data was in hand.
 
 1. **Diff lines on the signal.** Add capped `diff_text` to
    `GET /signals/:id/detail`, render with the existing `DiffPreview` inside the
@@ -176,22 +180,24 @@ screenshot for thirteen sources at once.
      labelling was built to prevent. Either lead with the added side or balance
      the two, and raise the cap for this surface.
 
-2. **Explain the band.** Send `signals.materiality` and render three mini-scales
-   in "Why this insight?": decision impact, urgency, corroboration, plus the one
-   deterministic rule that produced the band ("critical needs 3 and 3"). Removes
-   the Medium-versus-Low-threat contradiction without any new data.
-   Effort: 2 to 3 hours.
+2. **Explain the band.** Send `signals.materiality` and render three axes in
+   "Why this insight?" on the same four-tick scale the band uses. Removes the
+   Medium-versus-Low-threat contradiction without any new data.
+
+   The sentence naming the rule lives in `explainMateriality`
+   (`packages/ai/src/tasks/materiality.ts`), beside the table, reading the same
+   two helpers the band is computed from. Anywhere else it drifts, and a
+   confidently wrong account of a deterministic rule is worse than none. The
+   tests pin that it can never claim a promotion the table did not apply, nor
+   stay silent about a demotion it did.
 
 3. **HN engagement on the signal.** Points, comment count and a real thread link
-   instead of a URL pasted into an eight-word field. The data is already in
-   `raw_diff` and already read by another route.
-   Effort: 1 hour.
+   instead of a URL pasted into an eight-word field.
 
-4. **Fill the wellknown pair.** `humanChangeAfter: app` instead of null. One
-   line, turns an empty signal into a named one.
-   Effort: 15 minutes.
+4. **Fill the wellknown pair.** It hardcoded both sides to null, so a mobile app
+   launch rendered no fact while the app identifier sat in the delta.
 
-### Wave 2: join the sibling facts (0 AI calls)
+### Wave 2 (NEXT): join the sibling facts, 0 AI calls
 
 The extractors that hold the real facts run **in parallel** with the change that
 becomes the signal, and the two never meet. Both `extractJobs.enqueue` and
@@ -255,8 +261,12 @@ Before the measurement this looked like the one source that was already fine.
 - The window-join versus `change_id` decision in wave 2 is the only migration in
   this document. Worth doing properly if we ever want "what did this signal
   consist of" to be auditable.
-- Not yet measured: how many of the 299 breakdown-less signals actually carry
-  usable `raw_diff.added` / `removed` lines. That number is wave 1's real
-  recovery rate, and a change whose arrays are empty would render an empty
-  Evidence block, which is worse than no block. Worth knowing before building
-  the UI.
+- Measured after the fact: 169 of the 170 evidence-less signals carry lines, so
+  wave 1 reaches all but one of them. Still open is whether the raw page text
+  reads well enough on `jobs` and `custom`, where nav boilerplate leaks into the
+  hunks. Wave 2's `job_postings` join is what turns those into a crisp role list;
+  wave 1 only guarantees the facts are on screen.
+- Not yet measured: how often the added side alone overflows the 40-line
+  per-side cap. Sitemap averages 44 added hunks, so it is the one source that
+  routinely truncates, and a truncated URL delta may want its own count line
+  ("18 more pages appeared") rather than a generic note.

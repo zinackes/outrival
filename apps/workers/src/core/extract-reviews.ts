@@ -23,6 +23,41 @@ const InputSchema = z.object({
   source: SourceEnum,
 });
 
+/**
+ * Proxy sentiment for a score-only capture: no verbatims ⇒ no AI-judged sentiment,
+ * so map the 1–5 rating onto the 0–100 scale the not-null column expects.
+ */
+function sentimentFromRating(score: number): number {
+  return Math.max(0, Math.min(100, Math.round(((score - 1) / 4) * 100)));
+}
+
+/**
+ * Persist the star-rating time-series point on a run that never reached the AI.
+ *
+ * The score and the review count are STRUCTURED data — Apple's Lookup API for the
+ * App Store, schema.org AggregateRating for a review page — parsed before any model
+ * is called. They used to be written only at the very end of the happy path, so an
+ * empty verbatim feed or a single AI parse failure threw away a rating we already
+ * held, and the Reviews tab then reported "no data" for a competitor whose rating
+ * had been captured on every scrape.
+ */
+async function persistAggregateOnly(args: {
+  competitorId: string;
+  source: ReviewSource;
+  score: number;
+  reviewCount: number | null;
+}): Promise<void> {
+  await insertReviewScore({
+    competitor_id: args.competitorId,
+    source: args.source,
+    score: args.score,
+    review_count: args.reviewCount ?? 0,
+    sentiment_score: sentimentFromRating(args.score),
+    complaint_themes: null,
+    recorded_at: new Date(),
+  });
+}
+
 // Runtime-neutral job body: shared verbatim by the pg-boss handler and the thin
 // Trigger.dev wrapper in ../jobs/extract-reviews.job.ts (deleted at the cutover).
 // Only the header, the signature and the fan-out calls change.
@@ -66,12 +101,7 @@ export async function runExtractReviews(payload: z.input<typeof InputSchema>) {
         logger.warn("Trustpilot snapshot has no score");
         return { ok: false, reason: "no_score" };
       }
-      // No verbatims ⇒ no AI-judged sentiment; derive a proxy from the 1–5 trust
-      // score onto the 0–100 sentiment scale so the not-null column stays meaningful.
-      const sentimentFromScore = Math.max(
-        0,
-        Math.min(100, Math.round(((summary.trustScore - 1) / 4) * 100)),
-      );
+      const sentimentFromScore = sentimentFromRating(summary.trustScore);
       await insertReviewScore({
         competitor_id: input.competitorId,
         source: "trustpilot",
@@ -115,6 +145,25 @@ export async function runExtractReviews(payload: z.input<typeof InputSchema>) {
         return { ok: false, reason: "parse_failed" };
       }
       if (summary.reviewCount === 0 || summary.text.length === 0) {
+        // Apple's RSS returns the recent VERBATIM window; the Lookup aggregate is a
+        // separate call on the same capture. An entry-less feed (observed in prod:
+        // 124-byte snapshots carrying a valid 4.5/2506 aggregate) therefore still
+        // holds the rating the tab is built on — record it instead of dropping the
+        // whole capture on the floor.
+        if (summary.averageScore != null) {
+          await persistAggregateOnly({
+            competitorId: input.competitorId,
+            source: "appstore",
+            score: summary.averageScore,
+            reviewCount: summary.reviewCount,
+          });
+          logger.log("Completed extract-reviews (App Store aggregate, no verbatims)", {
+            competitorId: input.competitorId,
+            score: summary.averageScore,
+            reviewCount: summary.reviewCount,
+          });
+          return { ok: true, verbatimsInserted: 0 };
+        }
         logger.warn("App Store snapshot has no reviews");
         return { ok: false, reason: "no_reviews" };
       }
@@ -140,6 +189,17 @@ export async function runExtractReviews(payload: z.input<typeof InputSchema>) {
     );
     if (!extractedRaw) {
       logger.warn("Reviews extraction returned null");
+      // The structured score never depended on the model, so a parse failure /
+      // rate limit must not cost us the rating point too — it is the whole tab for
+      // a competitor whose verbatims we can't cluster.
+      if (structured?.averageScore != null) {
+        await persistAggregateOnly({
+          competitorId: input.competitorId,
+          source: input.source,
+          score: structured.averageScore,
+          reviewCount: structured.reviewCount,
+        });
+      }
       return { ok: false, reason: "parse_failed" };
     }
     const extracted = structured

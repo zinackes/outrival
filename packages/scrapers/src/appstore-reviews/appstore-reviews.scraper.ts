@@ -10,6 +10,9 @@ import type { ScrapeOptions, ScrapeOutcome } from "../types";
 
 const MAX_PAGES = 3;
 
+/** Pause before re-asking for a first page that came back without a single entry. */
+const EMPTY_FEED_RETRY_DELAY_MS = 1_000;
+
 interface RssEntry {
   id?: { label?: string };
   "im:rating"?: { label?: string };
@@ -17,6 +20,41 @@ interface RssEntry {
   content?: { label?: string };
   author?: { name?: { label?: string } };
   updated?: { label?: string };
+}
+
+/**
+ * One RSS page. `reviews` is null when the request itself failed (non-2xx), which is
+ * what tells "this storefront is unusable" apart from "this page carries no review".
+ */
+interface PageResult {
+  status: number;
+  reviews: AppStoreReview[] | null;
+}
+
+async function fetchReviewPage(ref: AppStoreRef, page: number): Promise<PageResult> {
+  const res = await fetch(appStoreReviewsRssUrl(ref, page), {
+    headers: { accept: "application/json" },
+  });
+  if (!res.ok) return { status: res.status, reviews: null };
+
+  const json = (await res.json()) as { feed?: { entry?: RssEntry | RssEntry[] } };
+  const raw = json.feed?.entry;
+  const entries = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  // Apple's first entry is app metadata (no im:rating) — filtered out here.
+  // A real review always carries id.label; skip any entry missing it (defensive).
+  return {
+    status: res.status,
+    reviews: entries
+      .filter((e) => e["im:rating"]?.label && e.id?.label)
+      .map<AppStoreReview>((e) => ({
+        id: e.id!.label!,
+        rating: Number(e["im:rating"]?.label ?? 0) || 0,
+        title: e.title?.label ?? "",
+        content: e.content?.label ?? "",
+        author: e.author?.name?.label ?? "anonymous",
+        updated: e.updated?.label ?? "",
+      })),
+  };
 }
 
 /**
@@ -71,11 +109,9 @@ export async function scrape(
     const countryRef: AppStoreRef = { appId: ref.appId, country };
     let firstPageFetched = false;
     for (let page = 1; page <= MAX_PAGES; page++) {
-      const res = await fetch(appStoreReviewsRssUrl(countryRef, page), {
-        headers: { accept: "application/json" },
-      });
-      lastStatus = res.status;
-      if (!res.ok) {
+      const result = await fetchReviewPage(countryRef, page);
+      lastStatus = result.status;
+      if (!result.reviews) {
         // First page of THIS storefront failed (e.g. a bad country → HTTP 400, or a
         // transient error). Skip this country and try the next — don't throw yet;
         // another storefront may still succeed. A later page failing after we already
@@ -84,21 +120,22 @@ export async function scrape(
       }
       firstPageFetched = true;
 
-      const json = (await res.json()) as { feed?: { entry?: RssEntry | RssEntry[] } };
-      const raw = json.feed?.entry;
-      const entries = Array.isArray(raw) ? raw : raw ? [raw] : [];
-      // Apple's first entry is app metadata (no im:rating) — filtered out here.
-      // A real review always carries id.label; skip any entry missing it (defensive).
-      const pageReviews = entries
-        .filter((e) => e["im:rating"]?.label && e.id?.label)
-        .map<AppStoreReview>((e) => ({
-          id: e.id!.label!,
-          rating: Number(e["im:rating"]?.label ?? 0) || 0,
-          title: e.title?.label ?? "",
-          content: e.content?.label ?? "",
-          author: e.author?.name?.label ?? "anonymous",
-          updated: e.updated?.label ?? "",
-        }));
+      // Apple intermittently answers 200 with an entry-less feed. Measured on prod
+      // 2026-07-29: two consecutive captures of the same app stored 124-byte snapshots
+      // (empty reviews, valid 4.55/2506 aggregate) while the identical URL returned 50
+      // reviews from the same host minutes later. Accepting that as a baseline costs
+      // twice: the capture carries no verbatim to extract, and the next healthy scrape
+      // diffs as "150 reviews appeared". One re-ask separates the hiccup from an app
+      // that genuinely has nothing recent — and only on the first page, so a storefront
+      // that has simply run out of pages still stops at the first empty one.
+      let pageReviews = result.reviews;
+      if (pageReviews.length === 0 && page === 1) {
+        await new Promise((resolve) => setTimeout(resolve, EMPTY_FEED_RETRY_DELAY_MS));
+        const retry = await fetchReviewPage(countryRef, page);
+        lastStatus = retry.status;
+        if (retry.reviews) pageReviews = retry.reviews;
+      }
+
       if (pageReviews.length === 0) break;
       // Dedup by id (across pages AND storefronts — ids are storefront-unique so this
       // never merges two distinct reviews).
@@ -110,8 +147,9 @@ export async function scrape(
   // Anti-silent-failure: if NOT ONE storefront returned even a first page, we fetched
   // nothing — throw so the run fails and retries instead of storing an empty reviews
   // snapshot as a "success" baseline, which would fake "N new reviews" the moment the
-  // feed recovers. (A 200 with zero reviews is a legitimate baseline; a collapse from
-  // many reviews to near-empty is caught downstream by the anti-void guard.)
+  // feed recovers. (A 200 with zero reviews is a legitimate baseline ONCE re-asked —
+  // see the retry above; a collapse from many reviews to near-empty is caught
+  // downstream by the anti-void guard.)
   if (!anyCountryFetched) {
     throw new Error(
       `App Store RSS returned no data for app ${ref.appId} across [${countries.join(", ")}] (last status ${lastStatus})`,

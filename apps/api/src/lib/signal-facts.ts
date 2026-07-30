@@ -1,5 +1,6 @@
 import { and, eq, gte, lte, sql as dsql } from "drizzle-orm";
 import { changes, jobPostings } from "@outrival/db";
+import { diffEntitlements, type EntitlementRow } from "@outrival/shared";
 import { db } from "./db";
 import { analyticsQuery, sql } from "./analytics-safe";
 
@@ -54,6 +55,18 @@ export interface PlanFact {
   state: "added" | "removed" | "changed" | "unchanged";
 }
 
+/** One packaging move of the capture (P2): the exact before/after of a feature
+ * across the plan matrix, derived by the SAME shared differ that emits the
+ * signal — the fact block can never disagree with the signal it explains. */
+export interface EntitlementFact {
+  featureLabel: string;
+  state: "moved" | "limit_changed" | "added" | "removed";
+  /** Exact human strings ("SSO — Enterprise" → "SSO — Pro";
+   * "Starter — 5 seats" → "Starter — 3 seats"). */
+  before: string | null;
+  after: string | null;
+}
+
 export type SignalFacts =
   | {
       kind: "hiring";
@@ -70,6 +83,9 @@ export type SignalFacts =
       plans: PlanFact[];
       /** Free-trial facts as of this capture. null when never assessed. */
       trial: { hasTrial: boolean; days: number | null; requiresCard: boolean | null } | null;
+      /** Packaging moves of this capture; [] when the matrix didn't change
+       * (or was never captured). */
+      entitlements: EntitlementFact[];
     }
   | null;
 
@@ -78,6 +94,7 @@ export type SignalFacts =
 // lists are capped and the totals travel alongside.
 const MAX_ROLES = 25;
 const MAX_PLANS = 30;
+const MAX_ENTITLEMENT_FACTS = 10;
 
 // How long after a change its extraction may still land. The extractor is
 // enqueued in the same scrape run, but it is the WORKER that stamps the row, and
@@ -304,6 +321,7 @@ async function pricingFacts(
   return {
     kind: "pricing",
     plans: plans.slice(0, MAX_PLANS),
+    entitlements: await entitlementFacts(competitorId, window),
     trial:
       stamp.hasTrial === null
         ? null
@@ -313,6 +331,83 @@ async function pricingFacts(
             requiresCard: stamp.trialRequiresCard === null ? null : stamp.trialRequiresCard === 1,
           },
   };
+}
+
+interface EntitlementBatchRow extends EntitlementRow {
+  side: "current" | "previous";
+}
+
+/**
+ * The packaging moves of the capture: the latest entitlement batch inside the
+ * window vs the one strictly before it, re-diffed by the shared differ at read
+ * time (retroactive, like every fact here — no change_id stamp to backfill).
+ * Free-text label rewordings stay silent by the differ's own canonical-only
+ * rule, so the block never claims a feature was "removed" over a copy edit.
+ */
+async function entitlementFacts(
+  competitorId: string,
+  window: { lower: Date; upper: Date },
+): Promise<EntitlementFact[]> {
+  const rows = await analyticsQuery<EntitlementBatchRow>(sql`
+    WITH cur AS (
+      SELECT max(recorded_at) AS ts FROM plan_entitlements
+      WHERE competitor_id = ${competitorId}
+        AND recorded_at >= ${window.lower} AND recorded_at <= ${window.upper}
+    ), prev AS (
+      SELECT max(pe.recorded_at) AS ts FROM plan_entitlements pe, cur
+      WHERE pe.competitor_id = ${competitorId} AND pe.recorded_at < cur.ts
+    )
+    SELECT 'current' AS side, pe.plan_name, pe.feature_slug, pe.feature_label,
+           pe.kind, pe.value_num, pe.value_text, pe.unit, pe.reset_period,
+           pe.is_canonical
+    FROM plan_entitlements pe, cur
+    WHERE pe.competitor_id = ${competitorId} AND pe.recorded_at = cur.ts
+    UNION ALL
+    SELECT 'previous', pe.plan_name, pe.feature_slug, pe.feature_label,
+           pe.kind, pe.value_num, pe.value_text, pe.unit, pe.reset_period,
+           pe.is_canonical
+    FROM plan_entitlements pe, prev
+    WHERE pe.competitor_id = ${competitorId} AND pe.recorded_at = prev.ts
+  `);
+
+  const current = rows.filter((r) => r.side === "current");
+  const previous = rows.filter((r) => r.side === "previous");
+  if (current.length === 0 || previous.length === 0) return [];
+
+  // moved/added/removed human strings lead with the feature ("SSO — Pro");
+  // limit_changed leads with the PLAN ("Starter — 5 seats"), so its feature
+  // label is recovered from the current batch row the change was derived from.
+  const label = (c: {
+    type: string;
+    planName: string | null;
+    currentValue: number | null;
+    humanBefore: string | null;
+    humanAfter: string | null;
+  }): string => {
+    if (c.type === "entitlement_limit_changed") {
+      const hit = current.find(
+        (r) => r.plan_name === c.planName && r.value_num === c.currentValue,
+      );
+      if (hit) return hit.feature_label;
+    }
+    return (c.humanAfter ?? c.humanBefore ?? "").split(" — ")[0] ?? "";
+  };
+
+  return diffEntitlements(previous, current)
+    .slice(0, MAX_ENTITLEMENT_FACTS)
+    .map((c) => ({
+      featureLabel: label(c),
+      state:
+        c.type === "entitlement_moved"
+          ? ("moved" as const)
+          : c.type === "entitlement_limit_changed"
+            ? ("limit_changed" as const)
+            : c.type === "entitlement_added"
+              ? ("added" as const)
+              : ("removed" as const),
+      before: c.humanBefore,
+      after: c.humanAfter,
+    }));
 }
 
 /**

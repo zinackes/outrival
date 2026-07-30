@@ -482,8 +482,19 @@ export type SignalFacts =
       kind: "pricing";
       plans: PlanFact[];
       trial: { hasTrial: boolean; days: number | null; requiresCard: boolean | null } | null;
+      /** Packaging moves of this capture (P2): exact before/after per feature
+       * ("SSO — Enterprise" → "SSO — Pro"). [] when the matrix didn't change. */
+      entitlements: EntitlementFact[];
     }
   | null;
+
+/** One packaging move behind a pricing signal (features × plans matrix). */
+export interface EntitlementFact {
+  featureLabel: string;
+  state: "moved" | "limit_changed" | "added" | "removed";
+  before: string | null;
+  after: string | null;
+}
 
 export interface SignalDetail {
   id: string;

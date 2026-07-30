@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowSquareOutIcon, CaretDownIcon } from "@/components/icons";
-import type { PlanFact, RoleFact, SignalFacts as Facts } from "@/lib/api";
+import type { EntitlementFact, PlanFact, RoleFact, SignalFacts as Facts } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { salaryLabel } from "@/lib/format-money";
 import { fmtPrice, PERIOD_SHORT } from "@/components/dashboard/activity/format";
@@ -122,7 +122,7 @@ function Role({ role, struck }: { role: RoleFact; struck: boolean }) {
 
 function PricingFacts({ facts }: { facts: Extract<Facts, { kind: "pricing" }> }) {
   const [expanded, setExpanded] = useState(false);
-  const { plans, trial } = facts;
+  const { plans, trial, entitlements } = facts;
   const moved = plans.filter((p) => p.state !== "unchanged").length;
   const shown = expanded ? plans : plans.slice(0, PLANS_COLLAPSED);
 
@@ -168,6 +168,57 @@ function PricingFacts({ facts }: { facts: Extract<Facts, { kind: "pricing" }> })
           openLabel="Show fewer"
         />
       )}
+
+      {(entitlements ?? []).length > 0 && (
+        <div className="mt-3 border-t border-border pt-2.5">
+          <p className="text-dense text-muted-foreground">
+            Packaging{" · "}
+            <span className="tabular-nums">{entitlements.length}</span> feature
+            {entitlements.length === 1 ? "" : "s"} moved
+          </p>
+          <ul className="mt-1.5 space-y-1">
+            {entitlements.map((e, i) => (
+              <li key={`${e.featureLabel}-${i}`}>
+                <Entitlement fact={e} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Same neutrality rule as prices: a feature reaching a cheaper plan is their
+// move, not our win — the strings state it, no tint asserts a judgement.
+const ENTITLEMENT_STATE_LABEL: Record<EntitlementFact["state"], string> = {
+  moved: "Moved",
+  limit_changed: "Limit changed",
+  added: "New",
+  removed: "Removed",
+};
+
+function Entitlement({ fact }: { fact: EntitlementFact }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+      <span className="text-foreground">{fact.featureLabel}</span>
+      <span className="text-xs text-muted-foreground">
+        {ENTITLEMENT_STATE_LABEL[fact.state]}
+      </span>
+      <span className="ml-auto flex items-baseline gap-1.5 tabular-nums">
+        {fact.before && (
+          <span
+            className={cn(
+              "text-muted-foreground",
+              (fact.state === "limit_changed" || fact.state === "removed") && "line-through",
+            )}
+          >
+            {fact.before}
+          </span>
+        )}
+        {fact.before && fact.after && <span className="text-muted-foreground">→</span>}
+        {fact.after && <span className="text-foreground">{fact.after}</span>}
+      </span>
     </div>
   );
 }

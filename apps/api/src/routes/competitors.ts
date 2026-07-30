@@ -22,13 +22,17 @@ import {
   productCompetitors,
 } from "@outrival/db";
 import { db } from "../lib/db";
-import { scoreCompetitorOverlap } from "../lib/overlap";
+import { scoreCompetitorOverlap, scoreCompetitorsOverlap } from "../lib/overlap";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { enqueueJob } from "../lib/queue";
 import { associateCompetitorWithScopedProduct, productCompetitorIds } from "../lib/products";
-import { seedCompetitorMonitors, enqueueFirstScrapes } from "../lib/seed-monitors";
+import {
+  seedCompetitorMonitors,
+  enqueueFirstScrapes,
+  addSourcesToCompetitors,
+} from "../lib/seed-monitors";
 import { analyticsQuery } from "../lib/analytics-safe";
 import { translateToEnglish } from "../lib/translate";
 import { detectContentLanguage } from "../lib/detect-language";
@@ -545,6 +549,315 @@ async function buildOverview(competitorId: string) {
     },
   };
 }
+
+/* ── Bulk actions over a roster selection ──────────────────────────────────────
+ *
+ * The competitors list lets the user select rows and act on all of them at once.
+ * These routes are registered BEFORE every "/:id/…" route below on purpose: Hono
+ * matches in registration order, so declared later they would be swallowed as a
+ * competitor whose id is the literal string "bulk".
+ *
+ * Each one resolves the selection through ONE org-scoped read (resolveBulkSelection),
+ * so the tenant guard is the query rather than a per-id check, and an id belonging to
+ * another org is simply absent from the result instead of erroring the whole sweep.
+ * The self-competitor is excluded everywhere: it is the user's own product, it has its
+ * own page, and no roster sweep should be able to pause or delete it.
+ */
+
+// A selection is what fits on screen and in a user's head, not a whole database.
+const BULK_MAX = 200;
+// AI actions cap lower. Re-scoring puts every selected competitor's evidence into ONE
+// prompt, and the reply carries one row per competitor: past this the JSON gets
+// truncated, which parses as "nobody scored" rather than as an error.
+const BULK_AI_MAX = 25;
+
+const BulkIdsSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(BULK_MAX),
+});
+const BulkAiIdsSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(BULK_AI_MAX),
+});
+
+/**
+ * The rows a bulk action may touch. Deliberately narrow: id/name label the outcome,
+ * url + description + aiSummary are the overlap scorer's evidence ladder, and the two
+ * flags let a handler report what actually changed.
+ */
+async function resolveBulkSelection(orgId: string, ids: string[]) {
+  return db.query.competitors.findMany({
+    where: and(
+      eq(competitors.orgId, orgId),
+      isNull(competitors.deletedAt),
+      ne(competitors.type, "self"),
+      inArray(competitors.id, [...new Set(ids)]),
+    ),
+    columns: {
+      id: true,
+      name: true,
+      url: true,
+      description: true,
+      aiSummary: true,
+      overlapScore: true,
+      monitoringPaused: true,
+      alertsMuted: true,
+    },
+  });
+}
+
+// Pause / resume monitoring across the selection. Same semantics as the per-competitor
+// route: the scheduler skips a paused competitor without touching its monitors' own
+// isActive flags, so resuming restores each source's prior state.
+competitorsRouter.post("/bulk/monitoring", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const parsed = BulkIdsSchema.extend({ paused: z.boolean() }).safeParse(
+    await c.req.json().catch(() => null),
+  );
+  if (!parsed.success) return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+
+  const rows = await resolveBulkSelection(orgId, parsed.data.ids);
+  if (rows.length === 0) return c.json({ ok: true, updated: 0 });
+
+  await db
+    .update(competitors)
+    .set({ monitoringPaused: parsed.data.paused, updatedAt: new Date() })
+    .where(inArray(competitors.id, rows.map((r) => r.id)));
+
+  return c.json({ ok: true, updated: rows.length, paused: parsed.data.paused });
+});
+
+// Mute / unmute real-time alerts across the selection. Signals keep being tracked and
+// still reach the feed and the digests; only the immediate send is skipped.
+competitorsRouter.post("/bulk/alerts", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const parsed = BulkIdsSchema.extend({ muted: z.boolean() }).safeParse(
+    await c.req.json().catch(() => null),
+  );
+  if (!parsed.success) return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+
+  const rows = await resolveBulkSelection(orgId, parsed.data.ids);
+  if (rows.length === 0) return c.json({ ok: true, updated: 0 });
+
+  await db
+    .update(competitors)
+    .set({ alertsMuted: parsed.data.muted, updatedAt: new Date() })
+    .where(inArray(competitors.id, rows.map((r) => r.id)));
+
+  return c.json({ ok: true, updated: rows.length, muted: parsed.data.muted });
+});
+
+/**
+ * Re-score the selection's overlap against the org's current product profile — the
+ * roster-wide version of the kebab action, and the one the whole feature was asked
+ * for: after the product profile changes, every competitor's score is stale at once.
+ *
+ * ONE model call for the set (scoreOverlap grades a list, independently per entry
+ * against the fixed scale), so this costs one rate-limit hit instead of N, and a
+ * competitor with nothing to judge it on keeps the score it already has rather than
+ * taking one derived from a bare domain.
+ */
+competitorsRouter.post("/bulk/recompute-overlap", aiIntensiveRateLimit, async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const parsed = BulkAiIdsSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+
+  const rows = await resolveBulkSelection(orgId, parsed.data.ids);
+  if (rows.length === 0) return c.json({ scored: [], skipped: [] });
+
+  const outcomes = await scoreCompetitorsOverlap(orgId, rows);
+
+  const scored: Array<{ id: string; name: string; overlapScore: number }> = [];
+  const skipped: Array<{ id: string; name: string; reason: string }> = [];
+  rows.forEach((row, i) => {
+    const outcome = outcomes[i];
+    if (outcome?.status === "scored") {
+      scored.push({ id: row.id, name: row.name, overlapScore: outcome.overlapScore });
+    } else {
+      skipped.push({ id: row.id, name: row.name, reason: outcome?.status ?? "failed" });
+    }
+  });
+
+  const now = new Date();
+  await Promise.all(
+    scored.map((s) =>
+      db
+        .update(competitors)
+        .set({ overlapScore: s.overlapScore, updatedAt: now })
+        .where(eq(competitors.id, s.id)),
+    ),
+  );
+
+  return c.json({ scored, skipped });
+});
+
+/**
+ * Re-run the AI summary for the selection. Unlike the per-competitor action these
+ * jobs land silently (no "summary ready" notification each): twenty-five durable
+ * notifications for one click is the notification spam the moderation layer exists to
+ * prevent. The roster polls, so each row updates as its job finishes.
+ */
+competitorsRouter.post("/bulk/refresh-summary", aiIntensiveRateLimit, async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const parsed = BulkAiIdsSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+
+  const rows = await resolveBulkSelection(orgId, parsed.data.ids);
+  if (rows.length === 0) return c.json({ enqueued: 0 });
+
+  let enqueued = 0;
+  for (const row of rows) {
+    try {
+      await enqueueJob(refreshCompetitorSummary, {
+        competitorId: row.id,
+        notifyOnComplete: false,
+      });
+      enqueued++;
+    } catch (e) {
+      // One failed enqueue must not lose the rest of the sweep.
+      console.error("Failed to enqueue bulk summary refresh", {
+        competitorId: row.id,
+        error: String(e),
+      });
+    }
+  }
+
+  return c.json({ enqueued });
+});
+
+/**
+ * Move the selection to a product. A competitor belongs to exactly ONE product, so
+ * this REPLACES its membership instead of adding a second link: the junction row IS
+ * the membership, and leaving the old link behind would put the competitor in two
+ * feeds while the UI shows one.
+ *
+ * Past signals keep the product tags they were written with (`signals.product_ids` is
+ * stamped at classification time) — this changes who tracks the competitor from now
+ * on, not the history.
+ */
+competitorsRouter.post("/bulk/product", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const parsed = BulkIdsSchema.extend({ productId: z.string().min(1) }).safeParse(
+    await c.req.json().catch(() => null),
+  );
+  if (!parsed.success) return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+
+  const orgProducts = await db
+    .select({ id: products.id })
+    .from(products)
+    .where(eq(products.orgId, orgId));
+  const target = orgProducts.find((p) => p.id === parsed.data.productId);
+  if (!target) return c.json({ error: "product_not_found" }, 404);
+
+  const rows = await resolveBulkSelection(orgId, parsed.data.ids);
+  if (rows.length === 0) return c.json({ ok: true, moved: 0 });
+  const ids = rows.map((r) => r.id);
+
+  // Scoped to this org's products: a link is only ever dropped from a product the
+  // caller owns, so a corrupt cross-org row can't be touched from here.
+  await db
+    .delete(productCompetitors)
+    .where(
+      and(
+        inArray(productCompetitors.competitorId, ids),
+        inArray(
+          productCompetitors.productId,
+          orgProducts.map((p) => p.id),
+        ),
+      ),
+    );
+  await db
+    .insert(productCompetitors)
+    .values(
+      rows.map((r) => ({
+        productId: target.id,
+        competitorId: r.id,
+        relevanceScore: r.overlapScore ?? null,
+      })),
+    )
+    .onConflictDoNothing();
+
+  return c.json({ ok: true, moved: ids.length, productId: target.id });
+});
+
+/**
+ * Turn one source on across the selection — the roster answer to "I just realised I'm
+ * not watching anyone's pricing page". ADD only and idempotent: a competitor that
+ * already has the source (even switched off) keeps its row untouched.
+ *
+ * Only sources that need no per-competitor URL are accepted. App Store reviews and a
+ * GitHub repo can't be derived from a domain, so enabling them in bulk could only
+ * create monitors that fail every run — they stay on the per-competitor flow.
+ */
+competitorsRouter.post("/bulk/sources", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const parsed = BulkIdsSchema.extend({ sourceType: z.enum(SOURCE_TYPES) }).safeParse(
+    await c.req.json().catch(() => null),
+  );
+  if (!parsed.success) return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+
+  const { sourceType } = parsed.data;
+  if (!isConfigurableSource(sourceType)) {
+    return c.json({ error: "source_not_enableable", source: sourceType }, 400);
+  }
+  if (isReviewSource(sourceType) || sourceType === "github_repo") {
+    return c.json({ error: "source_requires_url", source: sourceType }, 400);
+  }
+  // Plan is per-org, so it is checked once here rather than once per competitor.
+  const plan = await getOrgPlan(orgId);
+  if (!planAllowsMonitorSource(plan, sourceType)) {
+    return c.json({ error: "plan_locked_source", source: sourceType, plan }, 403);
+  }
+  if (sourceType === "trustpilot_public" && !process.env.TRUSTPILOT_API_KEY) {
+    return c.json({ error: "trustpilot_key_missing", source: sourceType }, 400);
+  }
+
+  const rows = await resolveBulkSelection(orgId, parsed.data.ids);
+  if (rows.length === 0) return c.json({ created: 0, competitorsTouched: 0 });
+
+  const result = await addSourcesToCompetitors({
+    sources: [sourceType],
+    competitorIds: rows.map((r) => r.id),
+  });
+
+  void captureServerEvent(user.id, "monitor_enabled", {
+    sourceType,
+    orgId,
+    bulk: true,
+    competitors: result.competitorsTouched,
+  });
+
+  return c.json({ created: result.created, competitorsTouched: result.competitorsTouched });
+});
+
+// Soft-delete the selection. Same write as the per-competitor DELETE (deletedAt), so
+// everything downstream that already filters on it hides them at once.
+competitorsRouter.post("/bulk/delete", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const parsed = BulkIdsSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+
+  const rows = await resolveBulkSelection(orgId, parsed.data.ids);
+  if (rows.length === 0) return c.json({ ok: true, deleted: 0 });
+
+  await db
+    .update(competitors)
+    .set({ deletedAt: new Date() })
+    .where(inArray(competitors.id, rows.map((r) => r.id)));
+
+  void captureServerEvent(user.id, "competitor_deleted", {
+    orgId,
+    bulk: true,
+    count: rows.length,
+  });
+
+  return c.json({ ok: true, deleted: rows.length });
+});
 
 competitorsRouter.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);

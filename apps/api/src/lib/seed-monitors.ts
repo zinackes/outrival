@@ -96,7 +96,27 @@ export async function applyDefaultSourcesToExisting(args: {
   competitorIds: string[];
 }): Promise<{ created: number; competitorsTouched: number; sources: SourceType[] }> {
   const { plan, orgDefaultSources, competitorIds } = args;
-  const wanted = resolveSeedSources(plan, orgDefaultSources);
+  return addSourcesToCompetitors({
+    sources: resolveSeedSources(plan, orgDefaultSources),
+    competitorIds,
+  });
+}
+
+/**
+ * Add an explicit set of sources to a set of competitors, creating only the monitors
+ * that don't exist yet. The shared core of the org-wide "apply my default sources"
+ * action above and the roster's bulk "enable a source on the selection".
+ *
+ * ADD only, and idempotent: a source the user turned off keeps its existing monitor
+ * row, so it is skipped rather than silently re-enabled. Callers own the plan gate —
+ * a plan is per-org, so it is checked once, not once per competitor.
+ */
+export async function addSourcesToCompetitors(args: {
+  sources: readonly SourceType[];
+  competitorIds: string[];
+}): Promise<{ created: number; competitorsTouched: number; sources: SourceType[] }> {
+  const { competitorIds } = args;
+  const wanted = [...args.sources];
   if (competitorIds.length === 0 || wanted.length === 0) {
     return { created: 0, competitorsTouched: 0, sources: [] };
   }

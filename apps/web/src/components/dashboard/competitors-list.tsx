@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { AnimatePresence, motion } from "motion/react";
 import {
   PlusIcon,
+  CheckIcon,
   MagnifyingGlassIcon,
   ArrowRightIcon,
   SpinnerIcon,
@@ -85,6 +86,7 @@ import {
 import { CatText } from "./cat-pill";
 import { TableSkeleton } from "./skeletons";
 import { ActivitySpark } from "./activity-spark";
+import { CompetitorsBulkBar } from "./competitors-bulk-bar";
 import { feedItemMotion } from "@/lib/motion";
 
 type SortBy = "lastMove" | "activity" | "overlap" | "name";
@@ -251,6 +253,11 @@ export function CompetitorsList() {
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Competitor | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Roster selection driving the bulk bar. `lastSelectedRef` anchors shift-click
+  // ranges along the CURRENTLY VISIBLE order, so a range covers what the user sees
+  // rather than the order the server happened to send.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const lastSelectedRef = useRef<string | null>(null);
 
   function refresh() {
     return queryClient.invalidateQueries({ queryKey: competitorsQuery(productId).queryKey });
@@ -324,6 +331,77 @@ export function CompetitorsList() {
     });
     return arr;
   }, [rows, bucket, query, sortBy]);
+
+  const visibleIds = useMemo(() => sorted.map((r) => r.id), [sorted]);
+
+  // Keep the selection inside what is on screen. Changing a filter, typing in search,
+  // or a competitor leaving the roster (deleted, or dropped by the 30s poll) must not
+  // leave a stale id behind: it would inflate "N selected" and let a bulk action reach
+  // a row the user can no longer see. Returns `prev` untouched when nothing is stale,
+  // so a stable visibleIds can't loop.
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(visibleIds);
+      const next = new Set<string>();
+      for (const id of prev) if (visible.has(id)) next.add(id);
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visibleIds]);
+
+  const selectionActive = selectedIds.size > 0;
+  const selectedRows = useMemo(
+    () => sorted.filter((r) => selectedIds.has(r.id)),
+    [sorted, selectedIds],
+  );
+
+  const toggleSelect = useCallback(
+    (id: string, range: boolean) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        const anchor = lastSelectedRef.current;
+        if (range && anchor && anchor !== id) {
+          const a = visibleIds.indexOf(anchor);
+          const b = visibleIds.indexOf(id);
+          if (a !== -1 && b !== -1) {
+            const [lo, hi] = a < b ? [a, b] : [b, a];
+            for (let i = lo; i <= hi; i++) next.add(visibleIds[i]!);
+            lastSelectedRef.current = id;
+            return next;
+          }
+        }
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        lastSelectedRef.current = id;
+        return next;
+      });
+    },
+    [visibleIds],
+  );
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    lastSelectedRef.current = null;
+  }, []);
+
+  // Escape drops the selection, the way it dismisses every other transient state in
+  // the product. Only bound while a selection exists.
+  useEffect(() => {
+    if (!selectionActive) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") clearSelection();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [selectionActive, clearSelection]);
+
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+
+  function toggleSelectAll() {
+    setSelectedIds(allVisibleSelected ? new Set() : new Set(visibleIds));
+    lastSelectedRef.current = null;
+  }
 
   if (err && competitors === null) {
     return (
@@ -496,10 +574,21 @@ export function CompetitorsList() {
           <div
             className={cn(
               GRID,
-              "border-b border-border px-2 pb-2 text-meta font-medium text-muted-foreground",
+              "group border-b border-border px-2 pb-2 text-meta font-medium text-muted-foreground",
             )}
           >
-            <span />
+            {/* Select-all sits in the same slot as each row's box, so the column reads
+                as one control rather than two. */}
+            <SelectCell
+              show={selectionActive}
+              checked={allVisibleSelected}
+              label={
+                allVisibleSelected
+                  ? "Deselect all competitors"
+                  : `Select all ${visibleIds.length} competitors`
+              }
+              onToggle={toggleSelectAll}
+            />
             <span>Competitor</span>
             <span>Latest move</span>
             <ColumnLabel
@@ -529,6 +618,9 @@ export function CompetitorsList() {
                 <CompetitorRow
                   row={row}
                   allProducts={allProducts}
+                  selected={selectedIds.has(row.id)}
+                  selectionActive={selectionActive}
+                  onToggleSelect={(range) => toggleSelect(row.id, range)}
                   onColor={(v) => void setColor(row.id, v)}
                   onDelete={() => setDeleteTarget(row)}
                 />
@@ -537,6 +629,13 @@ export function CompetitorsList() {
           </AnimatePresence>
         </div>
       )}
+
+      <CompetitorsBulkBar
+        selected={selectedRows}
+        onClear={clearSelection}
+        onRefresh={refresh}
+        onPaywall={setPaywall}
+      />
 
       <AddCompetitorDialog
         open={showDialog}
@@ -598,11 +697,17 @@ export function CompetitorsList() {
 function CompetitorRow({
   row,
   allProducts,
+  selected,
+  selectionActive,
+  onToggleSelect,
   onColor,
   onDelete,
 }: {
   row: Row;
   allProducts: boolean;
+  selected: boolean;
+  selectionActive: boolean;
+  onToggleSelect: (range: boolean) => void;
   onColor: (value: string | null) => void;
   onDelete: () => void;
 }) {
@@ -610,15 +715,24 @@ function CompetitorRow({
   const href = `/dashboard/competitors/${row.id}`;
   const cov = row.coverage;
   const live = cov.sources - cov.failing;
+  const showBox = selectionActive || selected;
 
   return (
     <div
       className={cn(
         GRID,
         "group relative rounded-md border-b border-border px-2 py-2.5 transition-colors hover:bg-surface-2 focus-within:bg-surface-2",
+        selected && "bg-surface-2",
       )}
     >
-      <SeverityGauge severity={row.move && !row.stale ? row.move.severity : null} />
+      <SelectCell
+        show={showBox}
+        checked={selected}
+        label={selected ? `Deselect ${row.name}` : `Select ${row.name}`}
+        onToggle={(e) => onToggleSelect(e.shiftKey)}
+      >
+        <SeverityGauge severity={row.move && !row.stale ? row.move.severity : null} />
+      </SelectCell>
 
       <div className="flex min-w-0 items-center gap-2.5">
         <CompAvatar name={row.name} url={row.url} size={28} />
@@ -796,6 +910,97 @@ function CompetitorRow({
         </DropdownMenu>
       </div>
     </div>
+  );
+}
+
+/**
+ * The roster's leading slot: a severity gauge at rest, a selection checkbox once the row
+ * is hovered or a selection is live. ONE grid child on purpose — a reserved selection
+ * gutter would read as a permanently empty column, and adding a second child would make
+ * the row's column template carry a track for a control that is usually invisible.
+ *
+ * Reveal-on-hover is gated to hover-capable devices, like the signals feed: globals.css
+ * drops the hover media gate from `hover:` project-wide for tap feedback, which on touch
+ * would make the first tap reveal this overlay and swallow the tap that opens the
+ * competitor. Selecting is a pointer affordance here; a tap opens the row.
+ */
+function SelectCell({
+  show,
+  checked,
+  label,
+  onToggle,
+  children,
+}: {
+  // A selection is live (or this row is in it) → the box stays put and the gauge fades.
+  show: boolean;
+  checked: boolean;
+  label: string;
+  onToggle: (e: React.MouseEvent) => void;
+  children?: React.ReactNode;
+}) {
+  return (
+    <span className="relative flex items-center">
+      {/* The gauge gets out of the way whenever the box is in front of it — hover
+          included, otherwise the four severity bars would read through a 16px box
+          sitting on top of them. */}
+      <span
+        className={cn(
+          "flex w-2.5 transition-opacity",
+          show ? "opacity-0" : "[@media(hover:hover)]:group-hover:opacity-0",
+        )}
+      >
+        {children}
+      </span>
+      <span
+        className={cn(
+          "absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 transition-opacity",
+          show
+            ? "opacity-100"
+            : "pointer-events-none opacity-0 [@media(hover:hover)]:group-hover:pointer-events-auto [@media(hover:hover)]:group-hover:opacity-100",
+        )}
+      >
+        <SelectBox checked={checked} active={show} label={label} onToggle={onToggle} />
+      </span>
+    </span>
+  );
+}
+
+// The box itself. Not a tab stop until a selection is live or it is checked, so an
+// invisible-at-rest overlay never traps keyboard focus on the way through the roster.
+function SelectBox({
+  checked,
+  active,
+  label,
+  onToggle,
+}: {
+  checked: boolean;
+  active: boolean;
+  label: string;
+  onToggle: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={label}
+      tabIndex={active || checked ? 0 : -1}
+      onClick={(e) => {
+        // The row is navigated by a stretched link covering it; this box sits above
+        // that overlay, so the click must not also reach it.
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle(e);
+      }}
+      className={cn(
+        "flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+        checked
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border text-transparent hover:border-foreground/50",
+      )}
+    >
+      <CheckIcon size={16} />
+    </button>
   );
 }
 

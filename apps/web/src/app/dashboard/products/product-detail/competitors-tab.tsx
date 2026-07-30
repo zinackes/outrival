@@ -389,7 +389,11 @@ function LinkCompetitorsDialog({
     setPending((p) => new Set(p).add(competitorId));
     setTouched((t) => new Set(t).add(competitorId));
     try {
-      if (next) await api.attachCompetitorToProduct(productId, competitorId);
+      // Linking is a MOVE: a competitor belongs to exactly one product, so it leaves
+      // whichever product had it. The bulk endpoint swaps the junction row in one
+      // request; attaching here without detaching there was how a competitor ended up
+      // in two feeds while every surface showed it in one.
+      if (next) await api.bulkMoveCompetitorsToProduct([competitorId], productId);
       else await api.detachCompetitorFromProduct(productId, competitorId);
       await onChanged();
     } catch (e) {
@@ -409,8 +413,9 @@ function LinkCompetitorsDialog({
         <DialogHeader>
           <DialogTitle>Link existing competitors</DialogTitle>
           <DialogDescription>
-            Competitors your workspace already tracks. Linking one here puts its signals in
-            this product&apos;s feed and its prices on the comparison.
+            Competitors your workspace already tracks. Linking one moves it to this
+            product: its signals go in this feed and its prices on this comparison, and
+            it leaves whichever product had it before.
           </DialogDescription>
         </DialogHeader>
 

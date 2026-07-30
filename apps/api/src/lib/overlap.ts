@@ -59,29 +59,67 @@ export async function scoreCompetitorOverlap(
   orgId: string,
   subject: OverlapSubject,
 ): Promise<OverlapOutcome> {
-  if (!subject.url) return { status: "no_url" };
+  const [outcome] = await scoreCompetitorsOverlap(orgId, [subject]);
+  return outcome ?? { status: "failed" };
+}
 
-  const evidence = overlapEvidence(subject);
-  if (!evidence) return { status: "no_evidence" };
+/**
+ * Batched re-score, one outcome per subject in the order they were given.
+ *
+ * `scoreOverlap` already takes a LIST and grades each entry independently against
+ * the fixed scale (that is how discovery scores a whole candidate pool), so the
+ * bulk roster action costs ONE model call and ONE rate-limit hit rather than N.
+ * Subjects with nothing to judge them on are answered from here without ever
+ * reaching the model, so a set that is half unscorable still spends one call.
+ */
+export async function scoreCompetitorsOverlap(
+  orgId: string,
+  subjects: OverlapSubject[],
+): Promise<OverlapOutcome[]> {
+  if (subjects.length === 0) return [];
+
+  // Per-subject preconditions first: url and evidence are properties of the row,
+  // and a subject that fails them must not enter the prompt (it would take a score
+  // built on a bare domain — the 85-becomes-5 failure this module exists to stop).
+  type Scorable = { url: string; name: string; evidence: string };
+  type Prepared = { skip: OverlapOutcome } | Scorable;
+  const prepared: Prepared[] = subjects.map((subject) => {
+    if (!subject.url) return { skip: { status: "no_url" } };
+    const evidence = overlapEvidence(subject);
+    if (!evidence) return { skip: { status: "no_evidence" } };
+    return { url: subject.url, name: subject.name, evidence };
+  });
+
+  const scorable = prepared.filter((p): p is Scorable => !("skip" in p));
+  const settle = (fallback: OverlapOutcome): OverlapOutcome[] =>
+    prepared.map((p) => ("skip" in p ? p.skip : fallback));
+  if (scorable.length === 0) return settle({ status: "failed" });
 
   const org = await db.query.organizations.findFirst({
     where: eq(organizations.id, orgId),
     columns: { productProfile: true },
   });
-  if (!org?.productProfile) return { status: "no_profile" };
+  if (!org?.productProfile) return settle({ status: "no_profile" });
 
   let scored: Awaited<ReturnType<typeof scoreOverlap>>;
   try {
-    scored = await scoreOverlap(org.productProfile, [
-      { url: subject.url, title: subject.name, snippet: evidence },
-    ]);
+    scored = await scoreOverlap(
+      org.productProfile,
+      scorable.map((p) => ({ url: p.url, title: p.name, snippet: p.evidence })),
+    );
   } catch {
-    return { status: "failed" };
+    return settle({ status: "failed" });
   }
 
-  // `scored: false` carries a 0 that means "no score", not "no overlap" — writing
-  // it would let one AI outage zero every competitor the user re-scores.
-  const first = scored[0];
-  if (!first?.scored) return { status: "failed" };
-  return { status: "scored", overlapScore: first.overlapScore, reason: first.reason };
+  // Results come back positionally aligned with what we sent (scoreOverlap resolves
+  // its own url/positional matching internally), so walk the scorable list in step.
+  let i = 0;
+  return prepared.map((p) => {
+    if ("skip" in p) return p.skip;
+    const hit = scored[i++];
+    // `scored: false` carries a 0 that means "no score", not "no overlap" — writing
+    // it would let one AI outage zero every competitor the user re-scores.
+    if (!hit?.scored) return { status: "failed" };
+    return { status: "scored", overlapScore: hit.overlapScore, reason: hit.reason };
+  });
 }

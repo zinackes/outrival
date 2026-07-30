@@ -440,6 +440,46 @@ export interface SignalChange {
   metadata: Record<string, unknown> | null;
 }
 
+/** One role as it reads on the competitor's board. */
+export interface RoleFact {
+  title: string;
+  department: string | null;
+  location: string | null;
+  seniority: string | null;
+  /** The apply link. Present on the structured ATS path, null on the LLM fallback. */
+  url: string | null;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  salaryCurrency: string | null;
+}
+
+/** One plan of the capture, against what it was at the previous one. */
+export interface PlanFact {
+  planName: string;
+  billingPeriod: string;
+  currency: string | null;
+  price: number | null;
+  previousPrice: number | null;
+  state: "added" | "removed" | "changed" | "unchanged";
+}
+
+export type SignalFacts =
+  | {
+      kind: "hiring";
+      opened: RoleFact[];
+      closed: RoleFact[];
+      /** Totals before the display cap, so a truncated list can say so. */
+      openedTotal: number;
+      closedTotal: number;
+      openNow: number;
+    }
+  | {
+      kind: "pricing";
+      plans: PlanFact[];
+      trial: { hasTrial: boolean; days: number | null; requiresCard: boolean | null } | null;
+    }
+  | null;
+
 export interface SignalDetail {
   id: string;
   insight: string;
@@ -473,6 +513,11 @@ export interface SignalDetail {
     comments: number | null;
     url: string | null;
   } | null;
+  // The rows a sibling extractor wrote for the same capture. The signal itself is
+  // born from a text diff of the page; these are the structured facts of that same
+  // scrape, which used to live only on the competitor's Hiring / Pricing tab. null
+  // for every other source, and whenever the extraction wrote nothing.
+  facts: SignalFacts;
   // Composite relevance score (patch-17), max across the change set. null when
   // not scored (lexical / pre-patch). Shown discreetly.
   relevanceScore: number | null;

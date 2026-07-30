@@ -11,13 +11,8 @@ import { Sparkline } from "@/components/dashboard/sparkline";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { buildJobTrend, mergeTrendsByDate } from "./charts";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  SENIORITY_RANK,
-  SENIOR_PLUS_THRESHOLD,
-  formatMoney,
-  salaryLabel,
-  capitalize,
-} from "./helpers";
+import { SENIORITY_RANK, SENIOR_PLUS_THRESHOLD, capitalize } from "./helpers";
+import { formatMoney, salaryLabel } from "@/lib/format-money";
 import {
   Empty,
   TabLoading,

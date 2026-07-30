@@ -27,6 +27,7 @@ import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { logApiAiRun } from "../lib/ai-runs";
 import { notFound } from "../lib/errors";
+import { buildSignalFacts } from "../lib/signal-facts";
 
 type Variables = { user: { id: string } };
 
@@ -617,6 +618,9 @@ signalsRouter.get("/:id/detail", async (c) => {
       competitorId: competitors.id,
       competitorName: competitors.name,
       sourceType: monitors.sourceType,
+      // For the sibling-fact join: which monitor produced the change, and when.
+      monitorId: changes.monitorId,
+      changeDetectedAt: changes.detectedAt,
       // The live page the user can open. resolved_url is the exact page the
       // scraper landed on; fall back to a pinned monitor URL, then the
       // competitor homepage so the link is never dead.
@@ -672,6 +676,16 @@ signalsRouter.get("/:id/detail", async (c) => {
 
   const visualDiffEnabled = process.env.VISUAL_DIFF_ENABLED !== "false";
 
+  // The rows a sibling extractor wrote for the same capture: which roles opened,
+  // which plan moved from what to what. Best-effort — the signal renders without
+  // them.
+  const facts = await buildSignalFacts({
+    monitorId: row.monitorId,
+    competitorId: row.competitorId,
+    sourceType: row.sourceType,
+    detectedAt: row.changeDetectedAt,
+  });
+
   return c.json({
     signal: {
       id: row.id,
@@ -709,6 +723,7 @@ signalsRouter.get("/:id/detail", async (c) => {
               url: row.threadUrl,
             }
           : null,
+      facts,
       relevanceScore,
       sourceType: row.sourceType,
       sourceUrl: row.sourceUrl,

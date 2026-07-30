@@ -53,6 +53,7 @@ import { AiOutputWarning } from "@/components/outrival/ai-output-warning";
 import { VisualDiff } from "@/components/outrival/visual-diff";
 import { ChangeBreakdown } from "@/components/outrival/change-breakdown";
 import { DiffPreview } from "@/components/outrival/diff-preview";
+import { SignalFacts } from "@/components/outrival/signal-facts";
 
 /**
  * The workspace's right column: one signal read as a document, not a card.
@@ -256,6 +257,9 @@ export function SignalDetailPanel({
   // thread. Stored on the change since the source shipped, read here for the
   // first time.
   const engagement = detail?.engagement ?? null;
+  // The rows a sibling extractor wrote for the same capture (roles, plans).
+  const facts = detail?.facts ?? null;
+  const hasLedger = Boolean(detail?.humanChangeBefore || detail?.humanChangeAfter);
   const hasEvidence =
     hasVisual || changes.length > 0 || Boolean(diffText) || Boolean(engagement);
   const heldBack =
@@ -574,12 +578,23 @@ export function SignalDetailPanel({
             </div>
           </header>
 
-          {(detail?.humanChangeBefore || detail?.humanChangeAfter) && (
+          {(hasLedger || facts) && (
             <Section label="What changed">
-              <ChangeLedger
-                before={detail.humanChangeBefore}
-                after={detail.humanChangeAfter}
-              />
+              {hasLedger && (
+                <ChangeLedger
+                  before={detail!.humanChangeBefore}
+                  after={detail!.humanChangeAfter}
+                />
+              )}
+              {/* The structured rows the same capture produced. On a jobs signal
+                  the pair above is usually absent (the change is a SET of roles,
+                  which the classifier answers with null), so this IS the answer to
+                  "what changed": the roles, by name, with their apply links. */}
+              {facts && (
+                <div className={cn("max-w-[36rem]", hasLedger && "mt-4 border-t border-border pt-3")}>
+                  <SignalFacts facts={facts} />
+                </div>
+              )}
             </Section>
           )}
           {!injected && detailQ.isFetching && !detail && (

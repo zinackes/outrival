@@ -197,7 +197,7 @@ only visible once the data was in hand.
 4. **Fill the wellknown pair.** It hardcoded both sides to null, so a mobile app
    launch rendered no fact while the app identifier sat in the delta.
 
-### Wave 2 (NEXT): join the sibling facts, 0 AI calls
+### Wave 2 (DONE for jobs and pricing): join the sibling facts, 0 AI calls
 
 The extractors that hold the real facts run **in parallel** with the change that
 becomes the signal, and the two never meet. Both `extractJobs.enqueue` and
@@ -212,12 +212,34 @@ is already in scope (declared at `:1123`). So passing it down is one argument.
    - reviews: score, sub-scores, the complaint themes that moved.
    - tech: name, category, importance, evidence.
 
-   Two ways to link them. (a) Time-window join on `detected_at` around the
-   change: no migration, slightly fuzzy when two scrapes land close together.
-   (b) `job_postings.change_id` and equivalents: one migration, exact, and it
-   makes "what did this signal actually consist of" answerable forever. Prefer
-   (b) for jobs and pricing, since the enqueue site already has the id.
-   Effort: about a day for hiring plus pricing, half a day for the rest.
+   **Shipped with the window join (a), not the `change_id` migration (b), which
+   reverses the recommendation this document made before it was built.** Two facts
+   decided it, both found while reading the code rather than planning against it.
+
+   First, the API already answers this exact class of question with a window join
+   over `recorded_at`: `routes/activity.ts` joins the plan batch, its previous
+   batch, the job counts and the review scores onto each `scrape_runs` row, with a
+   one-hour tolerance. A second, private linking mechanism would be one more thing
+   to keep true, for the same question.
+
+   Second, and decisively: a column can only be filled going forward. Every signal
+   already in the feed would have shown nothing until fresh scrapes landed, and
+   that backlog is exactly what the reader is complaining about. A window works
+   retroactively on all 344.
+
+   The window is `[change - 5 min, change + 6 h]`, closed early by the NEXT change
+   on the same monitor. The six hours are for queue lag, since the extractor is
+   enqueued by the scrape but stamped by the worker and waits past an hour are on
+   record; the next-change bound is what stops a forced re-scan's roles being
+   claimed by the earlier change, which would report a hiring push that never
+   happened. Both edges are pinned by tests.
+
+   `change_id` is still the right answer if the attribution ever proves too loose.
+   It would then be a correctness fix on a feature people already use, rather than
+   a migration shipped blind.
+
+   Reviews and tech stack are NOT wired up: both already carry a before/after pair
+   from their deterministic detectors, so they are the smaller gap.
 
 ### Wave 3: facts we could compute but do not (deterministic, cheap)
 
@@ -255,17 +277,15 @@ Before the measurement this looked like the one source that was already fine.
 
 ## 7. Open questions
 
-- Raw page text as evidence is honest but ugly on `jobs` and `custom` (nav
-  boilerplate leaks in). Do we ship it raw first and clean per source later, or
-  clean upfront for the two noisiest?
-- The window-join versus `change_id` decision in wave 2 is the only migration in
-  this document. Worth doing properly if we ever want "what did this signal
-  consist of" to be auditable.
+- The `change_id` migration was NOT taken, for the reasons recorded in wave 2.
+  What would change the answer: one report of a signal listing roles that belong
+  to a different capture. The window's edges are pinned by tests, but a window is
+  a heuristic and a column is not.
 - Measured after the fact: 169 of the 170 evidence-less signals carry lines, so
-  wave 1 reaches all but one of them. Still open is whether the raw page text
-  reads well enough on `jobs` and `custom`, where nav boilerplate leaks into the
-  hunks. Wave 2's `job_postings` join is what turns those into a crisp role list;
-  wave 1 only guarantees the facts are on screen.
+  wave 1 reaches all but one of them. On `jobs` and `pricing` the fact block now
+  leads, so the raw hunks are the audit trail rather than the answer. `custom` has
+  no extractor behind it, so there the nav boilerplate in the hunks is still all
+  the reader gets.
 - Not yet measured: how often the added side alone overflows the 40-line
   per-side cap. Sitemap averages 44 added hunks, so it is the one source that
   routinely truncates, and a truncated URL delta may want its own count line

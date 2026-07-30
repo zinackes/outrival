@@ -401,6 +401,7 @@ export function getSampleSignalDetail(signalId: string): SignalDetail | null {
     diffText: null,
     materiality: null,
     engagement: null,
+    facts: null,
     relevanceScore: sig.relevanceScore ?? null,
     sourceType: sig.sourceType,
     sourceUrl: evidence.sourceUrl,

@@ -67,7 +67,7 @@ export function SidebarCompetitors() {
   // Competitors list page; polls in the background. Mutations elsewhere invalidate the
   // matching key → this refreshes via the shared cache (no manual event subscription).
   const productId = useProductScope() ?? undefined;
-  // Product dot only in all-products scope (redundant once scoped to one product).
+  // Product mark only in all-products scope (redundant once scoped to one product).
   const allProducts = !productId;
   const [open, setOpen] = React.useState(true);
   // Only poll while the roster is expanded — a collapsed section can't show the

@@ -329,7 +329,13 @@ signalsRouter.get("/facets", async (c) => {
       .where(and(...base)),
 
     db
-      .selectDistinct({ id: signals.competitorId, name: competitors.name })
+      // `url` rides along so the filter menu can draw each competitor's favicon —
+      // the same mark it wears in the feed, instead of a bare name.
+      .selectDistinct({
+        id: signals.competitorId,
+        name: competitors.name,
+        url: competitors.url,
+      })
       .from(signals)
       .innerJoin(competitors, eq(competitors.id, signals.competitorId))
       .where(and(...base))

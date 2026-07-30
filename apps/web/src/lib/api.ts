@@ -2478,7 +2478,8 @@ export interface SignalsFacets {
     actions: number;
   };
   categories: string[];
-  competitors: { id: string; name: string }[];
+  // `url` drives the favicon in the competitor filter list (null → initial letter).
+  competitors: { id: string; name: string; url?: string | null }[];
 }
 
 function buildFeedQs(p: SignalsFeedParams & { limit?: number; offset?: number }): string {

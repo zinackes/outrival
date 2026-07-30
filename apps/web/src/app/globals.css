@@ -599,6 +599,19 @@
   }
 }
 
+/* Build progress (battle card generation) — a highlight travels across the segment
+   whose stage is RUNNING. Same recipe as the skeleton sheen, for the same reason: a
+   stage is observed, never timed, so its segment has to read as alive without
+   claiming a percentage it cannot know. */
+@keyframes progress-sheen {
+  from {
+    background-position: -60% 0;
+  }
+  to {
+    background-position: 160% 0;
+  }
+}
+
 /* Arrival fade for a chart's hover readout (see .chart-hover-fade below). */
 @keyframes chart-hover-in {
   from {
@@ -669,9 +682,30 @@
     animation: skeleton-sheen 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
   }
 
+  /* The running segment of a build progress bar: the accent fill plus a travelling
+     highlight. Written here rather than as utilities because the gradient needs the
+     raw token (@theme inline names aren't emitted as runtime properties). */
+  .progress-active {
+    background-color: var(--accent);
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in oklab, var(--accent-foreground) 55%, transparent) 50%,
+      transparent 100%
+    );
+    background-size: 50% 100%;
+    background-repeat: no-repeat;
+    animation: progress-sheen 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+
   /* No infinite motion for vestibular users — settle on the resting base. */
   @media (prefers-reduced-motion: reduce) {
     .skeleton {
+      animation: none;
+      background-image: none;
+    }
+
+    .progress-active {
       animation: none;
       background-image: none;
     }

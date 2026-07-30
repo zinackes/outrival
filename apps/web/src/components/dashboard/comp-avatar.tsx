@@ -201,6 +201,7 @@ export function CompAvatar({
   const domain = domainFromUrl(url);
   const { resolvedTheme } = useTheme();
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [analysis, setAnalysis] = useState<Analysis | null>(() =>
     domain ? (cache.get(domain) ?? null) : null,
   );
@@ -229,6 +230,10 @@ export function CompAvatar({
   const src =
     analysis?.kind === "glyph" && analysis.src ? analysis.src : faviconSrc;
   const pad = fill ? 0 : Math.max(2, Math.round(size * 0.15));
+  // A favicon that analysed to no glyph pixels at all paints nothing — the letter is the
+  // only thing left to identify the tile, so it stays.
+  const blank = analysis?.kind === "glyph" && analysis.src === null;
+  const showLetter = !showIcon || !loaded || blank;
 
   return (
     <div
@@ -248,9 +253,11 @@ export function CompAvatar({
         overflow: "hidden",
       }}
     >
-      {/* The initial sits underneath; once the favicon loads it covers the letter. A
-          missing URL or a load error leaves the letter visible — never an empty box. */}
-      {letter}
+      {/* The initial is a PLACEHOLDER, not a backdrop: it is removed the moment the favicon
+          paints. Left underneath, it showed through every transparent logo — the glyph read
+          as sitting on top of a stray letter. A missing URL, a load error, or a favicon with
+          no visible pixels keeps it — never an empty box. */}
+      {showLetter && letter}
       {showIcon && (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element -- dynamic proxied icon, not a static asset */}
@@ -260,6 +267,7 @@ export function CompAvatar({
             aria-hidden
             loading="lazy"
             onLoad={(e) => {
+              setLoaded(true);
               // Analyse a domain once, then reuse it for every avatar of that domain. When a
               // sibling already cached the result (or this <img> re-fired onLoad after `src`
               // swapped to the recentred data URL), adopt the cached analysis instead of

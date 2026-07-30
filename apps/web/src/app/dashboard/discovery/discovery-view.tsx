@@ -1320,7 +1320,7 @@ export function DiscoveryView() {
               <Kbd>T</Kbd> track
             </span>
             <span>
-              <Kbd>XIcon</Kbd> dismiss
+              <Kbd>X</Kbd> dismiss
             </span>
             <span className="ml-auto">
               Dismissing teaches the relevance threshold for the next scan.

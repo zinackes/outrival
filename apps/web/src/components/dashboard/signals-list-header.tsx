@@ -27,6 +27,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { SavedViewsMenu } from "./saved-views-menu";
+import { CatText } from "./cat-pill";
+import { CompAvatar } from "./comp-avatar";
 
 export type Sev = Signal["severity"];
 export type QuickView =
@@ -109,7 +111,7 @@ export function SignalsListHeader({
   cat: Set<string>;
   comp: Set<string>;
   allCategories: string[];
-  allCompetitors: { id: string; name: string }[];
+  allCompetitors: { id: string; name: string; url?: string | null }[];
   searchInput: string;
   onSearchInput: (value: string) => void;
   setParam: (updates: Record<string, string | null>) => void;
@@ -227,6 +229,9 @@ export function SignalsListHeader({
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel>Category</DropdownMenuLabel>
+                {/* The category wears its wayfinding hue as INK, the same way it
+                    reads on every feed row — no swatch: a dot beside a word that is
+                    already the colour says the same thing twice. */}
                 {allCategories.map((c) => (
                   <DropdownMenuCheckboxItem
                     key={c}
@@ -234,7 +239,7 @@ export function SignalsListHeader({
                     onSelect={(e) => e.preventDefault()}
                     onCheckedChange={() => onToggleFilter("category", c)}
                   >
-                    <span className="capitalize">{c.replace(/_/g, " ")}</span>
+                    <CatText category={c} />
                   </DropdownMenuCheckboxItem>
                 ))}
               </>
@@ -250,8 +255,10 @@ export function SignalsListHeader({
                     checked={comp.has(c.id)}
                     onSelect={(e) => e.preventDefault()}
                     onCheckedChange={() => onToggleFilter("competitor", c.id)}
+                    className="gap-2"
                   >
-                    {c.name}
+                    <CompAvatar name={c.name} url={c.url} size={16} />
+                    <span className="min-w-0 truncate">{c.name}</span>
                   </DropdownMenuCheckboxItem>
                 ))}
               </>
@@ -326,16 +333,25 @@ export function SignalsListHeader({
               <span className="capitalize">{s}</span>
             </FilterChip>
           ))}
+          {/* The chips mirror the menu's encoding — a category that is coloured in the
+              list and grey once picked would read as a broken state, not a choice. */}
           {Array.from(cat).map((c) => (
             <FilterChip key={`c-${c}`} onRemove={() => onToggleFilter("category", c)}>
-              <span className="capitalize">{c.replace(/_/g, " ")}</span>
+              <CatText category={c} />
             </FilterChip>
           ))}
-          {Array.from(comp).map((c) => (
-            <FilterChip key={`comp-${c}`} onRemove={() => onToggleFilter("competitor", c)}>
-              {allCompetitors.find((x) => x.id === c)?.name ?? c}
-            </FilterChip>
-          ))}
+          {Array.from(comp).map((c) => {
+            const match = allCompetitors.find((x) => x.id === c);
+            return (
+              <FilterChip
+                key={`comp-${c}`}
+                onRemove={() => onToggleFilter("competitor", c)}
+              >
+                {match && <CompAvatar name={match.name} url={match.url} size={14} />}
+                {match?.name ?? c}
+              </FilterChip>
+            );
+          })}
           <button
             onClick={onClearFilters}
             className="px-1 text-dense text-muted-foreground transition-colors hover:text-foreground"

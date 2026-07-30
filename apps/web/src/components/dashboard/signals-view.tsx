@@ -841,11 +841,15 @@ export function SignalsView() {
 
   const allCompetitors = useMemo(() => {
     if (!sample) return facetsQ.data?.competitors ?? [];
-    const m = new Map<string, string>();
-    sampleData.signals.forEach((s) => m.set(s.competitorId, s.competitorName));
-    return Array.from(m.entries())
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const m = new Map<string, { id: string; name: string; url?: string | null }>();
+    sampleData.signals.forEach((s) =>
+      m.set(s.competitorId, {
+        id: s.competitorId,
+        name: s.competitorName,
+        url: s.competitorUrl ?? null,
+      }),
+    );
+    return Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [sample, facetsQ.data, sampleData]);
 
   const activeFilterCount = sev.size + cat.size + comp.size;

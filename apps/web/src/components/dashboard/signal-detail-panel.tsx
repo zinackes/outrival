@@ -52,6 +52,8 @@ import { SeverityScale } from "@/components/outrival/severity-scale";
 import { AiOutputWarning } from "@/components/outrival/ai-output-warning";
 import { VisualDiff } from "@/components/outrival/visual-diff";
 import { ChangeBreakdown } from "@/components/outrival/change-breakdown";
+import { DiffPreview } from "@/components/outrival/diff-preview";
+import { SignalFacts } from "@/components/outrival/signal-facts";
 
 /**
  * The workspace's right column: one signal read as a document, not a card.
@@ -88,6 +90,11 @@ const PROSE = "max-w-[36rem]";
 // the bottom of the document. Show a glance, then reveal in feed-sized pages.
 const RELATED_INITIAL = 5;
 const RELATED_STEP = 10;
+
+// The page's own lines, collapsed and expanded. A glance is enough to see WHICH
+// roles or plans moved; the full set is for the reader who wants to audit it.
+const DIFF_LINES_COLLAPSED = 8;
+const DIFF_LINES_EXPANDED = 80;
 
 // Mirrors ConfidenceDot's tones so the two never disagree about how loud a
 // given confidence level is: amber only at "low", neutral at "moderate".
@@ -150,6 +157,7 @@ export function SignalDetailPanel({
   const [showComments, setShowComments] = useState(false);
   const [showContext, setShowContext] = useState(false);
   const [showAllChanges, setShowAllChanges] = useState(false);
+  const [showAllLines, setShowAllLines] = useState(false);
   const [showWhy, setShowWhy] = useState(false);
   const [visualFailed, setVisualFailed] = useState(false);
   const [relatedShown, setRelatedShown] = useState(RELATED_INITIAL);
@@ -237,7 +245,23 @@ export function SignalDetailPanel({
     Boolean(detail?.screenshots?.before && detail?.screenshots?.after) &&
     !visualFailed;
   const changes = detail?.changes ?? [];
-  const hasEvidence = hasVisual || changes.length > 0;
+  // The lines the page added and removed. For the sources with no structured
+  // breakdown, which is most of them, this is what makes the Evidence section
+  // exist at all: without it a jobs or pricing signal showed the reader no fact.
+  const diffText = detail?.diffText ?? null;
+  // Exact: the API sends one marked line per line, already capped per side.
+  const diffLineCount = diffText
+    ? diffText.split("\n").filter((l) => l.trim().length > 0).length
+    : 0;
+  // Hacker News only: the numbers that say whether the post landed, plus the
+  // thread. Stored on the change since the source shipped, read here for the
+  // first time.
+  const engagement = detail?.engagement ?? null;
+  // The rows a sibling extractor wrote for the same capture (roles, plans).
+  const facts = detail?.facts ?? null;
+  const hasLedger = Boolean(detail?.humanChangeBefore || detail?.humanChangeAfter);
+  const hasEvidence =
+    hasVisual || changes.length > 0 || Boolean(diffText) || Boolean(engagement);
   const heldBack =
     signal.filteredReason && signal.filteredReason !== "backfill"
       ? signal.filteredReason
@@ -554,12 +578,23 @@ export function SignalDetailPanel({
             </div>
           </header>
 
-          {(detail?.humanChangeBefore || detail?.humanChangeAfter) && (
+          {(hasLedger || facts) && (
             <Section label="What changed">
-              <ChangeLedger
-                before={detail.humanChangeBefore}
-                after={detail.humanChangeAfter}
-              />
+              {hasLedger && (
+                <ChangeLedger
+                  before={detail!.humanChangeBefore}
+                  after={detail!.humanChangeAfter}
+                />
+              )}
+              {/* The structured rows the same capture produced. On a jobs signal
+                  the pair above is usually absent (the change is a SET of roles,
+                  which the classifier answers with null), so this IS the answer to
+                  "what changed": the roles, by name, with their apply links. */}
+              {facts && (
+                <div className={cn("max-w-[36rem]", hasLedger && "mt-4 border-t border-border pt-3")}>
+                  <SignalFacts facts={facts} />
+                </div>
+              )}
             </Section>
           )}
           {!injected && detailQ.isFetching && !detail && (
@@ -615,6 +650,35 @@ export function SignalDetailPanel({
 
           {hasEvidence && (
             <Section label="Evidence">
+              {engagement && (
+                <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-dense">
+                  {engagement.points !== null && (
+                    <span className="text-foreground">
+                      <span className="tabular-nums font-medium">
+                        {engagement.points}
+                      </span>{" "}
+                      points
+                    </span>
+                  )}
+                  {engagement.comments !== null && (
+                    <span className="text-muted-foreground">
+                      <span className="tabular-nums">{engagement.comments}</span>{" "}
+                      comments
+                    </span>
+                  )}
+                  {engagement.url && (
+                    <a
+                      href={engagement.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      Read the thread
+                      <ArrowSquareOutIcon size={14} aria-hidden />
+                    </a>
+                  )}
+                </div>
+              )}
               {hasVisual && (
                 <VisualDiff
                   signalId={signal.id}
@@ -649,6 +713,32 @@ export function SignalDetailPanel({
                 ) : (
                   <ChangeBreakdown changes={changes} />
                 ))}
+              {diffText && (
+                <div className={cn((hasVisual || changes.length > 0) && "mt-4")}>
+                  <DiffPreview
+                    diffText={diffText}
+                    maxLines={showAllLines ? DIFF_LINES_EXPANDED : DIFF_LINES_COLLAPSED}
+                    hideTruncationNote={diffLineCount > DIFF_LINES_COLLAPSED}
+                  />
+                  {diffLineCount > DIFF_LINES_COLLAPSED && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllLines((v) => !v)}
+                      aria-expanded={showAllLines}
+                      className="mt-2 flex items-center gap-1.5 rounded-sm text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      {showAllLines ? "Show fewer lines" : `Show all ${diffLineCount} lines`}
+                      <CaretDownIcon
+                        className={cn(
+                          "size-3.5 transition-transform",
+                          showAllLines && "rotate-180",
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                  )}
+                </div>
+              )}
             </Section>
           )}
 

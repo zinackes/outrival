@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   severityFromMateriality,
+  explainMateriality,
   isSignificantFromMateriality,
   applyCategoryFloor,
   resolveSeverity,
@@ -167,5 +168,40 @@ describe("resolveSeverity — pipeline scenarios", () => {
     const scores = m(0, 0);
     expect(resolveSeverity("content", scores, "Hero copy reworded")).toBe("low");
     expect(isSignificantFromMateriality(scores)).toBe(false);
+  });
+});
+
+// The explanation is shown to the customer beside the band. It reads the same two
+// helpers the band is computed from, so what is pinned here is that it agrees with
+// the table: an explanation that claims a promotion the table did not apply, or
+// stays silent about a demotion it did, is worse than showing nothing.
+describe("explainMateriality — the band said in words", () => {
+  test("only the maximum on both axes claims to be the route to critical", () => {
+    expect(explainMateriality(m(3, 3))).toContain("only route to critical");
+    expect(explainMateriality(m(3, 2))).not.toContain("critical");
+    expect(severityFromMateriality(m(3, 3))).toBe("critical");
+  });
+
+  test("a demotion is always accounted for", () => {
+    const text = explainMateriality(m(3, 3, 0));
+    expect(text).toContain("drops one step");
+    expect(severityFromMateriality(m(3, 3, 0))).toBe("high");
+  });
+
+  test("a promotion is named, and says it cannot reach critical", () => {
+    const text = explainMateriality(m(2, 1, 3));
+    expect(text).toContain("rises one step");
+    expect(text).toContain("never reach critical");
+    expect(severityFromMateriality(m(2, 1, 3))).toBe("high");
+  });
+
+  test("the normal single-surface case claims neither move", () => {
+    const text = explainMateriality(m(2, 1));
+    expect(text).not.toContain("one step");
+    expect(severityFromMateriality(m(2, 1))).toBe("medium");
+  });
+
+  test("no decision impact says so plainly", () => {
+    expect(explainMateriality(m(0, 3))).toContain("Nothing here changes");
   });
 });

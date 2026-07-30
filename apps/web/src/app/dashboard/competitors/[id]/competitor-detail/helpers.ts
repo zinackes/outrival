@@ -1,56 +1,6 @@
 // Pure, JSX-free helpers shared across the competitor-detail tabs. No React, no
 // app-local type coupling — safe to import from any tab module.
 
-import { splitDiffText } from "@outrival/shared";
-
-export type DiffLine = { kind: "add" | "remove"; text: string };
-
-/**
- * Render a persisted diff as sided lines.
- *
- * Side assignment is delegated to `splitDiffText` so the preview and the AI
- * pipeline read a diff the same way. The local loop this replaces demanded a
- * marker on every line and skipped anything without one, which silently hid the
- * continuation lines of every multi-line hunk: before per-line prefixing landed,
- * only a hunk's FIRST line ever carried a marker. Rows written then are still in
- * the table, so tolerating them is not a transitional nicety.
- */
-export function parseDiff(
-  diffText: string,
-  maxLines = 18,
-): { lines: DiffLine[]; truncated: boolean } {
-  const { removed, added } = splitDiffText(diffText);
-  const lines: DiffLine[] = [];
-
-  for (const [kind, block] of [
-    ["remove", removed],
-    ["add", added],
-  ] as const) {
-    for (const raw of block) {
-      const text = stripHtml(raw).trim();
-      if (!text) continue;
-      lines.push({ kind, text });
-      if (lines.length >= maxLines) return { lines, truncated: true };
-    }
-  }
-
-  return { lines, truncated: false };
-}
-
-export function stripHtml(input: string): string {
-  return input
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ");
-}
-
 export function formatTierPrice(p: {
   price: number | null;
   currency: string;
@@ -149,25 +99,5 @@ export function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-const CURRENCY_SYMBOL: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", INR: "₹" };
-
-// Compact money for a hiring badge, e.g. 120000 USD → "$120k".
-export function formatMoney(n: number, currency: string | null): string {
-  const sym = CURRENCY_SYMBOL[currency ?? ""] ?? "";
-  const compact = n >= 1000 ? `${Math.round(n / 1000)}k` : String(Math.round(n));
-  if (sym) return `${sym}${compact}`;
-  return currency ? `${compact} ${currency}` : compact;
-}
-
-// Salary range label for one role, or null when the ATS exposed no compensation.
-export function salaryLabel(r: {
-  salaryMin: number | null;
-  salaryMax: number | null;
-  salaryCurrency: string | null;
-}): string | null {
-  if (r.salaryMin == null && r.salaryMax == null) return null;
-  if (r.salaryMin != null && r.salaryMax != null && r.salaryMin !== r.salaryMax) {
-    return `${formatMoney(r.salaryMin, r.salaryCurrency)}–${formatMoney(r.salaryMax, r.salaryCurrency)}`;
-  }
-  return formatMoney((r.salaryMin ?? r.salaryMax)!, r.salaryCurrency);
-}
+// formatMoney / salaryLabel moved to @/lib/format-money: a component outside this
+// route needs them, and a component may not import from an app route.

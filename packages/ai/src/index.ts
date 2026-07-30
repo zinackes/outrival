@@ -42,6 +42,7 @@ export type { Classification } from "./tasks/classify";
 export {
   MaterialitySchema,
   severityFromMateriality,
+  explainMateriality,
   isSignificantFromMateriality,
   applyCategoryFloor,
   resolveSeverity,

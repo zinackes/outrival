@@ -86,21 +86,70 @@ function shift(severity: SignalSeverity, delta: number): SignalSeverity {
  * "medium" alone (base medium with d>=2 means u<2), i.e. exactly the case
  * "moderate impact, no rush, but three surfaces confirm it".
  */
-export function severityFromMateriality(m: Materiality): SignalSeverity {
-  const { decision_impact: d, urgency: u, corroboration: c } = m;
+/** Stage one: the band decision_impact × urgency set, before corroboration. */
+function baseBand(m: Materiality): SignalSeverity {
+  const { decision_impact: d, urgency: u } = m;
+  if (d === 3 && u === 3) return "critical";
+  if (d === 3 || (d === 2 && u >= 2)) return "high";
+  if (d >= 1) return "medium";
+  return "low";
+}
 
-  let severity: SignalSeverity;
-  if (d === 3 && u === 3) severity = "critical";
-  else if (d === 3 || (d === 2 && u >= 2)) severity = "high";
-  else if (d >= 1) severity = "medium";
-  else severity = "low";
-
-  if (c === 0) return shift(severity, -1);
+/** Whether corroboration moved the base band, and which way. */
+function modulation(m: Materiality): "down" | "up" | null {
+  const { decision_impact: d, corroboration: c } = m;
+  if (c === 0) return "down";
   // Promote only below "high" → a promotion can never produce "critical".
-  if (c >= 2 && d >= 2 && BANDS.indexOf(severity) < BANDS.indexOf("high")) {
-    return shift(severity, 1);
+  if (c >= 2 && d >= 2 && BANDS.indexOf(baseBand(m)) < BANDS.indexOf("high")) {
+    return "up";
   }
+  return null;
+}
+
+export function severityFromMateriality(m: Materiality): SignalSeverity {
+  const severity = baseBand(m);
+  const mod = modulation(m);
+  if (mod === "down") return shift(severity, -1);
+  if (mod === "up") return shift(severity, 1);
   return severity;
+}
+
+/**
+ * Why the band is the band, in one or two sentences, for the reader.
+ *
+ * It lives beside the table and reads the SAME two helpers the band itself is
+ * computed from, because an explanation kept anywhere else drifts from the rule it
+ * describes, and a confidently wrong account of a deterministic rule is worse than
+ * showing the reader nothing. Written for someone who has the three scores in
+ * front of them, so it says what the numbers MEANT, not what they were.
+ */
+export function explainMateriality(m: Materiality): string {
+  const { decision_impact: d, urgency: u } = m;
+
+  let base: string;
+  if (d === 3 && u === 3) {
+    base =
+      "Both decision impact and urgency are at their maximum, which is the only route to critical.";
+  } else if (d === 3 || (d === 2 && u >= 2)) {
+    base = "High decision impact, and the window to react is short.";
+  } else if (d >= 1) {
+    base =
+      u >= 2
+        ? "Worth reacting to soon, but it does not change a buying decision on its own."
+        : "Worth knowing, and it does not change a buying decision on its own.";
+  } else {
+    base = "Nothing here changes how anyone buys, prices or positions.";
+  }
+
+  const mod = modulation(m);
+  if (mod === "down") {
+    base +=
+      " The surfaces disagree, or the change looks like a capture artifact, so the band drops one step.";
+  } else if (mod === "up") {
+    base +=
+      " Several independent surfaces confirm it, so the band rises one step. Corroboration alone can never reach critical.";
+  }
+  return base;
 }
 
 /**

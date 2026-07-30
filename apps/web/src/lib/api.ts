@@ -460,6 +460,11 @@ export interface PlanFact {
   currency: string | null;
   price: number | null;
   previousPrice: number | null;
+  /** Dimensional pricing: unit a rate/bundle applies to, and the included
+   * quantity before/after — the shrinkflation axis of a pricing signal. */
+  unit: string | null;
+  includedQuantity: number | null;
+  previousIncludedQuantity: number | null;
   state: "added" | "removed" | "changed" | "unchanged";
 }
 

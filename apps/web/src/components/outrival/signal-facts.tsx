@@ -196,23 +196,46 @@ function Plan({ plan }: { plan: PlanFact }) {
       : null;
   const label = STATE_LABEL[plan.state];
 
+  // The bundle line, only when the included quantity actually moved: the exact
+  // before/after ("10,000 → 5,000 API calls included") is the fact of a
+  // shrinkflation signal — the headline price above it did not change.
+  const quantityMoved =
+    plan.includedQuantity !== null &&
+    plan.previousIncludedQuantity !== null &&
+    plan.includedQuantity !== plan.previousIncludedQuantity;
+
   return (
-    <div className="flex flex-wrap items-baseline gap-x-2">
-      <span
-        className={cn(
-          "text-sm text-foreground",
-          plan.state === "removed" && "line-through text-muted-foreground",
-        )}
-      >
-        {plan.planName}
-      </span>
-      {label && <span className="text-xs text-muted-foreground">{label}</span>}
-      <span className="ml-auto flex items-baseline gap-1.5 text-sm tabular-nums">
-        {before && (
-          <span className="text-muted-foreground line-through">{before}</span>
-        )}
-        {price && <span className="text-foreground">{price}</span>}
-      </span>
+    <div>
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <span
+          className={cn(
+            "text-sm text-foreground",
+            plan.state === "removed" && "line-through text-muted-foreground",
+          )}
+        >
+          {plan.planName}
+        </span>
+        {label && <span className="text-xs text-muted-foreground">{label}</span>}
+        <span className="ml-auto flex items-baseline gap-1.5 text-sm tabular-nums">
+          {before && (
+            <span className="text-muted-foreground line-through">{before}</span>
+          )}
+          {price && <span className="text-foreground">{price}</span>}
+        </span>
+      </div>
+      {quantityMoved && (
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          <span className="tabular-nums line-through">
+            {plan.previousIncludedQuantity!.toLocaleString("en-US")}
+          </span>{" "}
+          →{" "}
+          <span className="tabular-nums text-foreground">
+            {plan.includedQuantity!.toLocaleString("en-US")}
+          </span>{" "}
+          {plan.unit ?? "units"} included
+          {plan.price === plan.previousPrice && ", price unchanged"}
+        </p>
+      )}
     </div>
   );
 }

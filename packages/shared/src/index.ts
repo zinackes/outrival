@@ -23,6 +23,7 @@ export * from "./reviews";
 export * from "./monitor-url";
 export * from "./candidates";
 export * from "./pricing";
+export * from "./pricing-diff";
 export * from "./logger";
 export * from "./notify";
 export * from "./redis";

@@ -117,6 +117,52 @@ test("a bad storefront (HTTP 400) is skipped when another succeeds", async () =>
   expect(parse(out.html).reviews.map((r) => r.id)).toEqual(["7"]);
 });
 
+/**
+ * Mock keyed on how many times page 1 has been asked for, so a test can hand back
+ * Apple's entry-less 200 first and the real feed second.
+ */
+function mockFirstPageSequence(pages: Array<Review[] | null>) {
+  let call = 0;
+  const calls = { count: 0 };
+  globalThis.fetch = mock(async (input: string | URL) => {
+    const url = typeof input === "string" ? input : input.toString();
+    if (url.includes("/lookup")) {
+      return new Response(
+        JSON.stringify({ resultCount: 1, results: [{ averageUserRating: 4.55, userRatingCount: 2506 }] }),
+        { status: 200 },
+      );
+    }
+    const page = Number(url.match(/\/page=(\d+)\//)?.[1] ?? 1);
+    if (page >= 2) return new Response(JSON.stringify({ feed: {} }), { status: 200 });
+    const body = pages[Math.min(call++, pages.length - 1)];
+    calls.count = call;
+    // null → the entry-less feed Apple intermittently serves at HTTP 200.
+    return new Response(JSON.stringify(body === null ? { feed: {} } : feed(body ?? [])), {
+      status: 200,
+    });
+  }) as typeof fetch;
+  return calls;
+}
+
+test("re-asks once when the first page comes back without a single entry", async () => {
+  const calls = mockFirstPageSequence([null, [{ id: "5", rating: 5 }]]);
+  const out = await scrape("c1", APP_URL);
+  expect(calls.count).toBe(2); // the hiccup was re-asked, not accepted
+  expect(parse(out.html).reviews.map((r) => r.id)).toEqual(["5"]);
+});
+
+test("an app with genuinely no recent reviews is re-asked once, then accepted", async () => {
+  // The retry must not become a loop: a second empty answer IS the answer, and the
+  // aggregate still rides the snapshot so the tab keeps a rating.
+  const calls = mockFirstPageSequence([null, null]);
+  const out = await scrape("c1", APP_URL);
+  expect(calls.count).toBe(2);
+  const snap = parse(out.html);
+  expect(snap.reviews).toEqual([]);
+  expect(snap.averageUserRating).toBe(4.55);
+  expect(snap.userRatingCount).toBe(2506);
+});
+
 test("throws (never an empty success snapshot) when NO storefront returns data", async () => {
   mockByCountry({ us: { status: 503 }, fr: { status: 400 } });
   expect(scrape("c1", APP_URL, { countries: ["us", "fr"] })).rejects.toThrow(/no data/i);

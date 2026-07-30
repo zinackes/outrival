@@ -156,7 +156,7 @@ export function GlobalSearch() {
         )}
       >
         <MagnifyingGlassIcon size={16} />
-        <span className="hidden md:inline">MagnifyingGlassIcon…</span>
+        <span className="hidden md:inline">Search or jump to…</span>
         <kbd className="hidden md:inline-flex md:ml-auto pointer-events-none h-5 select-none items-center gap-0.5 rounded border border-border bg-background px-1.5 font-mono text-meta font-medium">
           <CommandIcon className="size-4" />K
         </kbd>

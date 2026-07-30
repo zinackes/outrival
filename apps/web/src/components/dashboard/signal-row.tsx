@@ -104,7 +104,7 @@ export function SignalRow({
           {/* L2 provenance marker — this row was reconstructed from the web archive. */}
           {signal.filteredReason === "backfill" && (
             <ArchiveIcon
-              size={16}
+              size={14}
               className="shrink-0"
               aria-label="From archive"
             />

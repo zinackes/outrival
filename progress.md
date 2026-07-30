@@ -639,3 +639,59 @@ Postgres 17 local.
 - Écrire `/opt/outrival/docker-compose.yml` avec les services `worker-light` / `worker-browser`
   (noms attendus par deploy.yml) + `.env.worker`.
 - Re-jouer le smoke test sur le VPS (Phase 9) pour obtenir les vrais chiffres de la box.
+
+### 2026-07-30 — Pricing Intelligence v2, Phase 1/5 — signaux pricing déterministes
+
+**Objectif** : promouvoir le diff plan-à-plan batch→batch (déjà calculé pour l'affichage
+par `signal-facts.ts`) en générateur de SIGNAUX pricing déterministes typés — le pattern
+des chemins « never miss » (cf. docs/signal-evidence-audit.md §1b). Carte Notion
+« Pricing — Intelligence v2 », P1 uniquement.
+
+**Réalisé** :
+- `packages/shared/src/pricing-diff.ts` — module PUR `diffPricingBatches(prev, next)` →
+  `PricingChange[]` typés : price_changed (pct + direction), plan_added, plan_removed,
+  period_added, rate_changed (rows `usage`), included_quantity_changed (shrinkflation),
+  trial_changed, free_plan_changed. Sévérités déterministes de la table de la card
+  (undercut >15% → critical ; quantité ↓ à prix égal → high ; <3% → low). 34 tests.
+  Liberté prise (documentée) : les rows `promotional=1` sont exclues des comparaisons de
+  prix DES DEUX CÔTÉS, pas seulement côté next — sinon la fin d'une promo Black Friday
+  se lirait comme une hausse de prix au scrape suivant.
+- **Anti-doublon par transfert de propriété (race-free)** : scrape-monitor ne classifie
+  plus un change pricing lui-même — il DÉFÈRE le changeId à extract-pricing
+  (`ExtractPricingPayload.changeId` + `lexicalWorth`). Diff batch non-vide → signal
+  déterministe (classification synthétisée, l'AI ne fait que narrer — pattern
+  classify-structured) ; diff vide → fallback classifier lexical ssi
+  `evaluateSignificance` l'avait jugé worth. Un enqueue parallèle aurait fait la course
+  sur `signals.changeId` unique. Promo/repositioning gardent leur voie (le join par
+  `snapshotAfterId` fait stand down le déterministe : « change owned elsewhere »).
+- Émission dans `extract-pricing.ts` APRÈS `insertPricingHistory`, runs live uniquement
+  (jamais `recordedAt`/backfill), jamais si `coverage_regression_guard` (mais fallback
+  lexical préservé), jamais au premier scrape. Anchor = change déféré, sinon change
+  synthétique sur le monitor pricing réel (pattern review_shift/hiring_shift).
+  `routePricingSignal` ne throw JAMAIS (post-insert non-idempotent). Risque assumé,
+  hérité de la card : sur le chemin synthétique (pas de change row), une dérive
+  d'extracteur (renommage de plan par l'AI floor) peut fabriquer un plan_added/removed —
+  à surveiller en dev avant d'élargir.
+- `human_change_before/_after` exacts depuis les rows (« Pro — $79/mo » → « Pro — $59/mo »).
+  Le diffText synthétique porte des price tokens → un critical pricing survit à
+  `applySeverityGuard` (testé).
+- `signal-facts.ts` (API) : PlanFact + `unit` / `includedQuantity` /
+  `previousIncludedQuantity`, state `changed` sur mouvement de quantité, SQL enrichi ;
+  fact block web (`signal-facts.tsx`) affiche « 10,000 → 5,000 API calls included,
+  price unchanged ».
+- `getPreviousPricing` sélectionne désormais unit/included_quantity/trial/free-plan
+  (la baseline du diff doit porter ce que la batch fraîche porte).
+
+**Fichiers modifiés** :
+- packages/shared/src/pricing-diff.ts (+ .test.ts, + export index.ts) — NOUVEAU
+- apps/workers/src/lib/pricing-signals.ts (+ test/pricing-signals.test.ts) — NOUVEAU
+- apps/workers/src/core/extract-pricing.ts · scrape-monitor.ts
+- apps/workers/src/lib/analytics.ts (getPreviousPricing élargi)
+- packages/queue/src/jobs.ts (ExtractPricingPayload)
+- apps/api/src/lib/signal-facts.ts · apps/web/src/lib/api.ts ·
+  apps/web/src/components/outrival/signal-facts.tsx
+
+**Tests** : pnpm typecheck ✓ (8/8) | shared 381 ✓ | workers 178 ✓ | api 225 ✓
+
+**Prochaine session** : P2 — entitlements (`plan_entitlements` + catalogue de slugs +
+extraction structured-first + volet Packaging). NE PAS commencer sans /clear.

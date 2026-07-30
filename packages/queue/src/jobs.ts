@@ -45,6 +45,14 @@ export type ExtractPricingPayload = {
   observedRegion?: string;
   /** L2 archive backfill: backdate the pricing_history rows to the capture time. */
   recordedAt?: string;
+  /** Pricing Intelligence P1 — the change row of the SAME scrape, whose signal
+   * routing scrape-monitor DEFERRED to this extractor: a non-empty deterministic
+   * batch diff owns the signal; otherwise the lexical classifier is the fallback.
+   * Absent on manual re-triggers, backfill, and scrapes with no change row. */
+  changeId?: string;
+  /** Whether the deferred change passed evaluateSignificance — i.e. worth a
+   * lexical classify when the deterministic diff turns out empty. */
+  lexicalWorth?: boolean;
 };
 export type ExtractJobsPayload = { snapshotId: string; competitorId: string };
 export type ExtractReviewsPayload = { snapshotId: string; competitorId: string; source: string };

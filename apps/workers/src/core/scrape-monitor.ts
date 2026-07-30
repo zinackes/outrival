@@ -1122,6 +1122,9 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
 
     let changeId: string | null = null;
     let changedAt: Date | null = null;
+    // Pricing Intelligence P1 — a pricing change whose classify/signal routing is
+    // handed to extract-pricing instead of classify-change (see the lexical branch).
+    let deferredPricingChange: { id: string; lexicalWorth: boolean } | null = null;
 
     // Structured diff (patch-16) for homepage monitors when BOTH the current
     // capture and the prior snapshot carry a semantic structure. Replaces the
@@ -1772,7 +1775,21 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
               },
               { sourceType: monitor.sourceType },
             );
-            if (significance.worth) {
+            if (monitor.sourceType === "pricing" && graded.complete) {
+              // Pricing Intelligence P1: signal routing for a pricing change is
+              // DEFERRED to extract-pricing (enqueued below), which owns the
+              // decision race-free — a non-empty deterministic batch diff emits
+              // the typed signal; an empty one falls back to the lexical
+              // classifier iff the diff was worth it. Enqueueing classify here
+              // in parallel would race the deterministic path on the same
+              // changeId (signals.changeId is unique — one would silently lose).
+              deferredPricingChange = { id: changeId, lexicalWorth: significance.worth };
+              logger.log("Pricing change deferred to extract-pricing", {
+                monitorId: monitor.id,
+                changeId,
+                lexicalWorth: significance.worth,
+              });
+            } else if (significance.worth) {
               await classifyChange.enqueue({ changeId });
             } else {
               logger.log("Skipping classification (trivial diff)", {
@@ -1818,6 +1835,8 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         status: pricingAnalysis?.status,
         promotional: pricingAnalysis?.promotional,
         observedRegion: SCRAPER_REGION,
+        changeId: deferredPricingChange?.id,
+        lexicalWorth: deferredPricingChange?.lexicalWorth,
       });
     } else if (extractionAllowed && monitor.sourceType === "jobs") {
       await extractJobs.enqueue({

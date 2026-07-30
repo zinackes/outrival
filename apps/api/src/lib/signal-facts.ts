@@ -44,6 +44,12 @@ export interface PlanFact {
   currency: string | null;
   price: number | null;
   previousPrice: number | null;
+  /** Dimensional pricing (Pricing Intelligence P1): what a usage/per-seat price
+   * applies to, and the bundled units — so a rate move or a shrunk bundle shows
+   * its exact before/after, not just the unchanged headline price. */
+  unit: string | null;
+  includedQuantity: number | null;
+  previousIncludedQuantity: number | null;
   /** added when the plan is new to this capture, removed when it is gone. */
   state: "added" | "removed" | "changed" | "unchanged";
 }
@@ -186,6 +192,8 @@ interface PlanRow {
   price: number | null;
   currency: string | null;
   billingPeriod: string;
+  unit: string | null;
+  includedQuantity: number | null;
   hasTrial: number | null;
   trialDays: number | null;
   trialRequiresCard: number | null;
@@ -212,12 +220,14 @@ async function pricingFacts(
     )
     SELECT 'current' AS side, ph.plan_name AS "planName", ph.price,
            ph.currency, ph.billing_period AS "billingPeriod",
+           ph.unit, ph.included_quantity AS "includedQuantity",
            ph.has_trial AS "hasTrial", ph.trial_days AS "trialDays",
            ph.trial_requires_card AS "trialRequiresCard"
     FROM pricing_history ph, cur
     WHERE ph.competitor_id = ${competitorId} AND ph.recorded_at = cur.ts
     UNION ALL
     SELECT 'previous', ph.plan_name, ph.price, ph.currency, ph.billing_period,
+           ph.unit, ph.included_quantity,
            ph.has_trial, ph.trial_days, ph.trial_requires_card
     FROM pricing_history ph, prev
     WHERE ph.competitor_id = ${competitorId} AND ph.recorded_at = prev.ts
@@ -235,11 +245,18 @@ async function pricingFacts(
 
   const plans: PlanFact[] = current.map((p) => {
     const before = prevByKey.get(planKey(p));
+    // A plan "changed" when its price moved OR its bundled quantity did — a
+    // shrunk bundle at a flat price (shrinkflation) must lead like a price cut.
+    const quantityMoved =
+      before != null &&
+      before.includedQuantity !== null &&
+      p.includedQuantity !== null &&
+      before.includedQuantity !== p.includedQuantity;
     const state: PlanFact["state"] = isFirst
       ? "unchanged"
       : !before
         ? "added"
-        : before.price !== p.price
+        : before.price !== p.price || quantityMoved
           ? "changed"
           : "unchanged";
     return {
@@ -248,6 +265,9 @@ async function pricingFacts(
       currency: p.currency,
       price: p.price,
       previousPrice: before?.price ?? null,
+      unit: p.unit,
+      includedQuantity: p.includedQuantity,
+      previousIncludedQuantity: before?.includedQuantity ?? null,
       state,
     };
   });
@@ -261,6 +281,9 @@ async function pricingFacts(
         currency: p.currency,
         price: null,
         previousPrice: p.price,
+        unit: p.unit,
+        includedQuantity: null,
+        previousIncludedQuantity: p.includedQuantity,
         state: "removed",
       });
     }

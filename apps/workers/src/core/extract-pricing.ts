@@ -21,10 +21,12 @@ import {
   harvestPricing,
   splitProductLines,
 } from "@outrival/scrapers/pricing";
+import { classifyChange } from "@outrival/queue";
 import { htmlToText } from "../lib/html-to-text";
 import { insertPricingHistory, getPreviousPricing, loggedAi } from "../lib/analytics";
 import { stagedExtract } from "../lib/staged-extract";
 import { isSuspectedPricingCollapse } from "../lib/pricing-guard";
+import { routePricingSignal } from "../lib/pricing-signals";
 
 // Cap the aggregated tier list so a large catalog (many product-line sections ×
 // per-section rows) can't flood the pricing tab or the change diff.
@@ -57,6 +59,11 @@ const InputSchema = z.object({
   // on day 0) and, because the page is historical, skip the monitor aiSummary
   // refresh so a stale archive never overwrites the current source summary.
   recordedAt: z.string().datetime().optional(),
+  // Pricing Intelligence P1 — the pricing change of the SAME scrape, deferred by
+  // scrape-monitor: this job owns its signal routing (deterministic batch diff
+  // first, lexical classifier fallback). See lib/pricing-signals.ts.
+  changeId: z.string().optional(),
+  lexicalWorth: z.boolean().optional().default(false),
 });
 
 // Runtime-neutral job body: shared verbatim by the pg-boss handler and the thin
@@ -71,6 +78,15 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
       where: eq(snapshots.id, input.snapshotId),
     });
     if (!snapshot) throw new AbortTaskRunError(`Snapshot ${input.snapshotId} not found`);
+
+    // A deferred change must never be stranded: every path that ends without a
+    // deterministic emission hands it back to the lexical classifier (iff
+    // scrape-monitor judged the text diff worth one) — the exact pre-P1 behavior.
+    const enqueueLexicalFallback = async () => {
+      if (input.changeId && input.lexicalWorth && !input.recordedAt) {
+        await classifyChange.enqueue({ changeId: input.changeId });
+      }
+    };
 
     const html = await getFromR2(`${snapshot.r2Key}.html`);
     const text = htmlToText(html);
@@ -148,6 +164,7 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
     );
     logger.log("Pricing plans extracted", { count: plans.length, sections: sections.length });
     if (plans.length === 0) {
+      await enqueueLexicalFallback();
       // Nothing structured AND no visible price to harvest in any section.
       if (!anyResolved) {
         logger.warn("Pricing extraction returned null", {
@@ -187,6 +204,9 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
               resolvedUrl: snapshot.resolvedUrl,
             },
           );
+          // Never a deterministic signal from a blocked batch (the "diff" is our
+          // own mis-parse) — but the lexical path keeps its pre-P1 shot.
+          await enqueueLexicalFallback();
           return { ok: false, reason: "coverage_regression_guard" as const };
         }
       }
@@ -233,30 +253,51 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
     // "Contact sales", "Custom"): they're real plans the user wants to see. The
     // pricing_history.price column is nullable; numeric readers (charts, trends,
     // bands) filter null, but the tier list and comparison surface "Custom".
-    await insertPricingHistory(
-      plans.map((p) => ({
-        competitor_id: input.competitorId,
-        plan_name: p.plan_name,
-        price: p.price,
-        currency: p.currency,
-        billing_period: p.billing_period,
-        unit: p.unit ?? null,
-        included_quantity: p.included_quantity ?? null,
-        status: input.status,
-        promotional: input.promotional ? 1 : 0,
-        observed_region: input.observedRegion,
-        has_trial: trial.hasTrial ? 1 : 0,
-        trial_days: trial.days,
-        trial_requires_card:
-          trial.requiresCreditCard == null ? null : trial.requiresCreditCard ? 1 : 0,
-        has_free_plan: freePlan ? 1 : 0,
-        recorded_at: recordedAt,
-      })),
-    );
+    const rows = plans.map((p) => ({
+      competitor_id: input.competitorId,
+      plan_name: p.plan_name,
+      price: p.price,
+      currency: p.currency,
+      billing_period: p.billing_period,
+      unit: p.unit ?? null,
+      included_quantity: p.included_quantity ?? null,
+      status: input.status,
+      promotional: input.promotional ? 1 : 0,
+      observed_region: input.observedRegion,
+      has_trial: trial.hasTrial ? 1 : 0,
+      trial_days: trial.days,
+      trial_requires_card:
+        trial.requiresCreditCard == null ? null : trial.requiresCreditCard ? 1 : 0,
+      has_free_plan: freePlan ? 1 : 0,
+      recorded_at: recordedAt,
+    }));
+    await insertPricingHistory(rows);
+
+    // Pricing Intelligence P1 — the deterministic batch→batch diff becomes the
+    // pricing signal (or hands the deferred change back to the lexical path).
+    // Live runs only: a backfill batch is backdated history, never a live move.
+    // Runs AFTER the insert and never throws (see routePricingSignal) — a retry
+    // of this job past this point would duplicate the batch.
+    let routed: Awaited<ReturnType<typeof routePricingSignal>> | null = null;
+    if (!input.recordedAt) {
+      routed = await routePricingSignal({
+        competitorId: input.competitorId,
+        snapshot: {
+          id: snapshot.id,
+          monitorId: snapshot.monitorId,
+          resolvedUrl: snapshot.resolvedUrl,
+        },
+        previous,
+        current: rows,
+        deferredChangeId: input.changeId ?? null,
+        lexicalWorth: input.lexicalWorth,
+      });
+    }
 
     logger.log("Completed extract-pricing", {
       competitorId: input.competitorId,
       plansInserted: plans.length,
+      pricingSignal: routed?.emitted ?? "backfill",
     });
     return { ok: true, plansInserted: plans.length };
 }

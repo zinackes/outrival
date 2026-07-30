@@ -844,6 +844,15 @@ export async function getPreviousPricing(
         price: pricingHistory.price,
         currency: pricingHistory.currency,
         billing_period: pricingHistory.billingPeriod,
+        // Dimensional + page-level facts: the deterministic batch differ
+        // (diffPricingBatches, Pricing Intelligence P1) compares them, so the
+        // baseline read must carry them like the fresh batch does.
+        unit: pricingHistory.unit,
+        included_quantity: pricingHistory.includedQuantity,
+        has_trial: pricingHistory.hasTrial,
+        trial_days: pricingHistory.trialDays,
+        trial_requires_card: pricingHistory.trialRequiresCard,
+        has_free_plan: pricingHistory.hasFreePlan,
         status: pricingHistory.status,
         promotional: pricingHistory.promotional,
         observed_region: pricingHistory.observedRegion,

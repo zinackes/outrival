@@ -13,6 +13,7 @@ import {
   XIcon,
 } from "@/components/icons";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
+import { useCompetitorScopeGuard } from "@/hooks/use-competitor-scope-guard";
 import {
   api,
   type BattleCard,
@@ -152,6 +153,10 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
 
   const competitorQ = useQuery(competitorDetailQuery(competitorId));
   const competitor = competitorQ.data?.competitor ?? null;
+  // A card is written for one (product, competitor) pair. Switching the scope to a
+  // product that doesn't track this competitor leaves the page rather than offering
+  // to generate a card for a pairing that doesn't exist.
+  useCompetitorScopeGuard(competitorId, competitor?.name);
   const productsQ = useQuery(productsListQuery());
   const evidenceQ = useQuery(battleCardEvidenceQuery(competitorId, productId));
   const evidence = evidenceQ.data ?? null;

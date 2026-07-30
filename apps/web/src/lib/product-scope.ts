@@ -29,3 +29,27 @@ export function normalizeScope(raw: string | null | undefined): string | null {
   if (!v || v === ALL_PRODUCTS) return null;
   return v;
 }
+
+/**
+ * Whether a competitor-keyed page (detail, sources, battle card) must leave: the
+ * scope has MOVED to a product whose roster doesn't contain that competitor. Used by
+ * `useCompetitorScopeGuard`; kept here so the rule is testable without a DOM.
+ *
+ * - `scope === null` ("All products") contains every competitor, so it never orphans.
+ * - `scope === mountScope` is how the page opened — a deep link under a stale cookie
+ *   scope isn't the user contradicting themselves, and bouncing them off a page they
+ *   asked for would be worse than the mismatch.
+ * - An absent roster (still loading, or the request failed) never redirects: the
+ *   guard fails open.
+ */
+export function leftProductScope(input: {
+  scope: string | null;
+  mountScope: string | null;
+  roster: { id: string }[] | undefined;
+  competitorId: string;
+}): boolean {
+  const { scope, mountScope, roster, competitorId } = input;
+  if (scope === null || scope === mountScope) return false;
+  if (!roster) return false;
+  return !roster.some((c) => c.id === competitorId);
+}

@@ -116,6 +116,7 @@ import {
 } from "@/lib/queries";
 import { useSetAskContext } from "@/components/dashboard/ask-context";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
+import { useCompetitorScopeGuard } from "@/hooks/use-competitor-scope-guard";
 import {
   POLL_TIMEOUT_MS,
   POLL_INTERVAL_MS,
@@ -306,6 +307,9 @@ export function CompetitorDetailView({ id }: { id: string }) {
   // Scoped to the active product (patch-28 switcher) so the pager stays within the
   // product's competitors instead of walking the whole org roster across products.
   const productScope = useProductScope() ?? undefined;
+  // Switching the scope to a product that doesn't track this competitor leaves the
+  // page for that product's roster (same scoped query as the pager below).
+  useCompetitorScopeGuard(id, data?.competitor.name);
   const rosterQ = useQuery(competitorsQuery(productScope));
   const roster = useMemo(
     () => rosterQ.data?.map((c) => ({ id: c.id, name: c.name })) ?? null,

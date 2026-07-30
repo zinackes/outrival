@@ -35,6 +35,7 @@ import { feedItemMotion } from "@/lib/motion";
 import { sourceShortLabel } from "@/lib/source-labels";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError } from "@/lib/error-helpers";
+import { useCompetitorScopeGuard } from "@/hooks/use-competitor-scope-guard";
 import CompetitorDetailLoading from "../detail-skeleton";
 import { scrapeActivity } from "../competitor-detail/shared";
 import { lastScanLabel, monitorStatus } from "../competitor-detail/monitor-status";
@@ -277,6 +278,9 @@ export function SourcesView({ id }: { id: string }) {
   } = useMonitorActions(id);
   const [techScraping, setTechScraping] = useState(false);
   const [filter, setFilter] = useState<SourceAttention | null>(null);
+  // Switching the product scope to one that doesn't track this competitor leaves
+  // here for that product's roster.
+  useCompetitorScopeGuard(id, data?.competitor.name);
 
   // Dev-only: force a tech-stack scan. The job updates techStackScrapedAt + entries,
   // so a timed refresh surfaces the result — no monitor-keyed polling like a source.

@@ -64,6 +64,37 @@ export const pricingHistory = pgTable(
   (t) => [index("pricing_history_competitor_recorded_idx").on(t.competitorId, t.recordedAt)],
 );
 
+// The features × plans matrix (Pricing Intelligence P2 — Stigg entitlement model).
+// One row = (plan, feature, value) captured from the SAME pricing page scrape as
+// pricing_history; recorded_at carries the SAME batch timestamp so the two tables
+// describe one capture. feature_label is the page's VERBATIM wording (the proof);
+// feature_slug is the catalog-canonical slug when the label resolved
+// (is_canonical=1), else a slugified fallback. kind: boolean (on/off) | config
+// (fixed value, e.g. 30-day retention) | metered (limit, optionally with a
+// reset_period). Append-only batches, latest batch = the current matrix.
+export const planEntitlements = pgTable(
+  "plan_entitlements",
+  {
+    id: uuid(),
+    competitorId: text("competitor_id").notNull(),
+    planName: text("plan_name").notNull(),
+    featureSlug: text("feature_slug").notNull(),
+    featureLabel: text("feature_label").notNull(),
+    kind: text("kind").notNull(), // boolean | config | metered
+    valueNum: doublePrecision("value_num"),
+    valueText: text("value_text"),
+    unit: text("unit"),
+    resetPeriod: text("reset_period"),
+    isCanonical: integer("is_canonical").notNull().default(0), // 1 = catalog slug
+    recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("plan_entitlements_competitor_recorded_idx").on(t.competitorId, t.recordedAt),
+    index("plan_entitlements_competitor_feature_idx").on(t.competitorId, t.featureSlug),
+  ],
+);
+export type PlanEntitlement = InferSelectModel<typeof planEntitlements>;
+
 export const jobCounts = pgTable(
   "job_counts",
   {

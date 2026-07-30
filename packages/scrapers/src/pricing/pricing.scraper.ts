@@ -45,6 +45,11 @@ export async function scrape(
     knownLevel,
     progressiveScroll: true,
     captureBillingToggle: process.env.PRICING_TOGGLE_CAPTURE_ENABLED !== "false",
+    // P2 entitlements: pricing pages fold their feature matrix behind "See all
+    // features" accordions — same append-style control the jobs path expands, so
+    // the comparison table is in the DOM before capture. Browser renders only;
+    // an L0 page already carries its accordion content in the static HTML.
+    expandLists: true,
   };
 
   // URL already points at a pricing page → scrape it directly.

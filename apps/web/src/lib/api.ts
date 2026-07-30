@@ -496,6 +496,20 @@ export interface EntitlementFact {
   after: string | null;
 }
 
+/** One cell of the features × plans matrix (plan_entitlements row). */
+export interface EntitlementCell {
+  plan_name: string;
+  feature_slug: string;
+  feature_label: string;
+  kind: "boolean" | "config" | "metered" | string;
+  value_num: number | null;
+  value_text: string | null;
+  unit: string | null;
+  reset_period: string | null;
+  is_canonical: boolean;
+  recorded_at: string;
+}
+
 export interface SignalDetail {
   id: string;
   insight: string;
@@ -2552,6 +2566,14 @@ export const api = {
     ),
   getCompetitorPricingHistory: (id: string) =>
     request<{ history: PricingHistoryPoint[] }>(`/api/competitors/${id}/pricing-history`),
+  // Features × plans matrix (P2): the two most recent entitlement batches, so
+  // the Packaging fold can render the matrix and highlight what moved.
+  getCompetitorEntitlements: (id: string) =>
+    request<{
+      current: EntitlementCell[];
+      previous: EntitlementCell[];
+      recordedAt: string | null;
+    }>(`/api/competitors/${id}/entitlements`),
   // Per-plan pricing overlay: the latest detected batch, the user's overrides, and
   // the resolved current plans (detected + overlay merged) with provenance/drift.
   getCompetitorPricingPlans: (id: string) =>

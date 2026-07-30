@@ -21,6 +21,7 @@ import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { CompetitorPricingCard } from "@/components/outrival/competitor-pricing-card";
 import { myProductQuery } from "@/lib/queries";
 import { buildPricingSeries } from "./charts";
+import { PackagingMatrix } from "./packaging-matrix";
 import { PricingPlansEditor } from "./pricing-plans-editor";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatTierPrice, annualPerMonthLabel } from "./helpers";
@@ -330,6 +331,10 @@ export function PricingTab({
           <MultiLineChart data={series.points} seriesKeys={numericPlans} height={260} />
         </TabSection>
       )}
+
+      {/* Packaging (P2): what each plan includes, and which cells moved since the
+          last capture. Renders nothing until a matrix has been captured. */}
+      <PackagingMatrix competitorId={competitorId} />
 
       {/* Editing is reference work, so it folds away. The summary line carries the
           counts, which is what a reader wants before deciding to open a form. */}

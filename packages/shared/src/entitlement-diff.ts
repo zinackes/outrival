@@ -65,7 +65,7 @@ interface FeatureState {
 function byFeature(rows: EntitlementRow[]): Map<string, FeatureState> {
   const map = new Map<string, FeatureState>();
   for (const r of rows) {
-    const state = map.get(r.feature_slug) ?? {
+    const state: FeatureState = map.get(r.feature_slug) ?? {
       label: r.feature_label,
       byPlan: new Map(),
       planNames: [],

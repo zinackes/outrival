@@ -2546,6 +2546,53 @@ export const api = {
       `/api/competitors/${id}/recompute-overlap`,
       { method: "POST" },
     ),
+  /* Roster bulk actions — one request per action over the whole selection, never a
+   * client-side fan-out. Two reasons it matters: the AI ones cost ONE hit of the
+   * hourly AI cap instead of one per competitor (a loop of eleven would burn the
+   * hour and half-fail), and a single server write can't leave the selection in a
+   * half-applied state the UI then has to describe. */
+  bulkSetCompetitorMonitoring: (ids: string[], paused: boolean) =>
+    request<{ ok: true; updated: number; paused: boolean }>(
+      "/api/competitors/bulk/monitoring",
+      { method: "POST", body: JSON.stringify({ ids, paused }) },
+    ),
+  bulkSetCompetitorAlerts: (ids: string[], muted: boolean) =>
+    request<{ ok: true; updated: number; muted: boolean }>("/api/competitors/bulk/alerts", {
+      method: "POST",
+      body: JSON.stringify({ ids, muted }),
+    }),
+  // Re-scores the whole selection in one batched model call. `skipped` names the rows
+  // that kept their previous score, and why (no url / nothing to judge them on yet).
+  bulkRecomputeCompetitorOverlap: (ids: string[]) =>
+    request<{
+      scored: Array<{ id: string; name: string; overlapScore: number }>;
+      skipped: Array<{ id: string; name: string; reason: string }>;
+    }>("/api/competitors/bulk/recompute-overlap", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
+  bulkRefreshCompetitorSummaries: (ids: string[]) =>
+    request<{ enqueued: number }>("/api/competitors/bulk/refresh-summary", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
+  // Moves the selection to one product (a competitor belongs to exactly one), so this
+  // replaces their membership rather than adding a link.
+  bulkMoveCompetitorsToProduct: (ids: string[], productId: string) =>
+    request<{ ok: true; moved: number; productId: string }>("/api/competitors/bulk/product", {
+      method: "POST",
+      body: JSON.stringify({ ids, productId }),
+    }),
+  bulkEnableCompetitorSource: (ids: string[], sourceType: string) =>
+    request<{ created: number; competitorsTouched: number }>(
+      "/api/competitors/bulk/sources",
+      { method: "POST", body: JSON.stringify({ ids, sourceType }) },
+    ),
+  bulkDeleteCompetitors: (ids: string[]) =>
+    request<{ ok: true; deleted: number }>("/api/competitors/bulk/delete", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
   // Kebab → Assign to products: all org products + the subset this competitor links to.
   getCompetitorProducts: (id: string) =>
     request<{

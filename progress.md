@@ -695,3 +695,65 @@ des chemins « never miss » (cf. docs/signal-evidence-audit.md §1b). Carte Not
 
 **Prochaine session** : P2 — entitlements (`plan_entitlements` + catalogue de slugs +
 extraction structured-first + volet Packaging). NE PAS commencer sans /clear.
+
+### 2026-07-30 — Pricing Intelligence v2, Phase 2/5 — entitlements (features × plans)
+
+**Objectif** : capturer la matrice features × plans (modèle Stigg), la differ, émettre
+`entitlement_moved` / `entitlement_limit_changed` / `entitlement_added` / `entitlement_removed`,
+et l'afficher (volet Packaging du pricing tab + section battle card). Branche
+`feat/pricing-entitlements`, EMPILÉE sur `feat/pricing-deterministic-signals` (P1, PR #359
+ouverte, pas mergée — P2 consomme diffPricingBatches/routePricingSignal).
+
+**Réalisé** :
+- Migration **0055** : `plan_entitlements` (id, competitor_id, plan_name, feature_slug,
+  feature_label VERBATIM, kind boolean|config|metered, value_num/value_text/unit/
+  reset_period, is_canonical, recorded_at) + index (competitor, recorded_at) et
+  (competitor, feature_slug). `recorded_at` = LE même timestamp de batch que
+  pricing_history du même run. ⚠️ PAS APPLIQUÉE : ce checkout n'a pas de `.env.local`
+  → `pnpm db:migrate` à lancer sur l'env qui a la DB dev.
+- `packages/shared/entitlement-catalog.ts` : ~40 slugs canoniques, alias
+  EN/FR/DE/ES/IT/NL/PT (patron period-vocab : données + résolveur pur, zéro AI),
+  `resolveFeatureSlug` → slug canonique ou slugify fallback `is_canonical=0`. 61 tests.
+- `packages/shared/entitlement-diff.ts` : `diffEntitlements(prev, next, {planRank})` →
+  `PricingChange[]` (types ajoutés à `PricingChangeType`). moved=high + sens
+  down/upmarket (planRank dérivé des prix), limit ±30% medium/high, added low /
+  removed medium. **Jamais critical** (testé). **Frontière de confiance** : moved/
+  added/removed sur slugs CANONIQUES seulement — un slug free-text EST le wording du
+  label, une reformulation marketing churnerait ; limit_changed accepte tout slug
+  identique des deux côtés. Premier batch (prev vide) → []. 16 tests.
+- Extraction table-first : `packages/scrapers/pricing/entitlement-table.ts` parse le
+  `<table>` comparatif ANCRÉ sur les noms de plans déjà extraits (≥2 colonnes matchées,
+  ≥3 feature rows sinon null — jamais un guess) ; ✓/✗/nombres (k/M)/unlimited/texte,
+  aria-label des checks SVG, gotcha parse5 (tbody auto-inséré → header exclu par
+  identité de nœud). Sinon tâche AI sœur `extract-entitlements` (labels verbatim,
+  « Everything in Pro, plus… » jamais expansé — l'héritage n'est PAS modélisé en v1 ;
+  1 call EN PLUS par scrape changé seulement). `pricing.scraper.ts` : `expandLists:true`
+  → les accordions « See all features » se déplient au render (boucle jobs réutilisée).
+- Worker (`lib/entitlements.ts` + intégration `core/extract-pricing.ts`, live only,
+  jamais backfill) : substring-check CÔTÉ CODE (label absent du texte de page →
+  droppé), caps 15 features × 6 plans loggés, anti-collapse
+  (`isSuspectedEntitlementCollapse` : prev ≥5 && next <30% → rien écrit, zéro signal —
+  extension de pricing-guard), slugs résolus, insert best-effort après
+  insertPricingHistory (même recordedAt). Changes mergés dans `routePricingSignal`
+  (`entitlementChanges` + `sortPricingChanges`) → UN signal par capture, top line =
+  pire mouvement des deux axes. Étage ADDITIF : tout échec laisse le run pricing
+  intact (try/catch). 11 tests workers.
+- `signal-facts` (API) : `entitlements: EntitlementFact[]` sur le kind pricing —
+  re-diff des 2 batches de la fenêtre par LE MÊME differ shared (l'évidence ne peut
+  pas contredire le signal), before/after exacts (« SSO — Enterprise » → « SSO — Pro »).
+  Rendu web dans le fact block (bloc « Packaging · N features moved »).
+- UI : `GET /api/competitors/:id/entitlements` (2 derniers batches) ; volet
+  **Packaging** du pricing tab (matrice, canoniques d'abord, cellules changées
+  surlignées `bg-medium/10`, overflow-x, s'auto-masque sans matrice) ; section battle
+  card **Packaging** (3-5 lignes déterministes : features gated top-plan, échelle de
+  seats, moves récents via le differ partagé, overlap self-profile — « not AI-written »
+  affiché).
+
+**Tests** : typecheck 8/8 ✓ | shared 458 ✓ | scrapers 740 ✓ | ai 175 ✓ | workers 189 ✓ | api 225 ✓
+
+**Reste côté humain** : `pnpm db:migrate` (0055) sur l'env dev + prod (après merge) ·
+vérifier en dev un concurrent à `<table>` comparatif (matrice + cellules surlignées au
+2e scrape) puis un à cartes (chemin AI) · PR empilée sur #359.
+
+**Prochaine session** : P3 — tiers / rate_structure / price_points computed.
+NE PAS commencer sans /clear. (P4 calculator probe, P5 burn rates ensuite.)

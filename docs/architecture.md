@@ -421,6 +421,22 @@ pricing_history     competitor_id, plan_name, price, currency, billing_period,
                     has_trial, trial_days, trial_requires_card (patch-33 — free-trial
                     facts, AI-free regex on the page text, stamped page-level per row,
                     Nullable = pre-detection), recorded_at
+plan_entitlements   competitor_id, plan_name, feature_slug (canonique via
+                    entitlement-catalog, sinon slugifié is_canonical=0), feature_label
+                    (VERBATIM page — la preuve), kind (boolean|config|metered, modèle
+                    Stigg), value_num, value_text, unit, reset_period, recorded_at
+                    — Pricing Intelligence P2 (migration 0055) : la matrice
+                    features × plans du même scrape pricing, recorded_at = LE même
+                    timestamp de batch que pricing_history du run. Extraction
+                    table-first (parse déterministe du <table> comparatif ancré sur
+                    les plans extraits) → AI sœur sinon (1 call/scrape changé) ;
+                    substring-check code-side, caps 15×6, anti-collapse. Diff
+                    (diffEntitlements, shared) → entitlement_moved high (sens
+                    down/upmarket) / entitlement_limit_changed medium|high ±30% /
+                    added low / removed medium — JAMAIS critical, slugs canoniques
+                    seuls pour appear/disappear/move. Mergé dans le signal
+                    déterministe P1 (routePricingSignal). UI : volet Packaging du
+                    pricing tab + section battle card déterministe
 job_counts          competitor_id, department, count, recorded_at
 hiring_metrics      competitor_id, department_bucket, open_count, week_start,
                     recorded_at — hiring-velocity : open-role count PAR bucket

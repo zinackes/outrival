@@ -23,10 +23,17 @@ import {
 } from "@outrival/scrapers/pricing";
 import { classifyChange } from "@outrival/queue";
 import { htmlToText } from "../lib/html-to-text";
-import { insertPricingHistory, getPreviousPricing, loggedAi } from "../lib/analytics";
+import {
+  insertPricingHistory,
+  getPreviousPricing,
+  insertPlanEntitlements,
+  getPreviousEntitlements,
+  loggedAi,
+} from "../lib/analytics";
 import { stagedExtract } from "../lib/staged-extract";
 import { isSuspectedPricingCollapse } from "../lib/pricing-guard";
 import { routePricingSignal } from "../lib/pricing-signals";
+import { captureEntitlements } from "../lib/entitlements";
 
 // Cap the aggregated tier list so a large catalog (many product-line sections ×
 // per-section rows) can't flood the pricing tab or the change diff.
@@ -249,6 +256,30 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
       }
     }
 
+    // P2 — entitlement matrix of the same capture (live runs only: a backfill
+    // page is historical, and its "changes" would be time travel). Runs BEFORE
+    // the non-idempotent inserts because its AI stage can throw — but the whole
+    // stage is ADDITIVE by contract: any failure here leaves the pricing run
+    // exactly as it was pre-P2 (plans still write, signal still routes).
+    let entitlements: Awaited<ReturnType<typeof captureEntitlements>> | null = null;
+    if (!input.recordedAt) {
+      try {
+        entitlements = await captureEntitlements({
+          competitorId: input.competitorId,
+          html,
+          text,
+          plans,
+          previous: await getPreviousEntitlements(input.competitorId),
+          recordedAt,
+        });
+      } catch (err) {
+        logger.warn("Entitlement capture failed (non-fatal)", {
+          competitorId: input.competitorId,
+          error: String(err),
+        });
+      }
+    }
+
     // Keep every plan, including quote-based tiers (price null — "Enterprise",
     // "Contact sales", "Custom"): they're real plans the user wants to see. The
     // pricing_history.price column is nullable; numeric readers (charts, trends,
@@ -272,6 +303,11 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
       recorded_at: recordedAt,
     }));
     await insertPricingHistory(rows);
+    // Same batch timestamp as the pricing rows — one capture, two tables.
+    // Empty on backfill, on a matrix-less page, and when the collapse guard
+    // blocked the extraction (then nothing is written, so the prior matrix
+    // stays the baseline).
+    if (entitlements) await insertPlanEntitlements(entitlements.rows);
 
     // Pricing Intelligence P1 — the deterministic batch→batch diff becomes the
     // pricing signal (or hands the deferred change back to the lexical path).
@@ -291,12 +327,17 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
         current: rows,
         deferredChangeId: input.changeId ?? null,
         lexicalWorth: input.lexicalWorth,
+        // P2 — packaging moves ride the same signal (never critical).
+        entitlementChanges: entitlements?.changes ?? [],
       });
     }
 
     logger.log("Completed extract-pricing", {
       competitorId: input.competitorId,
       plansInserted: plans.length,
+      entitlements: entitlements
+        ? { rows: entitlements.rows.length, resolution: entitlements.resolution, skipped: entitlements.skipped }
+        : null,
       pricingSignal: routed?.emitted ?? "backfill",
     });
     return { ok: true, plansInserted: plans.length };

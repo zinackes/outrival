@@ -18,7 +18,13 @@ export type PricingChangeType =
   | "rate_changed"
   | "included_quantity_changed"
   | "trial_changed"
-  | "free_plan_changed";
+  | "free_plan_changed"
+  // Phase 2 — the features × plans matrix (see entitlement-diff.ts). Entitlement
+  // changes cap at HIGH by design: repackaging never bypasses moderation.
+  | "entitlement_moved"
+  | "entitlement_limit_changed"
+  | "entitlement_added"
+  | "entitlement_removed";
 
 export type PricingChangeSeverity = "low" | "medium" | "high" | "critical";
 
@@ -79,6 +85,13 @@ const SEVERITY_RANK: Record<PricingChangeSeverity, number> = {
   medium: 2,
   low: 3,
 };
+
+/** Order a merged change list most-severe-first — the order diffPricingBatches
+ * returns, needed again when a caller concatenates the batch diff with the
+ * entitlement diff before planning one signal. Stable within a band. */
+export function sortPricingChanges(changes: PricingChange[]): PricingChange[] {
+  return [...changes].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
+}
 
 export function maxPricingChangeSeverity(
   changes: PricingChange[],

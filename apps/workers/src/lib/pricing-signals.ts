@@ -20,6 +20,7 @@ import { classifyChange, generateSignal } from "@outrival/queue";
 import {
   diffPricingBatches,
   maxPricingChangeSeverity,
+  sortPricingChanges,
   type PricingBatchRow,
   type PricingChange,
   type PricingChangeSeverity,
@@ -82,6 +83,10 @@ export interface RoutePricingSignalArgs {
   deferredChangeId: string | null;
   /** Whether that change passed evaluateSignificance (lexical fallback gate). */
   lexicalWorth: boolean;
+  /** P2 — typed changes from the entitlement matrix diff of the same capture
+   * (never critical by construction), merged with the batch diff so one capture
+   * emits ONE signal whose top line is the worst move across both axes. */
+  entitlementChanges?: PricingChange[];
 }
 
 /**
@@ -104,10 +109,15 @@ export async function routePricingSignal(args: RoutePricingSignalArgs): Promise<
   };
 
   try {
-    // First scrape: everything is "new", none of it is news.
+    // First scrape: everything is "new", none of it is news. (Entitlement
+    // changes can't exist here either — their differ also returns [] on an
+    // empty baseline.)
     if (!args.previous || args.previous.length === 0) return await fallback("first_scrape");
 
-    const pricingChanges = diffPricingBatches(args.previous, args.current);
+    const pricingChanges = sortPricingChanges([
+      ...diffPricingBatches(args.previous, args.current),
+      ...(args.entitlementChanges ?? []),
+    ]);
     if (pricingChanges.length === 0) return await fallback("batch_unchanged");
 
     let anchorChangeId = args.deferredChangeId;

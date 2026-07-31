@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { myProductQuery, myProductChangesQuery, productsListQuery } from "@/lib/queries";
 import {
   ArrowsClockwiseIcon,
+  BroadcastIcon,
   NotePencilIcon,
   SpinnerIcon,
   ClockIcon,
@@ -372,6 +374,18 @@ export function MyProductView({
               <Button onClick={() => setUpdateOpen(true)} variant="outline" size="sm">
                 <NotePencilIcon className="size-4" />
                 Update profile
+              </Button>
+            )}
+            {/* What we collect on this product — the same manage-sources sheet a
+                competitor gets (toggle, cadence, URL, custom pages), on the self
+                monitors. Needs the product route, so the legacy no-product view
+                (productId undefined) doesn't offer it. */}
+            {productId && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/dashboard/products/${productId}/sources`}>
+                  <BroadcastIcon className="size-4" />
+                  Sources
+                </Link>
               </Button>
             )}
             {p.url ? (

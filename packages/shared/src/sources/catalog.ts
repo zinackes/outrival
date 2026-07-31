@@ -61,6 +61,34 @@ export const CONFIGURABLE_SOURCES: Record<SourceGroup, readonly SourceType[]> = 
 export const CUSTOM_SOURCES: readonly SourceType[] = ["custom"];
 
 /**
+ * The PRODUCT view of the same catalog — the sources a product's own
+ * self-competitor can be configured with. Most of the catalog is competitor
+ * intelligence that makes no sense pointed at yourself: reviews are never scraped
+ * for self (scrape-monitor skips their extraction), and status / docs / roadmap
+ * watch surfaces the org already owns. What remains is what the self pipeline
+ * actually feeds — the site itself, its pricing, its hiring, and the repo while
+ * the product is still being built.
+ */
+export const SELF_SOURCE_GROUPS: readonly SourceGroup[] = [
+  "web_content",
+  "pricing",
+  "hiring",
+  "developer",
+];
+
+export const SELF_CONFIGURABLE_SOURCES: Partial<Record<SourceGroup, readonly SourceType[]>> = {
+  web_content: CONFIGURABLE_SOURCES.web_content,
+  pricing: CONFIGURABLE_SOURCES.pricing,
+  hiring: CONFIGURABLE_SOURCES.hiring,
+  developer: ["github_repo"],
+};
+
+/** Flat list of every source a product's sources page shows, in display order. */
+export const ALL_SELF_CONFIGURABLE_SOURCES: readonly SourceType[] = SELF_SOURCE_GROUPS.flatMap(
+  (g) => SELF_CONFIGURABLE_SOURCES[g] ?? [],
+);
+
+/**
  * Seeded automatically at competitor creation and scraped on their own cadence.
  * Shown READ-ONLY ("Monitored automatically — can't be turned off"): no toggle, no
  * frequency, no URL. They cost the user nothing and carry no decision.

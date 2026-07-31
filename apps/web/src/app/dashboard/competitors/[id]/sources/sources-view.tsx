@@ -98,7 +98,7 @@ function detectedTargetsOf(techStack: TechStackData): DetectedTargets | null {
 }
 
 /** A group heading inside the single sheet, replacing what used to be a whole Card. */
-function GroupLabel({
+export function GroupLabel({
   children,
   aside,
   tone,

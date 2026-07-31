@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { format } from "date-fns";
 import {
   FileMagnifyingGlassIcon,
   PlusIcon,
@@ -27,8 +29,9 @@ import {
   type Plan,
   type CustomMonitorHint,
 } from "@outrival/shared";
-import type { Monitor } from "@/lib/api";
+import { api, type Monitor } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { CatBadge } from "@/components/outrival/data-marks";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -435,6 +438,8 @@ function CustomMonitorRow({
               </div>
             </div>
 
+            <PageFindings monitorId={monitor.id} open={open} />
+
             <div>
               <p className="mb-1.5 text-xs font-medium text-muted-foreground">Remove</p>
               {confirming ? (
@@ -470,6 +475,68 @@ function CustomMonitorRow({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * What this page has produced: its own changes, each carrying the signal insight
+ * when one was generated. Fetched lazily on first open — the competitor payload's
+ * recent lists are capped across all sources, so a quiet page's history would
+ * simply be missing from them.
+ */
+function PageFindings({ monitorId, open }: { monitorId: string; open: boolean }) {
+  const query = useQuery({
+    queryKey: ["monitor", monitorId, "changes"],
+    queryFn: () => api.listChanges({ monitorId, limit: 8 }).then((r) => r.changes),
+    enabled: open,
+  });
+
+  return (
+    <div className="w-full min-w-0">
+      <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+        What we found on this page
+      </p>
+      {query.isPending ? (
+        <p className="text-sm text-muted-foreground">
+          <SpinnerIcon size={16} className="mr-1.5 inline animate-spin" />
+          Loading this page&apos;s history…
+        </p>
+      ) : query.isError ? (
+        <p className="text-sm text-muted-foreground">
+          Couldn&apos;t load this page&apos;s history right now.
+        </p>
+      ) : query.data.length === 0 ? (
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          No changes captured yet. The first scan records what the page says today;
+          what changes after that lands here.
+        </p>
+      ) : (
+        <ul className="flex flex-col">
+          {query.data.map((c) => (
+            <li
+              key={c.id}
+              className="grid grid-cols-[3.75rem_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1 border-t border-border py-2 first:border-t-0 sm:grid-cols-[3.75rem_minmax(0,1fr)_auto]"
+            >
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {format(new Date(c.detectedAt), "d MMM")}
+              </span>
+              <span className="min-w-0 text-sm leading-snug">
+                {c.signalInsight ?? c.summary ?? (
+                  <span className="italic text-muted-foreground">
+                    Change detected, not yet classified.
+                  </span>
+                )}
+              </span>
+              {c.signalCategory && (
+                <span className="col-start-2 sm:col-start-3 sm:justify-self-end">
+                  <CatBadge category={c.signalCategory} />
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

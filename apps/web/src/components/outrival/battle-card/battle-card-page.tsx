@@ -134,7 +134,9 @@ const TICKS_PER_POLL = 4;
 
 export function BattleCardPage({ competitorId }: { competitorId: string }) {
   // patch-28 — scope the card to the active product (cookie-backed switcher, URL
-  // ?product= overrides); omitted = the org's primary product (the API default).
+  // ?product= overrides); omitted = the product this competitor is tracked for
+  // (the API resolves it from product_competitors). Send it to the API, never read
+  // it as "which product this card is about" — that is `resolvedProductId` below.
   const productId = useProductScope() ?? undefined;
   const queryClient = useQueryClient();
 
@@ -753,12 +755,15 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
 
           {/* Packaging (P2): deterministic lines from the captured entitlement
               matrix — hidden while editing (nothing here is editable) and
-              absent entirely when no matrix was ever captured. */}
+              absent entirely when no matrix was ever captured. Takes the RESOLVED
+              product, not the scope: its "we ship it too" line reads the self
+              profile, and in all-products scope the scope is empty, so it was
+              answering with the org's default SKU on a card about another one. */}
           {!editing && competitor && (
             <PackagingSection
               competitorId={competitorId}
               competitorName={competitor.name}
-              productId={productId}
+              productId={resolvedProductId ?? undefined}
             />
           )}
 

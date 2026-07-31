@@ -97,6 +97,12 @@ export const competitors = pgTable("competitors", {
   // are still tracked + shown in the feed/digests; generate-signal just skips the
   // immediate send-alert (email/Slack/in-app) when this is set.
   alertsMuted: boolean("alerts_muted").notNull().default(false),
+  // Wins the plan's competitor cap. The cap keeps the first `maxCompetitors` of the
+  // roster ranked by (capPriority desc, createdAt asc) and freezes the rest, so this
+  // flag is how the user says "keep THIS one" instead of inheriting the age order.
+  // Purely a preference: it never pauses anything on its own, and a plan whose cap
+  // covers the whole roster ignores it entirely.
+  capPriority: boolean("cap_priority").notNull().default(false),
   // Last time the independent monthly tech-stack scraper ran for this competitor
   // (patch-18). Null = never scraped → due immediately. Drives schedule-tech-stack
   // (no monitor row, so this is the per-competitor cadence anchor).

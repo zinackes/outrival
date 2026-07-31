@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, isNull, ne, count, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, ne, count, sql } from "drizzle-orm";
 import { competitors, organizations, battleCards, discoveryRuns, forcedRescanLog, products } from "@outrival/db";
 import {
   PLAN_LIMITS,
@@ -53,10 +53,25 @@ export interface PausedCompetitor {
 }
 
 /**
+ * The org's real competitors in cap order (compareCapRank): user-prioritised first,
+ * then oldest. The first `maxCompetitors` keep being monitored, the rest freeze —
+ * the same ranking the scheduler enforces in `selectWithinPlanCap`.
+ */
+export async function rankedByPlanCap(orgId: string) {
+  return db.query.competitors.findMany({
+    where: and(
+      eq(competitors.orgId, orgId),
+      isNull(competitors.deletedAt),
+      ne(competitors.type, "self"),
+    ),
+    columns: { id: true, name: true, url: true, capPriority: true, createdAt: true },
+    orderBy: [desc(competitors.capPriority), asc(competitors.createdAt)],
+  });
+}
+
+/**
  * Real competitors frozen by the plan cap (over-cap, e.g. after a downgrade).
- * Mirrors the competitor cap in `schedule-scraping.job.ts`: the oldest
- * `maxCompetitors` (by createdAt) keep being monitored; everything added later
- * is paused. Empty when the org is within its cap or the plan is unlimited.
+ * Empty when the org is within its cap or the plan is unlimited.
  */
 export async function pausedByPlanCap(
   orgId: string,
@@ -64,16 +79,8 @@ export async function pausedByPlanCap(
 ): Promise<PausedCompetitor[]> {
   const limit = PLAN_LIMITS[plan].maxCompetitors;
   if (!Number.isFinite(limit)) return [];
-  const ranked = await db.query.competitors.findMany({
-    where: and(
-      eq(competitors.orgId, orgId),
-      isNull(competitors.deletedAt),
-      ne(competitors.type, "self"),
-    ),
-    columns: { id: true, name: true },
-    orderBy: [asc(competitors.createdAt)],
-  });
-  return ranked.slice(limit);
+  const ranked = await rankedByPlanCap(orgId);
+  return ranked.slice(limit).map((c) => ({ id: c.id, name: c.name }));
 }
 
 export async function checkCompetitorQuota(

@@ -1,12 +1,17 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
-import { organizations, users } from "@outrival/db";
+import { and, eq, inArray } from "drizzle-orm";
+import { competitors, organizations, users } from "@outrival/db";
 import { BILLING_PERIODS, PLAN_LIMITS, PLANS, type Plan } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
-import { countActiveCompetitors, pausedByPlanCap } from "../lib/plan";
+import {
+  countActiveCompetitors,
+  getOrgPlan,
+  pausedByPlanCap,
+  rankedByPlanCap,
+} from "../lib/plan";
 import { getPriceId, getStripe } from "../lib/stripe";
 import { captureServerEvent } from "../lib/posthog";
 
@@ -117,6 +122,67 @@ billingRouter.get("/", async (c) => {
     },
     features: limits.features,
   });
+});
+
+// The roster in cap order, so the user can pick which competitors survive a cap
+// instead of inheriting the age order. `kept` reflects the CURRENT plan; the switch
+// dialog re-slices the same list against the target plan's cap, which is why the
+// ranking (not a filtered set) is what we return.
+billingRouter.get("/competitor-priority", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const plan = await getOrgPlan(orgId);
+  const limit = PLAN_LIMITS[plan].maxCompetitors;
+  const ranked = await rankedByPlanCap(orgId);
+
+  return c.json({
+    plan,
+    limit: Number.isFinite(limit) ? limit : null,
+    competitors: ranked.map((comp, i) => ({
+      id: comp.id,
+      name: comp.name,
+      url: comp.url,
+      prioritized: comp.capPriority,
+      kept: !Number.isFinite(limit) || i < limit,
+      createdAt: comp.createdAt,
+    })),
+  });
+});
+
+// Set which competitors win the cap. Deliberately NOT validated against the plan's
+// cap: the switch dialog saves the selection BEFORE the plan changes, and a selection
+// is a durable preference that outlives whichever tier is active. Over-selecting is
+// harmless — the ranking still cuts at `maxCompetitors`, oldest-first among the picks.
+const PrioritySchema = z.object({ keep: z.array(z.string()).max(500) });
+
+billingRouter.put("/competitor-priority", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const parsed = PrioritySchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
+
+  // Scope the ids to the org's own roster before writing: an id from another org
+  // would otherwise flip a row this user cannot see.
+  const owned = new Set((await rankedByPlanCap(orgId)).map((comp) => comp.id));
+  const keep = parsed.data.keep.filter((id) => owned.has(id));
+
+  // One transaction: a clear that lands without its set would silently drop the
+  // user's whole selection back to the age order.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(competitors)
+      .set({ capPriority: false, updatedAt: new Date() })
+      .where(and(eq(competitors.orgId, orgId), eq(competitors.capPriority, true)));
+    if (keep.length > 0) {
+      await tx
+        .update(competitors)
+        .set({ capPriority: true, updatedAt: new Date() })
+        .where(and(eq(competitors.orgId, orgId), inArray(competitors.id, keep)));
+    }
+  });
+
+  return c.json({ ok: true, prioritized: keep.length });
 });
 
 // Recent invoices for in-app billing visibility (receipts without bouncing to the

@@ -1615,7 +1615,8 @@ export interface BillingInfo {
   } | null;
   usage: {
     // paused = real competitors frozen by the plan cap (over-cap after a
-    // downgrade), oldest-kept / newest-paused. Empty when within the cap.
+    // downgrade). Which ones is the user's call (competitor-priority); by default
+    // the oldest are kept. Empty when within the cap.
     competitors: {
       used: number;
       limit: number | null;
@@ -1628,6 +1629,22 @@ export interface BillingInfo {
     api: boolean;
     multiUser: boolean;
   };
+}
+
+// The roster in plan-cap order: the first `limit` entries are the ones that stay
+// monitored, everything after freezes. `prioritized` = the user pinned it, so it
+// wins the cap over older competitors.
+export interface CompetitorPriority {
+  plan: Plan;
+  limit: number | null;
+  competitors: Array<{
+    id: string;
+    name: string;
+    url: string | null;
+    prioritized: boolean;
+    kept: boolean;
+    createdAt: string;
+  }>;
 }
 
 export interface SearchCompetitorHit {
@@ -3545,6 +3562,15 @@ export const api = {
   deleteCandidate: (id: string) =>
     request<{ ok: true }>(`/api/candidates/${id}`, { method: "DELETE" }),
   getBilling: () => request<BillingInfo>("/api/billing"),
+  // Which competitors survive the plan's competitor cap. `keep` is the user's pick;
+  // anything left out falls back to the age order, so a short list is still valid.
+  getCompetitorPriority: () =>
+    request<CompetitorPriority>("/api/billing/competitor-priority"),
+  setCompetitorPriority: (keep: string[]) =>
+    request<{ ok: true; prioritized: number }>("/api/billing/competitor-priority", {
+      method: "PUT",
+      body: JSON.stringify({ keep }),
+    }),
   // Move onto / between paid plans. `url` = redirect to Checkout (no sub yet);
   // `updated` = the existing subscription was switched in place (prorated).
   changePlan: (plan: Exclude<Plan, "free">, period: BillingPeriod) =>

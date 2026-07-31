@@ -1,0 +1,1 @@
+ALTER TABLE "competitors" ADD COLUMN "cap_priority" boolean DEFAULT false NOT NULL;

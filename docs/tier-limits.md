@@ -58,6 +58,16 @@ Notes:
 - **Discoveries** consume the monthly quota only on **on-demand `/detect`** — the weekly
   cron auto-discovery does not (free's 3/month would be eaten by the cron otherwise). The
   single `discovery_runs` row doubles as the calendar-month counter (resets on month roll).
+- **Over the competitor cap** (only reachable by downgrading — adding is blocked by
+  `checkCompetitorQuota`), the excess is frozen, never deleted: the scheduler skips it
+  at enqueue time. WHICH ones freeze is the user's call. `competitors.cap_priority`
+  (migration 0058) is set from the billing page — inside the plan-switch confirmation,
+  or later from the over-limit notice — and the roster ranks `cap_priority desc,
+  created_at asc`, so the first `maxCompetitors` stay monitored and an unset workspace
+  keeps the historical oldest-first behaviour. That ranking is written twice, in
+  `rankedByPlanCap` (API, what the UI reports as paused) and `selectWithinPlanCap`
+  (worker, what actually stops being scraped) — they must not drift, which is what
+  `apps/api/test/competitor-priority.test.ts` pins.
 - `forcedRescansPerDay` / `forced_rescan_log` keep their bespoke nested error
   (`{ error: { code, message, upgradeHint } }`) — the web `use-force-rescan` toast reads
   it. Not rerouted through `tierLimitBody` to avoid churning a working path.

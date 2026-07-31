@@ -120,6 +120,11 @@ competitors            id, org_id, name, url, description, overlap_score, catego
                        palette token COMPETITOR_COLORS or "#rrggbb" hex; null =
                        neutral. UI stores hue+chroma, derives dark/light lightness
                        in CSS), ai_summary, ai_summary_updated_at,
+                       cap_priority (migration 0058 — l'utilisateur a choisi de
+                       garder CE competitor quand le cap du plan mord ; le roster
+                       est classé cap_priority desc, created_at asc et les
+                       maxCompetitors premiers restent monitorés. false partout =
+                       ancien comportement, les plus anciens gagnent),
                        created_at, updated_at, deleted_at
 
 monitors               id, competitor_id, source_type, frequency, config (jsonb),
@@ -564,6 +569,17 @@ Codes d'erreur structurés sur les routes gating : `plan_limit_competitors`,
 `plan_locked_feature`, `plan_locked_source`, `plan_locked_frequency`,
 `plan_locked_channel`. Le web parse via `paywallFromError(err)` et affiche
 `<PaywallDialog>`.
+
+**Dépasser le cap competitors** (seulement atteignable en downgradant — l'ajout est
+bloqué en amont) gèle l'excédent au lieu de le supprimer, et **c'est l'utilisateur
+qui choisit lequel** : `competitors.cap_priority` (migration 0058) est écrit par
+`GET/PUT /api/billing/competitor-priority`, depuis la confirmation de changement de
+plan ou le bandeau over-limit de Settings → Subscription. Le roster est classé
+`cap_priority desc, created_at asc` et les `maxCompetitors` premiers restent
+monitorés — un workspace qui n'a rien choisi garde donc exactement l'ancien
+comportement (les plus anciens). Ce classement existe en DEUX endroits qui ne
+doivent pas diverger : `rankedByPlanCap` (API, ce que l'UI annonce comme en pause)
+et `selectWithinPlanCap` (worker, ce qui cesse réellement d'être scrapé).
 
 ## Provisioning des monitors
 

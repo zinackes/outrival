@@ -20,6 +20,13 @@ export interface AskToolSpec {
 export interface AskRosterEntry {
   id: string;
   name: string;
+  /**
+   * True for the org's OWN product (the `self` competitor). It is monitored like a
+   * competitor and must stay resolvable by name ("how do I compare to X"), but it is
+   * not a rival: unlabelled, the planner ranked the user's own headcount against
+   * their competitors' and the answer read as if they were one of them.
+   */
+  isSelf?: boolean;
 }
 
 export const AskPlanSchema = z.object({
@@ -58,7 +65,12 @@ export function buildAskPlanPrompt(
   const toolList = tools.map((t) => `- ${t.name}(${t.args}) — ${t.description}`).join("\n");
   const rosterList =
     roster.length > 0
-      ? roster.map((r) => `- ${r.name} → id "${r.id}"`).join("\n")
+      ? roster
+          .map(
+            (r) =>
+              `- ${r.name} → id "${r.id}"${r.isSelf ? " (THE USER'S OWN PRODUCT, not a competitor)" : ""}`,
+          )
+          .join("\n")
       : "(no competitors tracked yet)";
   return `You are the planner for "Ask Outrival", a competitive-intelligence assistant.
 Decide which TOOLS to call to answer the user's question over their own tracked data.
@@ -91,6 +103,13 @@ ${question}
 <rules>
 - Return only the calls needed to answer; prefer the fewest (max 6).
 - Pass competitor ids from the list above as arguments, never names.
+- A question about ALL competitors, or asking which one is the most / least / best /
+  worst / cheapest of them, is answered by the matching "rank..." tool, which already
+  covers the WHOLE list in one call. NEVER answer such a question by calling a
+  single-competitor tool once per name: the call budget is smaller than the list, so
+  that plan silently ranks a subset and the answer names the wrong winner.
+- The user's own product is not a competitor. Leave it out of any ranking or "who
+  among my competitors" question; use it only when the question is about them.
 - If the question cannot be answered from these tools, return an empty "calls" array.
 </rules>
 
@@ -166,6 +185,11 @@ ${serializeAskResults(results)}
   carry nothing at all about the competitors in question.
 - If the results are empty or do not cover the question, say so plainly — never guess.
 - Be specific: cite competitor names, figures, and dates that appear in the results.
+- A "capturedAt" date is when that figure was last observed, NOT today. Say "as of
+  <date>" whenever you quote one, so a months-old number never reads as current.
+- A "noData" list names competitors the tool found nothing for. When you rank or
+  compare, say how many were covered and name who was left out — a ranking presented
+  as complete when it covered three of eight competitors is a wrong answer.
 - The "answer" is clean prose for a person to read: do NOT embed ids, UUIDs, or bracketed
   citation markers (e.g. "[<id>]") in it. Refer to competitors and signals by name only.
   Ids belong ONLY in the "citations" array.

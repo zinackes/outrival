@@ -167,6 +167,14 @@ export function billingQuery() {
   });
 }
 
+// The roster in plan-cap order (only read when the picker opens — gate with `enabled`).
+export function competitorPriorityQuery() {
+  return queryOptions({
+    queryKey: ["billing", "competitor-priority"] as const,
+    queryFn: () => api.getCompetitorPriority(),
+  });
+}
+
 // Stripe invoices (only meaningful once subscribed — gate with `enabled`).
 export function invoicesQuery() {
   return queryOptions({

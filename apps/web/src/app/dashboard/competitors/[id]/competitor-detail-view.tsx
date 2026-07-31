@@ -1586,7 +1586,8 @@ function PlanCapPausedBanner() {
         </p>
         <p className="mt-0.5 text-sm text-muted-foreground">
           This competitor is above your plan&apos;s competitor cap, so none of its
-          sources are being scraped. Upgrade to resume.
+          sources are being scraped. Upgrade, or choose in billing which competitors
+          your plan monitors.
         </p>
       </div>
       <Button size="sm" asChild className="shrink-0">

@@ -14,7 +14,7 @@ import {
   type Plan,
 } from "@outrival/shared";
 import { api } from "@/lib/api";
-import { billingQuery, invoicesQuery } from "@/lib/queries";
+import { billingQuery, competitorPriorityQuery, invoicesQuery } from "@/lib/queries";
 import { formatDate } from "@/lib/format-date";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { PaymentMethodDialog } from "@/components/outrival/payment-method-dialog";
+import { CompetitorPriorityDialog } from "@/components/outrival/competitor-priority-dialog";
 import { BillingDashboardSkeleton } from "@/app/dashboard/settings/billing/billing-skeleton";
 
 type PaidPlan = Exclude<Plan, "free">;
@@ -133,6 +134,9 @@ export function BillingDashboard() {
   const [confirm, setConfirm] = useState<Plan | null>(null);
   // Payment-method (Stripe Payment Element) dialog open state.
   const [payOpen, setPayOpen] = useState(false);
+  // Standalone "which competitors stay monitored" picker, opened from the over-limit
+  // notice. The same picker also rides inside the plan-switch confirmation below.
+  const [priorityOpen, setPriorityOpen] = useState(false);
   // Invoices only matter once subscribed; gated so it doesn't fetch otherwise.
   const invoicesQ = useQuery({ ...invoicesQuery(), enabled: !!billing?.hasSubscription });
   const invoices: Invoice[] = invoicesQ.data ?? [];
@@ -178,31 +182,39 @@ export function BillingDashboard() {
     router.replace("/dashboard/settings/billing");
   }, [search, router, queryClient]);
 
-  // Apply a plan change. Free → schedule cancel-at-period-end; paid → Checkout
-  // redirect (no sub) or an in-place prorated switch (existing sub). On the redirect
-  // path we keep `busy` set so the button stays in its loading state until unload.
+  // Perform a plan change. Free → schedule cancel-at-period-end; paid → Checkout
+  // redirect (no sub) or an in-place prorated switch (existing sub). Throws on
+  // failure so each caller puts the message where the user is looking: the page for
+  // a card click, inside the dialog for a confirmed switch.
+  async function runPlanChange(plan: Plan): Promise<"done" | "redirecting"> {
+    if (plan === "free") {
+      await api.downgradeToFree();
+      setToast(
+        "Your plan switches to Free at the end of the billing cycle, and you keep full access until then.",
+      );
+    } else {
+      const res = await api.changePlan(plan as PaidPlan, period);
+      if (res.url) {
+        window.location.href = res.url;
+        return "redirecting";
+      }
+      setToast("Plan updated. The change will reflect in a few seconds.");
+    }
+    setConfirm(null);
+    setTimeout(
+      () => queryClient.invalidateQueries({ queryKey: billingQuery().queryKey }),
+      1500,
+    );
+    return "done";
+  }
+
+  // Card click. On the redirect path we keep `busy` set so the button stays in its
+  // loading state until unload.
   async function applyChange(plan: Plan) {
     setBusy(plan);
     setError(null);
     try {
-      if (plan === "free") {
-        await api.downgradeToFree();
-        setToast(
-          "Your plan switches to Free at the end of the billing cycle, and you keep full access until then.",
-        );
-      } else {
-        const res = await api.changePlan(plan as PaidPlan, period);
-        if (res.url) {
-          window.location.href = res.url;
-          return;
-        }
-        setToast("Plan updated. The change will reflect in a few seconds.");
-      }
-      setConfirm(null);
-      setTimeout(
-        () => queryClient.invalidateQueries({ queryKey: billingQuery().queryKey }),
-        1500,
-      );
+      if ((await runPlanChange(plan)) === "redirecting") return;
       setBusy(null);
     } catch (e) {
       setError(String(e));
@@ -323,15 +335,20 @@ export function BillingDashboard() {
               </div>
             )}
           </div>
-          <Button
-            size="sm"
-            onClick={() => {
-              const target = document.getElementById("plan-selector");
-              target?.scrollIntoView({ behavior: "smooth" });
-            }}
-          >
-            Upgrade
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPriorityOpen(true)}>
+              Choose which to keep
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                const target = document.getElementById("plan-selector");
+                target?.scrollIntoView({ behavior: "smooth" });
+              }}
+            >
+              Upgrade
+            </Button>
+          </div>
         </div>
       )}
 
@@ -677,9 +694,64 @@ export function BillingDashboard() {
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {/* ── Downgrade / over-cap switch confirmation ───────────────────── */}
+      {/* ── Over-cap switch: confirm by choosing what survives the cap ──── */}
+      {/* The target plan monitors fewer competitors than the org has, so the switch
+          IS a choice of which ones stop. Picking them here beats discovering after
+          the fact that the cap kept whichever happened to be oldest. */}
+      <CompetitorPriorityDialog
+        open={confirm !== null && confirmPaused > 0}
+        onOpenChange={(open) => {
+          if (!open) setConfirm(null);
+        }}
+        limit={confirmLimit}
+        title={
+          confirm === "free"
+            ? "Downgrade to Free?"
+            : `Switch to ${confirm ? PLAN_LABELS[confirm] : ""}?`
+        }
+        description={
+          confirm === "free"
+            ? `Your subscription cancels at the end of the cycle, then the workspace moves to Free, which monitors ${confirmLimit} of your ${used} competitors.`
+            : `Your plan switches now, prorated against your current cycle. ${
+                confirm ? PLAN_LABELS[confirm] : ""
+              } monitors ${confirmLimit} of your ${used} competitors.`
+        }
+        confirmLabel={confirm === "free" ? "Downgrade to Free" : "Confirm switch"}
+        destructive={confirm === "free"}
+        onConfirm={async (keep) => {
+          if (!confirm) return;
+          await api.setCompetitorPriority(keep);
+          queryClient.invalidateQueries({
+            queryKey: competitorPriorityQuery().queryKey,
+          });
+          await runPlanChange(confirm);
+        }}
+      />
+
+      {/* ── Standalone picker (over-limit notice), no plan change ───────── */}
+      <CompetitorPriorityDialog
+        open={priorityOpen}
+        onOpenChange={setPriorityOpen}
+        limit={limit ?? used}
+        title="Choose which competitors stay monitored"
+        description={`Your ${PLAN_LABELS[billing.plan]} plan monitors ${limit} of your ${used} competitors. The rest keep their history and stop being scanned.`}
+        confirmLabel="Save selection"
+        onConfirm={async (keep) => {
+          await api.setCompetitorPriority(keep);
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: billingQuery().queryKey }),
+            queryClient.invalidateQueries({
+              queryKey: competitorPriorityQuery().queryKey,
+            }),
+          ]);
+          setPriorityOpen(false);
+          setToast("Monitoring updated. The paused competitors keep their history.");
+        }}
+      />
+
+      {/* ── Downgrade confirmation (nothing gets paused) ────────────────── */}
       <Dialog
-        open={confirm !== null}
+        open={confirm !== null && confirmPaused === 0}
         onOpenChange={(open) => {
           if (!open && !busy) setConfirm(null);
         }}
@@ -697,14 +769,6 @@ export function BillingDashboard() {
                 : "Your plan switches now, prorated against your current billing cycle."}
             </DialogDescription>
           </DialogHeader>
-
-          {confirmPaused > 0 && (
-            <p className="rounded-md border border-high/40 bg-high/[0.06] px-3 py-2.5 text-sm text-foreground">
-              {confirmPaused} of your {used} competitors will be paused to fit the{" "}
-              {confirm ? PLAN_LABELS[confirm] : ""} limit of {confirmLimit}. Nothing
-              is deleted, and they’re restored automatically if you upgrade again.
-            </p>
-          )}
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 

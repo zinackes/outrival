@@ -129,8 +129,8 @@ function PausedByPlanBadge() {
         </Link>
       </TooltipTrigger>
       <TooltipContent>
-        Over your plan&apos;s competitor limit, so monitoring is paused. Upgrade to
-        resume.
+        Over your plan&apos;s competitor limit, so monitoring is paused. Upgrade, or
+        choose in billing which competitors your plan monitors.
       </TooltipContent>
     </Tooltip>
   );

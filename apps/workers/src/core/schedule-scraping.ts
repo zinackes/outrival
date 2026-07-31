@@ -1,6 +1,6 @@
 import { logger } from "../lib/job-logger";
 import { scrapeMonitor } from "@outrival/queue";
-import { and, asc, eq, inArray, isNull, lte, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import { db, monitors, competitors, organizations, products } from "@outrival/db";
 import {
   PLAN_LIMITS,
@@ -46,7 +46,9 @@ async function selectWithinPlanCap<T extends DueMonitor>(due: T[]): Promise<T[]>
   const planByOrg = new Map<string, Plan>(orgs.map((o) => [o.id, o.plan]));
 
   // Competitor cap: every real (non-self, non-deleted) competitor of the affected
-  // orgs, oldest first — keep the oldest `maxCompetitors` per org (set up first).
+  // orgs in cap order — user-prioritised first, then oldest (set up first). Keep the
+  // first `maxCompetitors` per org. Same ranking the API reports as paused-by-plan
+  // (rankedByPlanCap), so what the user is told is frozen is what stops being scraped.
   const ranked = await db.query.competitors.findMany({
     where: and(
       inArray(competitors.orgId, orgIds),
@@ -54,7 +56,11 @@ async function selectWithinPlanCap<T extends DueMonitor>(due: T[]): Promise<T[]>
       ne(competitors.type, "self"),
     ),
     columns: { id: true, orgId: true },
-    orderBy: [asc(competitors.orgId), asc(competitors.createdAt)],
+    orderBy: [
+      asc(competitors.orgId),
+      desc(competitors.capPriority),
+      asc(competitors.createdAt),
+    ],
   });
   const inCap = new Set<string>();
   const countByOrg = new Map<string, number>();

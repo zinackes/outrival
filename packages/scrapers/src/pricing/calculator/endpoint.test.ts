@@ -13,7 +13,11 @@ describe("findPricePath", () => {
       }),
     ];
     const hit = findPricePath(calls, 200);
-    expect(hit).toEqual({ pathname: "/api/estimate", path: "data.estimate.monthlyTotal" });
+    expect(hit?.pathname).toBe("/api/estimate");
+    expect(hit?.path).toBe("data.estimate.monthlyTotal");
+    // The exact request is kept too — it is what a replay is built from.
+    expect(hit?.url).toBe("https://x.test/api/estimate?qty=100000");
+    expect(hit?.method).toBe("GET");
   });
 
   it("accepts a total serialised as a string", () => {

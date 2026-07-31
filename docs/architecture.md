@@ -469,9 +469,13 @@ price_tiers         competitor_id, plan_name, unit (meter NORMALISÉ via unit-al
 price_points        competitor_id, plan_name, meter_unit (canonique SEULEMENT),
                     reference_qty, effective_monthly_cost, currency, method
                     (computed_from_tiers | calculator_probe (P4) | published),
-                    evidence_screenshot_key (P4, migration 0058 — R2 key of the frame a MEASURED
-                    cost was read off; mandatory on a calculator_probe row, null on every
-                    computed/published one, whose evidence is the page text itself),
+                    evidence_key + evidence_kind (P4, migration 0058 — la PREUVE d'une
+                    ligne mesurée : `screenshot` = la frame d'où le montant a été lu ;
+                    `api_response` = la propre requête de pricing de la page rejouée à
+                    ce volume (URL + corps + chemin du montant), et seulement après que
+                    cet endpoint a répondu au volume ANCRE le montant que le calculateur
+                    affichait. Obligatoire sur une ligne calculator_probe, null sur toute
+                    ligne calculée/publiée, dont la preuve est le texte de la page),
                     recorded_at — Pricing Intelligence P3 (migration 0056) : ce qu'un
                     plan metered COÛTE à un volume, la ligne qui fait entrer un
                     concurrent usage-based dans une comparaison de prix. Calculé
@@ -532,7 +536,10 @@ platform_detection_runs  competitor_id, domain, stage (a_static|b_browser),
                     framework, cms, ats, pricing_widget, status_page, changelog,
                     techs_found, duration_ms, recorded_at — patch-31, % résolu step A
                     (sans navigateur) vs step B + connecteurs routés
-calculator_probe_runs  competitor_id, url, strategy (endpoint|ui|none), outcome
+calculator_probe_runs  competitor_id, url, strategy (ui|endpoint|endpoint_replay|none),
+                    anchor_screenshot_key (la frame du calculateur piloté — preuve au
+                    niveau du RUN, donc un run rejoué montre toujours la session
+                    réellement ouverte), outcome
                     (measured | a ProbeFailure: robots_disallowed/refused/login_wall/
                     no_controls/unit_unresolved/no_total/total_not_monthly/
                     volumes_out_of_range/spec_stale/timeout | a rejection:
@@ -1037,6 +1044,17 @@ carte (état live uniquement).
   └─ lecture : DOM, ou la réponse JSON du propre endpoint de pricing de la page quand
        un XHR observé porte le montant affiché (strategy=endpoint) — même interaction,
        même preuve, un nombre insensible au formatage
+  └─ REPLAY (strategy=endpoint_replay) : le 1er volume est TOUJOURS piloté et
+       screenshoté au navigateur ; si la requête de pricing de la page est un GET
+       même-origine portant la quantité, et qu'elle répond au volume ANCRE le montant
+       que le calculateur affichait, les volumes restants sont demandés à cet endpoint
+       en HTTP, navigateur FERMÉ (gap par domaine + rythme humain honorés). Rien n'est
+       forgé : c'est la requête que la PAGE a faite, avec un seul nombre changé. POST,
+       autre origine, quantité absente de la query ou en-tête Authorization ⇒ refus, on
+       finit dans l'UI. Cette confirmation EST la double lecture du run (deux transports
+       indépendants), et chaque point rejoué stocke requête+réponse comme preuve.
+       Motivation mesurée (2026-07-31) : 38 concurrents `dynamic` sur 172 en prod, soit
+       ~36 probes/jour en série sur le worker browser qui scrape déjà tout le reste
   └─ sanity checks CÔTÉ CODE (validateProbeSeries, @outrival/shared) : monotonie
        (égalité tolérée en zone plate/minimum), devise unique, bornes plausibles,
        DOUBLE LECTURE (re-régler la même quantité doit redonner le même total ±0,5%).
@@ -1541,15 +1559,25 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
   bypasse toute la modération et envoie un email en minutes, et une lecture d'UI
   n'a pas cette certitude-là (la confirmation double-capture est du ressort du
   bloc Véracité).
-- **L'endpoint du calculateur se LIT, il ne se rejoue pas (P4)** — quand la page
-  calcule côté serveur, le JSON de son propre XHR est une meilleure source que le
-  DOM (pas de formatage, pas de compteur animé attrapé en cours de tween), et le
-  probe l'utilise : `strategy=endpoint`. Mais il le lit comme la RÉPONSE de la
-  page à une interaction faite sur l'UI publique, jamais en forgeant des requêtes
-  HTTP à sa place. Rejouer une API privée à quatre volumes serait un acte
-  différent de « se servir du calculateur », et laisserait surtout le run sans
-  screenshot à montrer, ce que la règle de preuve interdit. L'endpoint fournit
-  donc le NOMBRE, l'interaction UI fournit la PREUVE, et chaque point garde les deux.
+- **L'endpoint du calculateur se rejoue, mais seulement après confirmation (P4)** —
+  quand la page calcule côté serveur, le JSON de son propre XHR est une meilleure
+  source que le DOM (pas de formatage, pas de compteur animé attrapé en cours de
+  tween). Et comme la flotte compte 38 concurrents `dynamic` (mesuré sur prod le
+  2026-07-31, sur 172), garder un Chromium ouvert pour quatre volumes coûte
+  ~10-15 min de navigateur par jour sur le worker qui scrape déjà tout le reste.
+  Le probe pilote donc le PREMIER volume dans le navigateur (screenshot compris),
+  puis demande les suivants à cet endpoint en HTTP, navigateur fermé. Quatre
+  garde-fous font que ce n'est pas « forger des requêtes sur une API privée » :
+  (1) la requête n'est pas inventée, c'est celle que la PAGE a émise pendant qu'on
+  bougeait son curseur, avec un seul nombre changé ; (2) GET même-origine dont la
+  quantité est dans la query — un POST, un payload signé ou un autre host n'est pas
+  quelque chose qu'on a compris assez pour le répéter ; (3) aucun credential créé,
+  et une requête portant un en-tête Authorization est refusée plutôt que re-signée ;
+  (4) le plan est CONFIRMÉ avant d'être cru — l'endpoint doit répondre au volume
+  ancre le montant que le calculateur venait d'afficher, sinon le run finit dans
+  l'UI. Cette confirmation sert aussi de double lecture (deux transports
+  indépendants), et chaque point rejoué garde requête+réponse comme preuve, à côté
+  du screenshot de l'ancre.
 
 - **Un 429 se répond en changeant de provider, pas en dormant (2026-07-31)** — le
   SDK OpenAI honore le `retry-after` d'un rate limit en DORMANT sur le même

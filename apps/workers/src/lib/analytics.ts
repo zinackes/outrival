@@ -533,8 +533,9 @@ export interface PricePointRow {
   effective_monthly_cost: number;
   currency: string;
   method: "computed_from_tiers" | "calculator_probe" | "published";
-  /** P4 — R2 key of the proof screenshot. Set on measured rows only. */
-  evidence_screenshot_key?: string | null;
+  /** P4 — R2 key of the proof, and what kind of proof it is. Measured rows only. */
+  evidence_key?: string | null;
+  evidence_kind?: "screenshot" | "api_response" | null;
   recorded_at: Date;
 }
 
@@ -550,7 +551,8 @@ export async function insertPricePoints(rows: PricePointRow[]): Promise<void> {
         effectiveMonthlyCost: r.effective_monthly_cost,
         currency: r.currency,
         method: r.method,
-        evidenceScreenshotKey: r.evidence_screenshot_key ?? null,
+        evidenceKey: r.evidence_key ?? null,
+        evidenceKind: r.evidence_kind ?? null,
         recordedAt: r.recorded_at,
       })),
     ),
@@ -598,8 +600,10 @@ export async function getPreviousProbePoints(
 export interface CalculatorProbeRunRow {
   competitor_id: string;
   url: string;
-  strategy: "endpoint" | "ui" | "none";
+  strategy: "endpoint" | "endpoint_replay" | "ui" | "none";
   outcome: string;
+  /** R2 key of the frame showing the calculator we drove (run-level proof). */
+  anchor_screenshot_key?: string | null;
   detail?: string | null;
   meter_unit?: string | null;
   readings?: number;
@@ -616,6 +620,7 @@ export async function insertCalculatorProbeRun(row: CalculatorProbeRunRow): Prom
       strategy: row.strategy,
       outcome: row.outcome,
       detail: row.detail ?? null,
+      anchorScreenshotKey: row.anchor_screenshot_key ?? null,
       meterUnit: row.meter_unit ?? "",
       readings: row.readings ?? 0,
       pointsWritten: row.points_written ?? 0,

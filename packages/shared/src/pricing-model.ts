@@ -16,6 +16,7 @@
  */
 
 import { costAtVolume, type CostTier, type RateStructure } from "./cost-model";
+import type { EvidenceKind } from "./calculator-probe";
 import { resolveMeterUnit } from "./unit-alias";
 import { isComparablePricePeriod, monthlyEquivalent, normalizePlanKey } from "./pricing";
 import type { PricingBatchRow } from "./pricing-diff";
@@ -99,8 +100,11 @@ export interface MeterCost {
   /** ISO timestamp of the capture a measured cost came from (null when computed
    * on read from the published ladder — that number has no moment of its own). */
   measuredAt?: string | null;
-  /** True when the measured point carries a proof screenshot the UI can open. */
+  /** True when the measured point carries a proof the UI can open. */
   hasEvidence?: boolean;
+  /** What that proof IS: a screenshot of the calculator, or the page's own
+   * pricing response replayed at this volume. Null on a computed cost. */
+  evidenceKind?: EvidenceKind | null;
 }
 
 /**
@@ -115,6 +119,7 @@ export interface MeasuredCost {
   currency: string | null;
   measuredAt: string | null;
   hasEvidence: boolean;
+  evidenceKind?: EvidenceKind | null;
 }
 
 /**
@@ -147,6 +152,7 @@ export function cheapestCostAtVolume(
       method: "calculator_probe",
       measuredAt: hit.measuredAt,
       hasEvidence: hit.hasEvidence,
+      evidenceKind: hit.evidenceKind ?? null,
     };
   }
 
@@ -182,6 +188,7 @@ export function cheapestCostAtVolume(
         method: "computed_from_tiers",
         measuredAt: null,
         hasEvidence: false,
+        evidenceKind: null,
       };
     }
   }

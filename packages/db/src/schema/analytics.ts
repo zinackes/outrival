@@ -131,12 +131,18 @@ export const pricePoints = pgTable(
     currency: text("currency").notNull(),
     // computed_from_tiers | calculator_probe (P4) | published
     method: text("method").notNull(),
-    // P4 — R2 key of the screenshot taken at the moment this cost was read off
-    // the competitor's own calculator: the quantity control and the total, in one
-    // frame. Mandatory for a `calculator_probe` row (the worker drops a run whose
-    // points can't all be evidenced) and null for every computed/published row,
-    // which has the page's own text as its evidence instead.
-    evidenceScreenshotKey: text("evidence_screenshot_key"),
+    // P4 — R2 key of the proof this cost was really quoted, and what KIND of proof
+    // it is. Mandatory for a `calculator_probe` row (the worker drops a run whose
+    // points can't all be evidenced), null on every computed/published row, which
+    // has the page's own text as its evidence instead.
+    //   screenshot   — a PNG of the calculator: the quantity control and the total
+    //                  in one frame, at the instant the number was read.
+    //   api_response — the page's OWN pricing request replayed at that volume, with
+    //                  the request URL, the response body and the path the amount
+    //                  was read from. Only ever used for a replay that was first
+    //                  CONFIRMED against a screenshot-backed UI reading.
+    evidenceKey: text("evidence_key"),
+    evidenceKind: text("evidence_kind"),
     recordedAt: timestamp("recorded_at").notNull().defaultNow(),
   },
   (t) => [
@@ -429,8 +435,15 @@ export const calculatorProbeRuns = pgTable(
     id: uuid(),
     competitorId: text("competitor_id").notNull(),
     url: text("url").notNull(),
-    // endpoint | ui | none (never got as far as reading a total)
+    // ui               — every volume read off the rendered page
+    // endpoint         — the page's own pricing XHR read in-browser
+    // endpoint_replay  — the anchor volume driven and screenshotted in the browser,
+    //                    the rest replayed over HTTP after it was closed
+    // none             — never got as far as reading a total
     strategy: text("strategy").notNull().default("none"),
+    /** R2 key of the frame showing the calculator we drove — run-level proof that
+     *  the replayed volumes came from a session we really opened. */
+    anchorScreenshotKey: text("anchor_screenshot_key"),
     // measured | <ProbeFailure> | <ProbeRejection> — see @outrival/scrapers
     // (probe.ts) and @outrival/shared (calculator-probe.ts).
     outcome: text("outcome").notNull(),

@@ -1,5 +1,5 @@
 {
-  "id": "ab69f138-db71-40de-8a36-202200dc927f",
+  "id": "13cc89fc-62bd-4a50-a336-332b0247987f",
   "prevId": "e8bfb9bd-0282-45d8-becb-c786ffb43aab",
   "version": "7",
   "dialect": "postgresql",
@@ -6742,6 +6742,12 @@
           "notNull": true,
           "default": "'none'"
         },
+        "anchor_screenshot_key": {
+          "name": "anchor_screenshot_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "outcome": {
           "name": "outcome",
           "type": "text",
@@ -7475,8 +7481,14 @@
           "primaryKey": false,
           "notNull": true
         },
-        "evidence_screenshot_key": {
-          "name": "evidence_screenshot_key",
+        "evidence_key": {
+          "name": "evidence_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "evidence_kind": {
+          "name": "evidence_kind",
           "type": "text",
           "primaryKey": false,
           "notNull": false

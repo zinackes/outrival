@@ -34,3 +34,5 @@ export { pickTotal, parseTotal, readsAsYearly } from "./calculator/readings";
 export type { TotalCandidate, TotalPick } from "./calculator/readings";
 export { findPricePath, readPricePath, pathnameOf } from "./calculator/endpoint";
 export type { CapturedJson, PricePath } from "./calculator/endpoint";
+export { planReplay, replayUrl, replayEvidence } from "./calculator/replay";
+export type { ReplayPlan, ReplayPlanResult, ReplayRejection } from "./calculator/replay";

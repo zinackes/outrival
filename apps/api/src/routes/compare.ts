@@ -126,6 +126,7 @@ interface RawMeasuredPoint {
   currency: string | null;
   measuredAt: string | null;
   hasEvidence: boolean;
+  evidenceKind: "screenshot" | "api_response" | null;
 }
 
 /** What buying `qty` of `unit` from this competitor costs per month. */
@@ -142,6 +143,9 @@ interface MeterCostDetail {
   method: CostMethod;
   measuredAt: string | null;
   hasEvidence: boolean;
+  /** Which proof the UI can open for a measured cost: the calculator screenshot,
+   * or the pricing response it was replayed from. */
+  evidenceKind: "screenshot" | "api_response" | null;
 }
 
 interface PricingDetail {
@@ -326,7 +330,8 @@ compareRouter.get("/", async (c) => {
            pp.meter_unit AS "meterUnit", pp.reference_qty AS "referenceQty",
            pp.effective_monthly_cost AS "effectiveMonthlyCost", pp.currency,
            pp.recorded_at AS "measuredAt",
-           (pp.evidence_screenshot_key IS NOT NULL) AS "hasEvidence"
+           (pp.evidence_key IS NOT NULL) AS "hasEvidence",
+           pp.evidence_kind AS "evidenceKind"
     FROM price_points pp
     JOIN latest l ON l.competitor_id = pp.competitor_id AND pp.recorded_at = l.rid
     ORDER BY pp.competitor_id, pp.meter_unit, pp.reference_qty
@@ -470,6 +475,7 @@ compareRouter.get("/", async (c) => {
       currency: m.currency,
       measuredAt: m.measuredAt,
       hasEvidence: m.hasEvidence,
+      evidenceKind: m.evidenceKind,
     });
     measuredByComp.set(m.competitorId, list);
   }
@@ -530,6 +536,7 @@ compareRouter.get("/", async (c) => {
           method: best.method,
           measuredAt: best.measuredAt ?? null,
           hasEvidence: best.hasEvidence ?? false,
+          evidenceKind: best.evidenceKind ?? null,
         });
       }
     }

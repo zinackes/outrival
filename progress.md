@@ -878,15 +878,29 @@ Le mouvement de découverte va au bout de la plage demandée, pas au volume vois
 un plancher mensuel affiche le même total à 1k et à 10k, donc un petit mouvement ne
 prouve rien. Un total libellé à l'ANNÉE est refusé plutôt que divisé par 12.
 
-**Endpoint : lu, jamais rejoué** — quand la page calcule côté serveur, le JSON de son
-propre XHR devient la source du nombre (`strategy=endpoint`) : pas de formatage, pas
-de compteur animé attrapé en cours de tween. Mais il est lu comme la réponse de la
-page à une interaction faite sur l'UI publique, jamais en forgeant des requêtes HTTP.
-**Écart assumé vs la spec P4** (qui demandait « probe HTTP pur à chaque volume, plus
-de navigateur ensuite ») : rejouer une API privée laisse le run sans screenshot, ce
-que la règle de preuve interdit, et « se servir du calculateur » et « rejouer son API »
-ne sont pas le même acte vis-à-vis de la collection doctrine. L'endpoint fournit le
-NOMBRE, l'interaction UI fournit la PREUVE, chaque point garde les deux.
+**Endpoint : rejoué, après confirmation** — quand la page calcule côté serveur, le
+JSON de son propre XHR devient la source du nombre : pas de formatage, pas de
+compteur animé attrapé en cours de tween. Le 1er volume est TOUJOURS piloté et
+screenshoté au navigateur ; les suivants sont demandés à cet endpoint en HTTP,
+**navigateur fermé** (`strategy=endpoint_replay`).
+
+Décidé sur mesure, pas sur intuition : **38 concurrents `dynamic` sur 172 en prod**
+(compté le 2026-07-31), soit ~36 probes/jour en série sur le worker browser qui fait
+déjà tourner scrape-monitor à 3 en parallèle sur 8 Go. Quatre garde-fous font que
+ce n'est pas « forger des requêtes sur une API privée » : (1) la requête n'est pas
+inventée, c'est celle que la PAGE a émise pendant qu'on bougeait son curseur, avec un
+seul nombre changé ; (2) GET même-origine dont la quantité est dans la query ; (3)
+aucun credential créé, et un en-tête Authorization fait refuser le replay plutôt que
+le re-signer ; (4) **confirmation obligatoire** — l'endpoint doit répondre au volume
+ancre le montant que le calculateur venait d'afficher, sinon le run finit dans l'UI.
+Cette confirmation sert aussi de double lecture (deux transports indépendants).
+
+**La preuve suit le transport** : `price_points.evidence_key` + `evidence_kind` —
+`screenshot` (la frame lue) ou `api_response` (requête + corps + chemin du montant +
+le couple ancre contre lequel il a été confirmé). Le run garde en plus
+`calculator_probe_runs.anchor_screenshot_key`, donc un run rejoué montre toujours la
+session réellement ouverte. Renommage fait pendant que 0058 n'était appliquée nulle
+part — ça ne serait plus jamais gratuit.
 
 **Jamais un succès vide** — `validateProbeSeries` (@outrival/shared, pur) : monotonie
 (égalité tolérée en zone plate/minimum), devise unique, bornes plausibles, et
@@ -948,11 +962,16 @@ chaque probe payait les 2 s de courtoisie inter-domaine prévues pour un vrai si
 (fichier de test à 68 s, puis timeout sous charge parallèle). Lues par appel, +
 un module d'env importé en premier côté test : 25 s, stable.
 
-**Tests** : typecheck 8/8 ✓ · `pnpm test` 12/12 ✓. 39 tests neufs, dont **8 qui
+**Tests** : typecheck 8/8 ✓ · `pnpm test` 12/12 ✓. 49 tests neufs, dont **9 qui
 pilotent un vrai Chromium** contre des fixtures de calculateur servies en local
-(slider + total JS, endpoint JSON, série décroissante ⇒ drop, unité non résolue ⇒
-skip, bannière de consentement, double lecture divergente ⇒ drop, spec cachée
-rejouée, page absente ⇒ refus). Effet de bord corrigé : `scrape-patchright-pool.test.ts`
+(slider + total JS, endpoint JSON rejoué en HTTP avec preuves mixtes
+screenshot/api_response, endpoint protégé par un check Referer ⇒ retombe dans l'UI,
+série décroissante ⇒ drop, unité non résolue ⇒ skip, bannière de consentement, double
+lecture divergente ⇒ drop, spec cachée rejouée, page absente ⇒ refus). Piège corrigé
+au passage : le plan de replay doit être construit sur la requête du volume ANCRE, pas
+sur celle du mouvement de découverte — sinon on cherche la quantité d'ancre dans une
+URL qui ne l'a jamais portée et toute page à endpoint retombe silencieusement dans
+l'UI. Effet de bord corrigé : `scrape-patchright-pool.test.ts`
 mockait `playwright` **globalement** (mock.module s'applique au chargement et ne se
 désenregistre pas), donc le premier test à vouloir un vrai navigateur recevait un faux
 — le mock est devenu un passthrough actif seulement pendant ce fichier, avec le

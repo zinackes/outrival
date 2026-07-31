@@ -118,6 +118,14 @@ export function validateProbeSeries(readings: ProbeReading[]): ProbeValidation {
 // Probe-to-probe movement
 // ---------------------------------------------------------------------------
 
+/**
+ * What backs a measured cost. `screenshot` is the frame the amount was read off;
+ * `api_response` is the page's own pricing request replayed at that volume, kept
+ * whole (request URL, response body, the path the amount came from) and only ever
+ * used after that endpoint agreed with a screenshot-backed reading.
+ */
+export type EvidenceKind = "screenshot" | "api_response";
+
 /** A stored measured point, in the shape both sides of the comparison use. */
 export interface MeasuredPoint {
   planName: string;

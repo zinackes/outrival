@@ -71,6 +71,7 @@ import {
   DEPARTMENT_BUCKETS,
   DEPARTMENT_BUCKET_LABELS,
   getBytesFromR2,
+  getFromR2,
   isHiddenSource,
   isAutomaticSource,
   isConfigurableSource,
@@ -2095,6 +2096,7 @@ competitorsRouter.get("/:id/rate-structures", async (c) => {
     method: string;
     capturedAt: string;
     hasEvidence: boolean;
+    evidenceKind: "screenshot" | "api_response" | null;
   }>(sql`
     WITH latest AS (
       SELECT method, max(recorded_at) AS rid
@@ -2103,7 +2105,8 @@ competitorsRouter.get("/:id/rate-structures", async (c) => {
     SELECT pp.plan_name AS "planName", pp.meter_unit AS "meterUnit",
            pp.reference_qty AS "referenceQty", pp.effective_monthly_cost AS "cost",
            pp.currency, pp.method, pp.recorded_at::text AS "capturedAt",
-           (pp.evidence_screenshot_key IS NOT NULL) AS "hasEvidence"
+           (pp.evidence_key IS NOT NULL) AS "hasEvidence",
+           pp.evidence_kind AS "evidenceKind"
     FROM price_points pp
     JOIN latest l ON l.method = pp.method AND pp.recorded_at = l.rid
     WHERE pp.competitor_id = ${competitor.id}
@@ -2139,20 +2142,31 @@ competitorsRouter.get("/:id/calculator-evidence", async (c) => {
   const qty = Number(c.req.query("qty"));
   if (!unit || !Number.isFinite(qty)) return c.json(notFound("evidence"), 404);
 
-  const [row] = await analyticsQuery<{ key: string }>(sql`
-    SELECT evidence_screenshot_key AS key
+  const [row] = await analyticsQuery<{ key: string; kind: string | null }>(sql`
+    SELECT evidence_key AS key, evidence_kind AS kind
     FROM price_points
     WHERE competitor_id = ${competitor.id}
       AND method = 'calculator_probe'
       AND meter_unit = ${unit}
       AND reference_qty = ${qty}
-      AND evidence_screenshot_key IS NOT NULL
+      AND evidence_key IS NOT NULL
     ORDER BY recorded_at DESC
     LIMIT 1
   `);
   if (!row?.key) return c.json(notFound("evidence"), 404);
 
   try {
+    // A screenshot is served as an image; a replayed point's proof is the pricing
+    // request and the body it answered with, served as the JSON it is.
+    if (row.kind === "api_response") {
+      const json = await getFromR2(row.key);
+      return new Response(json, {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "private, max-age=31536000, immutable",
+        },
+      });
+    }
     const bytes = await getBytesFromR2(row.key);
     return new Response(new Uint8Array(bytes), {
       headers: {

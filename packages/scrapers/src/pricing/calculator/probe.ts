@@ -21,7 +21,15 @@
 // Every judgement about whether a reading is believable is code, in
 // @outrival/shared (validateProbeSeries) and in the pure modules next door.
 
-import { chromium, type Browser, type Page, type Response } from "playwright";
+import {
+  chromium,
+  request as playwrightRequest,
+  type APIRequestContext,
+  type Browser,
+  type BrowserContext,
+  type Page,
+  type Response,
+} from "playwright";
 import {
   resolveMeterUnit,
   type CalculatorSpec,
@@ -36,6 +44,7 @@ import { awaitDomainSlot } from "../../lib/rate-limit";
 import { pickControl, reachableQuantities, type ControlCandidate, type PickedControl } from "./controls";
 import { pickTotal, parseTotal, readsAsYearly, type TotalCandidate } from "./readings";
 import { findPricePath, readPricePath, type CapturedJson, type PricePath } from "./endpoint";
+import { planReplay, replayUrl, replayEvidence, type ReplayPlan } from "./replay";
 
 /** The plan a measured point is filed under when the calculator names none. */
 export const PROBE_PLAN_NAME = "Usage calculator";
@@ -74,20 +83,39 @@ export type ProbeFailure =
   | "timeout"
   | "error";
 
-export interface ProbeShot {
+/**
+ * The proof one measured point carries. A screenshot when the amount was read off
+ * the rendered calculator; the endpoint's own request/response when it was read
+ * from the pricing request the page itself makes (and only after that request was
+ * CONFIRMED against a screenshot-backed reading — see replay.ts).
+ */
+export interface ProbeEvidence {
   qty: number;
-  png: Buffer;
+  kind: "screenshot" | "api_response";
+  png?: Buffer;
+  json?: string;
 }
+
+export type ProbeStrategy = "ui" | "endpoint" | "endpoint_replay";
 
 export interface ProbeSuccess {
   ok: true;
-  /** Where each total came from: the page's own pricing XHR, or the DOM. */
-  strategy: "endpoint" | "ui";
+  /**
+   * Where the totals came from:
+   *   ui               every volume read off the rendered page
+   *   endpoint         read from the page's own pricing XHR, in the browser
+   *   endpoint_replay  first volume driven and screenshotted, the rest asked of
+   *                    that same endpoint over HTTP with the browser closed
+   */
+  strategy: ProbeStrategy;
   unit: string;
   planName: string;
   currency: string;
   readings: ProbeReading[];
-  shots: ProbeShot[];
+  evidence: ProbeEvidence[];
+  /** The frame showing the calculator we drove — run-level proof, and the only
+   * screenshot a replay run has beyond its anchor point. */
+  anchorPng: Buffer | null;
   /** The recipe to cache, so the next probe skips discovery entirely. */
   spec: CalculatorSpec;
   finalUrl: string;
@@ -132,25 +160,35 @@ export async function probeCalculator(options: ProbeOptions): Promise<ProbeOutco
   await awaitDomainSlot(options.url, await getCrawlDelayMs(options.url));
 
   let browser: Browser | null = null;
+  let context: BrowserContext | null = null;
+  // Closing is idempotent and can happen EARLY: once a replay is confirmed the
+  // browser has nothing left to do, and on a fleet measuring ~36 calculators a day
+  // the point of the whole replay path is to stop holding a Chromium for volumes
+  // it isn't reading.
+  const release = async (): Promise<void> => {
+    const ctx = context;
+    const br = browser;
+    context = null;
+    browser = null;
+    await ctx?.close().catch(() => {});
+    await br?.close().catch(() => {});
+  };
+
   try {
     browser = await chromium.launch(browserLaunchOptions("direct"));
-    const context = await browser.newContext({
+    context = await browser.newContext({
       userAgent: OUTRIVAL_UA,
       locale: "en-US",
       timezoneId: "America/New_York",
       viewport: { width: 1440, height: 1000 },
       extraHTTPHeaders: realisticHeaders(),
     });
-    try {
-      const page = await context.newPage();
-      const calls: CapturedJson[] = [];
-      page.on("response", (response) => {
-        void captureJson(response, calls);
-      });
-      return await drive(page, calls, options, deadline);
-    } finally {
-      await context.close().catch(() => {});
-    }
+    const page = await context.newPage();
+    const calls: CapturedJson[] = [];
+    page.on("response", (response) => {
+      void captureJson(response, calls);
+    });
+    return await drive(page, calls, options, deadline, release);
   } catch (err) {
     const name = err instanceof Error ? err.name : "";
     return {
@@ -159,7 +197,7 @@ export async function probeCalculator(options: ProbeOptions): Promise<ProbeOutco
       detail: err instanceof Error ? err.message : String(err),
     };
   } finally {
-    await browser?.close().catch(() => {});
+    await release();
   }
 }
 
@@ -170,7 +208,13 @@ async function captureJson(response: Response, calls: CapturedJson[]): Promise<v
     if (!(response.headers()["content-type"] ?? "").includes("json")) return;
     const raw = await response.text();
     if (raw.length > 200_000) return;
-    calls.push({ url: response.url(), body: JSON.parse(raw) });
+    const req = response.request();
+    calls.push({
+      url: response.url(),
+      body: JSON.parse(raw),
+      method: req.method(),
+      requestHeaders: req.headers(),
+    });
   } catch {
     // One unreadable response never costs the probe.
   }
@@ -181,6 +225,7 @@ async function drive(
   calls: CapturedJson[],
   options: ProbeOptions,
   deadline: number,
+  release: () => Promise<void>,
 ): Promise<ProbeOutcome> {
   let interactions = 0;
   const spend = (): boolean => ++interactions <= MAX_INTERACTIONS;
@@ -284,9 +329,88 @@ async function drive(
   const pricePath = findPricePath(calls, totalPick.amount);
 
   // ── Measure ───────────────────────────────────────────────────────────────
+  // The FIRST volume is always driven and screenshotted in the browser. It is the
+  // anchor: the reading every other one is trusted against, and the frame that
+  // proves we really used their calculator.
   const readings: ProbeReading[] = [];
-  const shots: ProbeShot[] = [];
-  for (const qty of quantities) {
+  const evidence: ProbeEvidence[] = [];
+  const spec: CalculatorSpec = {
+    version: 1,
+    control: {
+      selector: control.selector,
+      kind: control.kind,
+      unit: control.unit,
+      planName: options.spec?.control.planName ?? null,
+    },
+    total: { selector: totalSelector },
+  };
+  const finish = (strategy: ProbeStrategy, anchorPng: Buffer | null, finalUrl: string): ProbeSuccess => ({
+    ok: true,
+    strategy,
+    unit: control.unit,
+    planName: options.spec?.control.planName ?? PROBE_PLAN_NAME,
+    currency: readings[0]!.currency,
+    readings,
+    evidence,
+    anchorPng,
+    spec,
+    finalUrl,
+  });
+
+  const anchorQty = quantities[0]!;
+  if (!spend()) return { ok: false, reason: "error", detail: "interaction budget" };
+  await pace();
+  if (!(await setControl(page, control, anchorQty))) {
+    return { ok: false, reason: "spec_stale", detail: `control refused ${anchorQty}` };
+  }
+  await settle(page, totalSelector);
+  const anchorPng = await clipShot(page, control.selector, totalSelector);
+  const anchor = await readAt(page, totalSelector, calls, pricePath);
+  if (!anchor) return { ok: false, reason: "no_total", detail: `unreadable at ${anchorQty}` };
+  readings.push({ qty: anchorQty, cost: anchor.cost, currency: anchor.currency });
+  if (anchorPng) evidence.push({ qty: anchorQty, kind: "screenshot", png: anchorPng });
+
+  const pageUrl = page.url();
+
+  // ── Replay: ask the same endpoint about the remaining volumes ─────────────
+  // Only when the page's own pricing request is a same-origin GET carrying the
+  // quantity, and only after it answers the ANCHOR volume with the amount the
+  // calculator just displayed. That confirmation is what turns a plausible URL
+  // into evidence — and it doubles as the run's double reading, taken through a
+  // different transport than the one it is checking.
+  // Re-locate the pricing request AT THE ANCHOR VOLUME. The one found during
+  // discovery belongs to the discovery move, so its query carries that quantity —
+  // planning a replay off it would look for the anchor number in a URL that never
+  // contained it, and every endpoint page would silently fall back to the UI.
+  const anchorPath = pricePath ? (findPricePath(calls, anchor.cost) ?? pricePath) : null;
+  const replay = anchorPath ? planReplay(anchorPath, pageUrl, anchorQty) : null;
+  if (replay?.ok && quantities.length > 1 && !outOfTime()) {
+    const confirmed = await confirmReplay(page, replay.plan, anchorQty, anchor.cost);
+    if (confirmed) {
+      readings[0] = { ...readings[0]!, recheck: confirmed.amount };
+      evidence[0] = {
+        qty: anchorQty,
+        kind: "screenshot",
+        png: anchorPng ?? undefined,
+      };
+      // Nothing left for a browser to do: free it before the remaining volumes.
+      await release();
+      const rest = await replayVolumes({
+        plan: replay.plan,
+        quantities: quantities.slice(1),
+        currency: anchor.currency,
+        confirmedAgainst: { qty: anchorQty, amount: anchor.cost },
+        deadline,
+      });
+      if (!rest.ok) return rest.outcome;
+      readings.push(...rest.readings);
+      evidence.push(...rest.evidence);
+      return finish("endpoint_replay", anchorPng, pageUrl);
+    }
+  }
+
+  // ── UI path: every remaining volume driven on the page ────────────────────
+  for (const qty of quantities.slice(1)) {
     if (outOfTime()) return { ok: false, reason: "timeout", detail: `after ${readings.length} readings` };
     if (!spend()) break;
     await pace();
@@ -301,11 +425,8 @@ async function drive(
     if (!reading) {
       return { ok: false, reason: "no_total", detail: `unreadable at ${qty}` };
     }
-    if (png) shots.push({ qty, png });
+    if (png) evidence.push({ qty, kind: "screenshot", png });
     readings.push({ qty, cost: reading.cost, currency: reading.currency });
-  }
-  if (readings.length === 0) {
-    return { ok: false, reason: "volumes_out_of_range", detail: "no volume measured" };
   }
 
   // ── Double reading ────────────────────────────────────────────────────────
@@ -313,40 +434,137 @@ async function drive(
   // differently the second time (a stale render, a debounce we outran, an A/B
   // bucket that flipped) is one whose first answer we cannot quote either — and
   // the caller drops the entire run on a mismatch.
-  const recheckQty = readings[0]!.qty;
   if (spend() && !outOfTime()) {
     await pace();
-    await setControl(page, control, contrastingQty(control, quantities, recheckQty));
+    await setControl(page, control, contrastingQty(control, quantities, anchorQty));
     await settle(page, totalSelector);
     if (spend()) {
       await pace();
-      await setControl(page, control, recheckQty);
+      await setControl(page, control, anchorQty);
       await settle(page, totalSelector);
       const again = await readAt(page, totalSelector, calls, pricePath);
       readings[0] = { ...readings[0]!, recheck: again?.cost ?? null };
     }
   }
 
-  return {
-    ok: true,
-    strategy: pricePath ? "endpoint" : "ui",
-    unit: control.unit,
-    planName: options.spec?.control.planName ?? PROBE_PLAN_NAME,
-    currency: readings[0]!.currency,
-    readings,
-    shots,
-    spec: {
-      version: 1,
-      control: {
-        selector: control.selector,
-        kind: control.kind,
-        unit: control.unit,
-        planName: options.spec?.control.planName ?? null,
-      },
-      total: { selector: totalSelector },
-    },
-    finalUrl: page.url(),
-  };
+  return finish(pricePath ? "endpoint" : "ui", anchorPng, page.url());
+}
+
+/** Relative tolerance between the UI reading and the endpoint's answer to the
+ * same volume. Wider than a rounding error, far tighter than a price difference. */
+const CONFIRM_EPSILON = 0.005;
+
+/**
+ * Ask the endpoint about the volume the browser just measured, and only believe
+ * it if the two agree. A replay that disagrees is not a slower path to the same
+ * answer — it is evidence that the URL we built means something else.
+ */
+async function confirmReplay(
+  page: Page,
+  plan: ReplayPlan,
+  qty: number,
+  uiAmount: number,
+): Promise<{ amount: number; body: unknown } | null> {
+  // Sent from the page's OWN context, so it carries the session it already had.
+  const url = replayUrl(plan, qty);
+  try {
+    const res = await page.request.get(url, { timeout: 10_000 });
+    if (!res.ok()) return null;
+    const body: unknown = await res.json();
+    const amount = readJsonPath(body, plan.path);
+    if (amount == null) return null;
+    const agrees = Math.abs(amount - uiAmount) <= Math.max(Math.abs(uiAmount), 1) * CONFIRM_EPSILON;
+    return agrees ? { amount, body } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The remaining volumes, over HTTP, with no browser alive.
+ *
+ * Same courtesy as everything else that touches a domain: the per-domain gap is
+ * honoured between calls and the pacing band still applies — a burst of four
+ * requests would be a different guest than the one the doctrine describes.
+ */
+async function replayVolumes(args: {
+  plan: ReplayPlan;
+  quantities: number[];
+  currency: string;
+  confirmedAgainst: { qty: number; amount: number };
+  deadline: number;
+}): Promise<
+  | { ok: true; readings: ProbeReading[]; evidence: ProbeEvidence[] }
+  | { ok: false; outcome: ProbeRefusal }
+> {
+  const readings: ProbeReading[] = [];
+  const evidence: ProbeEvidence[] = [];
+  let api: APIRequestContext | null = null;
+  try {
+    api = await playwrightRequest.newContext({
+      userAgent: OUTRIVAL_UA,
+      extraHTTPHeaders: realisticHeaders(),
+    });
+    for (const qty of args.quantities) {
+      if (Date.now() > args.deadline) {
+        return { ok: false, outcome: { ok: false, reason: "timeout", detail: "during replay" } };
+      }
+      const url = replayUrl(args.plan, qty);
+      await awaitDomainSlot(url, await getCrawlDelayMs(url));
+      await pace();
+      const res = await api.get(url, { timeout: 15_000 });
+      if (!res.ok()) {
+        return {
+          ok: false,
+          outcome: { ok: false, reason: "refused", detail: `replay http_${res.status()}` },
+        };
+      }
+      const body: unknown = await res.json();
+      const amount = readJsonPath(body, args.plan.path);
+      if (amount == null) {
+        // The shape changed between two calls seconds apart: we no longer know
+        // what we are reading, so the run stops rather than guessing.
+        return { ok: false, outcome: { ok: false, reason: "no_total", detail: `replay at ${qty}` } };
+      }
+      readings.push({ qty, cost: amount, currency: args.currency });
+      evidence.push({
+        qty,
+        kind: "api_response",
+        json: replayEvidence({
+          url,
+          qty,
+          path: args.plan.path,
+          amount,
+          currency: args.currency,
+          body,
+          confirmedAgainst: args.confirmedAgainst,
+        }),
+      });
+    }
+    return { ok: true, readings, evidence };
+  } catch (err) {
+    return {
+      ok: false,
+      outcome: { ok: false, reason: "error", detail: `replay: ${String(err).slice(0, 200)}` },
+    };
+  } finally {
+    await api?.dispose().catch(() => {});
+  }
+}
+
+/** Read a dotted path out of a parsed body, as a finite number. */
+function readJsonPath(body: unknown, path: string): number | null {
+  let cur: unknown = body;
+  for (const seg of path.split(".")) {
+    if (cur == null || typeof cur !== "object") return null;
+    cur = (cur as Record<string, unknown>)[seg];
+  }
+  if (typeof cur === "number" && Number.isFinite(cur)) return cur;
+  if (typeof cur === "string") {
+    const n = Number(cur);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

@@ -6,21 +6,28 @@
  * is the case the JSON is a far better source than the DOM — no formatting, no
  * animated counter mid-tween, no re-finding a selector after a re-render.
  *
- * What this module does NOT do is forge requests. The endpoint is only ever read
- * as the page's own response to an interaction we performed on the public UI, in
- * the browser, at human pace. Replaying a private JSON API by hand at four
- * volumes would be a different act from using the product's calculator — and it
- * would also leave the run with no screenshot to show, which the evidence rule
- * requires for every stored point. So: the endpoint supplies the NUMBER, the UI
- * interaction supplies the PROOF, and every point still has both.
+ * This module only IDENTIFIES that endpoint, out of everything the page fetched,
+ * by anchoring on the amount the calculator displayed. Nothing here is invented:
+ * the URL, the method and the headers all come from a request the page made while
+ * we moved its slider.
+ *
+ * Asking that endpoint about the OTHER volumes is a separate decision with its own
+ * rules — see replay.ts, which refuses anything but a same-origin GET whose
+ * quantity is in the query string, and only after the browser has confirmed the
+ * endpoint returns the number the UI showed.
  *
  * Pure — the browser hands over the captured JSON, this finds the price inside it.
  */
 
-/** One JSON response observed during an interaction. */
+/** One JSON response observed during an interaction, with the request that got it. */
 export interface CapturedJson {
   url: string;
   body: unknown;
+  /** HTTP method of the request — a replay is only ever considered for a GET. */
+  method?: string;
+  /** Headers the page sent. Read only to REFUSE a replay (an Authorization header
+   * means credentials we would have to re-sign), never to reproduce them. */
+  requestHeaders?: Record<string, string>;
 }
 
 export interface PricePath {
@@ -29,6 +36,12 @@ export interface PricePath {
   pathname: string;
   /** Dotted path to the numeric leaf, e.g. "data.estimate.monthlyTotal". */
   path: string;
+  /** The exact request URL the amount came back from, kept so a replay can be
+   * built from it (same URL, one number changed). */
+  url: string;
+  method: string;
+  /** The page's own request headers — read only to refuse a credentialed replay. */
+  requestHeaders: Record<string, string>;
 }
 
 // A calculator response is small; a 5-level walk covers every shape observed
@@ -54,7 +67,13 @@ export function findPricePath(calls: CapturedJson[], displayedTotal: number): Pr
     if (path == null) continue;
     const pathname = pathnameOf(call.url);
     if (!pathname) continue;
-    return { pathname, path };
+    return {
+      pathname,
+      path,
+      url: call.url,
+      method: call.method ?? "GET",
+      requestHeaders: call.requestHeaders ?? {},
+    };
   }
   return null;
 }

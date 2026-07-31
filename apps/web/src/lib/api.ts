@@ -523,6 +523,7 @@ export interface RateStructures {
     method: CostMethod;
     capturedAt: string;
     hasEvidence: boolean;
+    evidenceKind: "screenshot" | "api_response" | null;
   }>;
   capturedAt: string | null;
 }
@@ -1107,8 +1108,11 @@ export interface CompareColumn {
       method: CostMethod;
       /** When a measured cost was read (null for a computed one). */
       measuredAt: string | null;
-      /** Whether a proof screenshot can be opened for a measured cost. */
+      /** Whether a proof can be opened for a measured cost. */
       hasEvidence: boolean;
+      /** Which proof: the calculator screenshot, or the pricing response the
+       * volume was replayed from. */
+      evidenceKind: "screenshot" | "api_response" | null;
     }>;
   } | null;
   hiring: {
@@ -2671,8 +2675,9 @@ export const api = {
   // published ladder, the monthly minimum, the percentage rate.
   getCompetitorRateStructures: (id: string) =>
     request<RateStructures>(`/api/competitors/${id}/rate-structures`),
-  // P4 — the screenshot taken while the competitor's calculator displayed a
-  // measured cost. The R2 key stays server-side: the caller names the meter and
+  // P4 — the proof behind a measured cost: the screenshot taken while the
+  // competitor's calculator displayed it, or the pricing response the volume was
+  // replayed from. The R2 key stays server-side: the caller names the meter and
   // the volume, the API resolves which object that is.
   calculatorEvidenceUrl: (id: string, unit: string, qty: number) =>
     `${BASE}/api/competitors/${id}/calculator-evidence?unit=${encodeURIComponent(unit)}&qty=${qty}`,

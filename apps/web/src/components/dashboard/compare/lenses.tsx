@@ -318,8 +318,9 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
                     .filter(Boolean)
                     .join(" · ")}
                 >
-                  {/* The proof for a measured cost: the competitor's own
-                      calculator, showing that volume and that total. */}
+                  {/* The proof for a measured cost: the calculator showing that
+                      volume and that total, or — for a volume asked of the page's
+                      own pricing endpoint — the request and the answer it gave. */}
                   {probed && derived && reading.hasEvidence && (
                     <a
                       href={api.calculatorEvidenceUrl(e.id, derived.unit, derived.qty)}
@@ -327,7 +328,9 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
                       rel="noreferrer"
                       className="text-link text-dense underline-offset-2 hover:underline"
                     >
-                      View the calculator screenshot
+                      {reading.evidenceKind === "api_response"
+                        ? "View their pricing response"
+                        : "View the calculator screenshot"}
                     </a>
                   )}
                   {plans.map((p, i) => (

@@ -18,6 +18,7 @@ CREATE TABLE "calculator_probe_runs" (
 	"competitor_id" text NOT NULL,
 	"url" text NOT NULL,
 	"strategy" text DEFAULT 'none' NOT NULL,
+	"anchor_screenshot_key" text,
 	"outcome" text NOT NULL,
 	"detail" text,
 	"meter_unit" text DEFAULT '' NOT NULL,
@@ -28,7 +29,8 @@ CREATE TABLE "calculator_probe_runs" (
 	"recorded_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "price_points" ADD COLUMN "evidence_screenshot_key" text;--> statement-breakpoint
+ALTER TABLE "price_points" ADD COLUMN "evidence_key" text;--> statement-breakpoint
+ALTER TABLE "price_points" ADD COLUMN "evidence_kind" text;--> statement-breakpoint
 CREATE UNIQUE INDEX "calculator_specs_competitor_idx" ON "calculator_specs" USING btree ("competitor_id");--> statement-breakpoint
 CREATE INDEX "calculator_probe_runs_recorded_idx" ON "calculator_probe_runs" USING btree ("recorded_at");--> statement-breakpoint
 CREATE INDEX "calculator_probe_runs_competitor_recorded_idx" ON "calculator_probe_runs" USING btree ("competitor_id","recorded_at");

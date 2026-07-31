@@ -85,7 +85,8 @@ export type {
   ProbeSuccess,
   ProbeRefusal,
   ProbeFailure,
-  ProbeShot,
+  ProbeEvidence,
+  ProbeStrategy,
 } from "./pricing/calculator/probe";
 export { scrapeWithApiCapture } from "./spa/api-capture";
 export type { SpaCaptureResult } from "./spa/api-capture";

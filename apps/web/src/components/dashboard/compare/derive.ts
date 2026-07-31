@@ -131,6 +131,7 @@ export type PriceBandReading = Reading & {
   method?: CostMethod | null;
   measuredAt?: string | null;
   hasEvidence?: boolean;
+  evidenceKind?: "screenshot" | "api_response" | null;
 };
 
 /**
@@ -240,6 +241,7 @@ function meteredReading(
     method: hit.method ?? null,
     measuredAt: hit.measuredAt ?? null,
     hasEvidence: hit.hasEvidence ?? false,
+    evidenceKind: hit.evidenceKind ?? null,
   };
 }
 

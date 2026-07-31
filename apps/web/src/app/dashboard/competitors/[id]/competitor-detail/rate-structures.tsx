@@ -65,6 +65,7 @@ type CostPoint = {
   method: string;
   capturedAt: string;
   hasEvidence: boolean;
+  evidenceKind: "screenshot" | "api_response" | null;
 };
 
 /**
@@ -106,7 +107,10 @@ function CostAtVolume({
                 className="text-xs text-muted-foreground"
                 title={
                   measured
-                    ? `Measured on ${p.planName} on their own pricing calculator on ${formatDay(p.capturedAt)}`
+                    ? `Measured on ${p.planName} on their own pricing calculator on ${formatDay(p.capturedAt)}` +
+                      (p.evidenceKind === "api_response"
+                        ? " — read from the pricing response their page requests, confirmed against the figure the calculator displayed"
+                        : "")
                     : `Computed from the volume bands they publish, captured ${formatDay(p.capturedAt)}`
                 }
               >
@@ -121,7 +125,7 @@ function CostAtVolume({
                   rel="noreferrer"
                   className="text-link ml-auto text-xs underline-offset-2 hover:underline"
                 >
-                  Screenshot
+                  {p.evidenceKind === "api_response" ? "Response" : "Screenshot"}
                 </a>
               )}
             </li>

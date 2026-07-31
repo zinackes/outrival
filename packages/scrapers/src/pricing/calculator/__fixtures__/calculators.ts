@@ -131,6 +131,28 @@ export const FLAKY_PAGE = SHELL(
 `,
 );
 
+/**
+ * Same server-computed calculator, but the endpoint only answers requests that
+ * carry a Referer — the referer/CSRF check a real pricing API often has. The page
+ * itself works; a replay taken outside the page does not, which is precisely the
+ * case the confirmation step exists to catch.
+ */
+export const GUARDED_ENDPOINT_PAGE = SHELL(
+  CALC_BODY("API requests per month"),
+  `
+  const qty = document.getElementById('qty');
+  const total = document.getElementById('total');
+  const render = async () => {
+    const res = await fetch('/api/estimate-guarded?qty=' + qty.value);
+    if (!res.ok) return;
+    const body = await res.json();
+    total.textContent = '$' + body.data.estimate.monthlyTotal.toFixed(2);
+  };
+  qty.addEventListener('input', render);
+  render();
+`,
+);
+
 /** The estimate endpoint ENDPOINT_PAGE reads, mounted by the test server. */
 export function estimateResponse(qty: number): string {
   return JSON.stringify({

@@ -24,7 +24,12 @@ import {
   type CalculatorSpec,
   type MeasuredPoint,
 } from "@outrival/shared";
-import { probeCalculator, type ProbeOutcome, type ProbeShot } from "@outrival/scrapers";
+import {
+  probeCalculator,
+  type ProbeOutcome,
+  type ProbeEvidence,
+  type ProbeStrategy,
+} from "@outrival/scrapers";
 import { generateCalculatorSpec, AI_CONFIG } from "@outrival/ai";
 import {
   insertPricePoints,
@@ -41,16 +46,18 @@ import { planPricingSignal } from "../lib/pricing-signals";
  * A `dynamic` pricing page publishes no list a differ can read: the price exists
  * only as the answer its calculator gives to a volume. This job asks that
  * question at the reference volumes, using the public UI the way a prospect
- * would, and stores the answers as price_points(method='calculator_probe') with a
- * screenshot of the screen each one was read off. That is the number Crayon and
- * Klue cannot produce, because it is not on the page — it is what the page does.
+ * would, and stores the answers as price_points(method='calculator_probe') with
+ * the proof each one was read from. That is the number Crayon and Klue cannot
+ * produce, because it is not on the page — it is what the page does.
  *
  * Three properties hold at every exit:
  *   · a failed probe writes ZERO points. Never a partial series, never an
  *     extrapolation, never "the last value we managed to read" (validateProbeSeries
  *     drops the whole run on any failed check).
- *   · every stored point carries its own proof screenshot. A point whose evidence
- *     could not be stored takes the run down with it.
+ *   · every stored point carries its own proof — a screenshot of the calculator,
+ *     or the page's own pricing request replayed at that volume AFTER it was
+ *     confirmed against a screenshot-backed reading. A point whose evidence could
+ *     not be stored takes the run down with it.
  *   · a refusal (robots, block, login wall) is silent to the user and loud in
  *     calculator_probe_runs — the pricing pipeline of the same day stays a success.
  */
@@ -181,13 +188,18 @@ export async function runProbePricingCalculator(payload: z.input<typeof InputSch
     return { measured: false, reason: verdict.reason };
   }
 
-  // Evidence is not optional: a point whose screenshot we could not take or
-  // store is a claim with nothing behind it, and one such point drops the run.
-  const shotsByQty = new Map(measured.shots.map((s: ProbeShot) => [s.qty, s.png]));
-  const missing = verdict.readings.filter((r) => !shotsByQty.has(r.qty));
+  // Evidence is not optional: a point with nothing behind it is a claim, and one
+  // such point drops the run. Two shapes, one rule — a screenshot for a volume read
+  // off the rendered calculator, the endpoint's own request/response for a volume
+  // replayed after that endpoint was confirmed against a screenshot-backed reading.
+  const evidenceByQty = new Map(measured.evidence.map((e: ProbeEvidence) => [e.qty, e]));
+  const missing = verdict.readings.filter((r) => {
+    const e = evidenceByQty.get(r.qty);
+    return !e || (e.kind === "screenshot" ? !e.png : !e.json);
+  });
   if (missing.length > 0) {
     await log("evidence_missing", {
-      detail: `${missing.length} of ${verdict.readings.length} readings had no screenshot`,
+      detail: `${missing.length} of ${verdict.readings.length} readings had no proof`,
       meter_unit: measured.unit,
       readings: verdict.readings.length,
     });
@@ -196,12 +208,22 @@ export async function runProbePricingCalculator(payload: z.input<typeof InputSch
 
   const recordedAt = new Date();
   const batch = recordedAt.toISOString();
-  const evidenceKeys = new Map<number, string>();
+  const prefix = `calculator-probes/${competitor.id}/${batch}`;
+  const evidence = new Map<number, { key: string; kind: "screenshot" | "api_response" }>();
+  let anchorScreenshotKey: string | null = null;
   try {
     for (const reading of verdict.readings) {
-      const key = `calculator-probes/${competitor.id}/${batch}/${reading.qty}.png`;
-      await uploadToR2(key, shotsByQty.get(reading.qty)!, "image/png");
-      evidenceKeys.set(reading.qty, key);
+      const proof = evidenceByQty.get(reading.qty)!;
+      if (proof.kind === "screenshot") {
+        const key = `${prefix}/${reading.qty}.png`;
+        await uploadToR2(key, proof.png!, "image/png");
+        evidence.set(reading.qty, { key, kind: "screenshot" });
+        anchorScreenshotKey ??= key;
+      } else {
+        const key = `${prefix}/${reading.qty}.json`;
+        await uploadToR2(key, proof.json!, "application/json; charset=utf-8", { compress: true });
+        evidence.set(reading.qty, { key, kind: "api_response" });
+      }
     }
   } catch (err) {
     // R2 before DB, as everywhere: a point can never exist without its proof.
@@ -225,7 +247,8 @@ export async function runProbePricingCalculator(payload: z.input<typeof InputSch
     effective_monthly_cost: round2(r.cost),
     currency: verdict.currency,
     method: "calculator_probe" as const,
-    evidence_screenshot_key: evidenceKeys.get(r.qty) ?? null,
+    evidence_key: evidence.get(r.qty)?.key ?? null,
+    evidence_kind: evidence.get(r.qty)?.kind ?? null,
     recorded_at: recordedAt,
   }));
   await insertPricePoints(rows);
@@ -246,6 +269,7 @@ export async function runProbePricingCalculator(payload: z.input<typeof InputSch
     meter_unit: measured.unit,
     readings: verdict.readings.length,
     points_written: rows.length,
+    anchor_screenshot_key: anchorScreenshotKey,
   });
   logger.log("Completed probe-pricing-calculator", {
     competitorId: competitor.id,
@@ -403,7 +427,7 @@ async function emitProbeSignal(args: {
   url: string;
   previous: MeasuredPoint[];
   current: MeasuredPoint[];
-  strategy: "endpoint" | "ui";
+  strategy: ProbeStrategy;
 }): Promise<"none" | "emitted"> {
   const moves = sortPricingChanges(diffProbePoints(args.previous, args.current));
   if (moves.length === 0) return "none";
@@ -438,7 +462,7 @@ async function emitProbeSignal(args: {
     const evidence =
       `Measured on ${args.competitorName}'s own pricing calculator (${args.url}), ` +
       `reading the total it displays at fixed volumes` +
-      `${args.strategy === "endpoint" ? " and the pricing response behind it" : ""}. ` +
+      `${args.strategy === "ui" ? "" : " and the pricing response behind it"}. ` +
       `Each figure below is a screenshot-backed reading, not a published list price.`;
     const diffText = `${plan.diffText}\n\n${evidence}`;
     const contentHash = computeHash(

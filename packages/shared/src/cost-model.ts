@@ -67,6 +67,17 @@ export interface CostModelInput {
 // A ladder past this is not a published ladder, it is a mis-parse of a table.
 export const MAX_TIERS = 12;
 
+/**
+ * The volumes every metered plan is costed at when it is captured. Four fixed
+ * points, because what makes two competitors comparable at a glance is that
+ * both were read at the SAME volumes. A workspace's own reference volume is
+ * computed on read from `costAtVolume` — the same function, the same answer —
+ * so changing that setting never needs a re-scrape.
+ */
+export const REFERENCE_VOLUME_PRESETS: readonly number[] = [
+  1_000, 10_000, 100_000, 1_000_000,
+];
+
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 /**

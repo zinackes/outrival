@@ -20,14 +20,25 @@ import { markProvider, markModel, markUsage, markTruncated } from "./provider/pr
 
 // One OpenAI client per pool provider (Cerebras/Groq/Hyperbolic are all
 // OpenAI-compatible, routed by baseURL). maxRetries lets the SDK absorb a transient
-// 429/5xx before we fail over to the next provider.
+// 429/5xx — but only on the LAST provider we have, see LAST_RESORT_SDK_RETRIES.
 const openaiClients = new Map<string, OpenAI>();
+
+// The SDK honours a 429's `retry-after` by SLEEPING, and the free tiers answer with
+// a full minute. That sleep is invisible from here: the call just takes 60s and then
+// succeeds, so the pool's own failover — the entire point of having several providers
+// — never fires. Measured on prod (2026-07-31): every faithfulness gate that hit one
+// came back at 57-60s whatever its call count, while the same calls run in ~0.5s
+// unthrottled, and the user watched a whole minute of "Checking it against the
+// evidence" for it. So: no SDK-level retry while another provider is untried — a
+// throttled provider is answered by asking someone else, immediately. The sleep is
+// only worth it when there IS nobody else, which is the one case it was written for.
+const LAST_RESORT_SDK_RETRIES = 2;
 let claudeClient: Anthropic | null = null;
 
 function clientFor(p: Provider): OpenAI {
   let c = openaiClients.get(p.id);
   if (!c) {
-    c = new OpenAI({ apiKey: p.apiKey, baseURL: p.baseUrl, maxRetries: 2 });
+    c = new OpenAI({ apiKey: p.apiKey, baseURL: p.baseUrl, maxRetries: 0 });
     openaiClients.set(p.id, c);
   }
   return c;
@@ -183,22 +194,28 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
     // ai_runs attributes cost to the real model (see provider-context).
     markModel(model);
     const reasoningEffort = resolveReasoningEffort(model, provider.reasoningEffort);
+    // Nobody left to fail over to once every provider has been tried — only then is
+    // waiting out a rate limit better than giving up.
+    const lastResort = tried.size >= maxAttempts;
     try {
-      const res = await clientFor(provider).chat.completions.create({
-        model,
-        // Static system prefix (when provided) before the variable user payload —
-        // a byte-identical prefix lets Groq/Cerebras auto-cache the prefill (F2).
-        messages: [
-          ...(options.system
-            ? [{ role: "system" as const, content: options.system }]
-            : []),
-          { role: "user", content: options.prompt },
-        ],
-        max_tokens: options.maxTokens ?? 1024,
-        ...(options.json && { response_format: { type: "json_object" as const } }),
-        // Only sent for reasoning models (gpt-oss) — never for Llama (undefined).
-        ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
-      });
+      const res = await clientFor(provider).chat.completions.create(
+        {
+          model,
+          // Static system prefix (when provided) before the variable user payload —
+          // a byte-identical prefix lets Groq/Cerebras auto-cache the prefill (F2).
+          messages: [
+            ...(options.system
+              ? [{ role: "system" as const, content: options.system }]
+              : []),
+            { role: "user", content: options.prompt },
+          ],
+          max_tokens: options.maxTokens ?? 1024,
+          ...(options.json && { response_format: { type: "json_object" as const } }),
+          // Only sent for reasoning models (gpt-oss) — never for Llama (undefined).
+          ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
+        },
+        { maxRetries: lastResort ? LAST_RESORT_SDK_RETRIES : 0 },
+      );
       await trackUsage(provider.id, res.usage?.total_tokens ?? 0);
       // Accumulate per-task token usage for ai_runs cost attribution. Counted here
       // (with trackUsage) even on the empty-content failover below: those tokens

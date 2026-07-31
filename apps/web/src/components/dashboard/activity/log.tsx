@@ -13,11 +13,13 @@ import { Button } from "@/components/ui/button";
 import { RunRow } from "./run-row";
 import { dayBounds, dayKeyOf, dayLabel } from "./format";
 
-// The log leads with the runs that FOUND something and folds the rest away. Nine
-// in ten checks find nothing, so a flat feed spent most of a page on rows reading
-// "No change — — —". The day's own tally states the work in full, and the quiet
-// runs sit one click behind it, fetched for that day only: nothing is hidden, and
-// the findings get the room.
+// The log lists every run the day contains, findings and quiet checks alike, in
+// one flat feed under the day's own tally.
+//
+// "Hide quiet checks" swaps that for the findings-first shape: nine in ten checks
+// find nothing, so a reader scanning for what moved can push those rows one click
+// behind the tally, fetched for that day only. Nothing is hidden either way — the
+// fold is a reading preference, not a filter.
 
 type Filters = { competitorId?: string; sourceType?: string };
 
@@ -27,6 +29,7 @@ export function ActivityLog({
   events,
   days,
   foldable,
+  foldQuiet,
   filters,
   productId,
   hasMore,
@@ -39,6 +42,10 @@ export function ActivityLog({
   // summary counts every source, so pairing "38 checks" with a filtered list
   // would describe work the rows do not show.
   foldable: boolean;
+  // Whether the quiet runs were left OUT of `events` and belong behind the fold.
+  // Off by default: the feed already carries them as ordinary rows, and drawing
+  // the fold as well would offer to open rows that are already on screen.
+  foldQuiet: boolean;
   filters: Filters;
   productId?: string;
   hasMore: boolean;
@@ -92,7 +99,7 @@ export function ActivityLog({
               dayKey={key}
               rows={rows}
               day={day}
-              foldable={foldable}
+              foldQuiet={foldQuiet}
               filters={filters}
               productId={productId}
               expanded={expanded}
@@ -129,7 +136,7 @@ function DaySection({
   dayKey,
   rows,
   day,
-  foldable,
+  foldQuiet,
   filters,
   productId,
   expanded,
@@ -138,7 +145,7 @@ function DaySection({
   dayKey: string;
   rows: ActivityEvent[];
   day: ActivityDay | null;
-  foldable: boolean;
+  foldQuiet: boolean;
   filters: Filters;
   productId?: string;
   expanded: Set<string>;
@@ -203,7 +210,7 @@ function DaySection({
               );
             })}
           </AnimatePresence>
-          {foldable && quiet > 0 && (
+          {foldQuiet && quiet > 0 && (
             <QuietFold
               dayKey={dayKey}
               count={quiet}

@@ -467,8 +467,9 @@ export function activitySummaryQuery(productId?: string, tzOffset = 0) {
   });
 }
 
-// The outcomes that carry a finding. The log leads with these; the quiet runs sit
-// behind each day's fold and are fetched by the query below.
+// The outcomes that carry a finding. What the log asks for once the reader turns
+// on "Hide quiet checks": the quiet runs then sit behind each day's fold and are
+// fetched by the query below, one day at a time.
 export const ACTIVITY_FINDING_STATUSES: ActivityStatusFilter[] = [
   "change",
   "first_capture",
@@ -478,8 +479,9 @@ export const ACTIVITY_FINDING_STATUSES: ActivityStatusFilter[] = [
 export interface ActivityFeedParams {
   competitorId?: string;
   sourceType?: string;
-  // Empty means every outcome — what a filtered view shows, since hiding quiet
-  // runs there would leave no way to see them (the per-day fold is off).
+  // Empty means every outcome — the log's default, and the only thing a filtered
+  // view can show, since hiding quiet runs there would leave no way to see them
+  // (the per-day fold is off).
   statuses?: ActivityStatusFilter[];
   // UTC instants bounding the runs to list, set when an hour of the 24-hour strip
   // is picked. Part of the key, so picking another hour refetches.
@@ -488,8 +490,8 @@ export interface ActivityFeedParams {
 }
 
 // The activity log, offset "load older". Filters live in the key, so switching one
-// refetches; the RSC seeds the unfiltered findings feed (see activity/page.tsx),
-// whose params must match ACTIVITY_FINDING_STATUSES exactly to hit that entry.
+// refetches; the RSC seeds the unfiltered every-outcome feed (see activity/page.tsx),
+// whose params must be an empty status list to hit that entry.
 export function activityFeedQuery(params: ActivityFeedParams, productId?: string) {
   return infiniteQueryOptions({
     queryKey: ["activity", "feed", params, productId ?? null] as const,

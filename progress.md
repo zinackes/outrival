@@ -963,8 +963,18 @@ chaque probe payait les 2 s de courtoisie inter-domaine prévues pour un vrai si
 un module d'env importé en premier côté test : 25 s, stable.
 
 **Tests** : typecheck 8/8 ✓ · `pnpm test` 12/12 ✓. 49 tests neufs, dont **9 qui
-pilotent un vrai Chromium** contre des fixtures de calculateur servies en local
-(slider + total JS, endpoint JSON rejoué en HTTP avec preuves mixtes
+pilotent un vrai Chromium** — en **opt-in** (`pnpm --filter @outrival/scrapers
+test:probe`, `PROBE_LIVE_TESTS=1`), sautés dans la suite par défaut : seuls, ils
+passent en ~28 s, mais lancer 9 Chromium pendant que turbo fait tourner 7 packages
+en parallèle sur 4 cœurs faisait dépasser n'importe quel timeout (mesuré : un simple
+`chromium.launch` à plus de 2 min). Un test correct qui rougit apprend à ignorer la
+suite. Ce que ces 9 tests couvrent en propre reste testé à côté (controls / readings
+/ endpoint / replay + validateProbeSeries) ; eux seuls prouvent le bout-en-bout
+navigateur, à lancer avant de toucher `probe.ts` et à mettre dans son propre lane CI.
+Corrigé au passage, côté produit : le budget du probe est devenu un MUR (course
+autour du run entier, lancement du navigateur compris) — il n'était vérifié qu'ENTRE
+les étapes, donc chaque étape restait non bornée et un probe pouvait garder un slot
+de worker browser indéfiniment. Les fixtures couvrent (slider + total JS, endpoint JSON rejoué en HTTP avec preuves mixtes
 screenshot/api_response, endpoint protégé par un check Referer ⇒ retombe dans l'UI,
 série décroissante ⇒ drop, unité non résolue ⇒ skip, bannière de consentement, double
 lecture divergente ⇒ drop, spec cachée rejouée, page absente ⇒ refus). Piège corrigé

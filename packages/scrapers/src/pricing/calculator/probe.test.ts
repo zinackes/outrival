@@ -4,9 +4,19 @@
  * parser and skip the part that actually breaks (setting a controlled input,
  * waiting out a debounce, reading a number a script wrote).
  *
- * Skipped, loudly, when no Chromium is installed: the pure ranking/validation
- * rules are covered by controls/readings/endpoint tests, so a machine without a
- * browser still gets a meaningful run instead of a red one.
+ *   pnpm --filter @outrival/scrapers test:probe
+ *
+ * OPT-IN (PROBE_LIVE_TESTS=1), and skipped in the default suite. Not because it is
+ * unreliable — run on its own it passes in ~28s — but because it launches nine
+ * Chromiums on a box where `pnpm test` already runs seven packages at once. Under
+ * that contention a single launch has been measured taking minutes, which turns a
+ * correct test red and teaches everyone to ignore the suite.
+ *
+ * The behaviour is not left untested: every ranking and validation rule it
+ * exercises is unit-tested next door (controls / readings / endpoint / replay, plus
+ * validateProbeSeries in @outrival/shared). What only this file can prove is that
+ * the whole thing works against a real browser — so run it before touching
+ * probe.ts, and give it a CI lane of its own.
  */
 // FIRST import: it sets the crawl gap / pacing env the modules below read at load
 // time (see __fixtures__/test-env.ts for why it can't live in this file's body).
@@ -43,6 +53,12 @@ let base = "";
 // test is declared, so a flag set later would skip everything, silently and
 // always — the exact failure this guard exists to avoid.
 const hasBrowser = await (async () => {
+  if (process.env.PROBE_LIVE_TESTS !== "1") {
+    console.warn(
+      "[probe.test] live-browser cases skipped — run `pnpm --filter @outrival/scrapers test:probe`",
+    );
+    return false;
+  }
   try {
     const browser = await chromium.launch({ headless: true });
     await browser.close();

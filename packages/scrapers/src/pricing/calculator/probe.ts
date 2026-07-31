@@ -175,20 +175,32 @@ export async function probeCalculator(options: ProbeOptions): Promise<ProbeOutco
   };
 
   try {
-    browser = await chromium.launch(browserLaunchOptions("direct"));
-    context = await browser.newContext({
-      userAgent: OUTRIVAL_UA,
-      locale: "en-US",
-      timezoneId: "America/New_York",
-      viewport: { width: 1440, height: 1000 },
-      extraHTTPHeaders: realisticHeaders(),
-    });
-    const page = await context.newPage();
-    const calls: CapturedJson[] = [];
-    page.on("response", (response) => {
-      void captureJson(response, calls);
-    });
-    return await drive(page, calls, options, deadline, release);
+    // The budget is a WALL, not a checkpoint. Testing the deadline between steps
+    // leaves every step unbounded, and the steps are the risk: launching Chromium
+    // on a loaded box, a screenshot that never returns, an evaluate on a page
+    // stuck in a layout loop. Unenforced, a probe holds a browser-worker slot for
+    // as long as the page (or the machine) feels like it.
+    const run = (async (): Promise<ProbeOutcome> => {
+      browser = await chromium.launch(browserLaunchOptions("direct"));
+      context = await browser.newContext({
+        userAgent: OUTRIVAL_UA,
+        locale: "en-US",
+        timezoneId: "America/New_York",
+        viewport: { width: 1440, height: 1000 },
+        extraHTTPHeaders: realisticHeaders(),
+      });
+      const page = await context.newPage();
+      const calls: CapturedJson[] = [];
+      page.on("response", (response) => {
+        void captureJson(response, calls);
+      });
+      return await drive(page, calls, options, deadline, release);
+    })();
+    // The loser of the race is abandoned, and the release() below makes whatever
+    // it was awaiting throw; swallow that so an abandoned run can never surface as
+    // an unhandled rejection somewhere else entirely.
+    run.catch(() => {});
+    return await Promise.race([run, expireAt(deadline)]);
   } catch (err) {
     const name = err instanceof Error ? err.name : "";
     return {
@@ -199,6 +211,20 @@ export async function probeCalculator(options: ProbeOptions): Promise<ProbeOutco
   } finally {
     await release();
   }
+}
+
+/** Resolves to a typed timeout once the budget is spent — never rejects, so the
+ * race always produces an outcome the caller can log. */
+function expireAt(deadline: number): Promise<ProbeRefusal> {
+  const left = Math.max(0, deadline - Date.now());
+  return new Promise((resolve) => {
+    const timer = setTimeout(
+      () => resolve({ ok: false, reason: "timeout", detail: "probe budget spent" }),
+      left,
+    );
+    // A probe must never be the reason a worker process refuses to exit.
+    timer.unref?.();
+  });
 }
 
 async function captureJson(response: Response, calls: CapturedJson[]): Promise<void> {

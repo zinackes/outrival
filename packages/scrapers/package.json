@@ -151,7 +151,8 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src"
+    "test": "bun test src",
+    "test:probe": "PROBE_LIVE_TESTS=1 bun test src/pricing/calculator/probe.test.ts"
   },
   "dependencies": {
     "@outrival/shared": "workspace:*",

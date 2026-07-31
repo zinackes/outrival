@@ -1421,17 +1421,32 @@ publié** (les 4 providers concernés n'y sont pas représentés) et n'a pas de
 d'intégration PGlite ci-dessus, qui est reproductible et tourne en CI, plutôt que par
 une fixture poussée à la main dans dev.
 
+**Migration + backfill : FAITS sur dev ET prod (2026-08-01)** :
+- `0063` appliquée aux deux (64/64 : table + 3 index, colonne, enum). Pré-vol read-only
+  avant écriture prod — seul 0063 pending, son `when` sortait bien après le dernier
+  appliqué. Le `when` de 0063 avait dû être bumpé à la main : drizzle l'avait stampé
+  DERRIÈRE 0062, ce qui l'aurait fait sauter en silence.
+- **Trouvé en ouvrant la PR** : le squash de #384 a perdu `dd727a75`, donc `main`
+  portait toujours le `when` de 0062 SOUS celui de 0061. Sur un environnement neuf
+  bâti depuis `main`, 0062 serait sautée en silence (pas de table `hiring_geo`, pas
+  d'enum `hiring_footprint`) pendant que 0063 passerait. Le correctif est re-cherry-
+  pické ici, à la valeur exacte déjà inscrite dans les ledgers dev et prod, donc
+  `db:realign-journal` ne signale aucune dérive et rien ne rejoue.
+- Backfill appliqué sur prod : **74 lignes, 28 clés (competitor, bucket, devise), 7
+  concurrents**, du 2026-07-06 au 2026-07-27 seulement — `job_postings` ne remonte pas
+  plus loin pour ces boards. Idempotent (2ᵉ `--apply` = 74). Dev écrit 0 ligne : prod
+  porte 131 postings salariés sur 1 693, dev aucun.
+- Prévision passée AVANT de partir, avec les vrais détecteurs sur les séries écrites :
+  **0 signal** au prochain run, des deux familles. Runway (40/43 salariées) et Dougs
+  (23/23) passent le seuil de part mais n'ont que 1 et 3 semaines d'historique de board
+  contre un plancher de 4 — le garde qui fait exactement son travail, puisque « ils ont
+  COMMENCÉ à publier » serait sinon une affirmation sur le moment où nous avons
+  commencé à regarder.
+
 **Reste côté humain** :
-- `pnpm db:migrate` sur **prod** (0063) — appliquée sur dev uniquement (64/64 vérifiées :
-  table, colonne, enum). ⚠️ vérifier le PENDING avant, cf. `reference_prod-migration-hash-drift`.
-  Le `when` du journal de 0063 a dû être bumpé à la main (drizzle l'avait stampé
-  DERRIÈRE 0062 — la migration aurait été skippée en silence).
-- `pnpm backfill:salary-bands` (dry run) puis `--apply` sur dev puis prod, pour que la
-  carte et les sparklines aient de l'historique au jour 1 et que le détecteur ait une
-  baseline. Sans lui, rien ne peut signaler avant 5 semaines de scrapes.
 - Poser les 3 env vars (`SALARY_BAND_*`) sur le service workers, ou laisser les défauts.
-- Vérifier la carte « Salaries » sur un concurrent à board Lever/Ashby/Recruitee/WTTJ
-  après un re-scan jobs (les autres providers ne publient pas de compensation).
+- Vérifier la carte « Salaries » sur Runway ou render.com après un re-scan jobs (ce sont
+  les deux boards les plus fournis : 8 à 14 rôles par bande).
 
 **Prochaine session** : P4 — couverture (parseur JSON-LD JobPosting générique
 structured-first + compteur de détections-sans-adapter + 2-3 adapters EU).

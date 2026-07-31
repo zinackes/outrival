@@ -838,7 +838,9 @@ app/dashboard/competitors/[id]/competitor-detail/rate-structures.tsx}
 **Tests** : typecheck 8/8 ✓ | pnpm test 12/12 ✓ (shared 510 · workers 204 · api 235 ·
 web 42 derive dont 32 d'origine inchangés)
 
-**Reste côté humain** : `pnpm db:migrate` (0055 + 0056 + 0057) sur dev puis prod ·
+**Reste côté humain** : `pnpm db:migrate` sur dev (0055 + 0056 + 0057 — la dev DB
+n'a aucune des trois) puis sur prod (0056 + 0057 seulement : **0055 y est déjà
+appliquée** depuis le 2026-07-30, `db:migrate` la sautera) ·
 vérifier en dev un concurrent à tableau de paliers (bandes dans le pricing tab, puis
 `tier_boundary_moved` au scrape suivant si une borne bouge) · PR portant P2 + P3.
 

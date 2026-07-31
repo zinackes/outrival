@@ -36,7 +36,90 @@ export function SignalFacts({ facts }: { facts: Facts }) {
   if (!facts) return null;
   if (facts.kind === "hiring") return <HiringFacts facts={facts} />;
   if (facts.kind === "job_facts") return <JobFacts facts={facts} />;
+  if (facts.kind === "salary") return <SalaryFacts facts={facts} />;
   return <PricingFacts facts={facts} />;
+}
+
+/**
+ * The salary band that moved, and the roles it was computed over.
+ *
+ * A median is a claim about a set, so the set is printed: the roles, each with the
+ * range its own posting states, plus the trailing weeks the baseline came from.
+ * Everything here is in ONE currency — the signal is per (bucket, currency) and
+ * nothing is ever converted — so the two numbers on the first line can be subtracted.
+ */
+function SalaryFacts({ facts }: { facts: Extract<Facts, { kind: "salary" }> }) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? facts.roles : facts.roles.slice(0, ROLES_COLLAPSED);
+  const hidden = facts.rolesTotal - shown.length;
+  const pct =
+    facts.p50Before > 0
+      ? Math.round(((facts.p50After - facts.p50Before) / facts.p50Before) * 100)
+      : 0;
+
+  return (
+    <div>
+      <p className="text-dense text-muted-foreground">
+        {facts.bucketLabel}{" "}
+        <span className="text-foreground">({facts.currency})</span> median{" "}
+        <span className="tabular-nums">{facts.p50Before.toLocaleString("en-US")}</span> →{" "}
+        <span className="font-medium text-foreground tabular-nums">
+          {facts.p50After.toLocaleString("en-US")}
+        </span>{" "}
+        <span className="tabular-nums">
+          ({pct > 0 ? "+" : ""}
+          {pct}%
+        </span>
+        , over <span className="tabular-nums">{facts.n}</span>{" "}
+        {facts.n === 1 ? "role" : "roles"})
+      </p>
+
+      <ul className="mt-2.5 space-y-1.5">
+        {shown.map((r, i) => (
+          <li key={`${r.title}-${i}`} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+            {r.url ? (
+              <a
+                href={r.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-baseline gap-1 rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+              >
+                {r.title}
+                <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
+              </a>
+            ) : (
+              <span>{r.title}</span>
+            )}
+            {r.location && <span className="text-xs text-muted-foreground">{r.location}</span>}
+            <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+              {salaryLabel({ ...r, salaryCurrency: facts.currency })}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      {hidden > 0 && !expanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <CaretDownIcon size={14} aria-hidden />
+          <span className="tabular-nums">{hidden}</span> more
+        </button>
+      )}
+
+      {facts.trailing.length > 0 && (
+        <p className="mt-2.5 text-xs text-muted-foreground">
+          Compared against{" "}
+          {facts.trailing
+            .map((t) => `${t.weekStart} ${t.p50.toLocaleString("en-US")} (n=${t.n})`)
+            .join(", ")}
+          .
+        </p>
+      )}
+    </div>
+  );
 }
 
 const JOB_FACT_LABEL: Record<string, string> = {

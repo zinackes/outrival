@@ -300,6 +300,54 @@ export const hiringGeo = pgTable(
 );
 export type HiringGeoRow = InferSelectModel<typeof hiringGeo>;
 
+// What a competitor pays, per department bucket and per ISO week (Hiring
+// Intelligence v2 P3). Same shape and same upsert discipline as hiring_metrics and
+// hiring_geo — one authoritative row per key per week, written only on an
+// authoritative ATS run, so a second scrape in the same week overwrites instead of
+// doubling.
+//
+// The key includes the CURRENCY, and that is the whole design. Salaries are never
+// converted (an FX rate is a time-varying number we do not capture, so a median
+// spanning EUR and USD would move when the euro moves and read as a pay change), so
+// a competitor hiring in Paris and New York carries two independent bands and the UI
+// shows both in their own currency rather than one number in neither.
+//
+// The three percentiles are ANNUAL midpoints: each posting contributes (min+max)/2,
+// yearly figures as-is and monthly ×12; hourly and daily rates are excluded outright
+// (contractor pricing is not an FTE salary and annualising it means inventing an
+// hours-per-year figure the posting never stated). `n` is how many postings the row
+// was actually computed from, and it is displayed everywhere the band is — a p50
+// over two roles is a number, not a market rate.
+export const hiringSalaryBands = pgTable(
+  "hiring_salary_bands",
+  {
+    id: uuid(),
+    competitorId: text("competitor_id").notNull(),
+    /** One of DEPARTMENT_BUCKETS, never "unknown" (a data-quality bucket). */
+    departmentBucket: text("department_bucket").notNull(),
+    /** ISO-4217 code. Part of the key: bands are per currency, always. */
+    currency: text("currency").notNull(),
+    p25: integer("p25").notNull(),
+    p50: integer("p50").notNull(),
+    p75: integer("p75").notNull(),
+    /** Postings behind the band. Nothing signals below 3. */
+    n: integer("n").notNull(),
+    /** ISO-week key "YYYY-MM-DD" (Monday, UTC) — the weekly idempotency bucket. */
+    weekStart: text("week_start").notNull(),
+    recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("hiring_salary_bands_competitor_bucket_currency_week_uk").on(
+      t.competitorId,
+      t.departmentBucket,
+      t.currency,
+      t.weekStart,
+    ),
+    index("hiring_salary_bands_competitor_recorded_idx").on(t.competitorId, t.recordedAt),
+  ],
+);
+export type HiringSalaryBandRow = InferSelectModel<typeof hiringSalaryBands>;
+
 export const reviewScores = pgTable(
   "review_scores",
   {

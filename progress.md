@@ -1325,3 +1325,129 @@ sur un concurrent à board ATS après un re-scan jobs.
 
 **Prochaine session** : P3 — salaires (`hiring_salary_bands`, `salary_band_shift`,
 `salary_disclosure_started`, carte salaires du tab). NE PAS commencer sans /clear.
+
+---
+
+### 2026-08-01 — Hiring Intelligence v2, P3/5 : salaires
+
+**Objectif** : lire enfin les salaires déjà stockés. Bandes hebdo par département,
+deux signaux déterministes, carte du Hiring tab, entrée compare. Contexte marché :
+directive EU pay transparency 2023/970, deadline de transposition passée le
+07/06/2026 — la part d'annonces salariées va monter, la phase surfe la vague.
+
+**Le constat** : `salary_min`/`salary_max` existent depuis patch-32 et ne sont lus
+nulle part. Et ils ne pouvaient pas l'être : sans la PÉRIODE, « 45–60 » est à la
+fois un taux horaire de contractor et un salaire annuel. La période était dans les
+mêmes réponses ATS que les montants, et jetée faute de colonne — comme les corps de
+JD en P1. Zéro requête en plus pour la récupérer.
+
+**Réalisé** :
+- **`@outrival/shared/salary-normalize`** (pur, 22 tests) — la convention, écrite une
+  fois : base ANNUELLE (yearly ×1, monthly ×12), horaire et journalier EXCLUS,
+  midpoint (min+max)/2, JAMAIS de conversion de devises, période absente inférée
+  annuelle SEULEMENT si la borne BASSE ≥ 20 000. Fourchettes poubelle (borne ≤ 0,
+  max < min) droppées EN ENTIER. `percentile` interpole comme `percentile_cont`, donc
+  une bande calculée ici et une bande calculée en SQL donnent le même nombre.
+- **`@outrival/scrapers/jobs-hiring` `salary.ts`** (pur, 25 tests) — `tallySalaryBands`
+  par (bucket, DEVISE), bucket `unknown` exclu ; `detectSalaryBandShift` avec la
+  garde qui manquait partout ailleurs : le dernier point de la série doit ÊTRE la
+  semaine courante, sinon un concurrent qui a cessé d'être scrapé finit par tirer
+  contre une baseline qui a vieilli sous lui.
+- **Migration 0063** : `job_postings.salary_period` · table `hiring_salary_bands`
+  (clé (competitor, bucket, **currency**, week) — un concurrent qui recrute à Paris
+  et à New York porte deux bandes indépendantes) · enum `source_type += hiring_salary`.
+- **`ats.ts`** : `normalizeSalaryPeriod` match l'unité comme un MOT après avoir
+  neutralisé les séparateurs — `per-year-salary`, `PER_YEAR`, `year`, `yearly` sont
+  quatre orthographes du même fait. Câblé sur les 4 providers qui exposent une
+  compensation (Lever `salaryRange.interval`, Ashby composant `Salary` — pas celui
+  d'equity, dont l'interval `1 TIME` annualiserait le mauvais nombre —, Recruitee
+  `salary.period`, WTTJ `salary_period`). Hebdomadaire et one-off ⇒ `null`, jamais
+  arrondis vers la période modélisée la plus proche.
+- **`extract-jobs`** : bande le stock ACTIF entier et upsert la semaine ISO, sous la
+  MÊME garde `authoritative` que hiring_metrics/hiring_geo — la médiane d'une TRANCHE
+  de board est un autre nombre que la médiane du board, et rien en aval ne peut les
+  distinguer d'un vrai mouvement de paie. N'enqueue le détecteur que si le board
+  affiche au moins un salaire.
+- **`detect-salary-shifts`** (nouveau job, ancre dédiée `hiring_salary`) :
+  `salary_band_shift` MEDIUM (±15% vs médiane des 4 semaines trailing, n≥3 des deux
+  côtés, ≥2 semaines trailing qualifiantes, cooldown 4 semaines par (bucket, devise))
+  et `salary_disclosure_started` LOW|MEDIUM (émis une fois).
+- **Backfill** `pnpm backfill:salary-bands` — reconstruit chaque semaine passée depuis
+  `detected_at`/`closed_at` et la bande avec la MÊME fonction que le chemin live.
+- **UI** : carte « Salaries » du Hiring tab (barre p25–p75, repère p50, `n` en badge,
+  sparkline p50, badge « Publishes salaries » calculé on-read) · chip médiane eng en
+  devise native sur la lens compare · fact block salaire sur le signal.
+
+**Trois écarts au prompt, assumés** :
+1. **Job dédié `detect-salary-shifts` plutôt qu'une émission inline dans
+   `extract-jobs`** — même raison qu'en P2 : `extract-jobs` est ordonné pour qu'un
+   retry ne duplique pas de postings, et accrocher un détecteur qui lit l'historique
+   à sa fin mettrait ces écritures derrière un retry dont elles n'ont pas besoin.
+2. **Ancre `hiring_salary` dédiée, pas `hiring_shift`** — la chaîne de snapshots
+   d'une ancre EST son registre de dédup. Y intercaler une 4e famille de clés ferait
+   ré-émettre les trois autres. Même décision que `job_facts` (P1) et
+   `hiring_footprint` (P2), pour la même raison.
+3. **Pas de ré-armement de `salary_disclosure_started` après un retour à 0 prolongé**
+   (le prompt le prévoyait). Il faudrait reconstruire « aucune annonce salariée
+   pendant N semaines » sur une fenêtre passée. Le re-tirer à tort sur un trou de
+   données coûte plus cher qu'un signal manqué sur un cas quasi inexistant. Dédup à
+   vie, documenté dans `architecture.md`.
+
+**Fichiers modifiés** : `packages/shared/src/{salary-normalize.ts,salary-normalize.test.ts,
+index.ts}` · `packages/scrapers/src/jobs/{salary.ts,salary.test.ts,hiring.ts,ats.ts,
+ats.test.ts,__tests__/ats.test.ts}` · `packages/db/src/schema/{job_postings,analytics,
+monitors}.ts` + migration `0063` · `packages/shared/src/{constants/sources.ts,
+sources/catalog.ts}` · `packages/queue/src/jobs.ts` · `apps/workers/src/{core/
+{extract-jobs,detect-salary-shifts}.ts,lib/analytics.ts,queue/handlers.ts,jobs/
+detect-salary-shifts.job.ts,scripts/backfill-salary-bands.ts}` · `apps/workers/test/
+{detect-salary-shifts,backfill-salary-bands}.test.ts` · `apps/api/src/{routes/
+{competitors,compare}.ts,lib/signal-facts.ts}` · `apps/web/src/{lib/{api,
+source-labels}.ts,app/dashboard/competitors/[id]/competitor-detail/hiring-tab.tsx,
+components/dashboard/compare/{derive.ts,lenses.tsx},components/outrival/
+signal-facts.tsx}` · `.env.example` · `docs/architecture.md` · `package.json` ×2
+
+**Tests** : typecheck 8/8 ✓ · `pnpm test` 12/12 ✓ (2 339 tests, 0 fail) dont 22 sur la
+normalisation (mensuel FR, horaire exclu, période absente ambigüe exclue, ≥20k →
+annuel, min seul, devises multiples), 25 sur les bandes et l'inflexion, 9 sur le
+backfill (dont trois tests STRUCTURELS : le script n'atteint ni la queue, ni R2, ni la
+chaîne snapshot/change, et sa seule table d'insert est `hiring_salary_bands`), et 9
+d'intégration sur PGlite qui font tourner le vrai `runDetectSalaryShifts` contre un
+vrai Postgres migré — chaque garde y est vérifiée par le signal qui NE part PAS
+(bande trop mince, cooldown, self, board sans historique, disclosure déjà annoncée).
+
+**Note sur la vérification** : la base dev porte 136 postings et **zéro salaire
+publié** (les 4 providers concernés n'y sont pas représentés) et n'a pas de
+`QUEUE_DATABASE_URL`. Le « signaux visibles sur fixture » est donc fait par le test
+d'intégration PGlite ci-dessus, qui est reproductible et tourne en CI, plutôt que par
+une fixture poussée à la main dans dev.
+
+**Migration + backfill : FAITS sur dev ET prod (2026-08-01)** :
+- `0063` appliquée aux deux (64/64 : table + 3 index, colonne, enum). Pré-vol read-only
+  avant écriture prod — seul 0063 pending, son `when` sortait bien après le dernier
+  appliqué. Le `when` de 0063 avait dû être bumpé à la main : drizzle l'avait stampé
+  DERRIÈRE 0062, ce qui l'aurait fait sauter en silence.
+- **Trouvé en ouvrant la PR** : le squash de #384 a perdu `dd727a75`, donc `main`
+  portait toujours le `when` de 0062 SOUS celui de 0061. Sur un environnement neuf
+  bâti depuis `main`, 0062 serait sautée en silence (pas de table `hiring_geo`, pas
+  d'enum `hiring_footprint`) pendant que 0063 passerait. Le correctif est re-cherry-
+  pické ici, à la valeur exacte déjà inscrite dans les ledgers dev et prod, donc
+  `db:realign-journal` ne signale aucune dérive et rien ne rejoue.
+- Backfill appliqué sur prod : **74 lignes, 28 clés (competitor, bucket, devise), 7
+  concurrents**, du 2026-07-06 au 2026-07-27 seulement — `job_postings` ne remonte pas
+  plus loin pour ces boards. Idempotent (2ᵉ `--apply` = 74). Dev écrit 0 ligne : prod
+  porte 131 postings salariés sur 1 693, dev aucun.
+- Prévision passée AVANT de partir, avec les vrais détecteurs sur les séries écrites :
+  **0 signal** au prochain run, des deux familles. Runway (40/43 salariées) et Dougs
+  (23/23) passent le seuil de part mais n'ont que 1 et 3 semaines d'historique de board
+  contre un plancher de 4 — le garde qui fait exactement son travail, puisque « ils ont
+  COMMENCÉ à publier » serait sinon une affirmation sur le moment où nous avons
+  commencé à regarder.
+
+**Reste côté humain** :
+- Poser les 3 env vars (`SALARY_BAND_*`) sur le service workers, ou laisser les défauts.
+- Vérifier la carte « Salaries » sur Runway ou render.com après un re-scan jobs (ce sont
+  les deux boards les plus fournis : 8 à 14 rôles par bande).
+
+**Prochaine session** : P4 — couverture (parseur JSON-LD JobPosting générique
+structured-first + compteur de détections-sans-adapter + 2-3 adapters EU).
+NE PAS commencer sans /clear.

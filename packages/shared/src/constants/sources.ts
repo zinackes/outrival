@@ -90,6 +90,15 @@ export const SOURCE_TYPES = [
   // rather than hiring_shift's, whose snapshot chain owns the velocity detector's
   // dedup hash. Kept in sync with the DB enum.
   "hiring_footprint",
+  // Salary bands (Hiring Intelligence v2 P3). Like hiring_footprint, an INTERNAL
+  // anchor source — never seeded, never scraped, never user-selectable. It anchors
+  // the chain for the two salary signals: a department's median pay moving ±15%
+  // against its own trailing weeks (same currency only — nothing is ever converted),
+  // and a competitor that has started publishing pay at all, which the EU pay
+  // transparency directive is about to make a common event. Its own anchor rather
+  // than hiring_shift's, whose snapshot chain owns the velocity detector's dedup
+  // hash. Kept in sync with the DB enum.
+  "hiring_salary",
   // Hacker News mention + Show HN tracking. Like sitemap/news/youtube, an INTERNAL
   // source — never user-selectable (excluded from plan gating, the enable route, and
   // the source tabs). Seeded weekly at creation; the scraper queries HN's public

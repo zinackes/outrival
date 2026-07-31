@@ -10,6 +10,7 @@ import {
   jobCounts,
   hiringMetrics,
   hiringGeo,
+  hiringSalaryBands,
   reviewScores,
   signalFeed,
   scrapeRuns,
@@ -1069,6 +1070,98 @@ export async function upsertHiringGeo(rows: HiringGeoUpsertRow[]): Promise<void>
         },
       }),
   );
+}
+
+export interface HiringSalaryBandUpsertRow {
+  competitor_id: string;
+  department_bucket: string;
+  currency: string;
+  p25: number;
+  p50: number;
+  p75: number;
+  n: number;
+  week_start: string;
+  recorded_at: Date;
+}
+
+/**
+ * Upsert a competitor's weekly salary bands. Idempotent by (competitor, bucket,
+ * CURRENCY, ISO week) — the currency is in the key because bands are never merged
+ * across currencies and never converted, so a competitor hiring in euros and dollars
+ * writes two independent rows for the same bucket and week.
+ */
+export async function upsertHiringSalaryBands(rows: HiringSalaryBandUpsertRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await bestEffort("hiring_salary_bands upsert", () =>
+    db
+      .insert(hiringSalaryBands)
+      .values(
+        rows.map((r) => ({
+          competitorId: r.competitor_id,
+          departmentBucket: r.department_bucket,
+          currency: r.currency,
+          p25: r.p25,
+          p50: r.p50,
+          p75: r.p75,
+          n: r.n,
+          weekStart: r.week_start,
+          recordedAt: r.recorded_at,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [
+          hiringSalaryBands.competitorId,
+          hiringSalaryBands.departmentBucket,
+          hiringSalaryBands.currency,
+          hiringSalaryBands.weekStart,
+        ],
+        set: {
+          p25: sql`excluded.p25`,
+          p50: sql`excluded.p50`,
+          p75: sql`excluded.p75`,
+          n: sql`excluded.n`,
+          recordedAt: sql`excluded.recorded_at`,
+        },
+      }),
+  );
+}
+
+export interface HiringSalaryBandSeriesRow {
+  department_bucket: string;
+  currency: string;
+  p50: number;
+  n: number;
+  week_start: string;
+}
+
+/**
+ * A competitor's weekly salary bands over the last `weeks` ISO weeks, ascending —
+ * the input detect-salary-shifts groups per (bucket, currency).
+ */
+export async function getHiringSalaryBandSeries(
+  competitorId: string,
+  weeks: number,
+): Promise<HiringSalaryBandSeriesRow[]> {
+  const since = new Date(Date.now() - weeks * 7 * 86_400_000);
+  const rows = await bestEffortRead<HiringSalaryBandSeriesRow>("getHiringSalaryBandSeries", () =>
+    db
+      .select({
+        department_bucket: hiringSalaryBands.departmentBucket,
+        currency: hiringSalaryBands.currency,
+        p50: hiringSalaryBands.p50,
+        n: hiringSalaryBands.n,
+        week_start: hiringSalaryBands.weekStart,
+      })
+      .from(hiringSalaryBands)
+      .where(
+        and(
+          eq(hiringSalaryBands.competitorId, competitorId),
+          gte(hiringSalaryBands.recordedAt, since),
+        ),
+      )
+      .orderBy(hiringSalaryBands.weekStart),
+  );
+  return rows ?? [];
 }
 
 export interface HiringKeyWeekRow {

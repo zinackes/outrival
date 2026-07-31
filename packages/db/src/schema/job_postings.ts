@@ -17,6 +17,15 @@ export const jobPostings = pgTable("job_postings", {
   salaryMin: integer("salary_min"),
   salaryMax: integer("salary_max"),
   salaryCurrency: text("salary_currency"),
+  // Hiring Intelligence v2 P3 — the period the figures above are quoted on
+  // ('yearly' | 'monthly' | 'hourly' | 'daily'), read from the SAME ATS response
+  // the amounts came from (Lever salaryRange.interval, Ashby compensation
+  // components, Recruitee salary.period, WTTJ salary_period). Zero extra requests,
+  // null on every other provider and on the LLM fallback. Without it an hourly
+  // contractor rate and an annual salary are the same two integers, and a band
+  // built over both is not noisy but wrong — so the bands EXCLUDE hourly/daily and
+  // exclude anything they cannot place (see @outrival/shared salary-normalize).
+  salaryPeriod: text("salary_period"),
   // Hiring Intelligence v2 P1 — the JD body was ALREADY in the ATS responses
   // (Greenhouse is fetched content=true, Workable details=true, Lever/Ashby/
   // Personio/Recruitee carry it) and thrown away for want of a column. It is where

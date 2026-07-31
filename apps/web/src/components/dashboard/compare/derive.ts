@@ -33,6 +33,22 @@ export function engineeringRoles(c: CompareColumn): number | null {
   return c.hiring?.engineeringOpen ?? null;
 }
 
+/**
+ * Median annual engineering pay, in the currency the postings quote it in (P3).
+ *
+ * Returned WITH its currency and never normalised, unlike the price lens above.
+ * Prices are a published number the reader is choosing between, so putting them on
+ * one axis earns its FX approximation; salaries are a read on how a competitor
+ * values a function in its own labour market, and converting €72k to dollars answers
+ * a question nobody asked while making the figure move with the exchange rate. So
+ * the lens shows both numbers and positions neither.
+ */
+export function engineeringMedianSalary(
+  c: CompareColumn,
+): { p50: number; currency: string; n: number } | null {
+  return c.hiring?.engineeringMedianSalary ?? null;
+}
+
 export function median(values: number[]): number | null {
   if (values.length === 0) return null;
   const s = [...values].sort((a, b) => a - b);

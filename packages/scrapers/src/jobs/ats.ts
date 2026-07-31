@@ -14,6 +14,8 @@
  */
 
 import { htmlToPlainJd, MAX_DESCRIPTION_CHARS } from "./jd-facts";
+// Type-only: keeps this module's runtime dependency surface at `fetch` + regex.
+import type { SalaryPeriod } from "@outrival/shared";
 
 export interface AtsJob {
   title: string;
@@ -29,6 +31,14 @@ export interface AtsJob {
   salaryMin: number | null;
   salaryMax: number | null;
   salaryCurrency: string | null;
+  // Hiring Intelligence v2 P3 — the period those two numbers are quoted on, read
+  // out of the SAME response they came from (zero extra requests). Only the four
+  // providers that expose compensation at all can expose its period, so this is
+  // null everywhere else — and a null period is not a bug: the band builder infers
+  // "annual" only when the amount cannot mean anything else, and excludes the
+  // posting otherwise. Without it, "45 – 60" is an hourly contractor rate and an
+  // annual salary at the same time.
+  salaryPeriod: SalaryPeriod | null;
   // Hiring Intelligence v2 P1 — the JD body, plain text, capped. Already present in
   // the responses we ALREADY fetch (Greenhouse content=true, Workable details=true,
   // Lever/Ashby/Recruitee/Personio ship it in the list payload), so this costs zero
@@ -131,6 +141,59 @@ export function normalizeSalary(input: unknown): NormalizedSalary {
   return { min, max: max != null && max < (min ?? 0) ? null : max, currency };
 }
 
+/**
+ * Map a provider's pay-interval label onto a canonical period. Every ATS spells it
+ * differently for the same thing — Lever "per-year-salary", Ashby "PER_YEAR",
+ * Recruitee "year", WTTJ "yearly" — so this matches on the unit word rather than on
+ * an enum per provider, which is what keeps a new provider from silently landing a
+ * null here.
+ *
+ * Returns null for anything else, INCLUDING weekly and one-off bonuses: a period we
+ * do not model must read as "not stated" and go through the amount rule, never get
+ * rounded into the nearest one we do model.
+ */
+export function normalizeSalaryPeriod(raw: unknown): SalaryPeriod | null {
+  // Separators differ as much as the words ("per-year-salary", "PER_YEAR",
+  // "yearly"), so everything that is not a letter becomes a space and the unit is
+  // matched as a whole word — "per_hour" must not hide its "hour".
+  const text = str(raw).toLowerCase().replace(/[^a-z]+/g, " ").trim();
+  if (!text) return null;
+  if (/\b(hour|hourly|hr|hrs)\b/.test(text)) return "hourly";
+  if (/\b(day|daily)\b/.test(text)) return "daily";
+  if (/\b(month|monthly)\b/.test(text)) return "monthly";
+  if (/\b(year|yearly|annual|annually|yr)\b/.test(text)) return "yearly";
+  return null;
+}
+
+/**
+ * Ashby ships compensation twice: a human summary string (which is what the amounts
+ * are parsed from) and structured components carrying the interval. Only the
+ * interval is read here — the summary parse is unchanged, so this adds a field
+ * without moving any existing number.
+ */
+function ashbyInterval(compensation: unknown): SalaryPeriod | null {
+  if (!compensation || typeof compensation !== "object") return null;
+  const c = compensation as Record<string, unknown>;
+  const tiers = Array.isArray(c.compensationTiers) ? c.compensationTiers : [];
+  const pools: unknown[] = [
+    ...(Array.isArray(c.summaryComponents) ? c.summaryComponents : []),
+    ...tiers.flatMap((t) => {
+      const comps = (t as Record<string, unknown>)?.components;
+      return Array.isArray(comps) ? comps : [];
+    }),
+  ];
+  for (const comp of pools) {
+    if (!comp || typeof comp !== "object") continue;
+    const o = comp as Record<string, unknown>;
+    // Equity and bonus components carry intervals too ("1 TIME"), and reading one
+    // of those as the salary's period would annualise the wrong number.
+    if (str(o.compensationType).toLowerCase() !== "salary") continue;
+    const period = normalizeSalaryPeriod(o.interval);
+    if (period) return period;
+  }
+  return null;
+}
+
 const SENIORITY_PATTERNS: ReadonlyArray<[RegExp, Seniority]> = [
   [/\bintern(ship)?\b|\btrainee\b|\bapprentice\b/i, "intern"],
   [/\bjunior\b|\bjr\.?\b|\bentry[- ]?level\b|\bgraduate\b/i, "junior"],
@@ -199,6 +262,7 @@ function mkJob(p: {
   seniority?: Seniority | null;
   postedAt?: string | null;
   salary?: NormalizedSalary | null;
+  salaryPeriod?: SalaryPeriod | null;
   description?: string | null;
   employmentType?: string | null;
 }): AtsJob {
@@ -213,6 +277,8 @@ function mkJob(p: {
     salaryMin: salary.min,
     salaryMax: salary.max,
     salaryCurrency: salary.currency,
+    // A period with no amount behind it says nothing, so it is dropped with it.
+    salaryPeriod: salary.min == null && salary.max == null ? null : (p.salaryPeriod ?? null),
     description: p.description ?? null,
     employmentType: p.employmentType?.trim() || null,
   };
@@ -372,8 +438,12 @@ const PROVIDERS: ProviderDef[] = [
               location: str(cat.location) || null,
               url: str(p?.hostedUrl) || str(p?.applyUrl) || null,
               postedAt: toIso(p?.createdAt),
-              // Lever carries a structured range when comp is disclosed.
+              // Lever carries a structured range when comp is disclosed, and its
+              // own interval alongside it ("per-year-salary", "per-hour-wage").
               salary: normalizeSalary(p?.salaryRange ?? p?.salaryDescriptionPlain),
+              salaryPeriod: normalizeSalaryPeriod(
+                (p?.salaryRange as Record<string, unknown> | undefined)?.interval,
+              ),
               seniority: normalizeSeniority(title, str(cat.commitment)),
               // Lever ships both a plain-text and an HTML body plus the numbered
               // `lists` (Requirements, What you'll do) that carry the real content.
@@ -410,6 +480,7 @@ const PROVIDERS: ProviderDef[] = [
               url: str(j?.jobUrl) || str(j?.applyUrl) || null,
               postedAt: toIso(j?.publishedDate ?? j?.publishedAt),
               salary: normalizeSalary(comp?.compensationTierSummary),
+              salaryPeriod: ashbyInterval(comp),
               seniority: normalizeSeniority(title, str(j?.employmentType)),
               description: jobDescription(j?.descriptionPlain ?? j?.descriptionHtml),
               employmentType: str(j?.employmentType) || null,
@@ -474,6 +545,11 @@ const PROVIDERS: ProviderDef[] = [
                 o?.salary != null
                   ? normalizeSalary(o.salary)
                   : normalizeSalary([str(o?.min_salary), str(o?.max_salary), str(o?.currency)].join(" ")),
+              // Recruitee states the period next to the range ("year", "month",
+              // "hour") — its boards carry a lot of hourly retail/hospitality roles.
+              salaryPeriod: normalizeSalaryPeriod(
+                (o?.salary as Record<string, unknown> | undefined)?.period ?? o?.salary_period,
+              ),
               seniority: normalizeSeniority(title, str(o?.experience_level) || str(o?.seniority)),
               description: jobDescription(o?.description, o?.requirements),
               employmentType: str(o?.employment_type_code) || str(o?.employment_type) || null,
@@ -563,12 +639,15 @@ const PROVIDERS: ProviderDef[] = [
                   ? `https://www.welcometothejungle.com/en/companies/${orgSlug}/jobs/${jobSlug}`
                   : null,
               postedAt: toIso(h?.published_at),
-              // WTTJ exposes structured yearly comp when disclosed.
+              // WTTJ exposes structured comp when disclosed, with its own period
+              // field — mostly yearly on French postings, but not always, and the
+              // French market publishes monthly figures often enough to matter.
               salary: normalizeSalary({
                 min: h?.salary_minimum,
                 max: h?.salary_maximum,
                 currency: h?.salary_currency,
               }),
+              salaryPeriod: normalizeSalaryPeriod(h?.salary_period),
               seniority: normalizeSeniority(title, str(h?.experience_level_minimum)),
             });
           })
@@ -997,6 +1076,10 @@ function coerceJob(x: unknown): AtsJob | null {
     salaryMin: coerceNum(o.salaryMin),
     salaryMax: coerceNum(o.salaryMax),
     salaryCurrency: str(o.salaryCurrency) || null,
+    // Re-validated on the way out rather than trusted: the island is JSON written
+    // by one process and read by another, and an unrecognised period stored as-is
+    // would be treated as "not stated" downstream anyway — better to say so here.
+    salaryPeriod: normalizeSalaryPeriod(o.salaryPeriod),
     // Re-capped on the way out: the island is written by the scraper and read by
     // the worker, and only this side knows the storage cap.
     description: str(o.description).slice(0, MAX_DESCRIPTION_CHARS) || null,

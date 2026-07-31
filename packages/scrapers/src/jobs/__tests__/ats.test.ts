@@ -69,6 +69,7 @@ describe("appendAtsJobsToHtml → parseAtsJobsFromHtml round-trip", () => {
     salaryMin: null,
     salaryMax: null,
     salaryCurrency: null,
+    salaryPeriod: null,
     description: null,
     employmentType: null,
   };

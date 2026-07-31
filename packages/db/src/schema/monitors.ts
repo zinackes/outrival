@@ -85,6 +85,15 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // interleaving would make every inflection re-emit. Always isActive=false; the
   // detect-hiring-footprint job owns it.
   "hiring_footprint",
+  // Salary bands (Hiring Intelligence v2 P3). Infra-only anchor source, sibling of
+  // hiring_shift / job_facts / hiring_footprint: never scraped, never
+  // user-selectable. It anchors the snapshot → change → signal chain for the two
+  // salary signals (a department's median pay moving against its own trailing
+  // weeks, and a competitor that has started publishing pay at all). Its own anchor
+  // for the same reason the other two have one: every anchor's snapshot chain IS
+  // its dedup ledger, and interleaving a fourth family of keys into an existing one
+  // makes the others re-emit. Always isActive=false; detect-salary-shifts owns it.
+  "hiring_salary",
   // Hacker News mention + Show HN tracking. Internal source (like news/youtube) —
   // never user-selectable. Seeded weekly at creation, isActive=true, enqueued by
   // schedule-scraping and scraped via getScraper (HN Algolia by brand); the

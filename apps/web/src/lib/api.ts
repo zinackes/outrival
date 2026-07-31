@@ -278,6 +278,39 @@ export interface HiringGeoData {
   other: Array<{ code: string; openCount: number }>;
 }
 
+/**
+ * What a competitor pays, per department and per CURRENCY (P3).
+ *
+ * `bands` is the latest captured week; `series` behind each is its p50 history, so
+ * the card can show the shape without a second request. Two bands for one bucket is
+ * normal and correct — a competitor hiring engineers in Paris and New York has two
+ * pay realities, and nothing here converts between them.
+ *
+ * `disclosure` is computed on read from the CURRENT open roles, and counts every
+ * posting that carries a figure — including the hourly and currency-less ones the
+ * bands exclude. "Do they publish pay" and "can we band it" are different questions.
+ */
+export interface HiringSalaryData {
+  weekStart: string | null;
+  bands: Array<{
+    bucket: string;
+    label: string;
+    currency: string;
+    p25: number;
+    p50: number;
+    p75: number;
+    n: number;
+    series: number[];
+  }>;
+  disclosure: {
+    disclosed: number;
+    total: number;
+    share: number;
+    verdict: "yes" | "partial" | "no";
+    currency: string | null;
+  };
+}
+
 export interface PricingHistoryPoint {
   plan_name: string;
   // null for quote-based tiers (Enterprise / "Contact sales" / Custom).
@@ -554,7 +587,28 @@ export type SignalFacts =
       kind: "job_facts";
       facts: JobFact[];
     }
+  | {
+      /** The band that moved and the roles behind it (Hiring Intelligence v2 P3).
+       * Everything is in one currency — the signal is per (bucket, currency). */
+      kind: "salary";
+      bucketLabel: string;
+      currency: string;
+      p50Before: number;
+      p50After: number;
+      n: number;
+      trailing: Array<{ weekStart: string; p50: number; n: number }>;
+      roles: BandRoleFact[];
+      rolesTotal: number;
+    }
   | null;
+
+export interface BandRoleFact {
+  title: string;
+  url: string | null;
+  location: string | null;
+  salaryMin: number | null;
+  salaryMax: number | null;
+}
 
 export interface JobFact {
   kind: string;
@@ -1224,6 +1278,10 @@ export interface CompareColumn {
     // Canonical `engineering` bucket count; null when the competitor has no
     // authoritative ATS run to bucket (the compare bar then shows the total only).
     engineeringOpen: number | null;
+    // Median annual engineering pay, in the currency their postings quote (P3).
+    // Shown as a chip, never positioned on the shared bar: two currencies on one
+    // axis would need an FX rate we do not capture.
+    engineeringMedianSalary: { p50: number; currency: string; n: number } | null;
     capturedAt: string | null;
   } | null;
   reviews: Array<{
@@ -2773,6 +2831,8 @@ export const api = {
     request<{ velocity: HiringVelocityBucket[] }>(`/api/competitors/${id}/hiring-velocity`),
   getCompetitorHiringGeo: (id: string) =>
     request<HiringGeoData>(`/api/competitors/${id}/hiring-geo`),
+  getCompetitorHiringSalary: (id: string) =>
+    request<HiringSalaryData>(`/api/competitors/${id}/hiring-salary`),
   getCompetitorReviews: (id: string) =>
     request<ReviewsData>(`/api/competitors/${id}/reviews`),
   getCompetitorReviewScores: (id: string) =>

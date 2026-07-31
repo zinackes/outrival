@@ -43,7 +43,7 @@ Mise à jour à chaque phase / patch.
 | Discovery         | Exa.ai (`exa-js`)                        | Recherche sémantique de concurrents similaires |
 | Email             | Resend                                   | Alerts + digests transactionnels |
 | Paiements         | Stripe (SDK v22)                         | Checkout + Customer Portal + webhooks |
-| Insights IA       | Pool OpenAI-compat (`gpt-oss-120b`)      | Cerebras p1 → Groq p2 → Hyperbolic p3. `tier:"fast"` → `gpt-oss-20b` (Groq seul). Les llama-3.x sont arrêtés par Groq le 2026-08-16. `AI_CONFIG.model` est ignoré sur le chemin pool |
+| Insights IA       | Pool OpenAI-compat (`gpt-oss-120b`)      | Cerebras p1 → Cloudflare Workers AI p2 → Groq p3 → Mistral p4, tous gratuits. `tier:"fast"` → `gpt-oss-20b` (Groq + Cloudflare). Les llama-3.x sont arrêtés par Groq le 2026-08-16. `AI_CONFIG.model` est ignoré sur le chemin pool |
 | Déploiement       | OVH VPS + Coolify                        | Self-hosted, EU GDPR, €8/mois |
 
 > **Note** : Upstash Redis a été retiré du stack (Phase 6). Les alertes temps-réel
@@ -1309,9 +1309,29 @@ AI_PROVIDER_1_MODEL=gpt-oss-120b   # NOT llama-3.3-70b (404 model_not_found on C
 AI_PROVIDER_1_TIER=free
 AI_PROVIDER_1_DAILY_TOKEN_QUOTA=1000000
 AI_PROVIDER_1_PRIORITY=1
-AI_PROVIDER_2_ID=groq              # 1 compte, prio 2
-AI_PROVIDER_3_ID=hyperbolic        # payant ~$0.40/M, fallback prio 3
+AI_PROVIDER_2_ID=groq              # 1 compte, prio 3. QUOTA=200000 : c'est le TPD gratuit
+                                   # PUBLIÉ par Groq (8k tokens/min, 200k/jour). Il valait
+                                   # 500000, donc le pool passait la fin de chaque journée à
+                                   # découvrir la limite par 429 (231 erreurs sur 401 runs
+                                   # Groq le 31/07/2026, pendant que Cerebras en servait
+                                   # 740k sans une seule)
+AI_PROVIDER_3_ID=cloudflare        # Workers AI, MÊMES poids gpt-oss (120b + 20b), prio 2.
+                                   # 10k Neurons/jour gratuits = ~286k tokens/jour à notre
+                                   # mix mesuré 91,5% input ; l'account id vit dans BASE_URL
+                                   # (le même que R2_ACCOUNT_ID). Débordement payant
+                                   # $0.35/$0.75 par M
+AI_PROVIDER_4_ID=mistral           # La Plateforme free : 1 Md tokens/mois, 1 req/s, prio 4.
+                                   # Plus grosse enveloppe gratuite et seule EU, mais AUTRE
+                                   # famille de modèles → dernière priorité tant que
+                                   # eval:severity + eval:faithfulness ne sont pas passées.
+                                   # Deux gestes manuels : opt-out training (Admin Console >
+                                   # Privacy, le tier gratuit entraîne PAR DÉFAUT) et pinner
+                                   # un id de modèle DATÉ depuis GET /v1/models, jamais un
+                                   # alias `-latest`
 # (… _BASE_URL/_API_KEY/_MODEL/_TIER/_DAILY_TOKEN_QUOTA/_PRIORITY par provider, cf .env.example)
+# Plus de plancher PAYANT : `AI_PROVIDER_3_ID=hyperbolic` était documenté depuis patch-22
+# mais n'a jamais eu de clé en prod et n'a jamais servi une requête (ai_runs ne connaît que
+# groq et cerebras du 05/06 au 31/07/2026). Quand les gratuits sont épuisés, l'IA s'arrête.
 AI_CIRCUIT_BREAKER_THRESHOLD=5     # échecs consécutifs (tous providers) avant coupure globale
 AI_CIRCUIT_BREAKER_RESET_MIN=10    # minutes avant retry (breaker provider ET global)
 AI_INTENSIVE_RATE_LIMIT=10         # actions IA-intensives par user par fenêtre (rate limit dur)
@@ -1664,8 +1684,8 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
   priorité d'ancrage que `generate-signal`.
 - **Pool de providers IA légaux (patch-22)** — remplace le pool multi-comptes Groq (violait
   les ToS). `complete()` reste l'entrée unique ; pour `provider="groq"` route via `callLLM`
-  vers un pool OpenAI-compatible (Cerebras free prio1, Groq prio2, Hyperbolic payant prio3),
-  essayés free→payant. `pickProvider` (skip épuisés/breaker, round-robin), quota tokens/jour
+  vers un pool OpenAI-compatible (Cerebras prio1, Cloudflare Workers AI prio2, Groq prio3,
+  Mistral prio4 — tous free), essayés free→payant. `pickProvider` (skip épuisés/breaker, round-robin), quota tokens/jour
   + circuit breaker par provider ET global en Redis (partagé entre runs) ; failover en-appel
   sur 429/5xx. Sans Upstash : « 1er provider, pas de tracking ». Claude = fallback
   `provider="claude"` (swap 1 ligne). Breaker ouvert → banner ai-status, scrapes continuent.

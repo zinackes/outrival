@@ -217,7 +217,7 @@ export async function logAiRun(
   status: AiRunStatus,
   attribution?: AiRunAttribution,
 ): Promise<void> {
-  // Prefer the real pool provider the call ran on (cerebras|groq|hyperbolic),
+  // Prefer the real pool provider the call ran on (cerebras|cloudflare|groq|mistral),
   // captured by complete() in the same async context (patch-22). Falls back to the
   // static provider from AI_CONFIG when the pool didn't run (e.g. Claude fallback).
   const actual = getActiveProvider() ?? provider;

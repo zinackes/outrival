@@ -108,8 +108,8 @@ sortent de leur bac à sable : `aeo/aeo_audit.py` fait un `GET` réseau vers l'U
 passée, `aeo/citation_tracker.py` écrit un ledger dans `~/.aeo-data/`, les deux
 sur invocation explicite seulement.
 
-- **llm-cost-optimizer** — auditer/réduire le coût du pool IA (Cerebras→Groq→
-  Hyperbolic), caching gpt-oss, routing par `tier`, logging `ai_runs` par feature.
+- **llm-cost-optimizer** — auditer/réduire le coût du pool IA (Cerebras→Cloudflare→
+  Groq→Mistral), caching gpt-oss, routing par `tier`, logging `ai_runs` par feature.
 - **slo-architect** — transformer les promesses de la landing (onboarding ≤5 min,
   ratio 70:1, scan horaire) en SLI/SLO/error-budget + alertes burn-rate.
 - **data-quality-auditor** — profiler la qualité des extractions (`pricing_history`,

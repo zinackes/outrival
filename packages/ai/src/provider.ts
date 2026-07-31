@@ -18,7 +18,7 @@ import {
 } from "./provider/circuit-breaker";
 import { markProvider, markModel, markUsage, markTruncated } from "./provider/provider-context";
 
-// One OpenAI client per pool provider (Cerebras/Groq/Hyperbolic are all
+// One OpenAI client per pool provider (Cerebras/Cloudflare/Groq/Mistral are all
 // OpenAI-compatible, routed by baseURL). maxRetries lets the SDK absorb a transient
 // 429/5xx — but only on the LAST provider we have, see LAST_RESORT_SDK_RETRIES.
 const openaiClients = new Map<string, OpenAI>();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { SpinnerIcon, SparkleIcon } from "@/components/icons";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -38,6 +39,7 @@ export function ChangeProductUrlDialog({
   productId?: string;
   onSaved?: (url: string) => void | Promise<void>;
 }) {
+  const queryClient = useQueryClient();
   const [url, setUrl] = useState(currentUrl ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -52,6 +54,10 @@ export function ChangeProductUrlDialog({
     setSaving(true);
     try {
       await api.setMyProductSite(next, productId);
+      // A first URL renames the product row and gives it a favicon — refresh the
+      // ["products"] caches (switcher roster, detail title, settings list) so the
+      // new identity shows without a hard reload.
+      void queryClient.invalidateQueries({ queryKey: ["products"] });
       toast.success("Product URL updated", {
         description: "Your site will be re-scanned and the profile refreshed shortly.",
       });

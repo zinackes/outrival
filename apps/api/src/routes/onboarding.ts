@@ -45,6 +45,7 @@ import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { enqueueJob } from "../lib/queue";
 import {
+  DEFAULT_PRODUCT_NAME,
   ensurePrimaryProductForSelf,
   associateCompetitorWithScopedProduct,
   primaryProductId,
@@ -130,7 +131,7 @@ async function createSelfCompetitor(orgId: string) {
     .insert(competitors)
     .values({
       orgId,
-      name: normalizeHostname(org.productUrl) ?? "My product",
+      name: normalizeHostname(org.productUrl) ?? DEFAULT_PRODUCT_NAME,
       url: org.productUrl,
       category: pp?.category ?? null,
       type: "self",

@@ -83,6 +83,13 @@ export async function productSelfCompetitorId(
 }
 
 /**
+ * Placeholder name for a product created without a URL (idea/document onboarding).
+ * The go-live rename (POST /my-product/site) only fires while the product still
+ * carries it, so a user-chosen name is never overwritten.
+ */
+export const DEFAULT_PRODUCT_NAME = "My product";
+
+/**
  * patch-28 — ensure the org's self-competitor is wrapped by a `products` row. Called
  * wherever a self-competitor is created (onboarding, My Product) so new orgs get a
  * product the same way the migration backfilled existing ones. The first product of
@@ -108,7 +115,7 @@ export async function ensurePrimaryProductForSelf(
     .insert(products)
     .values({
       orgId,
-      name: name || "My product",
+      name: name || DEFAULT_PRODUCT_NAME,
       selfCompetitorId,
       isPrimary: !anyProduct,
       position: 0,

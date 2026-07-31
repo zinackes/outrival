@@ -28,7 +28,7 @@ import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, countUserForcedRescansToday, rescanLimitBody } from "../lib/plan";
-import { ensurePrimaryProductForSelf } from "../lib/products";
+import { DEFAULT_PRODUCT_NAME, ensurePrimaryProductForSelf } from "../lib/products";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
 
 type Variables = { user: { id: string } };
@@ -95,7 +95,7 @@ async function ensureSelf(orgId: string) {
     .insert(competitors)
     .values({
       orgId,
-      name: normalizeHostname(org?.productUrl) ?? "My product",
+      name: normalizeHostname(org?.productUrl) ?? DEFAULT_PRODUCT_NAME,
       url: org?.productUrl ?? null,
       category: pp?.category ?? null,
       type: "self",
@@ -374,6 +374,21 @@ myProductRouter.post("/site", async (c) => {
   };
   if (!self.url) competitorUpdate.name = normalizeHostname(url) ?? self.name;
   await db.update(competitors).set(competitorUpdate).where(eq(competitors.id, self.id));
+  // The switcher, page titles and breadcrumbs read products.name, not the
+  // competitor's — a description/PDF product stayed "My product" everywhere after
+  // going live. First URL only, and only while the name is still the placeholder,
+  // so a user-chosen name is never clobbered.
+  if (!self.url) {
+    const host = normalizeHostname(url);
+    if (host) {
+      await db
+        .update(products)
+        .set({ name: host, updatedAt: new Date() })
+        .where(
+          and(eq(products.selfCompetitorId, self.id), eq(products.name, DEFAULT_PRODUCT_NAME)),
+        );
+    }
+  }
   if (isPrimaryProduct) {
     await db
       .update(organizations)

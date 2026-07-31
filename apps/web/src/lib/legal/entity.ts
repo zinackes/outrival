@@ -175,12 +175,19 @@ export const SUBPROCESSORS: Subprocessor[] = [
     transfer: "EU SCC",
   },
   {
-    name: "Hyperbolic",
-    purpose: { en: "AI inference (provider pool, paid fallback)", fr: "Inférence IA (pool de providers, secours payant)" },
+    name: "Cloudflare Workers AI",
+    purpose: { en: "AI inference (provider pool)", fr: "Inférence IA (pool de providers)" },
     data: { en: "Prompts derived from monitored public data", fr: "Prompts dérivés des données publiques surveillées" },
-    location: "United States",
+    location: "Global (Cloudflare)",
     outsideEea: true,
-    transfer: "EU SCC",
+    transfer: "EU SCC (Cloudflare DPA)",
+  },
+  {
+    name: "Mistral AI",
+    purpose: { en: "AI inference (provider pool)", fr: "Inférence IA (pool de providers)" },
+    data: { en: "Prompts derived from monitored public data", fr: "Prompts dérivés des données publiques surveillées" },
+    location: "France (EU)",
+    outsideEea: false,
   },
   {
     name: "Anthropic",

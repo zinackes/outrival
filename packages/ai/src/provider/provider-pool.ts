@@ -2,9 +2,9 @@ import { redis } from "@outrival/shared";
 
 /**
  * Provider pool (patch-22). The AI source is a pool of *legal* OpenAI-compatible
- * providers (Cerebras free, Groq, Hyperbolic paid) tried free-first then paid —
- * NOT a pool of Groq accounts (multi-account would violate Groq's ToS). All three
- * speak the OpenAI chat-completions API, so one client routes them by baseUrl.
+ * providers (Cerebras, Cloudflare Workers AI, Groq, Mistral) tried free-first then
+ * paid — NOT a pool of Groq accounts (multi-account would violate Groq's ToS). They
+ * all speak the OpenAI chat-completions API, so one client routes them by baseUrl.
  *
  * Rotation logic: pick the lowest-priority (= most free) provider that is neither
  * exhausted for today (Redis token counter) nor in its circuit breaker; round-robin
@@ -13,7 +13,7 @@ import { redis } from "@outrival/shared";
  * `redis` facade no-ops and the pool degrades to "first provider, no tracking".
  */
 export interface Provider {
-  id: string; // "cerebras", "groq", "hyperbolic"
+  id: string; // "cerebras", "cloudflare", "groq", "mistral"
   baseUrl: string; // OpenAI-compatible endpoint
   apiKey: string;
   model: string; // model name at this provider

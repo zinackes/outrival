@@ -32,6 +32,12 @@ const SIGNALS_LIMIT = 40;
 // enough for the synthesis to spot a recurring theme, small enough that a ten-name
 // roster still fits the serialisation budget.
 const COMPLAINTS_PER_COMPETITOR = 3;
+// How far back the roster-wide reads look for MOVEMENT. Levels answer "who is the
+// biggest"; these answer "who moved", which is a different question the planner was
+// otherwise routing to getSignals — narrative change data with no numbers in it.
+const HIRING_TREND_DAYS = 28;
+const PRICING_CHANGE_DAYS = 180;
+const PRICING_CHANGES_PER_COMPETITOR = 5;
 
 function asString(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined;
@@ -140,7 +146,8 @@ const getCompetitorProfile: AskTool = {
 
 const getSignals: AskTool = {
   name: "getSignals",
-  description: "Recent strategic signals — detected competitor changes with AI insight.",
+  description:
+    'Recent strategic signals — things that CHANGED at competitors, written up as prose with an AI insight. PROSE ONLY: a signal carries no count, price or score. Best for an undirected "what happened / what is new / why did X move".',
   args:
     `competitorId (optional), window (days, default 30), category (optional: ${SIGNAL_CATEGORIES.join("|")}), severity (optional: low|medium|high|critical)`,
   async run(orgId, args) {
@@ -284,7 +291,7 @@ interface RawHiringDept {
 const getJobTrends: AskTool = {
   name: "getJobTrends",
   description:
-    "ONE competitor's open-roles count by department (latest capture). For a ranking across all competitors use rankHiring instead.",
+    'ONE named competitor\'s open roles, counted per department (latest capture). Use for "what is X hiring for", "which teams is X growing", "how many roles is X running". For a ranking across all competitors use rankHiring instead.',
   args: "competitorId (required), dept (optional department substring)",
   async run(orgId, args) {
     const owned = await ownedCompetitor(orgId, asString(args.competitorId));
@@ -420,27 +427,58 @@ interface RawRosterHiring {
   capturedAt: string | null;
 }
 
+interface RawHiringTrend {
+  competitorId: string;
+  priorTotal: number;
+  priorAt: string | null;
+}
+
 const rankHiring: AskTool = {
   name: "rankHiring",
   description:
-    'Open roles for EVERY competitor the org tracks, ranked highest first, each with its capture date. Use this for any roster-wide or superlative hiring question ("who is hiring the most", "who is scaling", "how does hiring compare") — it already covers all competitors, so never call getJobTrends once per name to build a ranking.',
+    'Open roles for EVERY competitor the org tracks, ranked highest first, each with its capture date AND its change over the last month (openRolesChange). Use this for any roster-wide hiring question, whether about SIZE ("who is hiring the most") or MOVEMENT ("who is scaling fastest", "whose engineering team is growing") — it already covers all competitors, so never call getJobTrends once per name to build a ranking.',
   args: "none",
   async run(orgId) {
     const rivals = await orgRivals(orgId);
     if (rivals.length === 0) return { ranking: [], noData: [] };
+    const ids = idPredicate(rivals.map((r) => r.id));
 
-    const rows = await analyticsQuery<RawRosterHiring>(sql`
-      WITH latest AS (
-        SELECT competitor_id, max(recorded_at) AS rid
-        FROM job_counts WHERE competitor_id IN (${idPredicate(rivals.map((r) => r.id))})
-        GROUP BY competitor_id
-      )
-      SELECT j.competitor_id AS "competitorId", j.department, j.count::int AS count,
-             (l.rid AT TIME ZONE 'UTC') AS "capturedAt"
-      FROM job_counts j
-      JOIN latest l ON l.competitor_id = j.competitor_id AND j.recorded_at = l.rid
-      ORDER BY j.competitor_id, j.count DESC
-    `);
+    const [rows, trend] = await Promise.all([
+      analyticsQuery<RawRosterHiring>(sql`
+        WITH latest AS (
+          SELECT competitor_id, max(recorded_at) AS rid
+          FROM job_counts WHERE competitor_id IN (${ids})
+          GROUP BY competitor_id
+        )
+        SELECT j.competitor_id AS "competitorId", j.department, j.count::int AS count,
+               (l.rid AT TIME ZONE 'UTC') AS "capturedAt"
+        FROM job_counts j
+        JOIN latest l ON l.competitor_id = j.competitor_id AND j.recorded_at = l.rid
+        ORDER BY j.competitor_id, j.count DESC
+      `),
+      // "Who is scaling fastest" is a different question from "who is biggest", and
+      // with only a level to offer the planner routed it to getSignals — narrative
+      // change data with no numbers in it. Compare each competitor's latest total
+      // against its own most recent capture at least a month older.
+      analyticsQuery<RawHiringTrend>(sql`
+        WITH totals AS (
+          SELECT competitor_id, recorded_at, sum(count)::int AS total
+          FROM job_counts WHERE competitor_id IN (${ids})
+          GROUP BY competitor_id, recorded_at
+        ), latest AS (
+          SELECT DISTINCT ON (competitor_id) competitor_id, recorded_at
+          FROM totals ORDER BY competitor_id, recorded_at DESC
+        )
+        SELECT DISTINCT ON (t.competitor_id)
+               t.competitor_id AS "competitorId", t.total AS "priorTotal",
+               (t.recorded_at AT TIME ZONE 'UTC') AS "priorAt"
+        FROM totals t
+        JOIN latest l ON l.competitor_id = t.competitor_id
+        WHERE t.recorded_at <= l.recorded_at - ${sql.raw(`interval '${HIRING_TREND_DAYS} days'`)}
+        ORDER BY t.competitor_id, t.recorded_at DESC
+      `),
+    ]);
+    const trendById = new Map(trend.map((t) => [t.competitorId, t]));
 
     const byId = new Map<
       string,
@@ -467,7 +505,19 @@ const rankHiring: AskTool = {
 
     const ranking = rivals
       .filter((r) => byId.has(r.id))
-      .map((r) => ({ id: r.id, name: r.name, ...byId.get(r.id)! }))
+      .map((r) => {
+        const cur = byId.get(r.id)!;
+        const prior = trendById.get(r.id);
+        return {
+          id: r.id,
+          name: r.name,
+          ...cur,
+          // null, never 0, when there is no earlier capture to compare against: a
+          // competitor first scraped last week has not "held flat", it has no history.
+          openRolesChange: prior ? cur.totalOpen - prior.priorTotal : null,
+          comparedTo: prior ? { totalOpen: prior.priorTotal, capturedAt: prior.priorAt } : null,
+        };
+      })
       .sort((a, b) => b.totalOpen - a.totalOpen);
     const noData = rivals.filter((r) => !byId.has(r.id)).map((r) => r.name);
     return { rosterSize: rivals.length, ranking, noData };
@@ -483,34 +533,73 @@ interface RawRosterPricing {
   capturedAt: string | null;
 }
 
+interface RawRosterPriceMove {
+  competitorId: string;
+  planName: string;
+  price: number;
+  prevPrice: number;
+  billingPeriod: string | null;
+  recordedAt: string;
+}
+
 const rankPricing: AskTool = {
   name: "rankPricing",
   description:
-    'Current entry and top price for EVERY competitor the org tracks, cheapest first, each with its capture date. Use this for any roster-wide or superlative pricing question ("who is cheapest", "who is the most expensive", "how does pricing compare across my competitors") — never call getPricingHistory once per name to build a ranking.',
+    'Current entry and top price for EVERY competitor the org tracks, cheapest first, each with its capture date AND its actual price moves over the last 6 months (recentChanges: old price → new price, dated). Use this for any roster-wide pricing question, whether about LEVEL ("who is cheapest", "who is the most expensive") or MOVEMENT ("how has competitor pricing shifted this quarter", "who raised prices") — never call getPricingHistory once per name to build a ranking.',
   args: "none",
   async run(orgId) {
     const rivals = await orgRivals(orgId);
     if (rivals.length === 0) return { ranking: [], noData: [] };
+    const ids = idPredicate(rivals.map((r) => r.id));
 
-    const detected = await analyticsQuery<RawRosterPricing>(sql`
-      WITH latest AS (
-        SELECT competitor_id, max(recorded_at) AS rid
-        FROM pricing_history WHERE competitor_id IN (${idPredicate(rivals.map((r) => r.id))})
-        GROUP BY competitor_id
-      )
-      SELECT p.competitor_id AS "competitorId", p.plan_name AS "planName", p.price,
-             p.currency, p.billing_period AS "billingPeriod",
-             (l.rid AT TIME ZONE 'UTC') AS "capturedAt"
-      FROM pricing_history p
-      JOIN latest l ON l.competitor_id = p.competitor_id AND p.recorded_at = l.rid
-      ORDER BY p.competitor_id, p.price
-    `);
+    const [detected, moves] = await Promise.all([
+      analyticsQuery<RawRosterPricing>(sql`
+        WITH latest AS (
+          SELECT competitor_id, max(recorded_at) AS rid
+          FROM pricing_history WHERE competitor_id IN (${ids})
+          GROUP BY competitor_id
+        )
+        SELECT p.competitor_id AS "competitorId", p.plan_name AS "planName", p.price,
+               p.currency, p.billing_period AS "billingPeriod",
+               (l.rid AT TIME ZONE 'UTC') AS "capturedAt"
+        FROM pricing_history p
+        JOIN latest l ON l.competitor_id = p.competitor_id AND p.recorded_at = l.rid
+        ORDER BY p.competitor_id, p.price
+      `),
+      // "How has pricing SHIFTED" is a movement question, and with only current
+      // levels to offer the planner sent it to getSignals — which carries the prose
+      // of a pricing change but never the two numbers. Same lag() shape
+      // getPricingHistory uses per competitor, run once for the whole roster.
+      analyticsQuery<RawRosterPriceMove>(sql`
+        WITH ranked AS (
+          SELECT competitor_id, plan_name, price, billing_period, recorded_at,
+                 lag(price) OVER (
+                   PARTITION BY competitor_id, plan_name, billing_period ORDER BY recorded_at
+                 ) AS prev_price
+          FROM pricing_history WHERE competitor_id IN (${ids})
+        )
+        SELECT competitor_id AS "competitorId", plan_name AS "planName", price,
+               prev_price AS "prevPrice", billing_period AS "billingPeriod",
+               (recorded_at AT TIME ZONE 'UTC') AS "recordedAt"
+        FROM ranked
+        WHERE prev_price IS NOT NULL AND price <> prev_price
+          AND recorded_at >= now() - ${sql.raw(`interval '${PRICING_CHANGE_DAYS} days'`)}
+        ORDER BY recorded_at DESC
+      `),
+    ]);
 
     const detectedById = new Map<string, RawRosterPricing[]>();
     for (const p of detected) {
       const arr = detectedById.get(p.competitorId);
       if (arr) arr.push(p);
       else detectedById.set(p.competitorId, [p]);
+    }
+    const movesById = new Map<string, RawRosterPriceMove[]>();
+    for (const m of moves) {
+      const arr = movesById.get(m.competitorId) ?? [];
+      if (arr.length >= PRICING_CHANGES_PER_COMPETITOR) continue;
+      arr.push(m);
+      movesById.set(m.competitorId, arr);
     }
 
     const ranked: Array<{
@@ -521,6 +610,13 @@ const rankPricing: AskTool = {
       currency: string | null;
       plans: Array<{ planName: string; price: number | null; billingPeriod: string | null }>;
       capturedAt: string | null;
+      recentChanges: Array<{
+        planName: string;
+        from: number;
+        to: number;
+        billingPeriod: string | null;
+        at: string;
+      }>;
     }> = [];
     const noData: string[] = [];
     for (const r of rivals) {
@@ -561,6 +657,15 @@ const rankPricing: AskTool = {
           billingPeriod: p.billingPeriod,
         })),
         capturedAt: raw[0]?.capturedAt ?? null,
+        // Named from/to rather than price/prevPrice: the synthesis reads these into a
+        // sentence, and "prevPrice" next to "price" got the direction backwards.
+        recentChanges: (movesById.get(r.id) ?? []).map((m) => ({
+          planName: m.planName,
+          from: m.prevPrice,
+          to: m.price,
+          billingPeriod: m.billingPeriod,
+          at: m.recordedAt,
+        })),
       });
     }
     // Quote-only competitors (no numeric entry) sort last: they have plans, so they

@@ -75,7 +75,10 @@ beforeAll(async () => {
   foreign = await seedCompetitor(B.orgId, "Outsider");
 
   await testDb.insert(jobCounts).values([
-    // A stale batch that must lose to the current one.
+    // Two months back — far enough to be the month-over-month comparison point.
+    { competitorId: hot, department: "Engineering", count: 10, recordedAt: new Date(Date.UTC(2026, 4, 20)) },
+    // A stale batch that must lose to the current one, and too RECENT to be the
+    // comparison point (8 days back) — the trend must not silently use it.
     { competitorId: hot, department: "Engineering", count: 2, recordedAt: AT(1) },
     { competitorId: hot, department: "Engineering", count: 18, recordedAt: AT(9) },
     { competitorId: hot, department: "Sales", count: 7, recordedAt: AT(9) },
@@ -87,6 +90,8 @@ beforeAll(async () => {
   ]);
 
   await testDb.insert(pricingHistory).values([
+    // Pro moved 70 → 90: the roster-wide "how has pricing shifted" answer.
+    { competitorId: hot, planName: "Pro", price: 70, currency: "USD", billingPeriod: "monthly", recordedAt: AT(2) },
     { competitorId: hot, planName: "Pro", price: 90, currency: "USD", billingPeriod: "monthly", recordedAt: AT(9) },
     { competitorId: hot, planName: "Enterprise", price: null, currency: "USD", billingPeriod: "custom", recordedAt: AT(9) },
     { competitorId: warm, planName: "Starter", price: 12, currency: "USD", billingPeriod: "monthly", recordedAt: AT(9) },
@@ -148,6 +153,23 @@ describe("rankHiring", () => {
     for (const row of r.ranking) expect(row.capturedAt).toBeTruthy();
   });
 
+  test("carries a month-over-month delta, null when there is no older capture", async () => {
+    const r = (await run("rankHiring", A.orgId)) as {
+      ranking: Array<{
+        name: string;
+        openRolesChange: number | null;
+        comparedTo: { totalOpen: number } | null;
+      }>;
+    };
+    const top = r.ranking.find((x) => x.name === "Vantage");
+    // 25 open now vs 10 two months ago. The 8-day-old batch is too recent to be the
+    // comparison point, so a delta of 23 here would mean the window was ignored.
+    expect(top?.openRolesChange).toBe(15);
+    expect(top?.comparedTo?.totalOpen).toBe(10);
+    // One capture only: no history is not "held flat".
+    expect(r.ranking.find((x) => x.name === "Northwind")?.openRolesChange).toBeNull();
+  });
+
   test("an org with no competitors yields an empty ranking, not an error", async () => {
     const empty = await seedOrg(testDb);
     const r = (await run("rankHiring", empty.orgId)) as { ranking: unknown[]; noData: unknown[] };
@@ -170,6 +192,21 @@ describe("rankPricing", () => {
     expect(r.ranking[1]).toMatchObject({ entry: 90, top: 90 });
     expect(r.ranking[2]?.entry).toBeNull();
     expect(r.noData).toEqual(["Quietco"]);
+  });
+
+  test("carries the actual price moves, directioned old → new", async () => {
+    const r = (await run("rankPricing", A.orgId)) as {
+      ranking: Array<{
+        name: string;
+        recentChanges: Array<{ planName: string; from: number; to: number }>;
+      }>;
+    };
+    const moved = r.ranking.find((x) => x.name === "Vantage");
+    expect(moved?.recentChanges).toEqual([
+      { planName: "Pro", from: 70, to: 90, billingPeriod: "monthly", at: expect.anything() },
+    ]);
+    // A competitor whose prices never moved reports an empty list, not a missing key.
+    expect(r.ranking.find((x) => x.name === "Northwind")?.recentChanges).toEqual([]);
   });
 });
 

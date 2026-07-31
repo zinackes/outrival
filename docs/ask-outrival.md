@@ -54,7 +54,11 @@ Two families. Each returns a small serialisable object the synthesis grounds on.
 
 **Roster-wide** — `rankHiring`, `rankPricing`, `rankReviews`. One call reads the latest
 capture for **every** competitor the org tracks, ranked, plus a `noData` list naming the
-ones it found nothing for.
+ones it found nothing for. Each carries **level and movement**: `rankHiring` ships
+`openRolesChange` against that competitor's own capture a month earlier, `rankPricing`
+ships `recentChanges` (old → new, dated) over six months. Levels alone were not enough —
+measured, the planner sent every "who is scaling / how has pricing shifted" question to
+`getSignals`, which carries the prose of a move and none of its numbers.
 
 **Single-competitor** — `listCompetitors`, `getCompetitorProfile`, `getSignals`,
 `getPricingHistory`, `getJobTrends`, `getReviewThemes`, `getTechStackChanges`,
@@ -81,6 +85,22 @@ Two invariants the tools carry for the synthesis:
 The org's **own product** (the `self` competitor) stays in the roster — the planner must
 resolve "how do I compare to X" to it — but ships flagged `isSelf` and is excluded from
 every `rank*` result. Unflagged, it ranked as one more rival.
+
+### Measuring the planner
+
+Tool routing is a model behaviour, so it is measured, not assumed. Against OnOrca's real
+15-name prod roster, the fast planner was run 3× over 8 questions (6 roster-wide, 2
+single-competitor controls). Two rules earned their place that way and belong in the
+**plan prompt**, not in a tool description — a blurb loses to the model's lexical prior,
+a `<rules>` line does not:
+
+- roster-wide/superlative → the `rank*` tool, never a per-name fan-out;
+- a question naming a dimension (pricing/hiring/reviews/tech) must include that
+  dimension's tool even when worded "what changed", because `getSignals` holds no
+  figures. It may accompany it, and in practice does.
+
+Baseline 5/8 → 8/8 (24/24 plans). Re-run it after touching a tool description or these
+rules; a description edit alone measurably moved routing on two questions.
 
 ## Tenant isolation (the guardrail that matters)
 

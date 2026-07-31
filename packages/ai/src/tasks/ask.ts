@@ -108,6 +108,10 @@ ${question}
   covers the WHOLE list in one call. NEVER answer such a question by calling a
   single-competitor tool once per name: the call budget is smaller than the list, so
   that plan silently ranks a subset and the answer names the wrong winner.
+- A question that names a DIMENSION — pricing, hiring, reviews, tech — is asking for
+  that dimension's FIGURES, so its tool must be in the plan even when the question is
+  worded as "what changed". getSignals may accompany it to explain the move in prose,
+  but it holds no figures, so it can never be the only call for such a question.
 - The user's own product is not a competitor. Leave it out of any ranking or "who
   among my competitors" question; use it only when the question is about them.
 - If the question cannot be answered from these tools, return an empty "calls" array.

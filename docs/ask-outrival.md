@@ -50,9 +50,57 @@ question + results ──────────▶ [SYNTHESIS · 70b · json] 
 
 ## Tools
 
-`listCompetitors`, `getSignals`, `getPricingHistory`, `getJobTrends`, `getReviewThemes`,
-`getTechStackChanges`, `compareCompetitors`. Each returns a small serialisable object
-the synthesis grounds on.
+Two families. Each returns a small serialisable object the synthesis grounds on.
+
+**Roster-wide** — `rankHiring`, `rankPricing`, `rankReviews`. One call reads the latest
+capture for **every** competitor the org tracks, ranked, plus a `noData` list naming the
+ones it found nothing for. Each carries **level and movement**: `rankHiring` ships
+`openRolesChange` against that competitor's own capture a month earlier, `rankPricing`
+ships `recentChanges` (old → new, dated) over six months. Levels alone were not enough —
+measured, the planner sent every "who is scaling / how has pricing shifted" question to
+`getSignals`, which carries the prose of a move and none of its numbers.
+
+**Single-competitor** — `listCompetitors`, `getCompetitorProfile`, `getSignals`,
+`getPricingHistory`, `getJobTrends`, `getReviewThemes`, `getTechStackChanges`,
+`compareCompetitors`.
+
+Why the roster-wide family exists: every tool used to be keyed on one `competitorId`, so
+a superlative question ("who is hiring the most?") could only be answered by fanning out
+one call per name. The plan is capped at **6 calls** and the planner is told to prefer
+the fewest, so on a roster larger than that it emitted **one** — and the synthesis
+faithfully reported a one-competitor ranking as the answer (observed in prod: 1 of 4
+hiring competitors named). The cap is not the bug; a ranking whose completeness depends
+on how many calls the planner spent is. The plan prompt now forbids the fan-out
+explicitly, and the rank tools make the correct plan a single call.
+
+Two invariants the tools carry for the synthesis:
+
+- **`capturedAt` on every figure.** Hiring, pricing and review numbers ship the date
+  their batch was captured, and the synthesis prompt requires an "as of <date>" whenever
+  it quotes one — a six-week-old price used to read as today's.
+- **Nothing is silently partial.** `noData` names the competitors a ranking skipped, and
+  `getSignals` returns the real `total` next to the 40 it returns (`truncated`), so
+  "42 signals this month" can't be said of an org with 300.
+
+The org's **own product** (the `self` competitor) stays in the roster — the planner must
+resolve "how do I compare to X" to it — but ships flagged `isSelf` and is excluded from
+every `rank*` result. Unflagged, it ranked as one more rival.
+
+### Measuring the planner
+
+Tool routing is a model behaviour, so it is measured, not assumed. Against OnOrca's real
+15-name prod roster, the fast planner was run 3× over 8 questions (6 roster-wide, 2
+single-competitor controls). Two rules earned their place that way and belong in the
+**plan prompt**, not in a tool description — a blurb loses to the model's lexical prior,
+a `<rules>` line does not:
+
+- roster-wide/superlative → the `rank*` tool, never a per-name fan-out;
+- a question naming a dimension (pricing/hiring/reviews/tech) must include that
+  dimension's tool even when worded "what changed", because `getSignals` holds no
+  figures. It may accompany it, and in practice does.
+
+Baseline 5/8 → 8/8 (24/24 plans). Re-run it after touching a tool description or these
+rules; a description edit alone measurably moved routing on two questions.
 
 ## Tenant isolation (the guardrail that matters)
 

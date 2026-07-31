@@ -77,6 +77,21 @@ describe("buildAskPlanPrompt", () => {
     const prompt = buildAskPlanPrompt("anything", TOOLS, []);
     expect(prompt).toContain("(no competitors tracked yet)");
   });
+
+  it("marks the org's own product so it stays out of competitor rankings", () => {
+    const prompt = buildAskPlanPrompt("Who is hiring the most?", TOOLS, [
+      { id: "comp-1", name: "Linear" },
+      { id: "self-1", name: "OnOrca", isSelf: true },
+    ]);
+    expect(prompt).toContain(`OnOrca → id "self-1" (THE USER'S OWN PRODUCT, not a competitor)`);
+    expect(prompt).toContain(`Linear → id "comp-1"\n`);
+  });
+
+  it("forbids answering a superlative question by fanning out per-competitor calls", () => {
+    const prompt = buildAskPlanPrompt("Who is hiring the most?", TOOLS, []);
+    expect(prompt).toContain('"rank..." tool');
+    expect(prompt).toContain("silently ranks a subset");
+  });
 });
 
 describe("buildAskSynthesisPrompt", () => {

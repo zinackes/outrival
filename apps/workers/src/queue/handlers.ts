@@ -37,6 +37,7 @@ import {
   detectSilentMonitors,
   heartbeat,
   scrapeMonitor,
+  probePricingCalculator,
   detectPlatform,
   generateBattleCard,
   NonRetriable,
@@ -88,6 +89,7 @@ import { runDetectSilentMonitors } from "../core/detect-silent-monitors";
 import { runHeartbeat } from "../core/heartbeat";
 import { runScrapeMonitor, onScrapeMonitorFailure } from "../core/scrape-monitor";
 import { runDetectPlatform } from "../core/detect-platform";
+import { runProbePricingCalculator } from "../core/probe-pricing-calculator";
 import {
   runGenerateBattleCard,
   onGenerateBattleCardFailure,
@@ -223,6 +225,10 @@ export async function registerHandlers(role: WorkerRole): Promise<string[]> {
 
     // Per-competitor platform detection (patch-31) — step B may launch Chromium.
     await on(detectPlatform, runDetectPlatform);
+
+    // Pricing calculator probe (P4) — drives a competitor's public calculator in
+    // Chromium, so it belongs on this worker with the other browser jobs.
+    await on(probePricingCalculator, runProbePricingCalculator);
 
     // On-demand battle card — launches Chromium to render the PDF. The summary-less
     // grounding path runs refresh-competitor-summary inline (Decision #1).

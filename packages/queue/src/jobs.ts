@@ -54,6 +54,12 @@ export type ExtractPricingPayload = {
    * lexical classify when the deterministic diff turns out empty. */
   lexicalWorth?: boolean;
 };
+export type ProbePricingCalculatorPayload = {
+  competitorId: string;
+  monitorId: string;
+  /** The pricing page the `dynamic` capture landed on — the calculator's address. */
+  url: string;
+};
 export type ExtractJobsPayload = { snapshotId: string; competitorId: string };
 export type ExtractReviewsPayload = { snapshotId: string; competitorId: string; source: string };
 export type ScrapeAiVisibilityPayload = { orgId: string; notifyOnComplete?: boolean };
@@ -140,6 +146,21 @@ export const extractSelfProfile = defineJob<ExtractSelfProfilePayload>("extract-
 export const extractPricing = defineJob<ExtractPricingPayload>("extract-pricing", {
   expireInSeconds: 120,
 });
+// Pricing Intelligence P4 — measure what a calculator-priced competitor actually
+// charges, by driving its own public calculator. Event-triggered off a live
+// `dynamic` pricing capture, deduped to one run per competitor per day by the
+// caller's singletonKey.
+//
+// retryLimit 0, deliberately: a probe is an INTERACTION with someone else's site,
+// not a computation. Retrying it would repeat the visit for the same information,
+// and every failure mode it has (a refusal, a login wall, selectors that no longer
+// resolve, a series that failed its sanity checks) is one a retry five seconds
+// later reproduces exactly. The next scheduled probe is the retry.
+// expireIn 180s covers the 90s probe budget plus screenshot uploads.
+export const probePricingCalculator = defineJob<ProbePricingCalculatorPayload>(
+  "probe-pricing-calculator",
+  { retryLimit: 0, expireInSeconds: 180, concurrency: 1 },
+);
 export const extractJobs = defineJob<ExtractJobsPayload>("extract-jobs", { expireInSeconds: 180 });
 export const extractReviews = defineJob<ExtractReviewsPayload>("extract-reviews", {
   expireInSeconds: 120,

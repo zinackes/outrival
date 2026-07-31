@@ -96,6 +96,12 @@ export const SOURCE_TYPES = [
   // applySeverityGuard can allow its deterministic "critical" (a competitor attacking
   // the user by name) without opening critical for AI-classified sitemap changes.
   "comparison_page",
+  // Calculator-probe anchor (Pricing Intelligence P4). INTERNAL, never seeded /
+  // scraped / user-selectable — it exists solely to anchor the snapshot → change →
+  // signal chain when the cost a competitor's own pricing calculator quotes at a
+  // fixed volume moves between two probes. Kept off the real `pricing` monitor so
+  // probe snapshots never enter the chain its content-hash dedup diffs against.
+  "pricing_probe",
   // Developer documentation — the competitor's technical roadmap surface. USER-
   // SELECTABLE (pro+), enabled through the standard enable route with an optional
   // URL override. Structured-first, two modes: (1) an OpenAPI/Swagger spec is found

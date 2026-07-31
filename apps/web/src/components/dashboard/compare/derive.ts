@@ -1,4 +1,4 @@
-import { isComparablePricePeriod } from "@outrival/shared";
+import { isComparablePricePeriod, type CostMethod } from "@outrival/shared";
 import type { CompareColumn } from "@/lib/api";
 
 /**
@@ -125,6 +125,13 @@ export type PriceBandReading = Reading & {
    * UI marks it, because "$800/mo at 10k requests" and "$800/mo" are not the
    * same claim. */
   meter?: MeterSelection | null;
+  /** How that cost was arrived at (P4). `calculator_probe` was MEASURED on the
+   * competitor's own calculator and has a screenshot behind it; the rest is our
+   * arithmetic over a published ladder. Two different claims, marked apart. */
+  method?: CostMethod | null;
+  measuredAt?: string | null;
+  hasEvidence?: boolean;
+  evidenceKind?: "screenshot" | "api_response" | null;
 };
 
 /**
@@ -220,16 +227,21 @@ function meteredReading(
   const factor = fxFactor(currency, to, rates);
   if (factor == null) return { kind: "foreign", currency };
   const value = hit.cost * factor;
+  const measured = hit.method === "calculator_probe";
   return {
     kind: "band",
     entry: value,
     top: value,
-    // Derived by construction, whatever the currency: this is arithmetic over a
-    // ladder, not a price the competitor published.
-    approx: true,
+    // Still not a price the competitor PUBLISHED — but a measured cost is its own
+    // calculator's answer, not our arithmetic, so only a converted one is approx.
+    approx: measured ? currency !== to : true,
     from: currency === to ? null : currency,
     period: "usage",
     meter,
+    method: hit.method ?? null,
+    measuredAt: hit.measuredAt ?? null,
+    hasEvidence: hit.hasEvidence ?? false,
+    evidenceKind: hit.evidenceKind ?? null,
   };
 }
 

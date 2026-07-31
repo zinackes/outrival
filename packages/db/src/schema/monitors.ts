@@ -82,6 +82,15 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // finds a new competitor comparison page. Dedicated source_type so applySeverityGuard
   // can allow its deterministic critical. isActive=false; lazy-created by the branch.
   "comparison_page",
+  // Calculator-probe anchor (Pricing Intelligence P4). Infra-only, like
+  // review_shift / hiring_shift: never scraped by the cascade, never
+  // user-selectable. It anchors the snapshot → change → signal chain when what a
+  // competitor's own pricing calculator CHARGES at a fixed volume moves between
+  // two probes. A dedicated source_type (not "pricing") because the real pricing
+  // monitor's snapshot chain is what content-hash dedup runs on — writing probe
+  // snapshots into it would make the next pricing scrape diff against a document
+  // that is not the pricing page. Always isActive=false.
+  "pricing_probe",
   // Developer documentation (user-selectable, pro+). Structured-first: an OpenAPI /
   // Swagger spec becomes a canonical sorted operation+schema listing (so the generic
   // lexical diff reads as a structural diff), else the docs sitemap's page list plus

@@ -7,7 +7,7 @@ import { CatText } from "@/components/dashboard/cat-pill";
 import { COMP_ACCENT, competitorColorVars } from "@/lib/competitor-color";
 import { SeverityGauge } from "@/components/outrival/severity-scale";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { CompareColumn } from "@/lib/api";
+import { api, type CompareColumn } from "@/lib/api";
 import { fxDateLabel, useFx } from "@/lib/fx";
 import { cn } from "@/lib/utils";
 import {
@@ -198,7 +198,13 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
                 {/* What the "≈" rows were derived from, so a converted number is never
                     passed off as one the competitor published. */}
                 {derivation.length > 0 && <span>≈ {derivation.join(" · ")}</span>}
-                {meter && <span>* cost at {meterLabel(meter)}, not a published price</span>}
+                {meter && (
+                  <span>
+                    * cost at {meterLabel(meter)}, not a published price — measured on the
+                    competitor&rsquo;s own calculator where one exists, otherwise computed from
+                    their published tiers
+                  </span>
+                )}
               </>
             }
           />
@@ -251,21 +257,27 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
         // Both ends are held inside the axis; the value column keeps the true numbers.
         const left = Math.min(pct(entry, scale.max), 97);
         const width = Math.max(0, Math.min(pct(top, scale.max), 100) - left);
-        // A cost we computed at a volume, not a price the competitor published.
-        // The bar is drawn lighter and the number wears an asterisk the legend
-        // explains, so the two claims never read as the same one.
+        // A cost read at a volume, not a price the competitor published. The bar
+        // is drawn lighter and the number wears an asterisk the legend explains,
+        // so the two claims never read as the same one.
         const derived = reading.meter ?? null;
+        // P4 — and among those, the ones we MEASURED on the competitor's own
+        // calculator rather than computed from its published ladder. The distance
+        // between "we did the arithmetic" and "their calculator said this" is the
+        // whole value of the measurement, so the row says which it is.
+        const probed = derived != null && reading.method === "calculator_probe";
 
         return (
           <MeasureRow
             key={e.id}
             entity={e}
             open={expanded.has(e.id)}
-            onToggle={plans.length ? () => onToggle(e.id) : undefined}
+            onToggle={plans.length || probed ? () => onToggle(e.id) : undefined}
             value={
               derived ? (
                 <>
-                  ≈{money(entry, scale.currency)}
+                  {reading.approx && "≈"}
+                  {money(entry, scale.currency)}
                   <span className="text-muted-foreground">*</span>
                 </>
               ) : entry === top ? (
@@ -282,14 +294,23 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
               )
             }
             detail={
-              plans.length ? (
+              plans.length || probed ? (
                 <Detail
                   source={[
                     // How they charge leads: a per-seat $20 and a usage $20 are
                     // different products, and the plan list alone doesn't say which.
                     model ? PRICING_MODEL_LABELS[model] : null,
-                    `${plans.length} published plan${plans.length > 1 ? "s" : ""}`,
+                    plans.length
+                      ? `${plans.length} published plan${plans.length > 1 ? "s" : ""}`
+                      : "no published plan",
                     derived ? `read at ${meterLabel(derived)}` : null,
+                    probed
+                      ? `measured on their calculator${
+                          reading.measuredAt ? ` ${agePhrase(reading.measuredAt)}` : ""
+                        }`
+                      : derived
+                        ? "computed from their published tiers"
+                        : null,
                     e.data.pricing?.capturedAt
                       ? `captured ${agePhrase(e.data.pricing.capturedAt)}`
                       : null,
@@ -297,6 +318,21 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
                     .filter(Boolean)
                     .join(" · ")}
                 >
+                  {/* The proof for a measured cost: the calculator showing that
+                      volume and that total, or — for a volume asked of the page's
+                      own pricing endpoint — the request and the answer it gave. */}
+                  {probed && derived && reading.hasEvidence && (
+                    <a
+                      href={api.calculatorEvidenceUrl(e.id, derived.unit, derived.qty)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-link text-dense underline-offset-2 hover:underline"
+                    >
+                      {reading.evidenceKind === "api_response"
+                        ? "View their pricing response"
+                        : "View the calculator screenshot"}
+                    </a>
+                  )}
                   {plans.map((p, i) => (
                     <DetailPair
                       key={`${p.name}-${i}`}

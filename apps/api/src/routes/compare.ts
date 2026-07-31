@@ -10,12 +10,14 @@ import {
   type CompetitorOverrides,
   normalizeDepartment,
   cheapestCostAtVolume,
-  meteredUnits,
+  comparableMeters,
   pricingModelOf,
   REFERENCE_VOLUME_PRESETS,
   type MeteredRow,
   type PricingModel,
   type TierBandRow,
+  type MeasuredCost,
+  type CostMethod,
 } from "@outrival/shared";
 import { organizations } from "@outrival/db";
 import { db } from "../lib/db";
@@ -114,6 +116,19 @@ interface RawPriceTier extends TierBandRow {
   competitorId: string;
 }
 
+/** One stored calculator-probe point, as the read side shapes it. */
+interface RawMeasuredPoint {
+  competitorId: string;
+  planName: string;
+  meterUnit: string;
+  referenceQty: number;
+  effectiveMonthlyCost: number;
+  currency: string | null;
+  measuredAt: string | null;
+  hasEvidence: boolean;
+  evidenceKind: "screenshot" | "api_response" | null;
+}
+
 /** What buying `qty` of `unit` from this competitor costs per month. */
 interface MeterCostDetail {
   unit: string;
@@ -121,6 +136,16 @@ interface MeterCostDetail {
   cost: number;
   currency: string | null;
   planName: string;
+  // P4 — how this number was arrived at. `calculator_probe` was MEASURED on the
+  // competitor's own calculator at `measuredAt`, with a screenshot behind it;
+  // anything else was computed on read from what the page publishes. The two are
+  // different claims, so the UI never renders them as the same one.
+  method: CostMethod;
+  measuredAt: string | null;
+  hasEvidence: boolean;
+  /** Which proof the UI can open for a measured cost: the calculator screenshot,
+   * or the pricing response it was replayed from. */
+  evidenceKind: "screenshot" | "api_response" | null;
 }
 
 interface PricingDetail {
@@ -291,6 +316,27 @@ compareRouter.get("/", async (c) => {
     JOIN latest l ON l.competitor_id = t.competitor_id AND t.recorded_at = l.rid
     ORDER BY t.competitor_id, t.plan_name, t.from_qty
   `);
+  // P4 — the latest MEASURED batch: what a calculator-priced competitor's own
+  // calculator quoted at each reference volume. Read alongside the ladders
+  // because it OUTRANKS them at an equal (unit, qty) — see cheapestCostAtVolume.
+  const measuredRows = await analyticsQuery<RawMeasuredPoint>(sql`
+    WITH latest AS (
+      SELECT competitor_id, max(recorded_at) AS rid
+      FROM price_points
+      WHERE competitor_id IN (${idList}) AND method = 'calculator_probe'
+      GROUP BY competitor_id
+    )
+    SELECT pp.competitor_id AS "competitorId", pp.plan_name AS "planName",
+           pp.meter_unit AS "meterUnit", pp.reference_qty AS "referenceQty",
+           pp.effective_monthly_cost AS "effectiveMonthlyCost", pp.currency,
+           pp.recorded_at AS "measuredAt",
+           (pp.evidence_key IS NOT NULL) AS "hasEvidence",
+           pp.evidence_kind AS "evidenceKind"
+    FROM price_points pp
+    JOIN latest l ON l.competitor_id = pp.competitor_id AND pp.recorded_at = l.rid
+    ORDER BY pp.competitor_id, pp.meter_unit, pp.reference_qty
+  `);
+
   // Apply each competitor's per-plan overlay so a hand-edited/added/hidden plan
   // shows in the comparison grid too, not just its own pricing tab. Grouped by
   // competitor, resolved against that competitor's overrides, re-flattened —
@@ -418,6 +464,38 @@ compareRouter.get("/", async (c) => {
     list.push(t);
     tiersByComp.set(t.competitorId, list);
   }
+  const measuredByComp = new Map<string, MeasuredCost[]>();
+  for (const m of measuredRows) {
+    const list = measuredByComp.get(m.competitorId) ?? [];
+    list.push({
+      planName: m.planName,
+      meterUnit: m.meterUnit,
+      referenceQty: m.referenceQty,
+      effectiveMonthlyCost: m.effectiveMonthlyCost,
+      currency: m.currency,
+      measuredAt: m.measuredAt,
+      hasEvidence: m.hasEvidence,
+      evidenceKind: m.evidenceKind,
+    });
+    measuredByComp.set(m.competitorId, list);
+  }
+
+  // A calculator-priced competitor can have MEASURED points and no published plan
+  // at all — that is the whole point of P4, and the case the comparison used to
+  // read as "No pricing captured". Give it a pricing detail to hang them on.
+  for (const [competitorId, points] of measuredByComp) {
+    if (pricingById.has(competitorId) || points.length === 0) continue;
+    pricingById.set(competitorId, {
+      entry: null,
+      top: null,
+      currency: points[0]!.currency,
+      billingPeriod: "usage",
+      plans: [],
+      capturedAt: null,
+      model: null,
+      meters: [],
+    });
+  }
 
   for (const [competitorId, detail] of pricingById) {
     const visible = new Set(detail.plans.map((p) => p.name));
@@ -434,17 +512,20 @@ compareRouter.get("/", async (c) => {
         minimum_amount: p.minimumAmount ?? null,
         percentage_rate: p.percentageRate ?? null,
       }));
-    if (rows.length === 0) continue;
+    const measured = measuredByComp.get(competitorId) ?? [];
+    if (rows.length === 0 && measured.length === 0) continue;
 
-    detail.model = pricingModelOf(rows);
+    // A competitor we only ever measured charges by usage — that is what having a
+    // calculator and no list means.
+    detail.model = rows.length > 0 ? pricingModelOf(rows) : "usage";
     const ladders = tiersByComp.get(competitorId) ?? [];
-    for (const unit of meteredUnits(rows)) {
+    for (const unit of comparableMeters(rows, measured)) {
       // The workspace's own volumes for this meter, or the presets when it has
       // named none — the setting narrows the ladder, it does not replace it.
       const own = (workspaceVolumes ?? []).filter((v) => v.unit === unit).map((v) => v.qty);
       const quantities = own.length > 0 ? own : REFERENCE_VOLUME_PRESETS;
       for (const qty of quantities) {
-        const best = cheapestCostAtVolume(rows, ladders, unit, qty);
+        const best = cheapestCostAtVolume(rows, ladders, unit, qty, measured);
         if (!best) continue;
         detail.meters.push({
           unit,
@@ -452,6 +533,10 @@ compareRouter.get("/", async (c) => {
           cost: best.cost,
           currency: best.currency,
           planName: best.planName,
+          method: best.method,
+          measuredAt: best.measuredAt ?? null,
+          hasEvidence: best.hasEvidence ?? false,
+          evidenceKind: best.evidenceKind ?? null,
         });
       }
     }

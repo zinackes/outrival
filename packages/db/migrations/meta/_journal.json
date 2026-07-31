@@ -407,6 +407,13 @@
       "when": 1785471864501,
       "tag": "0057_magenta_black_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1785524744767,
+      "tag": "0058_dapper_vision",
+      "breakpoints": true
     }
   ]
 }

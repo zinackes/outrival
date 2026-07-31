@@ -76,6 +76,18 @@ export type { PricingAnalysis } from "./pricing/analyze";
 export { detectPricingSignals } from "./pricing/signals";
 export type { PricingSignals } from "./pricing/signals";
 export { discoverPricingUrl } from "./pricing/discover-url";
+// Pricing calculator probe (P4) — drives a competitor's public calculator with a
+// browser, so it lives here (Chromium) rather than on the pure ./pricing subpath.
+export { probeCalculator, PROBE_PLAN_NAME } from "./pricing/calculator/probe";
+export type {
+  ProbeOptions,
+  ProbeOutcome,
+  ProbeSuccess,
+  ProbeRefusal,
+  ProbeFailure,
+  ProbeEvidence,
+  ProbeStrategy,
+} from "./pricing/calculator/probe";
 export { scrapeWithApiCapture } from "./spa/api-capture";
 export type { SpaCaptureResult } from "./spa/api-capture";
 export {

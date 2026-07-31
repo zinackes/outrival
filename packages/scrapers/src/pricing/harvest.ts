@@ -271,7 +271,7 @@ export function harvestPricing(html: string): PricingHarvest {
 }
 
 /** First price in a string → normalized amount + ISO currency, or null. */
-function matchPrice(text: string): { amount: number; currency: string } | null {
+export function matchPrice(text: string): { amount: number; currency: string } | null {
   const m = PRICE_RE.exec(text);
   if (!m) return null;
   const symbol = m[1] ?? m[4];

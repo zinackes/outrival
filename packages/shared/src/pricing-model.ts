@@ -16,6 +16,7 @@
  */
 
 import { costAtVolume, type CostTier, type RateStructure } from "./cost-model";
+import type { EvidenceKind } from "./calculator-probe";
 import { resolveMeterUnit } from "./unit-alias";
 import { isComparablePricePeriod, monthlyEquivalent, normalizePlanKey } from "./pricing";
 import type { PricingBatchRow } from "./pricing-diff";
@@ -71,10 +72,54 @@ export function meteredUnits(rows: readonly MeteredRow[]): string[] {
   return [...out];
 }
 
+/**
+ * Every meter this competitor can be compared on: the ones it publishes a rate
+ * for, plus the ones we MEASURED on its calculator (P4).
+ *
+ * The union is the point. A calculator-priced page publishes no usage row at all
+ * — that is why it needed measuring — so reading meters off the published rows
+ * alone would collect the measurements and then never surface a single one.
+ */
+export function comparableMeters(
+  rows: readonly MeteredRow[],
+  measured: readonly MeasuredCost[] = [],
+): string[] {
+  const out = new Set<string>(meteredUnits(rows));
+  for (const m of measured) out.add(m.meterUnit);
+  return [...out];
+}
+
+/** How a cost at a volume was arrived at. Mirrors price_points.method. */
+export type CostMethod = "computed_from_tiers" | "calculator_probe" | "published";
+
 export interface MeterCost {
   cost: number;
   planName: string;
   currency: string | null;
+  method: CostMethod;
+  /** ISO timestamp of the capture a measured cost came from (null when computed
+   * on read from the published ladder — that number has no moment of its own). */
+  measuredAt?: string | null;
+  /** True when the measured point carries a proof the UI can open. */
+  hasEvidence?: boolean;
+  /** What that proof IS: a screenshot of the calculator, or the page's own
+   * pricing response replayed at this volume. Null on a computed cost. */
+  evidenceKind?: EvidenceKind | null;
+}
+
+/**
+ * A cost we MEASURED on the competitor's own calculator (P4), read back from
+ * price_points. Shaped by the caller from the latest probe batch.
+ */
+export interface MeasuredCost {
+  planName: string;
+  meterUnit: string;
+  referenceQty: number;
+  effectiveMonthlyCost: number;
+  currency: string | null;
+  measuredAt: string | null;
+  hasEvidence: boolean;
+  evidenceKind?: EvidenceKind | null;
 }
 
 /**
@@ -83,13 +128,34 @@ export interface MeterCost {
  *
  * Cheapest, not first: a competitor with a pay-as-you-go rate AND a committed
  * plan is compared on the one a buyer at that volume would actually take.
+ *
+ * A MEASURED point at the same (unit, qty) WINS over the computed one, whatever
+ * the amounts: the computed figure is our arithmetic over what the page printed,
+ * the measured one is what the competitor's own calculator answered for that
+ * volume — including the fees, floors and bundled allowances no published ladder
+ * mentions. Cheapest-wins is how we choose among PUBLISHED plans; it is not a
+ * tie-break between two kinds of evidence, so it is not applied across them.
  */
 export function cheapestCostAtVolume(
   rows: readonly MeteredRow[],
   tiers: readonly TierBandRow[],
   unit: string,
   qty: number,
+  measured: readonly MeasuredCost[] = [],
 ): MeterCost | null {
+  const hit = measured.find((m) => m.meterUnit === unit && m.referenceQty === qty);
+  if (hit) {
+    return {
+      cost: round2(hit.effectiveMonthlyCost),
+      planName: hit.planName,
+      currency: hit.currency,
+      method: "calculator_probe",
+      measuredAt: hit.measuredAt,
+      hasEvidence: hit.hasEvidence,
+      evidenceKind: hit.evidenceKind ?? null,
+    };
+  }
+
   let best: MeterCost | null = null;
 
   for (const row of rows) {
@@ -115,7 +181,15 @@ export function cheapestCostAtVolume(
 
     const cost = round2(monthlyBaseFee(row.plan_name, rows) + usage);
     if (best === null || cost < best.cost) {
-      best = { cost, planName: row.plan_name, currency: row.currency };
+      best = {
+        cost,
+        planName: row.plan_name,
+        currency: row.currency,
+        method: "computed_from_tiers",
+        measuredAt: null,
+        hasEvidence: false,
+        evidenceKind: null,
+      };
     }
   }
 

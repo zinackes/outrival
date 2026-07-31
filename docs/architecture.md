@@ -268,6 +268,17 @@ parser_extractors      id, domain (host www-stripped), source_type, spec (jsonb 
                        last_heal_attempt_at — patch-30, cache parser déterministe par
                        (domain, source_type), clé réutilisable cross-org. 📄 docs/staged-extraction.md
 
+calculator_specs       id, competitor_id (unique), url, spec (jsonb — CalculatorSpec :
+                       le sélecteur du contrôle de quantité, celui du total, et le meter
+                       canonique que le contrôle déplace), version, heal_count,
+                       consecutive_failures, last_validated_at, last_heal_attempt_at —
+                       P4 (migration 0058), le cache de « recette » du probe : même cycle
+                       que parser_extractors mais appliqué à une INTERACTION. Clé par
+                       COMPETITOR, pas par domaine : un calculateur est lié à un plan et
+                       à un meter, et une clé par domaine prêterait la recette d'un
+                       concurrent à la page d'un autre. Écrit seulement après un run qui
+                       a mesuré, donc une spec cachée est toujours une spec qui a marché
+
 competitors            + platform_profile (jsonb — patch-31, PlatformProfile :
                        framework/cms/ats/pricingWidget/statusPage/changelog/analytics[]
                        + confidence/evidence) + platform_detected_at (cadence re-détection).
@@ -315,7 +326,10 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     read-only), sitemap + news (patch-32, semés weekly, diff = pages/
                     événements neufs), ai_visibility/subdomains/youtube (ancres
                     synthétiques), review_shift (ancre du signal d'inflexion de thèmes
-                    de plaintes, jamais scrapée), hiring_shift (ancre du signal
+                    de plaintes, jamais scrapée), pricing_probe (ancre du signal de
+                    mouvement du coût MESURÉ sur le calculateur d'un concurrent, P4 —
+                    jamais scrapée : elle porte ses propres snapshots pour ne pas polluer
+                    la chaîne de dédup par content-hash du monitor pricing), hiring_shift (ancre du signal
                     d'inflexion de vélocité de recrutement par département, jamais
                     scrapée), hackernews (mention-tracking HN via l'Algolia public,
                     semé weekly ; garde anti-homonyme STRICTE = domaine obligatoire sauf
@@ -455,6 +469,13 @@ price_tiers         competitor_id, plan_name, unit (meter NORMALISÉ via unit-al
 price_points        competitor_id, plan_name, meter_unit (canonique SEULEMENT),
                     reference_qty, effective_monthly_cost, currency, method
                     (computed_from_tiers | calculator_probe (P4) | published),
+                    evidence_key + evidence_kind (P4, migration 0058 — la PREUVE d'une
+                    ligne mesurée : `screenshot` = la frame d'où le montant a été lu ;
+                    `api_response` = la propre requête de pricing de la page rejouée à
+                    ce volume (URL + corps + chemin du montant), et seulement après que
+                    cet endpoint a répondu au volume ANCRE le montant que le calculateur
+                    affichait. Obligatoire sur une ligne calculator_probe, null sur toute
+                    ligne calculée/publiée, dont la preuve est le texte de la page),
                     recorded_at — Pricing Intelligence P3 (migration 0056) : ce qu'un
                     plan metered COÛTE à un volume, la ligne qui fait entrer un
                     concurrent usage-based dans une comparaison de prix. Calculé
@@ -515,6 +536,19 @@ platform_detection_runs  competitor_id, domain, stage (a_static|b_browser),
                     framework, cms, ats, pricing_widget, status_page, changelog,
                     techs_found, duration_ms, recorded_at — patch-31, % résolu step A
                     (sans navigateur) vs step B + connecteurs routés
+calculator_probe_runs  competitor_id, url, strategy (ui|endpoint|endpoint_replay|none),
+                    anchor_screenshot_key (la frame du calculateur piloté — preuve au
+                    niveau du RUN, donc un run rejoué montre toujours la session
+                    réellement ouverte), outcome
+                    (measured | a ProbeFailure: robots_disallowed/refused/login_wall/
+                    no_controls/unit_unresolved/no_total/total_not_monthly/
+                    volumes_out_of_range/spec_stale/timeout | a rejection:
+                    non_monotonic/reread_mismatch/currency_mismatch/…), detail,
+                    meter_unit, readings, points_written, healed, duration_ms,
+                    recorded_at — P4, the learning loop for a measurement that is
+                    ALLOWED to fail silently. Without it, "we measure calculator
+                    pricing" is indistinguishable from "we never manage to", since a
+                    refused probe writes no points by design
 backfill_runs       monitor_id, competitor_id, source_type, outcome (self|
                     no_live_snapshot|no_url|no_current_html|no_archive_capture|
                     no_significant_change|change_triggered|error), detail,
@@ -992,6 +1026,53 @@ carte (état live uniquement).
      trigger scrape-monitor {force:true} (réutilise le bypass dedup existant) ; le worker
      stampe forced_rescan_log.had_new_signal ; le web poll le statut → toast contextuel
 
+[on-demand] probe-pricing-calculator (P4 — event-triggered depuis scrape-monitor
+  quand une capture pricing LIVE est `dynamic` ET porte des inputs de calculateur ;
+  jamais sur backfill, jamais sur le self, dédup pg-boss singletonSeconds 24h)
+  └─ collection doctrine : robots.txt AVANT la 1re requête, UA OutrivalBot, rythme
+       humain entre interactions, ~15 interactions max, budget 90s. Bannière de
+       consentement = clic sur SON bouton visible. Captcha / login / paywall /
+       non-2xx = ABANDON silencieux (loggé, jamais contourné)
+  └─ contrôle : heuristiques déterministes (label résolu par unit-alias — un meter
+       non canonique ⇒ skip complet, unknown ≠ deviné) → spec cachée par competitor
+       (calculator_specs) → AI-heal UNE fois (génère des SÉLECTEURS, jamais une
+       valeur ; cooldown CALCULATOR_HEAL_COOLDOWN_HOURS) → re-probe
+  └─ total : localisé en diffant le DOM avant/après un mouvement de contrôle —
+       l'élément dont le MONTANT change EST le total, ce qui prouve du même coup que
+       le contrôle pilote la page. Un total libellé à l'ANNÉE est refusé (jamais un
+       ÷12 que la page n'affiche pas). Parsing par les helpers money/period existants
+  └─ lecture : DOM, ou la réponse JSON du propre endpoint de pricing de la page quand
+       un XHR observé porte le montant affiché (strategy=endpoint) — même interaction,
+       même preuve, un nombre insensible au formatage
+  └─ REPLAY (strategy=endpoint_replay) : le 1er volume est TOUJOURS piloté et
+       screenshoté au navigateur ; si la requête de pricing de la page est un GET
+       même-origine portant la quantité, et qu'elle répond au volume ANCRE le montant
+       que le calculateur affichait, les volumes restants sont demandés à cet endpoint
+       en HTTP, navigateur FERMÉ (gap par domaine + rythme humain honorés). Rien n'est
+       forgé : c'est la requête que la PAGE a faite, avec un seul nombre changé. POST,
+       autre origine, quantité absente de la query ou en-tête Authorization ⇒ refus, on
+       finit dans l'UI. Cette confirmation EST la double lecture du run (deux transports
+       indépendants), et chaque point rejoué stocke requête+réponse comme preuve.
+       Motivation mesurée (2026-07-31) : 38 concurrents `dynamic` sur 172 en prod, soit
+       ~36 probes/jour en série sur le worker browser qui scrape déjà tout le reste
+  └─ sanity checks CÔTÉ CODE (validateProbeSeries, @outrival/shared) : monotonie
+       (égalité tolérée en zone plate/minimum), devise unique, bornes plausibles,
+       DOUBLE LECTURE (re-régler la même quantité doit redonner le même total ±0,5%).
+       UN check en échec ⇒ le run ENTIER est droppé (0 point) + raison loggée
+  └─ preuve : 1 screenshot clippé (contrôle + total) par point, R2
+       `calculator-probes/{competitorId}/{ISO}/{qty}.png`, uploadé AVANT la DB. Un
+       point sans preuve fait tomber le run
+  └─ écriture : price_points(method='calculator_probe', evidence_screenshot_key) aux
+       volumes preset + volumes custom du workspace. Au (unit, qty) égal, le MESURÉ
+       prime sur le calculé dans cheapestCostAtVolume (le calculé est notre
+       arithmétique sur ce que la page imprime ; le mesuré est la réponse de leur
+       propre calculateur, frais et planchers inclus)
+  └─ signal : delta probe-à-probe à quantité ÉGALE ≥5% → rate_changed medium, ≥15% →
+       high, JAMAIS critical (une mesure d'UI n'ouvre pas le canal qui bypasse la
+       modération). Chaîne d'ancre synthétique pricing_probe → snapshot → change →
+       generate-signal, human_change_before/_after = les coûts mesurés exacts
+  └─ chaque tentative est écrite dans calculator_probe_runs (mesurée ou refusée)
+
 [cron dimanche 20h UTC] detect-new-competitors
   └─ par org onboardée : Exa findSimilar + scoreOverlap (batché)
   └─ dedup URL exacte + hostname normalisé
@@ -1276,6 +1357,15 @@ PRICING_TOGGLE_CAPTURE_ENABLED=true  # pricing source only — after the primary
 PRICING_RENDER_RETRY_ENABLED=true    # pricing source only — when the L0 (no-browser) capture contains no harvestable price, re-scrape once with a browser render (local L1, no proxy). Catches client-rendered pricing pages that L0 accepts as text-rich marketing shells. false = previous L0-accepting behaviour exactly
 PRICING_HARVEST_ENABLED=true         # pricing source only — L2 harvest floor (docs/pricing-coverage-2026.md Part II). When the staged extractor (structured→cache→heal→AI) returns no plans yet the page visibly carries prices, an AI-free DOM harvest recovers the entry price / band / per-card rows the SaaS-tuned AI floor drops on hosting/e-commerce/configurator layouts. Self-gating (no visible price → no-op), 0 AI. false = exactly today's behaviour (empty tiers when the AI floor finds none)
 PRICING_AGGREGATE_ENABLED=true       # pricing source only — L3 product-line aggregation (docs/pricing-coverage-2026.md Part II). No /pricing page but ≥2 priced product pages / a store subdomain (hosting/e-commerce catalogs) → the pricing scraper captures the top-K (cap 3) and stitches them into ONE delimited snapshot so each becomes a "<line> · <tier>" row (extract-pricing splits per section, prefixes plan_name). Only fires with no convention pricing page + ≥2 same-registrable-domain commerce links; costs K extra browser scrapes then. false = single-page behaviour
+PRICING_CALCULATOR_PROBE_ENABLED=true # pricing source only — Pricing Intelligence P4. A `dynamic` page publishes no list, only a calculator: the probe DRIVES that calculator on the public UI (robots honoured, OutrivalBot UA, human pacing, 1 run/competitor/day via a pg-boss singletonSeconds key, block/login/captcha = silent abandon) and stores what it charged at the reference volumes as price_points(method='calculator_probe'), each row carrying the R2 key of the screenshot it was read off. A failed probe writes ZERO points — never partial, never extrapolated (validateProbeSeries drops the whole run). false = no probe ever runs
+PRICING_PROBE_TIMEOUT_MS=90000       # whole-run budget for one probe
+PRICING_PROBE_MAX_INTERACTIONS=15    # clicks + value changes per probe (runaway guard, not a tuning knob)
+PRICING_PROBE_PACE_MIN_MS=600        # human pacing between interactions, randomised in this band
+PRICING_PROBE_PACE_MAX_MS=1600
+PRICING_PROBE_SETTLE_MIN_MS=700      # plancher avant qu'un total soit déclaré « stabilisé » : deux lectures égales ne suffisent pas, car juste après un mouvement la page affiche encore l'ANCIEN total (un poller rapide lirait deux fois la réponse précédente). Le recompute debouncé 200-500ms est la norme sur un calculateur
+PRICING_PROBE_SETTLE_POLL_MS=250     # intervalle de poll pendant cette attente
+PRICING_PROBE_SETTLE_MAX_MS=5000     # cap de l'attente, par interaction
+CALCULATOR_HEAL_COOLDOWN_HOURS=72    # min hours between two AI attempts to (re)generate a competitor's calculator spec. The heal names SELECTORS only; every amount is parsed by code, so no price ever passes through a model
 ENRICHMENTS_PHASH_THRESHOLD=15          # patch-17 — Hamming distance → visual redesign
 ENRICHMENTS_VOLATILE_THRESHOLD=5        # patch-17 — consecutive diffs → line is volatile
 ENRICHMENTS_VOLATILE_RESET=10           # patch-17 — stable scrapes → analysable again
@@ -1449,6 +1539,45 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
 ```
 
 ## Décisions architecturales clés
+
+- **Le prix d'un calculateur se MESURE, il ne se lit pas (P4, 2026-07-31)** — une
+  page `dynamic` ne publie aucune liste : son prix n'existe que comme la RÉPONSE
+  de son calculateur à un volume. Tout l'étage d'extraction (structured → cache →
+  heal → IA) n'a donc rien à extraire, et ces concurrents entraient dans une
+  comparaison de prix en « No pricing captured ». Le probe utilise le calculateur
+  comme un prospect : il bouge le contrôle de quantité, attend, lit le total,
+  screenshote l'écran exact d'où le nombre vient. Trois règles portent la
+  crédibilité du chiffre. (1) **Zéro point sur échec** : monotonie, devise unique,
+  bornes, et surtout DOUBLE LECTURE (re-régler la même quantité doit redonner le
+  même total) — un seul check en échec droppe le run ENTIER, parce qu'une série
+  à moitié crue calcule une courbe de coût fausse avec assurance. (2) **Preuve
+  obligatoire par point** : un point dont le screenshot n'a pas pu être stocké
+  fait tomber le run ; « mesuré » sans écran à montrer n'est qu'une affirmation.
+  (3) **L'IA ne lit jamais un prix** : le heal ne nomme que des SÉLECTEURS, une
+  fois, caché ensuite (`calculator_specs`) — les valeurs restent 100%
+  déterministes. Le signal qui en découle est plafonné à `high` : `critical`
+  bypasse toute la modération et envoie un email en minutes, et une lecture d'UI
+  n'a pas cette certitude-là (la confirmation double-capture est du ressort du
+  bloc Véracité).
+- **L'endpoint du calculateur se rejoue, mais seulement après confirmation (P4)** —
+  quand la page calcule côté serveur, le JSON de son propre XHR est une meilleure
+  source que le DOM (pas de formatage, pas de compteur animé attrapé en cours de
+  tween). Et comme la flotte compte 38 concurrents `dynamic` (mesuré sur prod le
+  2026-07-31, sur 172), garder un Chromium ouvert pour quatre volumes coûte
+  ~10-15 min de navigateur par jour sur le worker qui scrape déjà tout le reste.
+  Le probe pilote donc le PREMIER volume dans le navigateur (screenshot compris),
+  puis demande les suivants à cet endpoint en HTTP, navigateur fermé. Quatre
+  garde-fous font que ce n'est pas « forger des requêtes sur une API privée » :
+  (1) la requête n'est pas inventée, c'est celle que la PAGE a émise pendant qu'on
+  bougeait son curseur, avec un seul nombre changé ; (2) GET même-origine dont la
+  quantité est dans la query — un POST, un payload signé ou un autre host n'est pas
+  quelque chose qu'on a compris assez pour le répéter ; (3) aucun credential créé,
+  et une requête portant un en-tête Authorization est refusée plutôt que re-signée ;
+  (4) le plan est CONFIRMÉ avant d'être cru — l'endpoint doit répondre au volume
+  ancre le montant que le calculateur venait d'afficher, sinon le run finit dans
+  l'UI. Cette confirmation sert aussi de double lecture (deux transports
+  indépendants), et chaque point rejoué garde requête+réponse comme preuve, à côté
+  du screenshot de l'ancre.
 
 - **Un 429 se répond en changeant de provider, pas en dormant (2026-07-31)** — le
   SDK OpenAI honore le `retry-after` d'un rate limit en DORMANT sur le même

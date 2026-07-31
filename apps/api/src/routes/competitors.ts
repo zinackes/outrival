@@ -47,6 +47,7 @@ import {
   addSourcesToCompetitors,
 } from "../lib/seed-monitors";
 import { analyticsQuery } from "../lib/analytics-safe";
+import { notFound } from "../lib/errors";
 import { translateToEnglish } from "../lib/translate";
 import { detectContentLanguage } from "../lib/detect-language";
 import { readGtm, productNavItems, type GtmRead } from "../lib/homepage-gtm";
@@ -82,6 +83,8 @@ import {
   normalizePlanKey,
   DEPARTMENT_BUCKETS,
   DEPARTMENT_BUCKET_LABELS,
+  getBytesFromR2,
+  getFromR2,
   isHiddenSource,
   isAutomaticSource,
   isConfigurableSource,
@@ -2129,7 +2132,103 @@ competitorsRouter.get("/:id/rate-structures", async (c) => {
     ORDER BY plan_name, from_qty
   `);
 
-  return c.json({ plans, tiers, capturedAt: plans[0]?.capturedAt ?? null });
+  // P3/P4 — what those meters COST at the reference volumes. Two provenances in
+  // one list: `computed_from_tiers` (our arithmetic over the published ladder)
+  // and `calculator_probe` (measured on the competitor's own calculator, with a
+  // screenshot behind it). The measured one wins at an equal (unit, qty), the
+  // same rule the comparison applies — a page can publish a ladder AND price
+  // differently in its calculator, and the calculator is what a buyer pays.
+  const pointRows = await analyticsQuery<{
+    planName: string;
+    meterUnit: string;
+    referenceQty: number;
+    cost: number;
+    currency: string;
+    method: string;
+    capturedAt: string;
+    hasEvidence: boolean;
+    evidenceKind: "screenshot" | "api_response" | null;
+  }>(sql`
+    WITH latest AS (
+      SELECT method, max(recorded_at) AS rid
+      FROM price_points WHERE competitor_id = ${competitor.id} GROUP BY method
+    )
+    SELECT pp.plan_name AS "planName", pp.meter_unit AS "meterUnit",
+           pp.reference_qty AS "referenceQty", pp.effective_monthly_cost AS "cost",
+           pp.currency, pp.method, pp.recorded_at::text AS "capturedAt",
+           (pp.evidence_key IS NOT NULL) AS "hasEvidence",
+           pp.evidence_kind AS "evidenceKind"
+    FROM price_points pp
+    JOIN latest l ON l.method = pp.method AND pp.recorded_at = l.rid
+    WHERE pp.competitor_id = ${competitor.id}
+    ORDER BY pp.meter_unit, pp.reference_qty
+  `);
+  const byMeter = new Map<string, (typeof pointRows)[number]>();
+  for (const row of pointRows) {
+    const key = `${row.meterUnit}|${row.referenceQty}`;
+    const held = byMeter.get(key);
+    if (!held || (row.method === "calculator_probe" && held.method !== "calculator_probe")) {
+      byMeter.set(key, row);
+    }
+  }
+  const points = [...byMeter.values()].sort(
+    (a, b) => a.meterUnit.localeCompare(b.meterUnit) || a.referenceQty - b.referenceQty,
+  );
+
+  return c.json({ plans, tiers, points, capturedAt: plans[0]?.capturedAt ?? null });
+});
+
+// P4 — the proof behind one measured cost: the screenshot taken while the
+// competitor's own calculator displayed it. Org-scoped, and the R2 key never
+// leaves the server (a proxy, like the signal screenshot route): the caller asks
+// for a meter and a volume, the server resolves which object that is.
+competitorsRouter.get("/:id/calculator-evidence", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const unit = c.req.query("unit") ?? "";
+  const qty = Number(c.req.query("qty"));
+  if (!unit || !Number.isFinite(qty)) return c.json(notFound("evidence"), 404);
+
+  const [row] = await analyticsQuery<{ key: string; kind: string | null }>(sql`
+    SELECT evidence_key AS key, evidence_kind AS kind
+    FROM price_points
+    WHERE competitor_id = ${competitor.id}
+      AND method = 'calculator_probe'
+      AND meter_unit = ${unit}
+      AND reference_qty = ${qty}
+      AND evidence_key IS NOT NULL
+    ORDER BY recorded_at DESC
+    LIMIT 1
+  `);
+  if (!row?.key) return c.json(notFound("evidence"), 404);
+
+  try {
+    // A screenshot is served as an image; a replayed point's proof is the pricing
+    // request and the body it answered with, served as the JSON it is.
+    if (row.kind === "api_response") {
+      const json = await getFromR2(row.key);
+      return new Response(json, {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "private, max-age=31536000, immutable",
+        },
+      });
+    }
+    const bytes = await getBytesFromR2(row.key);
+    return new Response(new Uint8Array(bytes), {
+      headers: {
+        "Content-Type": "image/png",
+        // Written once under a timestamped key and never rewritten.
+        "Cache-Control": "private, max-age=31536000, immutable",
+      },
+    });
+  } catch {
+    return c.json(notFound("evidence"), 404);
+  }
 });
 
 // P2 — the features × plans matrix: the two most recent entitlement batches,

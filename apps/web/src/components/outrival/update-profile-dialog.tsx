@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   SpinnerIcon,
   SparkleIcon,
@@ -112,6 +113,7 @@ export function UpdateProfileDialog({
   onSaved?: () => void;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(true);
   const [stage, setStage] = useState<ProjectStage | null>(null);
   const [baseStage, setBaseStage] = useState<ProjectStage | null>(null);
@@ -273,6 +275,12 @@ export function UpdateProfileDialog({
           wentLive = true;
         } else if (repoSourceChanged) {
           await api.setMyProductRepo(repoUrl.trim());
+        }
+        if (liveSourceChanged || repoSourceChanged) {
+          // Going live renames the product row from its URL and gives it a favicon
+          // — refresh every ["products"] cache (switcher roster, detail title,
+          // settings list) so the new identity shows without a hard reload.
+          void queryClient.invalidateQueries({ queryKey: ["products"] });
         }
       }
 

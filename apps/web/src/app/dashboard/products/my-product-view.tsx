@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { myProductQuery, myProductChangesQuery, productsListQuery } from "@/lib/queries";
 import {
@@ -112,10 +112,20 @@ export function MyProductView({
   const [changeUrlOpen, setChangeUrlOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [notLiveOpen, setNotLiveOpen] = useState(false);
+  const profileCardRef = useRef<HTMLDivElement>(null);
 
   // Refresh both queries (called by the scan poller and after every mutation).
   async function load() {
     await Promise.all([productQ.refetch(), changesQ.refetch()]);
+  }
+
+  // Going live (or setting a repo) rewrites the name/URL the ["products"] caches
+  // carry — the sidebar switcher's roster, this page's title (products.detail) and
+  // the settings list. Without this they kept the pre-update name/favicon until a
+  // hard reload. Not folded into load(): the scan poller calls load() every 4s.
+  async function loadAndRefreshIdentity() {
+    await load();
+    void queryClient.invalidateQueries({ queryKey: ["products"] });
   }
 
   // Optimistic write-through for the pending-changes list (accept / ignore a change).
@@ -166,7 +176,7 @@ export function MyProductView({
       await api.setMyProductSite(url, productId);
       toast.success("Monitoring enabled", { description: "Your site will be scanned shortly." });
       setSiteUrl("");
-      await load();
+      await loadAndRefreshIdentity();
     } catch (e) {
       toastApiError(e, { title: "Couldn't enable monitoring" });
     } finally {
@@ -182,7 +192,7 @@ export function MyProductView({
       await api.setMyProductRepo(url, productId);
       toast.success("Repo tracked", { description: "Its activity will be scanned shortly." });
       setRepoUrl("");
-      await load();
+      await loadAndRefreshIdentity();
     } catch (e) {
       toastApiError(e, { title: "Couldn't track repo" });
     } finally {
@@ -291,7 +301,7 @@ export function MyProductView({
           onOpenChange={setChangeUrlOpen}
           currentUrl={null}
           productId={productId}
-          onSaved={load}
+          onSaved={loadAndRefreshIdentity}
         />
       </div>
     );
@@ -532,7 +542,20 @@ export function MyProductView({
         product={p}
         row={row}
         competitorCount={competitors ? competitors.length : (row?.competitorCount ?? null)}
-        onEdit={() => selectTab("positioning")}
+        onEdit={() => {
+          // "positioning" is the default tab, so selecting it alone was a no-op on
+          // first load — the button visibly did nothing. Primary product: open the
+          // guided profile dialog (stage + source + required fields). Secondary:
+          // land on the inline profile fields.
+          if (isPrimary) {
+            setUpdateOpen(true);
+            return;
+          }
+          selectTab("positioning");
+          requestAnimationFrame(() =>
+            profileCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+          );
+        }}
         onRescan={() => void rescan(["profile"])}
         canRescan={Boolean(p.url)}
       />
@@ -566,7 +589,7 @@ export function MyProductView({
         </TabsList>
 
         <TabsContent value="positioning" className={cn(TAB_PANEL_CLASS, "mt-4 flex flex-col gap-6")}>
-          <Card className="bg-gradient-card-strong p-4">
+          <Card ref={profileCardRef} className="scroll-mt-20 bg-gradient-card-strong p-4">
             <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground mb-1">
               Profile
             </h3>
@@ -654,10 +677,14 @@ export function MyProductView({
         onOpenChange={setChangeUrlOpen}
         currentUrl={p.url}
         productId={productId}
-        onSaved={load}
+        onSaved={loadAndRefreshIdentity}
       />
 
-      <UpdateProfileDialog open={updateOpen} onOpenChange={setUpdateOpen} onSaved={load} />
+      <UpdateProfileDialog
+        open={updateOpen}
+        onOpenChange={setUpdateOpen}
+        onSaved={loadAndRefreshIdentity}
+      />
 
       <Dialog open={rediscover !== null} onOpenChange={(o) => !o && setRediscover(null)}>
         <DialogContent>

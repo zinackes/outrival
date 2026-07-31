@@ -1,5 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import {
+  isRefused,
   sourceState,
   buildCoverage,
   coverageHeadline,
@@ -22,6 +23,41 @@ const monitor = (over: Partial<MonitorCoverageFields> = {}): MonitorCoverageFiel
 const failed = (category: string): Partial<MonitorCoverageFields> => ({
   lastFailureCategory: category,
   lastFailedAt: "2026-07-20T10:05:00Z",
+});
+
+// The one predicate every surface asks: the competitor page, the Sources page, the
+// Activity attention list and the API all read a refusal through it, so a red
+// "failed, resume it" can no longer sit above a note saying we stop by design.
+describe("isRefused", () => {
+  test("an explicit refusal on the last run", () => {
+    expect(isRefused(monitor({ refusedAt: "2026-07-20T10:05:00Z", markedUnscrapable: true }))).toBe(
+      true,
+    );
+  });
+
+  test("anti_bot with no refusedAt still counts", () => {
+    expect(isRefused(monitor({ ...failed("anti_bot"), markedUnscrapable: true }))).toBe(true);
+  });
+
+  test("a later successful capture disproves an older refusal", () => {
+    expect(
+      isRefused(
+        monitor({
+          refusedAt: "2026-07-19T10:00:00Z",
+          lastFailedAt: "2026-07-19T10:00:00Z",
+          lastRunAt: "2026-07-20T10:00:00Z",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  test("a transient failure is not a refusal", () => {
+    expect(isRefused(monitor(failed("site_dead")))).toBe(false);
+  });
+
+  test("no monitor is not a refusal", () => {
+    expect(isRefused(null)).toBe(false);
+  });
 });
 
 describe("sourceState", () => {

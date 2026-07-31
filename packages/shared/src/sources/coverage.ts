@@ -114,6 +114,24 @@ function detectedAbsent(source: SourceType, targets: DetectedTargets | null): bo
 }
 
 /**
+ * Whether the site itself REFUSED automated collection on this monitor's last run
+ * (a block, a challenge, or a robots Disallow) as opposed to failing transiently.
+ *
+ * The single definition of a refusal. `sourceState` derives "blocked" from it, and
+ * so does every surface that renders a status icon — before this existed only the
+ * Sources page knew, so a competitor page could show a red "failed, resume it"
+ * three lines above its own note saying the site blocks us and nothing is owed.
+ */
+export function isRefused(monitor: MonitorCoverageFields | null | undefined): boolean {
+  if (!monitor) return false;
+  // Same staleness rule the states below use: a later successful capture disproves
+  // an older refusal, and the diagnosis columns are sticky.
+  const failing =
+    toMs(monitor.lastFailedAt) > toMs(monitor.lastRunAt) || monitor.markedUnscrapable === true;
+  return failing && (!!monitor.refusedAt || monitor.lastFailureCategory === "anti_bot");
+}
+
+/**
  * Classify one source for one competitor. Pure — the same inputs always give the
  * same state, so the Sources page, the coverage headline and the tests all agree.
  */
@@ -144,7 +162,7 @@ export function sourceState(args: {
   const failing =
     toMs(monitor.lastFailedAt) > toMs(monitor.lastRunAt) || monitor.markedUnscrapable === true;
   const category = failing ? (monitor.lastFailureCategory ?? null) : null;
-  if (failing && (monitor.refusedAt || category === "anti_bot")) return "blocked";
+  if (isRefused(monitor)) return "blocked";
   if (category === "login_required") return "login_required";
   if (category === "geo_blocked") return "geo_blocked";
   // site_dead / site_redirected / spa_empty / unknown all share one action set

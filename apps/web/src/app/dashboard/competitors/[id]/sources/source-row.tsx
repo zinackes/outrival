@@ -12,6 +12,7 @@ import {
   PlusIcon,
 } from "@/components/icons";
 import {
+  ATTENTION_OF,
   MONITOR_FREQUENCIES,
   PLAN_LABELS,
   isReviewSource,
@@ -424,7 +425,11 @@ export function SourceRow({
             </Button>
           )}
 
-          {monitor && state !== "locked" && state !== "not_available" && (
+          {/* The "closed" family (blocked / login / geo) gets no Run button: the run
+              would meet the same wall, and offering it is what turns a deliberate
+              stop into a chore the user thinks they forgot to do. Repointing the
+              page is the only real move, and it lives in the drawer below. */}
+          {monitor && state !== "locked" && state !== "not_available" && ATTENTION_OF[state] !== "closed" && (
             <Button
               size="sm"
               variant="ghost"

@@ -15,6 +15,7 @@ import {
   ANALYSIS_SCRAPE_TIMEOUT_MS,
   ANALYSIS_QUEUE_TIMEOUT_MS,
   deriveScrapeActivity,
+  isRefused,
   type ScrapeActivity,
   PLAN_LABELS,
   minPlanForFrequency,
@@ -25,6 +26,7 @@ import {
 } from "@outrival/shared";
 import type { Monitor } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { friendlyScrapeError } from "@/lib/scrape-errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -142,6 +144,20 @@ export function MonitorEmptyState({
   }
   const activity = scrapeActivity(monitor, scrapingIds.has(monitor.id));
   const busy = activity !== null;
+  // The site refused us. Offering "Scrape now" here sends the user to press a
+  // button that cannot work, and frames a deliberate stop as an empty tab they
+  // forgot to fill. State the reason and stop.
+  if (isRefused(monitor)) {
+    return (
+      <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
+        <p className="text-sm font-semibold text-foreground">No {label} data</p>
+        <p className="text-sm text-muted-foreground max-w-md">
+          {friendlyScrapeError(monitor.lastError, monitor.sourceType)} No action needed from
+          you.
+        </p>
+      </Card>
+    );
+  }
   return (
     <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
       <p className="text-sm font-semibold text-foreground">No {label} data yet</p>

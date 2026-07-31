@@ -318,20 +318,26 @@ function SourceRow({
   onLockedFrequency: (freq: MonitorFrequency) => void;
 }) {
   const failed = status === "failed";
+  // A refusal is not a failure of ours and not an off switch: neutral ink, its own
+  // word. The card already ends with a note saying we don't bypass a block — a red
+  // dot and "failed" three lines above it contradicted that note outright.
+  const blocked = status === "blocked";
   const off = status === "disabled" || status === "paused";
-  const tone = failed ? "bad" : off ? "neutral" : status === "ok" ? "good" : "warn";
+  const tone = failed ? "bad" : blocked || off ? "neutral" : status === "ok" ? "good" : "warn";
   const age =
     status === "running"
       ? "…"
       : status === "queued"
         ? "queued"
-        : off
-        ? "off"
-        : failed
-          ? "failed"
-          : status === "ok" && m.lastRunAt
-            ? shortAge(new Date(m.lastRunAt))
-            : "never";
+        : blocked
+          ? "blocked"
+          : off
+          ? "off"
+          : failed
+            ? "failed"
+            : status === "ok" && m.lastRunAt
+              ? shortAge(new Date(m.lastRunAt))
+              : "never";
   const nextText = nextScanLabel(m, status, monitoringPaused);
 
   return (
@@ -385,6 +391,14 @@ function SourceRow({
             {friendlyScrapeError(m.lastError, m.sourceType)}
           </p>
         )}
+        {blocked && (
+          <p className="break-words px-2 pb-1.5 text-sm leading-relaxed text-muted-foreground">
+            {m.lastError
+              ? friendlyScrapeError(m.lastError, m.sourceType)
+              : "This site doesn't allow automated collection, so we don't monitor this source."}{" "}
+            No action needed from you.
+          </p>
+        )}
         {status === "disabled" && (
           <p className="break-words px-2 pb-1.5 text-sm leading-relaxed text-muted-foreground">
             We stopped scraping this source after repeated failures. Resume to try again.
@@ -429,7 +443,17 @@ function SourceRow({
         </div>
 
         <DropdownMenuSeparator />
-        {status === "disabled" ? (
+        {/* No "Run now" on a refusal. The run would reach the same wall, and offering
+            it is what makes a deliberate stop look like something the user forgot to
+            retry. The only real move is repointing the page, which lives one item
+            below on the Sources page. */}
+        {blocked ? (
+          <DropdownMenuItem asChild>
+            <Link href="/bot" target="_blank" rel="noreferrer">
+              <ShieldSlashIcon size={16} /> Why we stop at a block
+            </Link>
+          </DropdownMenuItem>
+        ) : status === "disabled" ? (
           <DropdownMenuItem onClick={() => onResume(m.id)} disabled={busy}>
             {busy ? <SpinnerIcon size={16} className="animate-spin" /> : <ArrowsClockwiseIcon size={16} />}
             {busy ? "Resuming…" : "Resume monitoring"}

@@ -52,7 +52,10 @@ function writeDismissed(next: string[]) {
   }
 }
 
-const STATE_RANK: Record<string, number> = { unscrapable: 0, failing: 1, paused: 2 };
+// Blocked sorts last on purpose. The three above it are repairs the user can make;
+// a refusal is a standing fact about the site, so it states itself under the work
+// rather than heading a list of things to do.
+const STATE_RANK: Record<string, number> = { unscrapable: 0, failing: 1, paused: 2, blocked: 3 };
 
 export function Attention({
   sources,
@@ -141,6 +144,9 @@ function explain(s: ActivitySource): string {
   const last = s.lastRunAt
     ? `Last answered ${formatDistanceToNow(new Date(s.lastRunAt), { addSuffix: true })}.`
     : "It has never answered.";
+  if (s.status === "blocked") {
+    return `${last} This site doesn't allow automated collection, so Outrival stops rather than working around it.`;
+  }
   if (s.status === "unscrapable") {
     return `${last} Outrival paused it after repeated failures and is not retrying on its own.`;
   }
@@ -191,6 +197,8 @@ function AttentionRow({
       {...feedItemMotion}
       className="grid grid-cols-[8px_18px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1.5 border-b border-border py-2.5 pl-1 transition-colors last:border-b-0 hover:bg-surface-2 max-sm:grid-cols-[8px_18px_minmax(0,1fr)]"
     >
+      {/* Critical ink is reserved for what is actually broken. A refusal gets the
+          hollow dot the paused rows use: real, stated, not an alarm. */}
       <span
         className={
           source.status === "failing" || source.status === "unscrapable"
@@ -216,7 +224,12 @@ function AttentionRow({
         <span className="text-muted-foreground">{explain(source)}</span>
       </div>
       <div className="flex shrink-0 items-center gap-1 max-sm:col-start-3">
-        {source.status === "failing" ? (
+        {/* A blocked row carries no repair at all. "Check now" reaches the same wall
+            and "Resume" un-pauses a source the scheduler will refuse to run — both
+            read as a fix the user failed to apply for something that is not theirs
+            to fix. The row states the limit and links to the source; that is all
+            there is to offer. */}
+        {source.status === "blocked" ? null : source.status === "failing" ? (
           <Button size="sm" variant="secondary" onClick={forceRescan} loading={isRescanning}>
             Check now
           </Button>

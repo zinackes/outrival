@@ -659,7 +659,9 @@ export interface SectoralEligibility {
 }
 
 // Activity — user-facing view of the scraping work done for the org.
-export type ActivitySourceStatus = "ok" | "failing" | "paused" | "unscrapable";
+// "blocked" is the site refusing automated collection — a real limit, but never a
+// task: it carries no Resume and no re-scan, because both meet the same wall.
+export type ActivitySourceStatus = "ok" | "failing" | "paused" | "unscrapable" | "blocked";
 
 export interface ActivitySource {
   monitorId: string;

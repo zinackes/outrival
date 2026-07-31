@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { competitors, monitors } from "@outrival/db";
-import { deriveScrapeActivity } from "@outrival/shared";
+import { deriveScrapeActivity, isRefused, type SourceType } from "@outrival/shared";
 import { db } from "../lib/db";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
@@ -88,6 +88,11 @@ activityRouter.get("/health", async (c) => {
       scrapePickedUpAt: monitors.scrapePickedUpAt,
       consecutiveFailures: monitors.consecutiveFailures,
       markedUnscrapable: monitors.markedUnscrapable,
+      // Read only through isRefused(), which gates them on the run that produced
+      // them still being the last thing that happened — so a sticky diagnosis can't
+      // describe a source that has since answered.
+      refusedAt: monitors.refusedAt,
+      lastFailureCategory: monitors.lastFailureCategory,
     })
     .from(monitors)
     .innerJoin(competitors, eq(monitors.competitorId, competitors.id))
@@ -121,13 +126,26 @@ activityRouter.get("/health", async (c) => {
       // used here (they only refresh on the NEXT failure, so they can describe a
       // source that has since recovered).
       consecutiveFailures: r.consecutiveFailures,
-      status: r.markedUnscrapable
-        ? "unscrapable"
-        : !r.isActive
-          ? "paused"
-          : r.consecutiveFailures > 0
-            ? "failing"
-            : "ok",
+      // A refusal outranks every other verdict. It reached "unscrapable" before,
+      // which reads as "we gave up retrying" and offered a Resume that can only
+      // fail: under the collection doctrine we stop at a refusal on purpose, and
+      // there is nothing for the user to repair.
+      status: isRefused({
+        sourceType: r.sourceType as SourceType,
+        markedUnscrapable: r.markedUnscrapable,
+        refusedAt: r.refusedAt,
+        lastFailureCategory: r.lastFailureCategory,
+        lastRunAt: r.lastRunAt,
+        lastFailedAt: r.lastFailedAt,
+      })
+        ? "blocked"
+        : r.markedUnscrapable
+          ? "unscrapable"
+          : !r.isActive
+            ? "paused"
+            : r.consecutiveFailures > 0
+              ? "failing"
+              : "ok",
     }))
     // Most-recently-run first; never-run (null lastRunAt) sink to the bottom.
     .sort((a, b) => (b.lastRunAt?.getTime() ?? 0) - (a.lastRunAt?.getTime() ?? 0));

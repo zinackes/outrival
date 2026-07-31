@@ -29,6 +29,7 @@ import { ActivitySpark } from "@/components/dashboard/activity-spark";
 import { DeltaPill, computeDelta } from "@/components/dashboard/delta-pill";
 import { TableSkeleton } from "@/components/dashboard/skeletons";
 import { SelectBox } from "@/components/dashboard/select-box";
+import { RenameProductDialog } from "./product-actions";
 import { AddProductWizard } from "@/components/outrival/add-product-wizard";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -47,7 +48,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 /**
@@ -518,68 +518,6 @@ export function ProductsPortfolio() {
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-/**
- * Renaming from the portfolio happens in a dialog rather than inline: the row is a
- * dense grid under a stretched link, and an input swapped into it would fight both
- * the columns and the navigation.
- */
-function RenameProductDialog({
-  product,
-  busy,
-  onSubmit,
-  onClose,
-}: {
-  product: ProductSummary | null;
-  busy: boolean;
-  onSubmit: (name: string) => void;
-  onClose: () => void;
-}) {
-  const [name, setName] = useState("");
-  useEffect(() => {
-    if (product) setName(product.name);
-  }, [product]);
-
-  const trimmed = name.trim();
-  const unchanged = product !== null && trimmed === product.name;
-
-  return (
-    <Dialog open={product !== null} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Rename {product?.name ?? "product"}</DialogTitle>
-          <DialogDescription>
-            The new name shows everywhere this product does: its page, its signals,
-            its battle cards.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (trimmed && !unchanged) onSubmit(trimmed);
-          }}
-        >
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={120}
-            autoFocus
-            aria-label="Product name"
-          />
-          <DialogFooter className="mt-4">
-            <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!trimmed || unchanged || busy}>
-              {busy && <SpinnerIcon size={16} className="animate-spin" />}
-              Save
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }
 

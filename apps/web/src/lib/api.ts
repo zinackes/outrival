@@ -485,8 +485,19 @@ export type SignalFacts =
       /** Packaging moves of this capture (P2): exact before/after per feature
        * ("SSO — Enterprise" → "SSO — Pro"). [] when the matrix didn't change. */
       entitlements: EntitlementFact[];
+      /** Volume-ladder moves of this capture (P3): a boundary that slid is a
+       * price rise with no price change, so the bands have to be printed. */
+      tiers: TierFact[];
     }
   | null;
+
+/** One volume-ladder move behind a pricing signal. */
+export interface TierFact {
+  planName: string;
+  state: "boundary_moved" | "rate_changed";
+  before: string | null;
+  after: string | null;
+}
 
 /** One packaging move behind a pricing signal (features × plans matrix). */
 export interface EntitlementFact {

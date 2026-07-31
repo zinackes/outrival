@@ -1,6 +1,11 @@
 import { and, eq, gte, lte, sql as dsql } from "drizzle-orm";
 import { changes, jobPostings } from "@outrival/db";
-import { diffEntitlements, type EntitlementRow } from "@outrival/shared";
+import {
+  diffEntitlements,
+  diffPriceTiers,
+  type EntitlementRow,
+  type TierBandRow,
+} from "@outrival/shared";
 import { db } from "./db";
 import { analyticsQuery, sql } from "./analytics-safe";
 
@@ -67,6 +72,18 @@ export interface EntitlementFact {
   after: string | null;
 }
 
+/** One volume-ladder move of the capture (P3), derived by the SAME shared
+ * differ that emits the signal. A boundary that slid is a price rise with no
+ * price change, so the block has to print the bands or the reader sees a
+ * pricing signal over numbers that all look identical. */
+export interface TierFact {
+  planName: string;
+  state: "boundary_moved" | "rate_changed";
+  /** Exact human strings ("Scale (request) — 0–10k @ $0.10"). */
+  before: string | null;
+  after: string | null;
+}
+
 export type SignalFacts =
   | {
       kind: "hiring";
@@ -86,6 +103,9 @@ export type SignalFacts =
       /** Packaging moves of this capture; [] when the matrix didn't change
        * (or was never captured). */
       entitlements: EntitlementFact[];
+      /** Volume-ladder moves of this capture; [] when no ladder was captured
+       * on either side, or it stood still. */
+      tiers: TierFact[];
     }
   | null;
 
@@ -95,6 +115,7 @@ export type SignalFacts =
 const MAX_ROLES = 25;
 const MAX_PLANS = 30;
 const MAX_ENTITLEMENT_FACTS = 10;
+const MAX_TIER_FACTS = 8;
 
 // How long after a change its extraction may still land. The extractor is
 // enqueued in the same scrape run, but it is the WORKER that stamps the row, and
@@ -322,6 +343,7 @@ async function pricingFacts(
     kind: "pricing",
     plans: plans.slice(0, MAX_PLANS),
     entitlements: await entitlementFacts(competitorId, window),
+    tiers: await tierFacts(competitorId, window, stampCurrency(current)),
     trial:
       stamp.hasTrial === null
         ? null
@@ -331,6 +353,62 @@ async function pricingFacts(
             requiresCard: stamp.trialRequiresCard === null ? null : stamp.trialRequiresCard === 1,
           },
   };
+}
+
+/** The currency the bands are priced in — price_tiers stores the ladder,
+ * pricing_history stores what it costs in, and the two are one capture. */
+function stampCurrency(current: PlanRow[]): string | null {
+  return current.find((p) => p.currency)?.currency ?? null;
+}
+
+interface TierBatchRow extends TierBandRow {
+  side: "current" | "previous";
+}
+
+/**
+ * The volume-ladder moves of the capture: the latest price_tiers batch inside
+ * the window vs the one strictly before it, re-diffed at read time like the
+ * entitlement block. A ladder captured on only one side stays silent — the
+ * differ's own rule, so the block cannot claim a ladder appeared when it was
+ * the extractor that finally read one.
+ */
+async function tierFacts(
+  competitorId: string,
+  window: { lower: Date; upper: Date },
+  currency: string | null,
+): Promise<TierFact[]> {
+  const rows = await analyticsQuery<TierBatchRow>(sql`
+    WITH cur AS (
+      SELECT max(recorded_at) AS ts FROM price_tiers
+      WHERE competitor_id = ${competitorId}
+        AND recorded_at >= ${window.lower} AND recorded_at <= ${window.upper}
+    ), prev AS (
+      SELECT max(pt.recorded_at) AS ts FROM price_tiers pt, cur
+      WHERE pt.competitor_id = ${competitorId} AND pt.recorded_at < cur.ts
+    )
+    SELECT 'current' AS side, pt.plan_name, pt.unit, pt.from_qty, pt.to_qty,
+           pt.unit_price, pt.flat_fee
+    FROM price_tiers pt, cur
+    WHERE pt.competitor_id = ${competitorId} AND pt.recorded_at = cur.ts
+    UNION ALL
+    SELECT 'previous', pt.plan_name, pt.unit, pt.from_qty, pt.to_qty,
+           pt.unit_price, pt.flat_fee
+    FROM price_tiers pt, prev
+    WHERE pt.competitor_id = ${competitorId} AND pt.recorded_at = prev.ts
+  `);
+
+  const current = rows.filter((r) => r.side === "current");
+  const previous = rows.filter((r) => r.side === "previous");
+  if (current.length === 0 || previous.length === 0) return [];
+
+  return diffPriceTiers(previous, current, { currency })
+    .slice(0, MAX_TIER_FACTS)
+    .map((c) => ({
+      planName: c.planName ?? "",
+      state: c.type === "tier_boundary_moved" ? ("boundary_moved" as const) : ("rate_changed" as const),
+      before: c.humanBefore,
+      after: c.humanAfter,
+    }));
 }
 
 interface EntitlementBatchRow extends EntitlementRow {

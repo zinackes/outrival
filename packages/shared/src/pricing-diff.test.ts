@@ -375,3 +375,82 @@ describe("ordering and helpers", () => {
     expect(changes[0]!.summary).toMatch(/[€$£¥]\s?\d|\/\s?(mo|yr)\b/i);
   });
 });
+
+// --- Phase 3: rate structures on the row itself ----------------------------
+
+// A metered row carrying the P3 stamp. `rate_structure` is what says the
+// detector ran on this plan: without it, a null minimum means "not assessed".
+const metered = (partial: Partial<PricingBatchRow> & { plan_name: string }): PricingBatchRow =>
+  row({ billing_period: "usage", unit: "request", rate_structure: "standard", ...partial });
+
+describe("minimum_introduced / minimum_changed", () => {
+  test("a floor appearing on a stamped plan is medium", () => {
+    const changes = diffPricingBatches(
+      [metered({ plan_name: "Scale", price: 0.1 })],
+      [metered({ plan_name: "Scale", price: 0.1, minimum_amount: 50 })],
+    );
+    expect(changes).toHaveLength(1);
+    const c = changes[0]!;
+    expect(c.type).toBe("minimum_introduced");
+    expect(c.severity).toBe("medium");
+    expect(c.humanBefore).toBe("Scale — No monthly minimum");
+    expect(c.humanAfter).toBe("Scale — $50/mo minimum");
+  });
+
+  test("a floor moving carries its percentage", () => {
+    const changes = diffPricingBatches(
+      [metered({ plan_name: "Scale", price: 0.1, minimum_amount: 50 })],
+      [metered({ plan_name: "Scale", price: 0.1, minimum_amount: 100 })],
+    );
+    const c = changes[0]!;
+    expect(c.type).toBe("minimum_changed");
+    expect(c.pctChange).toBe(100);
+    expect(c.summary).toBe("Scale: $50/mo minimum → $100/mo minimum (+100%)");
+  });
+
+  test("a floor dropped reads as removed, not as zero", () => {
+    const changes = diffPricingBatches(
+      [metered({ plan_name: "Scale", price: 0.1, minimum_amount: 50 })],
+      [metered({ plan_name: "Scale", price: 0.1 })],
+    );
+    expect(changes[0]!.type).toBe("minimum_changed");
+    expect(changes[0]!.humanAfter).toBe("Scale — No monthly minimum");
+  });
+
+  test("a batch predating the detector never announces a floor that was always there", () => {
+    // The old batch has no rate_structure: its null minimum means "not read".
+    const changes = diffPricingBatches(
+      [row({ plan_name: "Scale", price: 0.1, billing_period: "usage", unit: "request" })],
+      [metered({ plan_name: "Scale", price: 0.1, minimum_amount: 50 })],
+    );
+    expect(changes).toEqual([]);
+  });
+});
+
+describe("rate_changed — the percentage half", () => {
+  const pctPlan = (rate: number, fixed: number) =>
+    metered({
+      plan_name: "Payments",
+      price: fixed,
+      unit: "transaction",
+      rate_structure: "percentage",
+      percentage_rate: rate,
+    });
+
+  test("a cut past the undercut threshold is critical", () => {
+    const changes = diffPricingBatches([pctPlan(2.9, 0.3)], [pctPlan(2.4, 0.3)]);
+    const c = changes.find((x) => x.previousValue === 2.9)!;
+    expect(c.type).toBe("rate_changed");
+    expect(c.severity).toBe("critical");
+    expect(c.humanBefore).toBe("Payments — 2.9% + $0.3/transaction");
+    expect(c.summary).toBe("Payments: 2.9% → 2.4% (−17.2%)");
+  });
+
+  test("a percentage first captured is not a percentage that moved", () => {
+    const changes = diffPricingBatches(
+      [metered({ plan_name: "Payments", price: 0.3, unit: "transaction" })],
+      [pctPlan(2.9, 0.3)],
+    );
+    expect(changes.filter((c) => c.type === "rate_changed")).toEqual([]);
+  });
+});

@@ -11,7 +11,7 @@ import {
   type PricingExtraction,
   type PricingPlan,
 } from "@outrival/ai";
-import { getFromR2, PRICING_STATUSES } from "@outrival/shared";
+import { getFromR2, PRICING_STATUSES, diffPriceTiers } from "@outrival/shared";
 import { pricingFromStructured } from "@outrival/scrapers/structured-data";
 import {
   pricingRatiosPlausible,
@@ -366,6 +366,13 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
         lexicalWorth: input.lexicalWorth,
         // P2 — packaging moves ride the same signal (never critical).
         entitlementChanges: entitlements?.changes ?? [],
+        // P3 — a boundary that slid is a price rise nobody printed.
+        tierChanges:
+          previousTiers && rateStructures
+            ? diffPriceTiers(previousTiers, rateStructures.tierRows, {
+                currency: plans[0]?.currency ?? null,
+              })
+            : [],
       });
     }
 

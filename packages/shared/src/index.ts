@@ -26,6 +26,7 @@ export * from "./pricing";
 export * from "./pricing-diff";
 export * from "./entitlement-catalog";
 export * from "./entitlement-diff";
+export * from "./price-tier-diff";
 export * from "./unit-alias";
 export * from "./cost-model";
 export * from "./logger";

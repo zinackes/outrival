@@ -87,6 +87,9 @@ export interface RoutePricingSignalArgs {
    * (never critical by construction), merged with the batch diff so one capture
    * emits ONE signal whose top line is the worst move across both axes. */
   entitlementChanges?: PricingChange[];
+  /** P3 — typed changes from the volume-ladder diff of the same capture, merged
+   * on the same terms. One capture still emits ONE signal. */
+  tierChanges?: PricingChange[];
 }
 
 /**
@@ -117,6 +120,7 @@ export async function routePricingSignal(args: RoutePricingSignalArgs): Promise<
     const pricingChanges = sortPricingChanges([
       ...diffPricingBatches(args.previous, args.current),
       ...(args.entitlementChanges ?? []),
+      ...(args.tierChanges ?? []),
     ]);
     if (pricingChanges.length === 0) return await fallback("batch_unchanged");
 

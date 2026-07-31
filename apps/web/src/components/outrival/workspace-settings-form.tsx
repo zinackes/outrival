@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FormSkeleton } from "@/components/dashboard/skeletons";
 import { ChangeProductUrlDialog } from "@/components/outrival/change-product-url-dialog";
 import { UpdateProfileDialog } from "@/components/outrival/update-profile-dialog";
+import { errorMessage } from "@/lib/error-helpers";
 
 const STAGE_LABELS: Record<ProjectStage, string> = {
   idea: "Idea to explore",
@@ -138,7 +139,7 @@ export function WorkspaceSettingsForm() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e) {
-      setError(String(e));
+      setError(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -152,7 +153,7 @@ export function WorkspaceSettingsForm() {
   if ((error || settingsQ.error) && !draft)
     return (
       <p className="text-sm text-muted-foreground">
-        Error: {error ?? String(settingsQ.error)}
+        {error ?? errorMessage(settingsQ.error)}
       </p>
     );
   if (!draft || !pristine) return <FormSkeleton fields={3} />;

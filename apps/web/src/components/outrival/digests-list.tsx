@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Icon as PhosphorIcon } from "@/components/icons";
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CircleIcon } from "@/components/icons";
+import { errorMessage } from "@/lib/error-helpers";
 
 const URGENCY_META: Record<
   DigestSection["urgency"],
@@ -32,7 +33,7 @@ export function DigestsList() {
 
   if (digestsQ.error)
     return (
-      <p className="text-sm text-muted-foreground">Error: {String(digestsQ.error)}</p>
+      <p className="text-sm text-muted-foreground">{errorMessage(digestsQ.error)}</p>
     );
   if (digests === null)
     return (

@@ -393,6 +393,13 @@
       "when": 1785445483026,
       "tag": "0055_vengeful_menace",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1785470300355,
+      "tag": "0056_lowly_swordsman",
+      "breakpoints": true
     }
   ]
 }

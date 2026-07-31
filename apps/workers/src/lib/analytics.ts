@@ -641,6 +641,25 @@ export async function insertCalculatorProbeRun(row: CalculatorProbeRunRow): Prom
   );
 }
 
+// The batch timestamps already reconstructed from the archive (P5). Two jobs
+// answer off this set: "has this competitor been backfilled at all" (non-empty)
+// and "do I already hold this exact capture" — the sampler is stable, so a
+// re-run would otherwise write the same quarter twice. Best-effort like the
+// rest: an unreachable read returns an EMPTY set, which makes the backfill skip
+// its own guard rather than skip the work, and the per-capture check below is
+// what stops a duplicate landing anyway.
+export async function getArchivedPricingBatchTimes(competitorId: string): Promise<Set<number>> {
+  const rows = await bestEffortRead<{ recorded_at: Date }>("getArchivedPricingBatchTimes", () =>
+    db
+      .selectDistinct({ recorded_at: pricingHistory.recordedAt })
+      .from(pricingHistory)
+      .where(
+        and(eq(pricingHistory.competitorId, competitorId), eq(pricingHistory.origin, "archive")),
+      ),
+  );
+  return new Set((rows ?? []).map((r) => r.recorded_at.getTime()));
+}
+
 // What each published action SPENDS from a credit balance (Pricing Intelligence
 // P5). Same batch timestamp as the pricing_history rows of the run — one capture,
 // one moment. No `origin`: the backfill never extracts burns (its harvest floor

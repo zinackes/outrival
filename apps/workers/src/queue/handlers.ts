@@ -13,6 +13,7 @@ import {
   sendWelcomeDigest,
   sendMonthlyRecap,
   backfillHistory,
+  backfillPricingHistory,
   classifyChange,
   generateSignal,
   evaluateStandingQueries,
@@ -64,6 +65,7 @@ import {
 import { runSendWelcomeDigest } from "../core/send-welcome-digest";
 import { runSendMonthlyRecap } from "../core/send-monthly-recap";
 import { runBackfillHistory } from "../core/backfill-history";
+import { runBackfillPricingHistory } from "../core/backfill-pricing-history";
 import { runClassifyChange } from "../core/classify-change";
 import { runGenerateSignal } from "../core/generate-signal";
 import { runEvaluateStandingQueries } from "../core/evaluate-standing-queries";
@@ -134,6 +136,9 @@ export async function registerHandlers(role: WorkerRole): Promise<string[]> {
     await on(sendWelcomeDigest, runSendWelcomeDigest);
     await on(sendMonthlyRecap, runSendMonthlyRecap);
     await on(backfillHistory, runBackfillHistory);
+    // Pure fetch + deterministic harvest — no browser, so it belongs on the light
+    // worker next to its sibling.
+    await on(backfillPricingHistory, runBackfillPricingHistory);
 
     // The teaser is retryLimit 0 (a retry would re-spend the free grounding quota),
     // so EVERY failure is terminal: run the hook that writes the terminal

@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { and, eq, isNull } from "drizzle-orm";
 import { competitors } from "@outrival/db";
 import { authMiddleware } from "../middleware/auth";
-import { scrapeTechStack } from "@outrival/queue";
+import { scrapeTechStack, backfillPricingHistory } from "@outrival/queue";
 import { enqueueByName, enqueueJob } from "../lib/queue";
 import { getJob } from "../lib/queue-admin";
 import { db } from "../lib/db";
@@ -89,6 +89,30 @@ devRouter.post("/competitors/:id/scrape-tech-stack", async (c) => {
   if (!competitor) return c.json({ error: "Competitor not found" }, 404);
 
   const jobId = await enqueueJob(scrapeTechStack, { competitorId: id });
+  return c.json({ runId: jobId });
+});
+
+// Re-run the Wayback price backfill for one competitor (P5). The job fires once
+// on its own, from the first pricing capture, and then refuses to run again — the
+// Archive is not ours to poll and its inserts are not idempotent. This is the ONLY
+// way to ask for a second pass, deliberately manual and deliberately dev-only:
+// `force` bypasses the once-per-competitor guard, while the per-capture dedup
+// still stops the same quarter being written twice.
+devRouter.post("/competitors/:id/backfill-pricing", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const competitor = await db.query.competitors.findFirst({
+    where: and(
+      eq(competitors.id, id),
+      eq(competitors.orgId, orgId),
+      isNull(competitors.deletedAt),
+    ),
+  });
+  if (!competitor) return c.json({ error: "Competitor not found" }, 404);
+
+  const jobId = await enqueueJob(backfillPricingHistory, { competitorId: id, force: true });
   return c.json({ runId: jobId });
 });
 

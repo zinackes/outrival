@@ -24,8 +24,8 @@
       "default": "./src/pricing/index.ts"
     },
     "./backfill": {
-      "types": "./src/backfill/wayback.ts",
-      "default": "./src/backfill/wayback.ts"
+      "types": "./src/backfill/index.ts",
+      "default": "./src/backfill/index.ts"
     },
     "./extract": {
       "types": "./src/lib/extract-content.ts",

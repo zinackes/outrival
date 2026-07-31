@@ -366,6 +366,9 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
       rate_structure: p.rate_structure ?? null,
       minimum_amount: p.minimum_amount ?? null,
       percentage_rate: p.percentage_rate ?? null,
+      // `recordedAt` set ⟺ the snapshot is a Wayback capture, so the batch is
+      // history and every "what do they charge now" read must be able to skip it.
+      origin: input.recordedAt ? ("archive" as const) : ("live" as const),
       recorded_at: recordedAt,
     }));
     await insertPricingHistory(rows);

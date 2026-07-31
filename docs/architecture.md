@@ -642,6 +642,23 @@ Codes d'erreur structurés sur les routes gating : `plan_limit_competitors`,
 `plan_locked_channel`. Le web parse via `paywallFromError(err)` et affiche
 `<PaywallDialog>`.
 
+**Plafond horaire d'actions IA** (`PLAN_LIMITS.aiActionsPerHour` 20/40/120/300,
+compteur Redis `ratelimit:ai_intensive:<userId>`, 429 `ai_rate_limit_exceeded`) : le
+garde-fou anti-abus au-dessus des caps ci-dessus. Il était **plat à 10/h pour tous les
+tiers** de patch-22 au 2026-07-31, donc free et business partageaient un plafond que 11
+clics de n'importe quelle nature suffisaient à atteindre, et les caps qu'il surplombe
+(pro : 20 re-scans + 50 battle cards par jour) étaient inatteignables en rafale. Trois
+propriétés le cadrent : il compte des **CLICS, pas des appels pool** (une battle card =
+1 tick pour ~5 appels, un re-scan sur page inchangée = 1 tick pour 0), donc il ne peut
+être qu'un plafond grossier ; la **première activation d'une source en est exemptée**
+(`consumeAiAction` appelé DANS `/monitors/:id/run` et `/:id/force-rescan`, seulement si
+`lastRunAt !== null`, exactement comme l'exemption existante du cap forced-rescan) parce
+qu'activer toutes les sources d'un roster pro fait `maxCompetitors × allowedSources` =
+135 clics ; et `AI_INTENSIVE_RATE_LIMIT` ne survit que comme **override d'urgence** qui
+ré-aplatit tous les tiers sur une valeur. Affiché dans Settings → Usage (ligne « AI
+actions · this hour »), sans quoi c'est le seul cap que l'utilisateur découvre en se le
+prenant. 📄 docs/tier-limits.md
+
 ## Provisioning des monitors
 
 Un competitor n'a pas automatiquement un monitor par source. Trois chemins de création :
@@ -1480,7 +1497,14 @@ AI_PROVIDER_3_ID=hyperbolic        # payant ~$0.40/M, fallback prio 3
 # (… _BASE_URL/_API_KEY/_MODEL/_TIER/_DAILY_TOKEN_QUOTA/_PRIORITY par provider, cf .env.example)
 AI_CIRCUIT_BREAKER_THRESHOLD=5     # échecs consécutifs (tous providers) avant coupure globale
 AI_CIRCUIT_BREAKER_RESET_MIN=10    # minutes avant retry (breaker provider ET global)
-AI_INTENSIVE_RATE_LIMIT=10         # actions IA-intensives par user par fenêtre (rate limit dur)
+AI_INTENSIVE_RATE_LIMIT=           # OVERRIDE d'urgence ops UNIQUEMENT. Le plafond horaire
+                                   # d'actions IA discrétionnaires est PAR TIER depuis
+                                   # 2026-07-31 (PLAN_LIMITS.aiActionsPerHour 20/40/120/300).
+                                   # Renseigner cette var re-aplatit TOUS les tiers sur une
+                                   # seule valeur — c'était l'état d'avant (10 pour free comme
+                                   # pour business) et c'est ce qui rendait inatteignables les
+                                   # caps par tier qu'elle surplombe (pro : 20 re-scans +
+                                   # 50 battle cards / jour). La laisser VIDE
 AI_INTENSIVE_WINDOW_SEC=3600       # fenêtre 1h
 
 # Gate de fidélité claim-level — les sorties à enjeu (battle cards, digests hebdo,

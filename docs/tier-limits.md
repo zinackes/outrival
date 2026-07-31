@@ -19,6 +19,7 @@ upgrade prompt.
 | `forcedRescansPerDay` | 1 | 5 | 20 | **100** |
 | `battleCardsPerDay` | 1 | 10 | 50 | 100 |
 | `discoveriesPerMonth` | 3 | 20 | 100 | 500 |
+| `aiActionsPerHour` | 20 | 40 | 120 | 300 |
 | `usersPerOrg` | 1 | 1 | 3 | 10 |
 | `historyRetentionDays` | 7 | 30 | 365 | 1095 |
 | `features.battleCards` | ✓ | ✓ | ✓ | ✓ |
@@ -49,12 +50,13 @@ suggestedPlan, upgradeHint }`) then perform the action.
 | `forcedRescansPerDay` | `forcedRescansPerDay(plan)` → monitors.ts | `rescan_limit_reached` 429 | `forced_rescan_log` /user/day (existing) |
 | `battleCardsPerDay` | `assertWithinLimit` → battle-cards.ts | `battlecard_limit_reached` 429 | `battle_cards.generatedAt` today (DB-free) |
 | `discoveriesPerMonth` | `assertWithinLimit` → candidates.ts `/detect` | `discovery_limit_reached` 429 | `discovery_runs.detect_count` + `detect_count_month` |
+| `aiActionsPerHour` | `aiIntensiveRateLimit` middleware + `consumeAiAction` → monitors.ts | `ai_rate_limit_exceeded` 429 | Redis `ratelimit:ai_intensive:<userId>` /user/hour |
 
 Notes:
 - **Battle cards opened to every tier** (was a pro+ feature gate). The daily cap is the
   cost guard. The count is "distinct cards generated/refreshed today" (cards upsert per
   product×competitor); repeated regen of the same card is free, and the async-completion
-  race is backstopped by `aiIntensiveRateLimit` (10/h/user).
+  race is backstopped by `aiIntensiveRateLimit` (`aiActionsPerHour`, per tier).
 - **Discoveries** consume the monthly quota only on **on-demand `/detect`** — the weekly
   cron auto-discovery does not (free's 3/month would be eaten by the cron otherwise). The
   single `discovery_runs` row doubles as the calendar-month counter (resets on month roll).
@@ -62,6 +64,23 @@ Notes:
   (`{ error: { code, message, upgradeHint } }`) — the web `use-force-rescan` toast reads
   it. Not rerouted through `tierLimitBody` to avoid churning a working path.
 - `FORCED_RESCAN_LIMIT_*` env still overrides the `PLAN_LIMITS` defaults (back-compat).
+- **`aiActionsPerHour` was a flat 10/h for every tier** from patch-22 to 2026-07-31, so
+  free and business shared one ceiling and the caps it sits above were unreachable in a
+  burst (pro buys 20 re-scans + 50 battle cards a day; eleven clicks of any kind refused
+  the twelfth). Three properties make the new numbers defensible:
+  - It counts **clicks, not pool calls** — a battle card is 1 tick for ~5 calls, a re-scan
+    on an unchanged page is 1 tick for 0. It can only ever be a blunt ceiling; the honest
+    capacity meter would be weight-per-route, which needs a per-user `ai_runs` counter
+    that does not exist yet.
+  - **First-time source activation is exempt** (`consumeAiAction` is called inside
+    `/monitors/:id/run` and `/:id/force-rescan`, only when `lastRunAt !== null`) — the same
+    reason it is already exempt from `forcedRescansPerDay`. Enabling every source on a pro
+    roster is `maxCompetitors × allowedSources` = 135 clicks; no anti-abuse ceiling should
+    have to accommodate a setup burst.
+  - Heavy legitimate use tops out near 40/h once activation is out of the bucket, while a
+    runaway client does hundreds. The numbers sit in that gap.
+- `AI_INTENSIVE_RATE_LIMIT` survives as a **single-value emergency override**: setting it
+  re-flattens every tier onto one number. Leave it unset (`.env.example` ships it commented).
 
 Whether a free workspace ever *encounters* these gates (vs. hitting them silently)
 is a separate question from whether they're enforced. 📄 docs/monetization-first-encounter.md

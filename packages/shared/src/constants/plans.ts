@@ -31,6 +31,18 @@ export interface PlanLimits {
   scrapeFrequency: ScrapeFrequencyTier;
   // Per-tier volume caps (enforced via assertWithinLimit in apps/api/src/lib/plan.ts).
   forcedRescansPerDay: number;
+  // Hourly anti-abuse ceiling on DISCRETIONARY AI actions per USER: battle cards,
+  // Ask questions, discovery, profile analysis, repeat re-scans. It was a flat 10/h
+  // for every tier from patch-22 until 2026-07-31, which made the tier caps below
+  // (pro: 20 re-scans + 50 battle cards a day) unreachable in a burst. Two rules set
+  // these numbers. (1) The counter counts CLICKS, not pool calls: a battle card is
+  // 1 tick for ~5 calls, a re-scan on an unchanged page is 1 tick for 0, so it can
+  // only ever be a blunt ceiling, never a capacity meter. (2) The burst it must not
+  // refuse is a legitimate one, so first-time source activation is exempt at the call
+  // site (maxCompetitors × allowedSources is already 135 clicks on pro). What is left
+  // in the bucket tops out near 40/h for heavy real use, while a runaway client does
+  // hundreds — these sit in that gap.
+  aiActionsPerHour: number;
   battleCardsPerDay: number;
   discoveriesPerMonth: number;
   // Max ACTIVE standing queries (watched Ask questions) per org. Each one costs
@@ -69,6 +81,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     allowedSources: ["homepage", "pricing", "blog"],
     scrapeFrequency: "weekly",
     forcedRescansPerDay: 1,
+    aiActionsPerHour: 20,
     battleCardsPerDay: 1,
     discoveriesPerMonth: 3,
     standingQueries: 3,
@@ -85,6 +98,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     allowedSources: ["homepage", "pricing", "blog", "jobs", "status"],
     scrapeFrequency: "daily",
     forcedRescansPerDay: 5,
+    aiActionsPerHour: 40,
     battleCardsPerDay: 10,
     discoveriesPerMonth: 20,
     standingQueries: 10,
@@ -103,6 +117,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     allowedSources: ["homepage", "pricing", "blog", "jobs", "appstore_reviews", "trustpilot_public", "status", "docs", "roadmap"],
     scrapeFrequency: "daily_adaptive",
     forcedRescansPerDay: 20,
+    aiActionsPerHour: 120,
     battleCardsPerDay: 50,
     discoveriesPerMonth: 100,
     // "Unlimited" per the spec — encoded as a real anti-abuse ceiling (house rule
@@ -129,6 +144,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     // Anti-abuse ceilings, far above normal use; a fair-use clause (TOS) covers the
     // extremes. TODO(tier-limits): wire a throttling/fair-use guard for these caps.
     forcedRescansPerDay: 100,
+    aiActionsPerHour: 300,
     battleCardsPerDay: 100,
     discoveriesPerMonth: 500,
     standingQueries: 999,
@@ -298,4 +314,17 @@ export function forcedRescansPerDay(plan: Plan): number {
   }[plan];
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : PLAN_LIMITS[plan].forcedRescansPerDay;
+}
+
+/**
+ * Hourly cap on discretionary AI actions for `plan`. AI_INTENSIVE_RATE_LIMIT keeps
+ * working as a SINGLE-VALUE emergency override for ops (it was the only value from
+ * patch-22 to 2026-07-31, so an env still carrying `10` would silently re-impose the
+ * flat cap on every tier — clear it when deploying the per-tier table). Unset →
+ * PLAN_LIMITS. Client `process.env` is undefined → the default, same as the helpers
+ * above, so the web can render the ceiling without an API round-trip.
+ */
+export function aiActionsPerHour(plan: Plan): number {
+  const n = Number(process.env.AI_INTENSIVE_RATE_LIMIT);
+  return Number.isFinite(n) && n > 0 ? n : PLAN_LIMITS[plan].aiActionsPerHour;
 }

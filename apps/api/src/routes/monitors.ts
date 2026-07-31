@@ -13,7 +13,7 @@ import {
 } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
-import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
+import { aiRateLimitBody, consumeAiAction } from "../lib/ai-actions";
 import { ensureUserOrg } from "../lib/org";
 import { enqueueJob } from "../lib/queue";
 import {
@@ -257,7 +257,12 @@ monitorsRouter.get("/:id/staleness", async (c) => {
   });
 });
 
-monitorsRouter.post("/:id/run", aiIntensiveRateLimit, async (c) => {
+// The hourly AI-action cap is enforced INSIDE this handler, not as middleware: it must
+// only charge a genuine re-scan. A monitor's first scrape (just enabled) is setup, and
+// it is already exempt from the per-tier forced-rescan cap below for the same reason —
+// enabling a source on a pro roster is maxCompetitors × allowedSources = 135 clicks,
+// which no anti-abuse ceiling should have to accommodate.
+monitorsRouter.post("/:id/run", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
@@ -290,6 +295,8 @@ monitorsRouter.post("/:id/run", aiIntensiveRateLimit, async (c) => {
   const isRescan = monitor.lastRunAt !== null;
   let logId: string | undefined;
   if (isRescan) {
+    const budget = await consumeAiAction(user.id, plan);
+    if (!budget.allowed) return c.json(aiRateLimitBody(budget), 429);
     const limit = forcedRescansPerDay(plan);
     const usageToday = await countUserForcedRescansToday(user.id);
     if (usageToday >= limit) return c.json(rescanLimitBody(plan, limit), 429);
@@ -367,6 +374,11 @@ monitorsRouter.post("/:id/force-rescan", async (c) => {
   let usageToday = 0;
   let logId: string | null = null;
   if (isRescan) {
+    // Same hourly AI-action budget as /:id/run — the two manual re-scan paths had
+    // drifted (only /run was capped), so the same click cost differently depending on
+    // which affordance the user reached for.
+    const budget = await consumeAiAction(user.id, plan);
+    if (!budget.allowed) return c.json(aiRateLimitBody(budget), 429);
     usageToday = await countUserForcedRescansToday(user.id);
     if (usageToday >= limit) {
       return c.json(rescanLimitBody(plan, limit), 429);

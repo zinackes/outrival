@@ -20,12 +20,21 @@ const DIMENSION_LABEL: Record<UsageDimension, string> = {
   battleCardsPerDay: "Battle cards",
   discoveriesPerMonth: "Discoveries",
   forcedRescansPerDay: "Forced re-scans",
+  aiActionsPerHour: "AI actions",
+};
+
+// What each metered dimension actually charges for, so a refused click is explainable
+// before it happens. Only the ones whose scope isn't obvious from the label.
+const DIMENSION_HINT: Partial<Record<UsageDimension, string>> = {
+  aiActionsPerHour:
+    "Battle cards, Ask questions, discovery and repeat re-scans. Enabling a source for the first time is free.",
 };
 
 const PERIOD_LABEL: Record<UsageItem["period"], string> = {
   current: "active",
   day: "today",
   month: "this month",
+  hour: "this hour",
 };
 
 const CADENCE_LABEL: Record<string, string> = {
@@ -54,6 +63,9 @@ function UsageRow({ item }: { item: UsageItem }) {
         </span>
       </div>
       <Progress value={pct(item.used, item.limit)} className="mt-2 h-1.5" />
+      {DIMENSION_HINT[item.dimension] && (
+        <p className="mt-1.5 text-xs text-muted-foreground">{DIMENSION_HINT[item.dimension]}</p>
+      )}
       {atLimit && (
         <div className="mt-2 flex items-center gap-2.5">
           <span className="text-xs text-muted-foreground">Limit reached.</span>

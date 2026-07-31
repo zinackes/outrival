@@ -1,42 +1,29 @@
 import { createMiddleware } from "hono/factory";
 import { getRedis } from "@outrival/shared";
-import { errorBody } from "../lib/errors";
+import { ensureUserOrg } from "../lib/org";
+import { getOrgPlan } from "../lib/plan";
+import { aiRateLimitBody, consumeAiAction } from "../lib/ai-actions";
 
-// Hard anti-abuse cap on AI-intensive actions per user (patch-22): battle card
-// generation, discovery, manual re-scrape, onboarding URL analysis. This is the
-// blunt safety net BELOW the intelligent (staleness) rate limiting — it only ever
-// trips a malicious or runaway client, never normal use. Read routes are never
-// gated. Backed by Upstash; degrades to a no-op when Upstash isn't configured (dev).
-// Apply AFTER authMiddleware so c.get("user") is set.
-
-const LIMIT = Number(process.env.AI_INTENSIVE_RATE_LIMIT ?? 10);
-const WINDOW_SEC = Number(process.env.AI_INTENSIVE_WINDOW_SEC ?? 3600);
+// Hard anti-abuse cap on discretionary AI actions per user (patch-22). Read routes are
+// never gated. Backed by Upstash; degrades to a no-op when Upstash isn't configured
+// (dev). Apply AFTER authMiddleware so c.get("user") is set. The budget itself lives in
+// lib/ai-actions.ts — routes whose exemption depends on state they have to load first
+// (a monitor's first scrape is setup, not consumption) call consumeAiAction directly.
+//
+// Per-tier since 2026-07-31 (PLAN_LIMITS.aiActionsPerHour). It was a flat 10/h for free
+// and business alike, which is below a single legitimate setup burst and made the tier
+// caps it sits above (pro: 20 re-scans + 50 battle cards a day) unreachable in one hour.
 
 export const aiIntensiveRateLimit = createMiddleware<{
   Variables: { user: { id: string } };
 }>(async (c, next) => {
-  const redis = getRedis();
-  if (!redis) return next(); // no Upstash → skip silently (dev)
-
   const userId = c.get("user")?.id;
   if (!userId) return next(); // unauthenticated → authMiddleware handles it
+  if (!getRedis()) return next(); // no Upstash → skip before paying for the plan read
 
-  const key = `ratelimit:ai_intensive:${userId}`;
-  const count = await redis.incr(key);
-  if (count === 1) await redis.expire(key, WINDOW_SEC);
-
-  if (count > LIMIT) {
-    const ttl = await redis.ttl(key);
-    const mins = Math.max(1, Math.ceil((ttl > 0 ? ttl : WINDOW_SEC) / 60));
-    return c.json(
-      errorBody(
-        "ai_rate_limit_exceeded",
-        `You've used this hour's ${LIMIT} AI actions. The cap protects shared AI capacity and resets on its own: try again in about ${mins} minute${mins > 1 ? "s" : ""}. Scheduled scans keep running.`,
-        { userAction: "wait", retryAfterSeconds: ttl > 0 ? ttl : WINDOW_SEC },
-      ),
-      429,
-    );
-  }
+  const plan = await getOrgPlan(await ensureUserOrg(userId));
+  const outcome = await consumeAiAction(userId, plan);
+  if (!outcome.allowed) return c.json(aiRateLimitBody(outcome), 429);
 
   return next();
 });

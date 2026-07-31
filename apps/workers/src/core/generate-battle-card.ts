@@ -42,6 +42,7 @@ import {
   getReviewScoreSeries,
 } from "../lib/analytics";
 import { detectThemeShifts, mergeRisingThemeObjections } from "../lib/review-theme-shift";
+import { createBattleCardStream } from "../lib/battle-card-stream";
 import { runRefreshCompetitorSummary } from "./refresh-competitor-summary";
 import { notifyJobComplete } from "../lib/job-complete";
 
@@ -373,15 +374,21 @@ async function generate(payload: z.input<typeof InputSchema>) {
     // evidence and drop every claim that isn't traceable to it (removes the stale
     // one-sided comparisons the self-check only used to flag). Best-effort: on a
     // parse miss we keep the grounded draft rather than lose the card.
+    //
+    // This is also the pass the page WATCHES: it is the last one to touch the
+    // content, so streaming it types out what will actually be published. Streaming
+    // the draft instead would write claims this pass is about to delete.
+    const stream = createBattleCardStream(competitor.id, product?.id ?? null);
     try {
       const draft = content;
       const revised = await loggedAi(
         "battle_card_revise",
         AI_CONFIG.insights,
-        () => reviseBattleCard(battleCardInput, draft),
+        () => reviseBattleCard(battleCardInput, draft, undefined, stream.onPartial),
         attribution,
       );
       if (revised) content = revised;
+      stream.flush();
     } catch (err) {
       // A verification failure (rate limit / breaker) must never sink the card —
       // patch-22 graceful degradation. Keep the draft; log the miss.
@@ -561,6 +568,10 @@ async function generate(payload: z.input<typeof InputSchema>) {
       if (!created) throw new Error("Failed to insert battle card");
       battleCardId = created.id;
     }
+
+    // The row is the source of truth from here — the streamed buffer would only be
+    // a staler copy of it.
+    await stream.close();
 
     // Anti-hallucination (patch-24): battle cards always get a systematic self-check
     // (the most visible critical output). Persist its envelope so a failed check

@@ -140,6 +140,8 @@ export {
   BattleCardSchema,
 } from "./tasks/battle-card";
 export type { BattleCardContent, BattleCardInput } from "./tasks/battle-card";
+export { parsePartialCard } from "./tasks/battle-card-partial";
+export type { PartialBattleCard, PartialCardRead } from "./tasks/battle-card-partial";
 // Ask Outrival — conversational intelligence (tool-agent planner + grounded synthesis)
 export {
   AskPlanSchema,

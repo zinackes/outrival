@@ -537,6 +537,13 @@ backfill_runs       monitor_id, competitor_id, source_type, outcome (self|
 snapshots/{competitor_id}/{source_type}/{ISO_timestamp}.html
 snapshots/{competitor_id}/{source_type}/{ISO_timestamp}.png
 battle-cards/{competitor_id}/{ISO_timestamp}.pdf
+battle-cards/streams/{competitor_id}/{product_id|default}.json
+                                  (éphémère — la carte EN COURS d'écriture : la passe
+                                   de vérification streame et le worker y pousse le
+                                   texte parsé toutes les ~200 ms. Écrasé à chaque
+                                   run, supprimé quand la ligne battle_cards atterrit ;
+                                   l'API l'ignore au-delà de 10 min, donc un run mort
+                                   laisse un objet inerte, jamais un fantôme)
 diffs/{change_id}/before.png      (futur — Phase 8+)
 diffs/{change_id}/after.png       (futur — Phase 8+)
 ```
@@ -993,6 +1000,19 @@ carte (état live uniquement).
 [on-demand] generate-battle-card
   └─ gather context (productProfile, aiSummary, top reviews, recent signals)
   └─ Groq battle card 6 sections → passe de révision (reviseBattleCard)
+  └─ La passe de RÉVISION est STREAMÉE (`onPartial` → `CompletionOptions`) : c'est la
+       dernière à toucher le contenu, donc ce qui s'écrit à l'écran est ce qui sera
+       publié (streamer le brouillon taperait des claims que cette passe va supprimer).
+       Le worker parse le JSON tronqué à chaque delta (`parsePartialCard` — une entrée
+       n'apparaît qu'ACHEVÉE, la phrase en cours revient à part avec sa section) et
+       pousse le résultat dans R2 toutes les ~200 ms. La page lit ce tampon via
+       `GET /battle-card/job/:runId` (`partial`, servi seulement tant que le run
+       tourne) et remplit les cadres de sections à la place des skeletons. Best-effort
+       de bout en bout : R2 muet = skeletons, comportement d'avant exactement.
+       Sur le pool gratuit le modèle émet la carte en une rafale de ~150 ms au bout
+       d'un appel de ~1,3 s, donc la page ne suppose PAS qu'elle a été regardée : si
+       elle a vu moins de 2 frames, elle rejoue l'animation d'écriture paginée comme
+       avant (un unique frame juste avant la ligne est un flash, pas une écriture)
   └─ GATE DE FIDÉLITÉ : verifyFaithfulness(carte, battleCardEvidence(input)) —
        la MÊME évidence que la génération et la révision. Sinon upsert content +
        battle_cards.faithfulness
@@ -1430,6 +1450,20 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
 
 ## Décisions architecturales clés
 
+- **Un 429 se répond en changeant de provider, pas en dormant (2026-07-31)** — le
+  SDK OpenAI honore le `retry-after` d'un rate limit en DORMANT sur le même
+  provider, et les tiers gratuits répondent jusqu'à une minute (Groq : « try again
+  in 17.8s » sur 8000 TPM ; Cerebras ~60s). Vu de `callLLM` l'appel est juste lent,
+  donc le failover du pool — la raison d'être d'avoir plusieurs providers — ne se
+  déclenchait jamais. Mesuré sur prod : TOUT gate de fidélité qui en croisait un
+  revenait à 57-60s quel que soit son nombre d'appels au juge (3×19s, 2×29s, 6×10s),
+  contre ~0,5s par appel sans throttle — et l'utilisateur regardait cette minute
+  sous l'étiquette « Checking it against the evidence » de sa battle card. Les
+  retries SDK ne s'appliquent donc plus qu'au DERNIER provider non essayé, le seul
+  cas où attendre est la seule option restante ; partout ailleurs un 429 bascule
+  immédiatement. Conséquence assumée : quand TOUS les providers sont throttlés,
+  l'appelant reçoit une erreur au lieu d'un succès à 60s — ce que les chemins
+  dégradent déjà (le gate fail-open publie, les jobs pg-boss réessaient).
 - **Attendre son tour est un état, pas un scrape (2026-07-27)** — l'UI stampait
   `scrape_started_at` à l'ENQUEUE et appelait ça « Scanning the site », alors que
   le travail commence quand un worker prend le job. Sur prod, ajouter ~10

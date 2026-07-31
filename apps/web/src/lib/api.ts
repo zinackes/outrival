@@ -1441,6 +1441,9 @@ export interface BattleCard {
   id: string;
   competitorId: string;
   orgId: string;
+  // The SKU this card was written for (patch-28). Null on a legacy card written
+  // before products existed. Server truth — never re-derive it from the scope.
+  productId: string | null;
   content: BattleCardContent;
   pdfR2Key: string | null;
   generatedAt: string;
@@ -1494,6 +1497,16 @@ export interface BattleCardJob {
   // truncated model reply, an empty product profile) completes the queue job, so
   // this is the only thing that says it produced nothing.
   failure: string | null;
+  // The card as it is being written, when the run has reached the pass that streams.
+  // Entries here are finished sentences; `typing` is the one still being written, in
+  // section `typingKey`. Null whenever there is nothing to watch.
+  partial: BattleCardPartial | null;
+}
+
+export interface BattleCardPartial {
+  content: Partial<BattleCardContent>;
+  typing: string | null;
+  typingKey: keyof BattleCardContent | null;
 }
 
 // patch-29 — org-wide battle card list item for /dashboard/battle-cards and the
@@ -3447,7 +3460,7 @@ export const api = {
   // The evidence readiness on its own, which GET /battle-card cannot serve because it
   // 404s until a card exists. Powers the empty state and the build view.
   getBattleCardEvidence: (competitorId: string, productId?: string) =>
-    request<{ evidence: BattleCardEvidence }>(
+    request<{ evidence: BattleCardEvidence; productId: string | null }>(
       `/api/competitors/${competitorId}/battle-card/evidence${productId ? `?productId=${productId}` : ""}`,
     ),
   generateBattleCard: (competitorId: string, productId?: string) =>
@@ -3455,10 +3468,11 @@ export const api = {
       `/api/competitors/${competitorId}/battle-card/generate${productId ? `?productId=${productId}` : ""}`,
       { method: "POST" },
     ),
-  // The live state of a run started by generateBattleCard, keyed by its runId.
-  getBattleCardJob: (competitorId: string, runId: string) =>
+  // The live state of a run started by generateBattleCard, keyed by its runId. The
+  // product scopes the streamed text to the right card of a multi-SKU org.
+  getBattleCardJob: (competitorId: string, runId: string, productId?: string) =>
     request<{ job: BattleCardJob | null }>(
-      `/api/competitors/${competitorId}/battle-card/job/${runId}`,
+      `/api/competitors/${competitorId}/battle-card/job/${runId}${productId ? `?productId=${productId}` : ""}`,
     ),
   patchBattleCard: (competitorId: string, content: BattleCardContent, productId?: string) =>
     request<{ battleCard: BattleCard }>(

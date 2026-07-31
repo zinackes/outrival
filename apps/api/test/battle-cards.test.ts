@@ -6,6 +6,8 @@ import {
   competitors,
   monitors,
   pricingHistory,
+  productCompetitors,
+  products,
   reviewScores,
   signals,
   snapshots,
@@ -45,6 +47,25 @@ async function seedCompetitor(orgId: string): Promise<string> {
   await testDb
     .insert(competitors)
     .values({ id, orgId, name: `Rival ${seq}`, url: `https://rival${seq}.example` });
+  return id;
+}
+
+/** A SKU, with the self-competitor it anchors monitoring on (patch-28). */
+async function seedProduct(orgId: string, opts: { isPrimary: boolean }): Promise<string> {
+  const n = ++seq;
+  const selfId = `self-${n}`;
+  await testDb
+    .insert(competitors)
+    .values({ id: selfId, orgId, name: `Product ${n}`, type: "self" });
+  const id = `prod-${n}`;
+  await testDb.insert(products).values({
+    id,
+    orgId,
+    name: `Product ${n}`,
+    selfCompetitorId: selfId,
+    isPrimary: opts.isPrimary,
+    position: n,
+  });
   return id;
 }
 
@@ -156,6 +177,27 @@ describe("GET /:id/battle-card/evidence", () => {
       asUser(B.userId, B.email),
     );
     expect(res.status).toBe(404);
+  });
+
+  // In all-products scope the page sends no productId, so the SKU a card belongs to
+  // is decided here — and the page has to be told which one it landed on. It used to
+  // guess, fall back to the org's primary, and title a card written for one product
+  // with the name of another.
+  test("names the product the competitor is actually tracked for, not the primary", async () => {
+    // Its own org: the other tests here are written for an org with no SKU yet, and
+    // adding products to theirs would change which card every one of them resolves to.
+    const multi = await seedOrg(testDb);
+    const competitorId = await seedCompetitor(multi.orgId);
+    const secondary = await seedProduct(multi.orgId, { isPrimary: false });
+    await seedProduct(multi.orgId, { isPrimary: true });
+    await testDb.insert(productCompetitors).values({ productId: secondary, competitorId });
+
+    const res = await app.request(
+      `/api/competitors/${competitorId}/battle-card/evidence`,
+      asUser(multi.userId, multi.email),
+    );
+    const body = (await res.json()) as { productId: string | null };
+    expect(body.productId).toBe(secondary);
   });
 });
 

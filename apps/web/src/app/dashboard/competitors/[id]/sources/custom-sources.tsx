@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { useEffect, useId, useState } from "react";
 import {
   FileMagnifyingGlassIcon,
   PlusIcon,
@@ -11,15 +10,20 @@ import {
   PlayIcon,
   TrashIcon,
   ArrowSquareOutIcon,
+  CaretRightIcon,
   LinkIcon,
 } from "@/components/icons";
 import {
   PLAN_LABELS,
   CUSTOM_MONITOR_HINTS,
+  MONITOR_FREQUENCIES,
   customMonitorLimit,
   minPlanForCustomMonitors,
+  minPlanForFrequency,
+  planIncludesFrequency,
   validateCustomMonitorUrl,
   normalizeHostname,
+  type MonitorFrequency,
   type Plan,
   type CustomMonitorHint,
 } from "@outrival/shared";
@@ -28,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -46,19 +51,29 @@ import {
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import type { CustomAddResult } from "../competitor-detail/use-monitor-actions";
 import { scrapeActivity, type ScrapeActivity } from "../competitor-detail/shared";
+import {
+  SourceStatusIcon,
+  lastScanLabel,
+  monitorStatus,
+  nextScanIn,
+} from "../competitor-detail/monitor-status";
 
 export interface CustomSourcesProps {
   competitorUrl: string;
   plan: Plan;
   monitors: Monitor[];
   scrapingIds: Set<string>;
+  monitoringPaused: boolean;
   onRun: (id: string) => void;
   onAdd: (input: {
     url: string;
     label: string;
     hint: CustomMonitorHint;
   }) => Promise<CustomAddResult>;
+  onEdit: (id: string, patch: { frequency?: MonitorFrequency }) => Promise<void>;
+  onSetActive: (id: string, active: boolean) => void;
   onDelete: (monitorId: string) => Promise<void>;
+  onLockedFrequency: (freq: MonitorFrequency) => void;
   // Free plan can't watch custom pages at all — route the CTA to the paywall.
   onLocked: () => void;
 }
@@ -83,9 +98,13 @@ export function CustomSources({
   plan,
   monitors,
   scrapingIds,
+  monitoringPaused,
   onRun,
   onAdd,
+  onEdit,
+  onSetActive,
   onDelete,
+  onLockedFrequency,
   onLocked,
 }: CustomSourcesProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -155,20 +174,27 @@ export function CustomSources({
             </p>
           </TabSection>
         ) : (
-          <TabSection>
-            <ul className="flex flex-col divide-y divide-border">
-              {customMonitors.map((m) => (
-                <CustomMonitorRow
-                  key={m.id}
-                  monitor={m}
-                  activity={scrapeActivity(m, scrapingIds.has(m.id))}
-                  onRun={onRun}
-                  onDelete={onDelete}
-                />
-              ))}
-            </ul>
+          // Full-bleed rows, not a padded list: each page reads exactly like a row
+          // of the sources sheet above (status icon, one line, a drawer), it just
+          // lives inside this card because watching pages has its own quota + add
+          // flow. One wrapper child so the TabCard divider stays at the header.
+          <div className="py-1">
+            {customMonitors.map((m) => (
+              <CustomMonitorRow
+                key={m.id}
+                monitor={m}
+                plan={plan}
+                activity={scrapeActivity(m, scrapingIds.has(m.id))}
+                monitoringPaused={monitoringPaused}
+                onRun={onRun}
+                onEdit={onEdit}
+                onSetActive={onSetActive}
+                onDelete={onDelete}
+                onLockedFrequency={onLockedFrequency}
+              />
+            ))}
             {atLimit && !locked && (
-              <p className="mt-3 text-xs text-muted-foreground">
+              <p className="px-4 pb-2 pt-1 text-xs text-muted-foreground">
                 You&apos;ve reached the {limit}-page limit for this competitor.{" "}
                 <button
                   type="button"
@@ -180,7 +206,7 @@ export function CustomSources({
                 .
               </p>
             )}
-          </TabSection>
+          </div>
         )}
       </TabCard>
 
@@ -194,113 +220,257 @@ export function CustomSources({
   );
 }
 
+/**
+ * One watched page, in the exact grammar of a SourceRow: status icon, name, a
+ * freshness stamp, hover-revealed Run, cadence + next scan, and a drawer for
+ * everything that configures it. The differences are what a custom page IS: the
+ * name is the user's label, the URL is fixed at creation (editing it through the
+ * generic monitor PATCH would drop label + hint from the config), and the drawer
+ * carries the remove action instead of a URL field.
+ */
 function CustomMonitorRow({
   monitor,
+  plan,
   activity,
+  monitoringPaused,
   onRun,
+  onEdit,
+  onSetActive,
   onDelete,
+  onLockedFrequency,
 }: {
   monitor: Monitor;
+  plan: Plan;
   /** Open scrape request, if any: a worker has it, or it is still in the queue. */
   activity: ScrapeActivity;
+  monitoringPaused: boolean;
   onRun: (id: string) => void;
+  onEdit: (id: string, patch: { frequency?: MonitorFrequency }) => Promise<void>;
+  onSetActive: (id: string, active: boolean) => void;
   onDelete: (monitorId: string) => Promise<void>;
+  onLockedFrequency: (freq: MonitorFrequency) => void;
 }) {
-  const running = activity !== null;
+  const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const drawerId = useId();
+
+  const busy = activity !== null;
+  const status = monitorStatus(monitor, activity === "scraping", activity === "queued");
   const url = monitor.config?.url ?? "";
   const label = monitor.config?.label ?? "Custom page";
   const hint = monitor.config?.hint;
+  const nextScanShort = nextScanIn(monitor, status, monitoringPaused);
 
   return (
-    <li className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-foreground">{label}</span>
-          {hint && (
-            <span className="shrink-0 rounded-md border border-border px-1.5 py-0.5 text-meta text-muted-foreground">
-              {HINT_LABELS[hint]}
-            </span>
+    <div
+      data-open={open || undefined}
+      className={cn(
+        "group/row transition-colors",
+        open ? "bg-surface-2" : "hover:bg-surface-2/50",
+      )}
+    >
+      <div
+        onClick={() => setOpen((v) => !v)}
+        className="flex cursor-pointer items-center gap-3 px-4 py-2"
+      >
+        <button
+          type="button"
+          onClick={(e) => {
+            // Without this the parent handler fires too and toggles right back.
+            e.stopPropagation();
+            setOpen((v) => !v);
+          }}
+          aria-expanded={open}
+          aria-controls={drawerId}
+          className={cn(
+            "flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-sm text-left",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           )}
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {url && (
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex min-w-0 items-center gap-1 font-mono hover:text-foreground"
-            >
-              <span className="truncate">{url}</span>
-              <ArrowSquareOutIcon size={14} className="shrink-0" />
-            </a>
-          )}
-          <span aria-hidden className="text-muted-foreground/40">
-            ·
-          </span>
-          <span className="shrink-0">
-            {monitor.lastRunAt
-              ? `Checked ${formatDistanceToNow(new Date(monitor.lastRunAt), { addSuffix: true })}`
-              : "Not scraped yet"}
-          </span>
-        </div>
-      </div>
-
-      <div className="flex shrink-0 items-center gap-1.5">
-        <Button
-          size="sm"
-          variant={running ? "secondary" : "outline"}
-          className="h-7 text-xs"
-          onClick={() => onRun(monitor.id)}
-          disabled={running}
         >
-          {activity === "scraping" ? (
-            <>
-              <SpinnerIcon size={16} className="animate-spin" /> Scraping…
-            </>
-          ) : activity === "queued" ? (
-            <>
-              <ClockIcon size={16} /> Queued
-            </>
-          ) : (
-            <>
-              <PlayIcon size={16} /> Scrape
-            </>
-          )}
-        </Button>
-        {confirming ? (
-          <Button
-            size="sm"
-            variant="destructive"
-            className="h-7 text-xs"
-            disabled={deleting}
-            onClick={async () => {
-              setDeleting(true);
-              try {
-                await onDelete(monitor.id);
-              } finally {
-                setDeleting(false);
-                setConfirming(false);
-              }
-            }}
+          <SourceStatusIcon status={status} />
+          <span title={label} className="w-[132px] shrink-0 truncate text-sm font-medium">
+            {label}
+          </span>
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-xs",
+              status === "failed" ? "text-critical" : "text-muted-foreground",
+            )}
           >
-            {deleting ? <SpinnerIcon size={16} className="animate-spin" /> : null}
-            Remove?
-          </Button>
-        ) : (
+            {lastScanLabel(monitor, status)}
+          </span>
+        </button>
+
+        {/* Actions carry their own click; the row must not also swallow it. */}
+        <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-muted-foreground hover:text-critical"
-            aria-label="Remove this custom page"
-            onClick={() => setConfirming(true)}
+            className="h-7 text-xs opacity-0 transition-opacity focus-visible:opacity-100 group-hover/row:opacity-100 group-data-[open]/row:opacity-100"
+            disabled={busy || monitor.isActive === false}
+            onClick={() => onRun(monitor.id)}
           >
-            <TrashIcon size={16} />
+            {activity === "scraping" ? (
+              <SpinnerIcon size={16} className="animate-spin" />
+            ) : activity === "queued" ? (
+              <ClockIcon size={16} />
+            ) : (
+              <PlayIcon size={16} />
+            )}
+            {activity === "queued" ? "Queued" : "Run"}
           </Button>
-        )}
+
+          <span className="hidden text-xs capitalize tabular-nums text-muted-foreground sm:inline">
+            {monitor.frequency}
+            {nextScanShort && (
+              <span className="normal-case text-muted-foreground">
+                {" · "}
+                {nextScanShort === "paused" ? nextScanShort : `next ${nextScanShort}`}
+              </span>
+            )}
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            tabIndex={-1}
+            aria-hidden="true"
+            className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground"
+          >
+            <CaretRightIcon
+              size={16}
+              className={cn("transition-transform duration-200", open && "rotate-90")}
+            />
+          </button>
+        </div>
       </div>
-    </li>
+
+      {/* Same drawer mechanics as SourceRow: the grid track animates, so the real
+          height eases and the rows below travel with it. */}
+      <div
+        id={drawerId}
+        className={cn(
+          "grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div
+            className={cn(
+              "flex flex-wrap gap-x-8 gap-y-4 px-4 pb-4 pl-[calc(0.5rem+132px+0.75rem)] pt-1",
+              "transition-opacity duration-200 motion-reduce:transition-none",
+              open ? "opacity-100 delay-75" : "opacity-0",
+            )}
+          >
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">How often</p>
+              <div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-surface-2 p-0.5">
+                {MONITOR_FREQUENCIES.map((freq) => {
+                  const freqLocked = !planIncludesFrequency(plan, freq);
+                  const selected = monitor.frequency === freq;
+                  return (
+                    <button
+                      key={freq}
+                      type="button"
+                      aria-pressed={selected}
+                      className={cn(
+                        "inline-flex h-6 items-center gap-1 rounded px-2.5 text-xs capitalize",
+                        "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        selected
+                          ? "bg-surface text-foreground"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() =>
+                        freqLocked
+                          ? onLockedFrequency(freq)
+                          : void onEdit(monitor.id, { frequency: freq })
+                      }
+                    >
+                      {freqLocked && <LockIcon size={16} className="opacity-70" />}
+                      {freq}
+                      {freqLocked && (
+                        <span className="text-meta uppercase tracking-wide opacity-70">
+                          {PLAN_LABELS[minPlanForFrequency(freq)]}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">Monitoring</p>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={monitor.isActive !== false}
+                  onCheckedChange={(v) => onSetActive(monitor.id, v)}
+                  aria-label={`${label} monitoring`}
+                />
+                <span className="text-sm text-muted-foreground">
+                  {monitor.isActive === false ? "Off" : "On"}
+                </span>
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">Page</p>
+              <div className="flex flex-col gap-1">
+                {hint && (
+                  <span className="text-sm text-muted-foreground">{HINT_LABELS[hint]}</span>
+                )}
+                {url && (
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={url}
+                    className="inline-flex max-w-full items-center gap-1 text-xs text-link hover:underline focus-visible:outline-none focus-visible:underline"
+                  >
+                    <span className="truncate">{url.replace(/^https?:\/\//, "")}</span>
+                    <ArrowSquareOutIcon size={14} className="shrink-0" />
+                  </a>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">Remove</p>
+              {confirming ? (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-7 text-xs"
+                  disabled={deleting}
+                  onClick={async () => {
+                    setDeleting(true);
+                    try {
+                      await onDelete(monitor.id);
+                    } finally {
+                      setDeleting(false);
+                      setConfirming(false);
+                    }
+                  }}
+                >
+                  {deleting ? <SpinnerIcon size={16} className="animate-spin" /> : null}
+                  Remove this page?
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs text-muted-foreground hover:text-critical"
+                  onClick={() => setConfirming(true)}
+                >
+                  <TrashIcon size={16} /> Stop watching
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

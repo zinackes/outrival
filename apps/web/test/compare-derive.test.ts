@@ -18,6 +18,7 @@ import {
   shortAge,
   techDiff,
   techOf,
+  availableMeters,
 } from "../src/components/dashboard/compare/derive";
 
 // The compare page states its verdict as fact, so the arithmetic behind it is locked
@@ -56,6 +57,8 @@ function priced(
       billingPeriod: "monthly",
       plans: [],
       capturedAt: null,
+      model: null,
+      meters: [],
     },
   });
 }
@@ -472,5 +475,152 @@ describe("buildVerdict", () => {
     const v = buildVerdict(col({ id: "you", name: "Sentinel" }), [col({ id: "b", name: "Beacon" })], NOW);
     expect(v.lead).toEqual([]);
     expect(v.facts).toEqual([]);
+  });
+});
+
+// --- Phase 3: a usage-based competitor on the price axis --------------------
+
+/** A competitor that publishes only a rate, plus what it costs at two volumes. */
+function metered(
+  id: string,
+  name: string,
+  meters: Array<{ unit: string; qty: number; cost: number; currency?: string }>,
+): CompareColumn {
+  return col({
+    id,
+    name,
+    pricing: {
+      entry: null,
+      top: null,
+      currency: "USD",
+      billingPeriod: "usage",
+      plans: [{ name: "Pay as you go", price: 0.1, billingPeriod: "usage", unit: "API call" }],
+      capturedAt: null,
+      model: "usage",
+      meters: meters.map((m) => ({
+        unit: m.unit,
+        qty: m.qty,
+        cost: m.cost,
+        currency: m.currency ?? "USD",
+        planName: "Pay as you go",
+      })),
+    },
+  });
+}
+
+const REQ_10K = { unit: "request", qty: 10_000 };
+
+describe("priceReading — the metered branch", () => {
+  const usage = metered("u", "Meter", [
+    { unit: "request", qty: 10_000, cost: 800 },
+    { unit: "request", qty: 100_000, cost: 6_700 },
+  ]);
+
+  test("with no volume selected it reads exactly as it did before P3", () => {
+    expect(priceReading(usage, null)).toEqual({ kind: "quote" });
+  });
+
+  test("a named volume puts it on the axis at what it costs there", () => {
+    const r = priceReading(usage, null, "USD", REQ_10K);
+    expect(r.kind).toBe("band");
+    if (r.kind !== "band") throw new Error("expected a band");
+    expect(r.entry).toBe(800);
+    expect(r.top).toBe(800);
+    // Marked: a computed cost and a published price are not the same claim.
+    expect(r.approx).toBe(true);
+    expect(r.meter).toEqual(REQ_10K);
+  });
+
+  test("a volume it has no cost for leaves it off the axis rather than guessing", () => {
+    expect(priceReading(usage, null, "USD", { unit: "request", qty: 42 })).toEqual({
+      kind: "quote",
+    });
+    expect(priceReading(usage, null, "USD", { unit: "gb", qty: 10_000 })).toEqual({
+      kind: "quote",
+    });
+  });
+
+  test("a metered cost is converted onto the axis currency like any other", () => {
+    const eur = metered("e", "Euro", [{ unit: "request", qty: 10_000, cost: 100, currency: "EUR" }]);
+    const r = priceReading(eur, { USD: 1, EUR: 0.5 }, "USD", REQ_10K);
+    if (r.kind !== "band") throw new Error("expected a band");
+    expect(r.entry).toBe(200);
+    expect(r.from).toBe("EUR");
+  });
+
+  test("a currency no rate reaches still says so", () => {
+    const exotic = metered("x", "Exotic", [
+      { unit: "request", qty: 10_000, cost: 100, currency: "XYZ" },
+    ]);
+    expect(priceReading(exotic, { USD: 1 }, "USD", REQ_10K)).toEqual({
+      kind: "foreign",
+      currency: "XYZ",
+    });
+  });
+});
+
+describe("priceScale — no regression for subscription-only sets", () => {
+  const set = [priced("a", "Alpha", 29, 99), priced("b", "Beta", 49, 149)];
+
+  test("a selected volume changes nothing when nobody meters anything", () => {
+    expect(priceScale(set, { rates: null, to: "USD", meter: REQ_10K })).toEqual(
+      priceScale(set, { rates: null, to: "USD" }),
+    );
+  });
+
+  test("a subscription band is never replaced by a metered cost", () => {
+    // Same column, priced AND metered: the published band wins, because that is
+    // what the competitor actually asks at the door.
+    const both = col({
+      id: "h",
+      name: "Hybrid",
+      pricing: {
+        entry: 99,
+        top: 99,
+        currency: "USD",
+        billingPeriod: "monthly",
+        plans: [{ name: "Business", price: 99, billingPeriod: "monthly", unit: null }],
+        capturedAt: null,
+        model: "hybrid",
+        meters: [
+          { unit: "request", qty: 10_000, cost: 599, currency: "USD", planName: "Business" },
+        ],
+      },
+    });
+    const r = priceReading(both, null, "USD", REQ_10K);
+    if (r.kind !== "band") throw new Error("expected a band");
+    expect(r.entry).toBe(99);
+    expect(r.meter).toBeUndefined();
+  });
+
+  test("a metered column joins the same axis as the subscriptions", () => {
+    const mixed = [...set, metered("u", "Meter", [{ unit: "request", qty: 10_000, cost: 800 }])];
+    const scale = priceScale(mixed, { rates: null, to: "USD", meter: REQ_10K });
+    expect(scale.hasData).toBe(true);
+    // 800 is on the axis, and the median entry now counts three columns.
+    expect(scale.fullMax).toBeGreaterThanOrEqual(800);
+    expect(scale.medianEntry).toBe(49);
+  });
+});
+
+describe("availableMeters", () => {
+  test("dedupes across columns and sorts by meter then volume", () => {
+    const a = metered("a", "A", [
+      { unit: "request", qty: 100_000, cost: 1 },
+      { unit: "request", qty: 1_000, cost: 1 },
+    ]);
+    const b = metered("b", "B", [
+      { unit: "request", qty: 1_000, cost: 1 },
+      { unit: "gb", qty: 500, cost: 1 },
+    ]);
+    expect(availableMeters([a, b])).toEqual([
+      { unit: "gb", qty: 500 },
+      { unit: "request", qty: 1_000 },
+      { unit: "request", qty: 100_000 },
+    ]);
+  });
+
+  test("a set that meters nothing offers no volumes", () => {
+    expect(availableMeters([priced("a", "Alpha", 29, 99)])).toEqual([]);
   });
 });

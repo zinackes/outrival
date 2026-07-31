@@ -25,3 +25,21 @@ export function isSuspectedPricingCollapse(args: {
   const { pricedBefore, pricedNow, visiblePrices } = args;
   return pricedBefore >= 3 && pricedNow <= 1 && visiblePrices >= 3;
 }
+
+// Same philosophy for the entitlement matrix (Pricing Intelligence P2), simpler
+// evidence: there is no independent "visible entitlements" probe, so a rich
+// matrix (≥5 rows) that suddenly extracts to nothing — or to under 30% of
+// itself — is treated as a failed extraction outright. The fresh batch is NOT
+// written and NO removal/move signal is derived from it: a flaky accordion or a
+// prompt miss must never read as "they un-gated everything". A real packaging
+// simplification below that cliff still surfaces next scrape via the plans/
+// price diff, and partial shrinkage above 30% diffs normally.
+export function isSuspectedEntitlementCollapse(args: {
+  /** Entitlement rows in the prior (latest stored) batch. */
+  prevCount: number;
+  /** Entitlement rows in the fresh extraction. */
+  nextCount: number;
+}): boolean {
+  const { prevCount, nextCount } = args;
+  return prevCount >= 5 && (nextCount === 0 || nextCount < prevCount * 0.3);
+}

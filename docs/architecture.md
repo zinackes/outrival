@@ -105,6 +105,14 @@ organizations          id, name, slug, plan, stripe_customer_id, stripe_subscrip
                        semées sur un NOUVEAU competitor ; null = jeu built-in, donc
                        élargir le défaut atteint toute org qui n'a rien personnalisé.
                        Narrowed par le plan au moment du semis, cf. Provisioning),
+                       reference_volumes (jsonb {unit, qty}[] — migration 0057,
+                       Pricing Intelligence P3 : les volumes auxquels ce workspace
+                       compare le pricing metered. null = les presets. Réglage
+                       READ-SIDE pur : le coût à un volume custom est calculé par la
+                       MÊME fonction qui a écrit les price_points stockés, donc
+                       l'éditer ne re-scrape jamais rien. Meters canoniques
+                       uniquement — un meter que rien ne sait comparer laisserait un
+                       réglage que l'écran réaffiche et qu'aucune surface n'honore),
                        onboarding_completed, created_at, updated_at
 
 competitors            id, org_id, name, url, description, overlap_score, category,
@@ -420,7 +428,62 @@ product_status    active | paused | archived   (patch-28 — SKU ; archivage sof
 pricing_history     competitor_id, plan_name, price, currency, billing_period,
                     has_trial, trial_days, trial_requires_card (patch-33 — free-trial
                     facts, AI-free regex on the page text, stamped page-level per row,
-                    Nullable = pre-detection), recorded_at
+                    Nullable = pre-detection), recorded_at,
+                    rate_structure, minimum_amount, percentage_rate (Pricing
+                    Intelligence P3, migration 0056 — HOW a metered plan charges :
+                    standard|graduated|volume|package|percentage · le plancher mensuel
+                    (un max(), pas un additif) · le « 2.9% » enfin numérique, `price`
+                    portant alors la part FIXE. Tous null sur une ligne subscription,
+                    donc sur toute ligne legacy : ils décrivent un plan metered et leur
+                    absence n'est pas un fait sur le plan. `rate_structure` sert AUSSI
+                    de tampon « le détecteur a tourné sur cette ligne » — sans lui, le
+                    diff lirait un minimum null comme « pas de minimum » et annoncerait
+                    au 1er scrape post-deploy un plancher présent depuis toujours)
+price_tiers         competitor_id, plan_name, unit (meter NORMALISÉ via unit-alias),
+                    from_qty, to_qty (null = bande finale non bornée), unit_price,
+                    flat_fee, recorded_at — Pricing Intelligence P3 (migration 0056) :
+                    les bandes de volume PUBLIÉES par la page, même timestamp de batch
+                    que pricing_history du run. Écrites seulement si la page les
+                    imprime ; un set invalide (bandes qui se chevauchent, trou, borne
+                    inversée, >12 bandes) est droppé EN ENTIER, jamais rogné à son
+                    préfixe valide — une échelle à moitié lue calcule un coût faux avec
+                    assurance. L'arithmétique tourne sur les PLAFONDS (to_qty), donc
+                    « 10k–50k » et « 10 001–50 000 » calculent à l'identique.
+                    Diff (diffPriceTiers, shared) → tier_boundary_moved HIGH (la hausse
+                    dont aucun nombre imprimé ne bouge) + rate_changed sur l'unit_price
+                    d'une bande (table P1 : baisse >15% = critical)
+price_points        competitor_id, plan_name, meter_unit (canonique SEULEMENT),
+                    reference_qty, effective_monthly_cost, currency, method
+                    (computed_from_tiers | calculator_probe (P4) | published),
+                    recorded_at — Pricing Intelligence P3 (migration 0056) : ce qu'un
+                    plan metered COÛTE à un volume, la ligne qui fait entrer un
+                    concurrent usage-based dans une comparaison de prix. Calculé
+                    déterministe (costAtVolume, zéro AI) aux 4 volumes preset
+                    (1k/10k/100k/1M). Le volume CUSTOM d'un workspace
+                    (organizations.reference_volumes) n'est PAS stocké : il est calculé
+                    ON READ par la même fonction, donc changer le réglage ne
+                    re-scrape rien et le nombre lu ne peut pas contredire le stocké.
+                    Aucun point sur un meter non normalisable (unknown ≠ deviné) ; un
+                    plan hybride porte la souscription sur laquelle son meter s'appuie,
+                    sinon il se lit moins cher qu'il ne facture. method='published' =
+                    un exemple chiffré que la page IMPRIME, cru seulement si SES DEUX
+                    nombres sont dans le texte (patron substring P2)
+plan_entitlements   competitor_id, plan_name, feature_slug (canonique via
+                    entitlement-catalog, sinon slugifié is_canonical=0), feature_label
+                    (VERBATIM page — la preuve), kind (boolean|config|metered, modèle
+                    Stigg), value_num, value_text, unit, reset_period, recorded_at
+                    — Pricing Intelligence P2 (migration 0055) : la matrice
+                    features × plans du même scrape pricing, recorded_at = LE même
+                    timestamp de batch que pricing_history du run. Extraction
+                    table-first (parse déterministe du <table> comparatif ancré sur
+                    les plans extraits) → AI sœur sinon (1 call/scrape changé) ;
+                    substring-check code-side, caps 15×6, anti-collapse. Diff
+                    (diffEntitlements, shared) → entitlement_moved high (sens
+                    down/upmarket) / entitlement_limit_changed medium|high ±30% /
+                    added low / removed medium — JAMAIS critical, slugs canoniques
+                    seuls pour appear/disappear/move. Mergé dans le signal
+                    déterministe P1 (routePricingSignal). UI : volet Packaging du
+                    pricing tab + section battle card déterministe
 job_counts          competitor_id, department, count, recorded_at
 hiring_metrics      competitor_id, department_bucket, open_count, week_start,
                     recorded_at — hiring-velocity : open-role count PAR bucket

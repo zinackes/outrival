@@ -23,3 +23,5 @@ export type { TrialInfo } from "./detect-trial";
 export { detectFreePlan } from "./detect-free-plan";
 export { harvestPricing, parseAmount } from "./harvest";
 export type { HarvestedPlan, PricingHarvest } from "./harvest";
+export { parseEntitlementTable } from "./entitlement-table";
+export type { ParsedEntitlement } from "./entitlement-table";

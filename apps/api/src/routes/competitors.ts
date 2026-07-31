@@ -2027,6 +2027,108 @@ competitorsRouter.get("/:id/pricing-history", async (c) => {
   return c.json({ history: rows });
 });
 
+// P3 — how the latest capture's metered plans charge: the published ladder,
+// the monthly minimum and the percentage rate. A separate read from
+// pricing-history on purpose: that endpoint is the whole time series behind the
+// chart, and a ladder per row would multiply it for a fact only the current
+// capture answers. Best-effort like every analytics read.
+competitorsRouter.get("/:id/rate-structures", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const plans = await analyticsQuery<{
+    planName: string;
+    unit: string | null;
+    currency: string | null;
+    rateStructure: string | null;
+    minimumAmount: number | null;
+    percentageRate: number | null;
+    capturedAt: string | null;
+  }>(sql`
+    SELECT plan_name AS "planName", unit, currency,
+           rate_structure AS "rateStructure", minimum_amount AS "minimumAmount",
+           percentage_rate AS "percentageRate", recorded_at::text AS "capturedAt"
+    FROM pricing_history
+    WHERE competitor_id = ${competitor.id}
+      AND recorded_at = (
+        SELECT max(recorded_at) FROM pricing_history WHERE competitor_id = ${competitor.id}
+      )
+      AND (rate_structure IS NOT NULL OR minimum_amount IS NOT NULL OR percentage_rate IS NOT NULL)
+    ORDER BY plan_name
+  `);
+
+  const tiers = await analyticsQuery<{
+    planName: string;
+    unit: string | null;
+    fromQty: number;
+    toQty: number | null;
+    unitPrice: number | null;
+    flatFee: number | null;
+  }>(sql`
+    SELECT plan_name AS "planName", unit, from_qty AS "fromQty", to_qty AS "toQty",
+           unit_price AS "unitPrice", flat_fee AS "flatFee"
+    FROM price_tiers
+    WHERE competitor_id = ${competitor.id}
+      AND recorded_at = (
+        SELECT max(recorded_at) FROM price_tiers WHERE competitor_id = ${competitor.id}
+      )
+    ORDER BY plan_name, from_qty
+  `);
+
+  return c.json({ plans, tiers, capturedAt: plans[0]?.capturedAt ?? null });
+});
+
+// P2 — the features × plans matrix: the two most recent entitlement batches,
+// so the tab can render the current matrix and highlight cells that moved
+// since the previous capture. Best-effort like every analytics read.
+competitorsRouter.get("/:id/entitlements", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const rows = await analyticsQuery<{
+    plan_name: string;
+    feature_slug: string;
+    feature_label: string;
+    kind: string;
+    value_num: number | null;
+    value_text: string | null;
+    unit: string | null;
+    reset_period: string | null;
+    is_canonical: boolean;
+    recorded_at: string;
+    side: "current" | "previous";
+  }>(sql`
+    WITH batches AS (
+      SELECT DISTINCT recorded_at FROM plan_entitlements
+      WHERE competitor_id = ${competitor.id}
+      ORDER BY recorded_at DESC LIMIT 2
+    ), latest AS (SELECT max(recorded_at) AS ts FROM batches)
+    SELECT pe.plan_name, pe.feature_slug, pe.feature_label, pe.kind,
+           pe.value_num, pe.value_text, pe.unit, pe.reset_period,
+           (pe.is_canonical = 1) AS is_canonical,
+           pe.recorded_at::text AS recorded_at,
+           CASE WHEN pe.recorded_at = latest.ts THEN 'current' ELSE 'previous' END AS side
+    FROM plan_entitlements pe, latest
+    WHERE pe.competitor_id = ${competitor.id}
+      AND pe.recorded_at IN (SELECT recorded_at FROM batches)
+    ORDER BY pe.plan_name, pe.feature_label
+  `);
+
+  const current = rows.filter((r) => r.side === "current");
+  const previous = rows.filter((r) => r.side === "previous");
+  return c.json({
+    current,
+    previous,
+    recordedAt: current[0]?.recorded_at ?? null,
+  });
+});
+
 const PricingOverrideSchema = z.object({
   status: z.enum(PRICING_STATUSES),
   demoUrl: z.string().url().nullable().optional(),

@@ -3,6 +3,9 @@ import { getActiveProvider, getActiveModel, consumeUsage, withAiContext } from "
 import {
   db,
   pricingHistory,
+  planEntitlements,
+  priceTiers,
+  pricePoints,
   jobCounts,
   hiringMetrics,
   reviewScores,
@@ -377,6 +380,12 @@ export interface PricingHistoryRow {
   // Permanent free plan advertised on the page (detect-free-plan). Page-level, like
   // the trial facts. 0/1; null = not assessed.
   has_free_plan?: number | null;
+  // Pricing Intelligence P3 — HOW a metered plan charges. All null on a plain
+  // subscription, which is every legacy row: these describe a metered plan and
+  // their absence is not a fact about the plan.
+  rate_structure?: string | null;
+  minimum_amount?: number | null;
+  percentage_rate?: number | null;
   recorded_at: Date;
 }
 
@@ -399,10 +408,181 @@ export async function insertPricingHistory(rows: PricingHistoryRow[]): Promise<v
         trialDays: r.trial_days ?? null,
         trialRequiresCard: r.trial_requires_card ?? null,
         hasFreePlan: r.has_free_plan ?? null,
+        rateStructure: r.rate_structure ?? null,
+        minimumAmount: r.minimum_amount ?? null,
+        percentageRate: r.percentage_rate ?? null,
         recordedAt: r.recorded_at,
       })),
     ),
   );
+}
+
+// One features × plans matrix row (Pricing Intelligence P2), snake_case like
+// PricingHistoryRow so the shared differ reads both sides without mapping.
+// recorded_at MUST be the same batch timestamp as the pricing_history rows of
+// the same run — the two tables describe one capture.
+export interface PlanEntitlementRow {
+  competitor_id: string;
+  plan_name: string;
+  feature_slug: string;
+  feature_label: string;
+  kind: string;
+  value_num: number | null;
+  value_text: string | null;
+  unit: string | null;
+  reset_period: string | null;
+  is_canonical: number;
+  recorded_at: Date;
+}
+
+export async function insertPlanEntitlements(rows: PlanEntitlementRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await bestEffort("plan_entitlements insert", () =>
+    db.insert(planEntitlements).values(
+      rows.map((r) => ({
+        competitorId: r.competitor_id,
+        planName: r.plan_name,
+        featureSlug: r.feature_slug,
+        featureLabel: r.feature_label,
+        kind: r.kind,
+        valueNum: r.value_num,
+        valueText: r.value_text,
+        unit: r.unit,
+        resetPeriod: r.reset_period,
+        isCanonical: r.is_canonical,
+        recordedAt: r.recorded_at,
+      })),
+    ),
+  );
+}
+
+// The latest stored entitlement batch — the diff baseline. Called BEFORE the
+// fresh batch is inserted, like getPreviousPricing. Best-effort: null on miss.
+export async function getPreviousEntitlements(
+  competitorId: string,
+): Promise<PlanEntitlementRow[] | null> {
+  const rows = await bestEffortRead<PlanEntitlementRow>("getPreviousEntitlements", () =>
+    db
+      .select({
+        competitor_id: planEntitlements.competitorId,
+        plan_name: planEntitlements.planName,
+        feature_slug: planEntitlements.featureSlug,
+        feature_label: planEntitlements.featureLabel,
+        kind: planEntitlements.kind,
+        value_num: planEntitlements.valueNum,
+        value_text: planEntitlements.valueText,
+        unit: planEntitlements.unit,
+        reset_period: planEntitlements.resetPeriod,
+        is_canonical: planEntitlements.isCanonical,
+        recorded_at: planEntitlements.recordedAt,
+      })
+      .from(planEntitlements)
+      .where(
+        and(
+          eq(planEntitlements.competitorId, competitorId),
+          eq(
+            planEntitlements.recordedAt,
+            sql`(select max(recorded_at) from plan_entitlements where competitor_id = ${competitorId})`,
+          ),
+        ),
+      )
+      .orderBy(planEntitlements.planName, planEntitlements.featureLabel),
+  );
+  return rows && rows.length > 0 ? rows : null;
+}
+
+// One published volume band (Pricing Intelligence P3). Same batch timestamp as
+// the pricing_history rows of the run — one capture, one moment.
+export interface PriceTierRow {
+  competitor_id: string;
+  plan_name: string;
+  unit: string | null;
+  from_qty: number;
+  to_qty: number | null;
+  unit_price: number | null;
+  flat_fee: number | null;
+  recorded_at: Date;
+}
+
+export async function insertPriceTiers(rows: PriceTierRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await bestEffort("price_tiers insert", () =>
+    db.insert(priceTiers).values(
+      rows.map((r) => ({
+        competitorId: r.competitor_id,
+        planName: r.plan_name,
+        unit: r.unit,
+        fromQty: r.from_qty,
+        toQty: r.to_qty,
+        unitPrice: r.unit_price,
+        flatFee: r.flat_fee,
+        recordedAt: r.recorded_at,
+      })),
+    ),
+  );
+}
+
+// What a metered plan costs at a reference volume — the row that lets a
+// usage-based competitor enter a price comparison at all.
+export interface PricePointRow {
+  competitor_id: string;
+  plan_name: string;
+  meter_unit: string;
+  reference_qty: number;
+  effective_monthly_cost: number;
+  currency: string;
+  method: "computed_from_tiers" | "calculator_probe" | "published";
+  recorded_at: Date;
+}
+
+export async function insertPricePoints(rows: PricePointRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await bestEffort("price_points insert", () =>
+    db.insert(pricePoints).values(
+      rows.map((r) => ({
+        competitorId: r.competitor_id,
+        planName: r.plan_name,
+        meterUnit: r.meter_unit,
+        referenceQty: r.reference_qty,
+        effectiveMonthlyCost: r.effective_monthly_cost,
+        currency: r.currency,
+        method: r.method,
+        recordedAt: r.recorded_at,
+      })),
+    ),
+  );
+}
+
+// The latest stored ladder — the diff baseline, read BEFORE the fresh batch is
+// inserted, like getPreviousPricing / getPreviousEntitlements.
+export async function getPreviousPriceTiers(
+  competitorId: string,
+): Promise<PriceTierRow[] | null> {
+  const rows = await bestEffortRead<PriceTierRow>("getPreviousPriceTiers", () =>
+    db
+      .select({
+        competitor_id: priceTiers.competitorId,
+        plan_name: priceTiers.planName,
+        unit: priceTiers.unit,
+        from_qty: priceTiers.fromQty,
+        to_qty: priceTiers.toQty,
+        unit_price: priceTiers.unitPrice,
+        flat_fee: priceTiers.flatFee,
+        recorded_at: priceTiers.recordedAt,
+      })
+      .from(priceTiers)
+      .where(
+        and(
+          eq(priceTiers.competitorId, competitorId),
+          eq(
+            priceTiers.recordedAt,
+            sql`(select max(recorded_at) from price_tiers where competitor_id = ${competitorId})`,
+          ),
+        ),
+      )
+      .orderBy(priceTiers.planName, priceTiers.fromQty),
+  );
+  return rows && rows.length > 0 ? rows : null;
 }
 
 export interface LatestTrial {
@@ -853,6 +1033,9 @@ export async function getPreviousPricing(
         trial_days: pricingHistory.trialDays,
         trial_requires_card: pricingHistory.trialRequiresCard,
         has_free_plan: pricingHistory.hasFreePlan,
+        rate_structure: pricingHistory.rateStructure,
+        minimum_amount: pricingHistory.minimumAmount,
+        percentage_rate: pricingHistory.percentageRate,
         status: pricingHistory.status,
         promotional: pricingHistory.promotional,
         observed_region: pricingHistory.observedRegion,

@@ -695,3 +695,154 @@ des chemins « never miss » (cf. docs/signal-evidence-audit.md §1b). Carte Not
 
 **Prochaine session** : P2 — entitlements (`plan_entitlements` + catalogue de slugs +
 extraction structured-first + volet Packaging). NE PAS commencer sans /clear.
+
+### 2026-07-30 — Pricing Intelligence v2, Phase 2/5 — entitlements (features × plans)
+
+**Objectif** : capturer la matrice features × plans (modèle Stigg), la differ, émettre
+`entitlement_moved` / `entitlement_limit_changed` / `entitlement_added` / `entitlement_removed`,
+et l'afficher (volet Packaging du pricing tab + section battle card). Branche
+`feat/pricing-entitlements`, EMPILÉE sur `feat/pricing-deterministic-signals` (P1, PR #359
+ouverte, pas mergée — P2 consomme diffPricingBatches/routePricingSignal).
+
+**Réalisé** :
+- Migration **0055** : `plan_entitlements` (id, competitor_id, plan_name, feature_slug,
+  feature_label VERBATIM, kind boolean|config|metered, value_num/value_text/unit/
+  reset_period, is_canonical, recorded_at) + index (competitor, recorded_at) et
+  (competitor, feature_slug). `recorded_at` = LE même timestamp de batch que
+  pricing_history du même run. ⚠️ PAS APPLIQUÉE : ce checkout n'a pas de `.env.local`
+  → `pnpm db:migrate` à lancer sur l'env qui a la DB dev.
+- `packages/shared/entitlement-catalog.ts` : ~40 slugs canoniques, alias
+  EN/FR/DE/ES/IT/NL/PT (patron period-vocab : données + résolveur pur, zéro AI),
+  `resolveFeatureSlug` → slug canonique ou slugify fallback `is_canonical=0`. 61 tests.
+- `packages/shared/entitlement-diff.ts` : `diffEntitlements(prev, next, {planRank})` →
+  `PricingChange[]` (types ajoutés à `PricingChangeType`). moved=high + sens
+  down/upmarket (planRank dérivé des prix), limit ±30% medium/high, added low /
+  removed medium. **Jamais critical** (testé). **Frontière de confiance** : moved/
+  added/removed sur slugs CANONIQUES seulement — un slug free-text EST le wording du
+  label, une reformulation marketing churnerait ; limit_changed accepte tout slug
+  identique des deux côtés. Premier batch (prev vide) → []. 16 tests.
+- Extraction table-first : `packages/scrapers/pricing/entitlement-table.ts` parse le
+  `<table>` comparatif ANCRÉ sur les noms de plans déjà extraits (≥2 colonnes matchées,
+  ≥3 feature rows sinon null — jamais un guess) ; ✓/✗/nombres (k/M)/unlimited/texte,
+  aria-label des checks SVG, gotcha parse5 (tbody auto-inséré → header exclu par
+  identité de nœud). Sinon tâche AI sœur `extract-entitlements` (labels verbatim,
+  « Everything in Pro, plus… » jamais expansé — l'héritage n'est PAS modélisé en v1 ;
+  1 call EN PLUS par scrape changé seulement). `pricing.scraper.ts` : `expandLists:true`
+  → les accordions « See all features » se déplient au render (boucle jobs réutilisée).
+- Worker (`lib/entitlements.ts` + intégration `core/extract-pricing.ts`, live only,
+  jamais backfill) : substring-check CÔTÉ CODE (label absent du texte de page →
+  droppé), caps 15 features × 6 plans loggés, anti-collapse
+  (`isSuspectedEntitlementCollapse` : prev ≥5 && next <30% → rien écrit, zéro signal —
+  extension de pricing-guard), slugs résolus, insert best-effort après
+  insertPricingHistory (même recordedAt). Changes mergés dans `routePricingSignal`
+  (`entitlementChanges` + `sortPricingChanges`) → UN signal par capture, top line =
+  pire mouvement des deux axes. Étage ADDITIF : tout échec laisse le run pricing
+  intact (try/catch). 11 tests workers.
+- `signal-facts` (API) : `entitlements: EntitlementFact[]` sur le kind pricing —
+  re-diff des 2 batches de la fenêtre par LE MÊME differ shared (l'évidence ne peut
+  pas contredire le signal), before/after exacts (« SSO — Enterprise » → « SSO — Pro »).
+  Rendu web dans le fact block (bloc « Packaging · N features moved »).
+- UI : `GET /api/competitors/:id/entitlements` (2 derniers batches) ; volet
+  **Packaging** du pricing tab (matrice, canoniques d'abord, cellules changées
+  surlignées `bg-medium/10`, overflow-x, s'auto-masque sans matrice) ; section battle
+  card **Packaging** (3-5 lignes déterministes : features gated top-plan, échelle de
+  seats, moves récents via le differ partagé, overlap self-profile — « not AI-written »
+  affiché).
+
+**Tests** : typecheck 8/8 ✓ | shared 458 ✓ | scrapers 740 ✓ | ai 175 ✓ | workers 189 ✓ | api 225 ✓
+
+**Reste côté humain** : `pnpm db:migrate` (0055) sur l'env dev + prod (après merge) ·
+vérifier en dev un concurrent à `<table>` comparatif (matrice + cellules surlignées au
+2e scrape) puis un à cartes (chemin AI) · PR empilée sur #359.
+
+**Prochaine session** : P3 — tiers / rate_structure / price_points computed.
+NE PAS commencer sans /clear. (P4 calculator probe, P5 burn rates ensuite.)
+
+### 2026-07-31 — Pricing Intelligence v2, Phase 3/5 — rate structures & cost model
+
+**Objectif** : modéliser les paliers et structures de rate, calculer des coûts effectifs
+à volumes de référence (déterministe, zéro AI), faire rentrer l'usage-based dans le
+compare, brancher les signaux tier/minimum. Branche `feat/pricing-rate-structures`.
+
+⚠️ **P2 n'avait jamais atteint `main`** : PR #361 a été mergée dans
+`feat/pricing-deterministic-signals` (P1) à 21:30, alors que #359 (P1 → main) l'avait
+été à 16:15. Les 8 commits entitlements étaient donc orphelins. Cette branche a été
+rebasée sur `origin/main` et les porte avec P3.
+
+**Réalisé** :
+- Migrations **0056** (`pricing_history` += `rate_structure` / `minimum_amount` /
+  `percentage_rate` ; tables `price_tiers` et `price_points` + index) et **0057**
+  (`organizations.reference_volumes`). Tout nullable : une ligne subscription legacy
+  est inchangée et ses colonnes vides ne sont pas une affirmation sur le plan.
+- `packages/shared/unit-alias.ts` : ~26 meters canoniques, alias EN/FR/DE/ES/IT/NL/PT
+  (patron period-vocab / entitlement-catalog : données + résolveur pur, zéro AI).
+  `resolveMeterUnit` rend `{unit, canonical}` — un meter inconnu garde le wording de la
+  page avec `canonical:false` et n'est **jamais deviné** vers un voisin. 13 tests.
+- `packages/shared/cost-model.ts` : `costAtVolume` pur pour standard / graduated /
+  volume / package + plancher `max(usage, minimum)`. L'arithmétique tourne sur les
+  PLAFONDS de bande (`to_qty`), donc les deux notations qu'une page peut imprimer
+  (« 10k–50k » et « 10 001–50 000 ») calculent à l'identique. `percentage` EXCLU : son
+  meter est de l'argent. `validateTierSet` rejette un set INVALIDE EN ENTIER (jamais
+  son préfixe valide) : une échelle à moitié lue calcule un coût faux avec assurance.
+  38 tests (bords exacts, qty 0, bande infinie, minimum, fee d'entrée).
+- Extraction (`packages/ai/extract-pricing.ts`) : zod + prompt étendus —
+  `rate_structure`, `minimum_amount`, `percentage_rate`, `tiers[]`, `cost_examples[]`.
+  maxTokens 1536 → 2048 (une réponse tronquée en plein tableau ne parse pas du tout).
+- Worker `lib/rate-structures.ts` (pur, testé) : validation code-side, écriture des
+  bandes (`price_tiers`) et des coûts aux 4 volumes preset (`price_points`,
+  `method='computed_from_tiers'`). **Trois refus** : ladder invalide droppée entière ·
+  aucun point sur un meter non normalisable · exemple chiffré cru seulement si SES DEUX
+  nombres sont dans le texte de page (patron substring P2). Un plan hybride porte la
+  souscription sur laquelle son meter s'appuie, sinon il se lit moins cher qu'il ne
+  facture. Live only, jamais backfill, jamais après le coverage guard. 15 tests.
+- `packages/shared/price-tier-diff.ts` : `diffPriceTiers` → `tier_boundary_moved`
+  (HIGH — « 0–10k @ $0.10 » → « 0–5k @ $0.10 » : une hausse dont aucun nombre imprimé
+  ne bouge) + `rate_changed` sur l'unit_price d'une bande (table de sévérité P1, baisse
+  >15% = critical). Un rate n'est JAMAIS comparé à travers une bande déplacée. Ladder
+  apparue sur un plan connu = silence (c'est l'extracteur qui lit enfin un tableau).
+  14 tests.
+- `diffPricingBatches` étendu : `minimum_introduced` / `minimum_changed` (medium) et
+  `rate_changed` sur `percentage_rate`. Comparés seulement quand LES DEUX côtés portent
+  le tampon `rate_structure` — sinon le 1er scrape post-deploy annoncerait un plancher
+  présent depuis toujours. 8 tests ajoutés (40 au total, 32 d'origine intouchés).
+- `signal-facts` : `tiers: TierFact[]` sur le kind pricing, re-diff des 2 batches par
+  LE MÊME differ shared ; bloc web « Volume bands · N moves ».
+- `packages/shared/pricing-model.ts` : `pricingModelOf` (badge flat / per_seat / usage /
+  hybrid / credits), `meteredUnits`, `cheapestCostAtVolume`, `monthlyBaseFee` (réutilisé
+  par le worker — une seule définition du fee de base).
+- Compare : `GET /api/compare` rend `pricing.model` + `pricing.meters[]` (coûts calculés
+  ON READ depuis la ladder capturée, donc changer les volumes du workspace ne
+  re-scrape rien). `derive.ts` : `priceReading(col, rates, to, meter?)` — une colonne
+  SANS prix subscription comparable entre dans la bande par son coût effectif, marquée
+  (`meter` sur le reading, astérisque + légende + barre à opacité réduite + « read at
+  10,000 requests/mo »). Sélecteur de volume dans la légende de la lens Price. Une
+  colonne qui publie une souscription garde sa bande publiée. **Zéro régression** : les
+  32 tests derive d'origine passent inchangés, + 10 nouveaux dont l'égalité stricte
+  `priceScale(set, {meter})` === `priceScale(set)` sur un set subscription-only.
+- Setting workspace `reference_volumes` (`GET/PATCH /api/settings/reference-volumes`,
+  carte dans Settings → General) : liste {unit, qty}, meters canoniques seulement,
+  vide = presets. Read-side pur.
+- Pricing tab : section **Rate structure** (bandes dépliables, minimum, %),
+  `GET /api/competitors/:id/rate-structures` (dernier batch seulement — la série
+  complète est déjà l'endpoint pricing-history).
+
+**Fichiers modifiés** : packages/db/schema/{analytics,organizations}.ts + migrations
+0056/0057 · packages/shared/{unit-alias,cost-model,price-tier-diff,pricing-model,
+pricing-diff}.ts · packages/ai/src/tasks/extract-pricing.ts · apps/workers/src/lib/
+{rate-structures,analytics,pricing-signals}.ts + core/extract-pricing.ts ·
+apps/api/src/{lib/signal-facts.ts,routes/{compare,competitors,settings}.ts} ·
+apps/web/src/{lib/api.ts,lib/queries.ts,components/dashboard/compare/{derive.ts,
+lenses.tsx},components/outrival/{signal-facts,reference-volumes-card}.tsx,
+app/dashboard/competitors/[id]/competitor-detail/rate-structures.tsx}
+
+**Tests** : typecheck 8/8 ✓ | pnpm test 12/12 ✓ (shared 510 · workers 204 · api 235 ·
+web 42 derive dont 32 d'origine inchangés)
+
+**Reste côté humain** : `pnpm db:migrate` sur dev (0055 + 0056 + 0057 — la dev DB
+n'a aucune des trois) puis sur prod (0056 + 0057 seulement : **0055 y est déjà
+appliquée** depuis le 2026-07-30, `db:migrate` la sautera) ·
+vérifier en dev un concurrent à tableau de paliers (bandes dans le pricing tab, puis
+`tier_boundary_moved` au scrape suivant si une borne bouge) · PR portant P2 + P3.
+
+**Prochaine session** : P4 — calculator probe (Playwright) + burn rates. NE PAS
+commencer sans /clear.

@@ -18,7 +18,19 @@ export type PricingChangeType =
   | "rate_changed"
   | "included_quantity_changed"
   | "trial_changed"
-  | "free_plan_changed";
+  | "free_plan_changed"
+  // Phase 2 — the features × plans matrix (see entitlement-diff.ts). Entitlement
+  // changes cap at HIGH by design: repackaging never bypasses moderation.
+  | "entitlement_moved"
+  | "entitlement_limit_changed"
+  | "entitlement_added"
+  | "entitlement_removed"
+  // Phase 3 — rate structures (see price-tier-diff.ts for the ladder side).
+  // A boundary that moves is a price rise nobody printed: the same rate over a
+  // smaller band costs more, so it reads HIGH.
+  | "tier_boundary_moved"
+  | "minimum_introduced"
+  | "minimum_changed";
 
 export type PricingChangeSeverity = "low" | "medium" | "high" | "critical";
 
@@ -43,6 +55,13 @@ export interface PricingBatchRow {
   trial_days?: number | null;
   trial_requires_card?: number | null;
   has_free_plan?: number | null;
+  /** P3 — how a metered plan charges. `rate_structure` doubles as the stamp
+   * that the detector ran on this row: a batch that predates P3 carries null,
+   * and comparing against null would read "a minimum appeared" on the first
+   * scrape after the deploy for every competitor that always had one. */
+  rate_structure?: string | null;
+  minimum_amount?: number | null;
+  percentage_rate?: number | null;
 }
 
 export interface PricingChange {
@@ -79,6 +98,13 @@ const SEVERITY_RANK: Record<PricingChangeSeverity, number> = {
   medium: 2,
   low: 3,
 };
+
+/** Order a merged change list most-severe-first — the order diffPricingBatches
+ * returns, needed again when a caller concatenates the batch diff with the
+ * entitlement diff before planning one signal. Stable within a band. */
+export function sortPricingChanges(changes: PricingChange[]): PricingChange[] {
+  return [...changes].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
+}
 
 export function maxPricingChangeSeverity(
   changes: PricingChange[],
@@ -406,6 +432,66 @@ export function diffPricingBatches(
         }`,
         summary: `${nextRow.plan_name}: ${fmt(prevRow.included_quantity)} → ${fmt(nextRow.included_quantity)} ${unitLabel} included (${signedPct(qtyPct)}${priceUnchanged ? ", price unchanged" : ""})`,
       });
+    }
+
+    // P3 — the monthly minimum. Only compared once BOTH sides carry the
+    // rate-structure stamp: without it, null means "not assessed", not "no
+    // minimum", and the first post-deploy scrape would announce a floor that
+    // has been there all along.
+    const rateStamped = prevRow.rate_structure != null && nextRow.rate_structure != null;
+    if (rateStamped) {
+      const before = prevRow.minimum_amount ?? null;
+      const after = nextRow.minimum_amount ?? null;
+      const moved =
+        before == null
+          ? after != null
+          : after == null || !approxEqual(before, after);
+      if (moved) {
+        const minPhrase = (v: number | null) =>
+          v == null ? "No monthly minimum" : `${formatPrice(v, nextRow.currency)}/mo minimum`;
+        const pctChange = before != null && after != null && before > 0 ? pct(before, after) : null;
+        changes.push({
+          type: before == null ? "minimum_introduced" : "minimum_changed",
+          severity: "medium",
+          planName: nextRow.plan_name,
+          billingPeriod: nextRow.billing_period,
+          unit: nextRow.unit ?? null,
+          currency: nextRow.currency,
+          previousValue: before,
+          currentValue: after,
+          pctChange,
+          direction: pctChange == null ? (after != null ? "up" : "down") : pctChange > 0 ? "up" : "down",
+          humanBefore: `${nextRow.plan_name} — ${minPhrase(before)}`,
+          humanAfter: `${nextRow.plan_name} — ${minPhrase(after)}`,
+          summary:
+            before == null
+              ? `${nextRow.plan_name}: ${minPhrase(after)} introduced`
+              : `${nextRow.plan_name}: ${minPhrase(before)} → ${minPhrase(after)}${pctChange != null ? ` (${signedPct(pctChange)})` : ""}`,
+        });
+      }
+
+      // The percentage half of a "2.9% + $0.30" plan, finally numeric. Same
+      // bands as any other rate: a cut past the undercut threshold is critical.
+      const prevPct = prevRow.percentage_rate ?? null;
+      const nextPct = nextRow.percentage_rate ?? null;
+      if (prevPct != null && nextPct != null && prevPct > 0 && !approxEqual(prevPct, nextPct)) {
+        const pctChange = pct(prevPct, nextPct);
+        changes.push({
+          type: "rate_changed",
+          severity: rateChangeSeverity(pctChange),
+          planName: nextRow.plan_name,
+          billingPeriod: nextRow.billing_period,
+          unit: nextRow.unit ?? null,
+          currency: nextRow.currency,
+          previousValue: prevPct,
+          currentValue: nextPct,
+          pctChange,
+          direction: pctChange > 0 ? "up" : "down",
+          humanBefore: `${nextRow.plan_name} — ${prevPct}%${pricePhrase(prevRow) ? ` + ${pricePhrase(prevRow)}` : ""}`,
+          humanAfter: `${nextRow.plan_name} — ${nextPct}%${pricePhrase(nextRow) ? ` + ${pricePhrase(nextRow)}` : ""}`,
+          summary: `${nextRow.plan_name}: ${prevPct}% → ${nextPct}% (${signedPct(pctChange)})`,
+        });
+      }
     }
   }
 

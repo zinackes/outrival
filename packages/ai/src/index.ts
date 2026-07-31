@@ -112,6 +112,8 @@ export { nameKnownCompetitors } from "./tasks/name-competitors";
 export type { NamedCompetitor } from "./tasks/name-competitors";
 export { extractPricing, PricingSchema, PricingPlanSchema } from "./tasks/extract-pricing";
 export type { PricingExtraction, PricingPlan } from "./tasks/extract-pricing";
+export { extractEntitlements, EntitlementsSchema } from "./tasks/extract-entitlements";
+export type { EntitlementsExtraction, ExtractedEntitlement } from "./tasks/extract-entitlements";
 export { extractJobs, JobsSchema, JobPostingSchema } from "./tasks/extract-jobs";
 export type { JobsExtraction, ExtractedJob } from "./tasks/extract-jobs";
 export { extractReviews, ReviewsSchema } from "./tasks/extract-reviews";

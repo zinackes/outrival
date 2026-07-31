@@ -1,6 +1,7 @@
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { WorkspaceSettingsForm } from "@/components/outrival/workspace-settings-form";
 import { MonitoringDefaultsCard } from "@/components/outrival/monitoring-defaults-card";
+import { ReferenceVolumesCard } from "@/components/outrival/reference-volumes-card";
 import { getWorkspaceSettingsData } from "@/lib/api-server";
 import { makeServerQueryClient } from "@/lib/server-query";
 import { workspaceSettingsQuery } from "@/lib/queries";
@@ -26,6 +27,9 @@ export default async function GeneralSettingsPage() {
       </div>
       <div className="border-t border-border pt-5">
         <MonitoringDefaultsCard />
+      </div>
+      <div className="border-t border-border pt-5">
+        <ReferenceVolumesCard />
       </div>
     </section>
   );

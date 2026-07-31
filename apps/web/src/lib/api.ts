@@ -10,6 +10,7 @@ import type {
   PricingPlanOverride,
   ResolvedPricingTier,
   CustomMonitorHint,
+  PricingModel,
 } from "@outrival/shared";
 
 export type { DetectionConfig, AnalysisStatus, ScrapeActivity } from "@outrival/shared";
@@ -482,8 +483,78 @@ export type SignalFacts =
       kind: "pricing";
       plans: PlanFact[];
       trial: { hasTrial: boolean; days: number | null; requiresCard: boolean | null } | null;
+      /** Packaging moves of this capture (P2): exact before/after per feature
+       * ("SSO — Enterprise" → "SSO — Pro"). [] when the matrix didn't change. */
+      entitlements: EntitlementFact[];
+      /** Volume-ladder moves of this capture (P3): a boundary that slid is a
+       * price rise with no price change, so the bands have to be printed. */
+      tiers: TierFact[];
     }
   | null;
+
+/** How the latest capture's metered plans charge, and the bands they publish. */
+export interface RateStructures {
+  plans: Array<{
+    planName: string;
+    unit: string | null;
+    currency: string | null;
+    rateStructure: string | null;
+    minimumAmount: number | null;
+    percentageRate: number | null;
+  }>;
+  tiers: Array<{
+    planName: string;
+    unit: string | null;
+    fromQty: number;
+    toQty: number | null;
+    unitPrice: number | null;
+    flatFee: number | null;
+  }>;
+  capturedAt: string | null;
+}
+
+/** A meter and a quantity this workspace compares metered pricing at. */
+export interface ReferenceVolume {
+  unit: string;
+  qty: number;
+}
+
+export interface ReferenceVolumes {
+  /** null = following the presets. */
+  referenceVolumes: ReferenceVolume[] | null;
+  presetQuantities: number[];
+  units: Array<{ unit: string; label: string }>;
+}
+
+/** One volume-ladder move behind a pricing signal. */
+export interface TierFact {
+  planName: string;
+  state: "boundary_moved" | "rate_changed";
+  before: string | null;
+  after: string | null;
+}
+
+/** One packaging move behind a pricing signal (features × plans matrix). */
+export interface EntitlementFact {
+  featureLabel: string;
+  state: "moved" | "limit_changed" | "added" | "removed";
+  before: string | null;
+  after: string | null;
+}
+
+/** One cell of the features × plans matrix (plan_entitlements row). */
+export interface EntitlementCell {
+  plan_name: string;
+  feature_slug: string;
+  feature_label: string;
+  kind: "boolean" | "config" | "metered" | string;
+  value_num: number | null;
+  value_text: string | null;
+  unit: string | null;
+  reset_period: string | null;
+  is_canonical: boolean;
+  recorded_at: string;
+}
 
 export interface SignalDetail {
   id: string;
@@ -999,8 +1070,25 @@ export interface CompareColumn {
     top: number | null;
     currency: string | null;
     billingPeriod: string | null;
-    plans: Array<{ name: string; price: number | null; billingPeriod: string | null }>;
+    plans: Array<{
+      name: string;
+      price: number | null;
+      billingPeriod: string | null;
+      /** What a usage/per-seat price applies to; null on a flat price. */
+      unit: string | null;
+    }>;
     capturedAt: string | null;
+    /** How this competitor charges — flat, per seat, usage, base + usage, credits. */
+    model: PricingModel | null;
+    /** What buying a volume of a meter costs per month, computed on read from
+     * the captured ladder. Empty for a subscription-only competitor. */
+    meters: Array<{
+      unit: string;
+      qty: number;
+      cost: number;
+      currency: string | null;
+      planName: string;
+    }>;
   } | null;
   hiring: {
     totalOpen: number;
@@ -2545,6 +2633,18 @@ export const api = {
     ),
   getCompetitorPricingHistory: (id: string) =>
     request<{ history: PricingHistoryPoint[] }>(`/api/competitors/${id}/pricing-history`),
+  // Rate structures (P3): how the latest capture's metered plans charge — the
+  // published ladder, the monthly minimum, the percentage rate.
+  getCompetitorRateStructures: (id: string) =>
+    request<RateStructures>(`/api/competitors/${id}/rate-structures`),
+  // Features × plans matrix (P2): the two most recent entitlement batches, so
+  // the Packaging fold can render the matrix and highlight what moved.
+  getCompetitorEntitlements: (id: string) =>
+    request<{
+      current: EntitlementCell[];
+      previous: EntitlementCell[];
+      recordedAt: string | null;
+    }>(`/api/competitors/${id}/entitlements`),
   // Per-plan pricing overlay: the latest detected batch, the user's overrides, and
   // the resolved current plans (detected + overlay merged) with provenance/drift.
   getCompetitorPricingPlans: (id: string) =>
@@ -3194,6 +3294,12 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ defaultSources }),
     }),
+  getReferenceVolumes: () => request<ReferenceVolumes>("/api/settings/reference-volumes"),
+  updateReferenceVolumes: (referenceVolumes: ReferenceVolume[] | null) =>
+    request<{ ok: true; referenceVolumes: ReferenceVolume[] | null }>(
+      "/api/settings/reference-volumes",
+      { method: "PATCH", body: JSON.stringify({ referenceVolumes }) },
+    ),
   applySourceDefaults: () =>
     request<{ created: number; competitorsTouched: number; sources: SourceType[] }>(
       "/api/settings/sources/apply",

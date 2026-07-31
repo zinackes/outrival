@@ -45,6 +45,7 @@ import { BattleCardEmpty } from "./empty-view";
 import { BattleCardHead, MetaDot } from "./head";
 import { ConfidenceBadge } from "./evidence";
 import { BattleCardSections } from "./sections";
+import { PackagingSection } from "./packaging";
 
 const EMPTY_CONTENT: BattleCardContent = {
   their_strengths: [],
@@ -686,6 +687,17 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
             writeIn={writeIn}
             writeInFinish={writeInFinish}
           />
+
+          {/* Packaging (P2): deterministic lines from the captured entitlement
+              matrix — hidden while editing (nothing here is editable) and
+              absent entirely when no matrix was ever captured. */}
+          {!editing && competitor && (
+            <PackagingSection
+              competitorId={competitorId}
+              competitorName={competitor.name}
+              productId={productId}
+            />
+          )}
 
           <div className="flex items-center justify-between gap-3 px-5 py-3.5">
             <p className="text-dense text-muted-foreground">

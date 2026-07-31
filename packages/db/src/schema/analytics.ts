@@ -59,10 +59,116 @@ export const pricingHistory = pgTable(
     // Catches a free tier the priced-card extractor misses (e.g. a "Free" comparison
     // column with no price token). 0/1 int; null = pre-detection (legacy rows).
     hasFreePlan: integer("has_free_plan"),
+    // Pricing Intelligence P3 — HOW the rate is structured, in the vocabulary the
+    // billing engines share (Lago/Metronome). All three are null on a plain
+    // subscription row, which is every legacy row: the columns describe a metered
+    // plan and their absence is not a fact about the plan.
+    //   standard   qty x unit_price
+    //   graduated  each tier's own rate applies to the units inside it (a sum)
+    //   volume     the reached tier's rate applies to ALL units
+    //   package    priced in blocks ("$X per 1000")
+    //   percentage a share of transacted value ("2.9% + $0.30")
+    rateStructure: text("rate_structure"),
+    // Monthly floor ("$50/mo minimum"): what the plan bills before a single unit
+    // is consumed. Distinct from a base fee — it is not additive, it is a max().
+    minimumAmount: doublePrecision("minimum_amount"),
+    // The "2.9%" finally numeric. `price` then carries the FIXED part ($0.30), so
+    // a percentage plan is one row with both halves. Excluded from cost modelling
+    // (its meter is money, not a countable unit) — surfaced as a badge.
+    percentageRate: doublePrecision("percentage_rate"),
     recordedAt: timestamp("recorded_at").notNull().defaultNow(),
   },
   (t) => [index("pricing_history_competitor_recorded_idx").on(t.competitorId, t.recordedAt)],
 );
+
+// Published volume breaks of a metered plan (Pricing Intelligence P3). One row =
+// one band of the ladder ("0–10k @ $0.10"), captured from the SAME pricing page
+// scrape as pricing_history and stamped with the SAME batch timestamp, so the two
+// tables describe one capture. Written ONLY when the page publishes the ladder:
+// an invalid or overlapping set is dropped whole rather than stored partially,
+// because a half-read ladder computes a confidently wrong cost.
+export const priceTiers = pgTable(
+  "price_tiers",
+  {
+    id: uuid(),
+    competitorId: text("competitor_id").notNull(),
+    planName: text("plan_name").notNull(),
+    // Normalised meter unit (unit-alias): "request", "gb", "seat"… An unnormalised
+    // unit keeps the page's wording — the cost writer is what refuses to compare
+    // across units it can't normalise.
+    unit: text("unit"),
+    fromQty: doublePrecision("from_qty").notNull(),
+    // null = the last, unbounded band (∞).
+    toQty: doublePrecision("to_qty"),
+    unitPrice: doublePrecision("unit_price"),
+    // Flat fee charged for entering the band (stair-step ladders).
+    flatFee: doublePrecision("flat_fee"),
+    recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("price_tiers_competitor_recorded_idx").on(t.competitorId, t.recordedAt),
+    index("price_tiers_competitor_plan_idx").on(t.competitorId, t.planName),
+  ],
+);
+
+// What a metered plan actually COSTS at a reference volume (Pricing Intelligence
+// P3) — the row that lets a usage-based competitor enter a price comparison at
+// all. Computed deterministically from the tiers (zero AI); `method` records where
+// the number came from, because a probed or published figure carries different
+// authority than one we derived.
+export const pricePoints = pgTable(
+  "price_points",
+  {
+    id: uuid(),
+    competitorId: text("competitor_id").notNull(),
+    planName: text("plan_name").notNull(),
+    // Normalised unit only. A meter we cannot normalise writes NO point: an
+    // unknown unit compared against a known one is arithmetic on two things that
+    // are not the same thing.
+    meterUnit: text("meter_unit").notNull(),
+    referenceQty: doublePrecision("reference_qty").notNull(),
+    effectiveMonthlyCost: doublePrecision("effective_monthly_cost").notNull(),
+    currency: text("currency").notNull(),
+    // computed_from_tiers | calculator_probe (P4) | published
+    method: text("method").notNull(),
+    recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("price_points_competitor_recorded_idx").on(t.competitorId, t.recordedAt),
+    index("price_points_competitor_unit_idx").on(t.competitorId, t.meterUnit),
+  ],
+);
+
+// The features × plans matrix (Pricing Intelligence P2 — Stigg entitlement model).
+// One row = (plan, feature, value) captured from the SAME pricing page scrape as
+// pricing_history; recorded_at carries the SAME batch timestamp so the two tables
+// describe one capture. feature_label is the page's VERBATIM wording (the proof);
+// feature_slug is the catalog-canonical slug when the label resolved
+// (is_canonical=1), else a slugified fallback. kind: boolean (on/off) | config
+// (fixed value, e.g. 30-day retention) | metered (limit, optionally with a
+// reset_period). Append-only batches, latest batch = the current matrix.
+export const planEntitlements = pgTable(
+  "plan_entitlements",
+  {
+    id: uuid(),
+    competitorId: text("competitor_id").notNull(),
+    planName: text("plan_name").notNull(),
+    featureSlug: text("feature_slug").notNull(),
+    featureLabel: text("feature_label").notNull(),
+    kind: text("kind").notNull(), // boolean | config | metered
+    valueNum: doublePrecision("value_num"),
+    valueText: text("value_text"),
+    unit: text("unit"),
+    resetPeriod: text("reset_period"),
+    isCanonical: integer("is_canonical").notNull().default(0), // 1 = catalog slug
+    recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("plan_entitlements_competitor_recorded_idx").on(t.competitorId, t.recordedAt),
+    index("plan_entitlements_competitor_feature_idx").on(t.competitorId, t.featureSlug),
+  ],
+);
+export type PlanEntitlement = InferSelectModel<typeof planEntitlements>;
 
 export const jobCounts = pgTable(
   "job_counts",
@@ -361,6 +467,8 @@ export const platformDetectionRuns = pgTable(
 );
 
 export type PricingHistory = InferSelectModel<typeof pricingHistory>;
+export type PriceTier = InferSelectModel<typeof priceTiers>;
+export type PricePoint = InferSelectModel<typeof pricePoints>;
 export type JobCount = InferSelectModel<typeof jobCounts>;
 export type ReviewScore = InferSelectModel<typeof reviewScores>;
 export type SignalFeed = InferSelectModel<typeof signalFeed>;

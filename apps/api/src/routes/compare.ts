@@ -9,7 +9,15 @@ import {
   type PricingTier,
   type CompetitorOverrides,
   normalizeDepartment,
+  cheapestCostAtVolume,
+  meteredUnits,
+  pricingModelOf,
+  REFERENCE_VOLUME_PRESETS,
+  type MeteredRow,
+  type PricingModel,
+  type TierBandRow,
 } from "@outrival/shared";
+import { organizations } from "@outrival/db";
 import { db } from "../lib/db";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
@@ -73,6 +81,13 @@ interface RawPricingPlan {
   billingPeriod: string | null;
   // Only present on detected rows — a manual override has no capture time.
   recordedAt?: string | null;
+  // P3 — what the row meters and how it charges. Only on detected rows: a
+  // manual override edits a subscription price, never a rate structure.
+  unit?: string | null;
+  includedQuantity?: number | null;
+  rateStructure?: string | null;
+  minimumAmount?: number | null;
+  percentageRate?: number | null;
 }
 // One job_counts row from the latest batch (one per department).
 interface RawHiringDept {
@@ -93,16 +108,43 @@ interface RawReview {
   recordedAt: string | null;
 }
 
+// One price_tiers row of the latest batch, in the shape the shared differ and
+// cost model already read.
+interface RawPriceTier extends TierBandRow {
+  competitorId: string;
+}
+
+/** What buying `qty` of `unit` from this competitor costs per month. */
+interface MeterCostDetail {
+  unit: string;
+  qty: number;
+  cost: number;
+  currency: string | null;
+  planName: string;
+}
+
 interface PricingDetail {
   // null when the competitor exposes only quote-based tiers (no public number).
   entry: number | null;
   top: number | null;
   currency: string | null;
   billingPeriod: string | null;
-  plans: Array<{ name: string; price: number | null; billingPeriod: string | null }>;
+  plans: Array<{
+    name: string;
+    price: number | null;
+    billingPeriod: string | null;
+    // P3 — what a usage/per-seat price applies to, so the lens can group a
+    // competitor's metered plans by meter without re-reading the page.
+    unit: string | null;
+  }>;
   // When the batch these plans come from was captured — the provenance line under
   // an expanded price row. Null on a competitor whose plans are all manual overrides.
   capturedAt: string | null;
+  // P3 — how this competitor charges, and what it costs at the volumes this
+  // workspace compares at. Computed ON READ from the captured ladder, so a
+  // workspace changing its reference volumes never needs a re-capture.
+  model: PricingModel | null;
+  meters: MeterCostDetail[];
 }
 interface HiringDetail {
   totalOpen: number;
@@ -227,10 +269,27 @@ compareRouter.get("/", async (c) => {
       FROM pricing_history WHERE competitor_id IN (${idList}) GROUP BY competitor_id
     )
     SELECT p.competitor_id AS "competitorId", p.plan_name AS "planName", p.price,
-           p.currency, p.billing_period AS "billingPeriod", p.recorded_at AS "recordedAt"
+           p.currency, p.billing_period AS "billingPeriod", p.recorded_at AS "recordedAt",
+           p.unit, p.included_quantity AS "includedQuantity",
+           p.rate_structure AS "rateStructure", p.minimum_amount AS "minimumAmount",
+           p.percentage_rate AS "percentageRate"
     FROM pricing_history p
     JOIN latest l ON l.competitor_id = p.competitor_id AND p.recorded_at = l.rid
     ORDER BY p.competitor_id, p.price
+  `);
+
+  // The published ladders of the same batches — what makes a metered plan
+  // priceable at a volume instead of readable as a bare rate.
+  const tierRows = await analyticsQuery<RawPriceTier>(sql`
+    WITH latest AS (
+      SELECT competitor_id, max(recorded_at) AS rid
+      FROM price_tiers WHERE competitor_id IN (${idList}) GROUP BY competitor_id
+    )
+    SELECT t.competitor_id AS "competitorId", t.plan_name, t.unit,
+           t.from_qty, t.to_qty, t.unit_price, t.flat_fee
+    FROM price_tiers t
+    JOIN latest l ON l.competitor_id = t.competitor_id AND t.recorded_at = l.rid
+    ORDER BY t.competitor_id, t.plan_name, t.from_qty
   `);
   // Apply each competitor's per-plan overlay so a hand-edited/added/hidden plan
   // shows in the comparison grid too, not just its own pricing tab. Grouped by
@@ -324,16 +383,77 @@ compareRouter.get("/", async (c) => {
         billingPeriod: p.billingPeriod,
         plans: [],
         capturedAt: pricingCapturedAt.get(p.competitorId) ?? null,
+        model: null,
+        meters: [],
       };
       pricingById.set(p.competitorId, cur);
     }
-    cur.plans.push({ name: p.planName, price: p.price, billingPeriod: p.billingPeriod });
+    cur.plans.push({
+      name: p.planName,
+      price: p.price,
+      billingPeriod: p.billingPeriod,
+      unit: p.unit ?? null,
+    });
     // The entry/top band is numeric AND comparable-only: quote-based tiers (price
     // null) and usage rates ($0.10 / API call) join the plan list but never the band
     // — you can't min/max a per-call rate against a monthly subscription price.
     if (p.price != null && isComparablePricePeriod(p.billingPeriod)) {
       cur.entry = cur.entry == null ? p.price : Math.min(cur.entry, p.price);
       cur.top = cur.top == null ? p.price : Math.max(cur.top, p.price);
+    }
+  }
+
+  // P3 — how each competitor charges, and what its meters cost at the volumes
+  // this workspace compares at. Read off the DETECTED rows (a manual override
+  // edits a subscription price, never a rate structure), minus any plan the
+  // overlay hides — a hidden plan must not quote a cost.
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { referenceVolumes: true },
+  });
+  const workspaceVolumes = org?.referenceVolumes ?? null;
+  const tiersByComp = new Map<string, TierBandRow[]>();
+  for (const t of tierRows) {
+    const list = tiersByComp.get(t.competitorId) ?? [];
+    list.push(t);
+    tiersByComp.set(t.competitorId, list);
+  }
+
+  for (const [competitorId, detail] of pricingById) {
+    const visible = new Set(detail.plans.map((p) => p.name));
+    const rows: MeteredRow[] = (plansByComp.get(competitorId) ?? [])
+      .filter((p) => visible.has(p.planName))
+      .map((p) => ({
+        plan_name: p.planName,
+        price: p.price,
+        currency: p.currency,
+        billing_period: p.billingPeriod ?? "monthly",
+        unit: p.unit ?? null,
+        included_quantity: p.includedQuantity ?? null,
+        rate_structure: p.rateStructure ?? null,
+        minimum_amount: p.minimumAmount ?? null,
+        percentage_rate: p.percentageRate ?? null,
+      }));
+    if (rows.length === 0) continue;
+
+    detail.model = pricingModelOf(rows);
+    const ladders = tiersByComp.get(competitorId) ?? [];
+    for (const unit of meteredUnits(rows)) {
+      // The workspace's own volumes for this meter, or the presets when it has
+      // named none — the setting narrows the ladder, it does not replace it.
+      const own = (workspaceVolumes ?? []).filter((v) => v.unit === unit).map((v) => v.qty);
+      const quantities = own.length > 0 ? own : REFERENCE_VOLUME_PRESETS;
+      for (const qty of quantities) {
+        const best = cheapestCostAtVolume(rows, ladders, unit, qty);
+        if (!best) continue;
+        detail.meters.push({
+          unit,
+          qty,
+          cost: best.cost,
+          currency: best.currency,
+          planName: best.planName,
+        });
+      }
     }
   }
 

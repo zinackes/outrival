@@ -89,16 +89,52 @@ untouched; a page with no toggle costs nothing (no element found → no second p
 
 ## What is deliberately NOT modeled
 
-- **Percentage fees** (`2.9% + $0.30`) — the fixed part lands as a `usage` row; the
-  `%` component is not a currency amount and stays out of the numeric layer. The
-  status/summary still surfaces it qualitatively.
-- **Full graduated/stair-step curves** — only the entry tier + overage rate are
-  captured, not every volume break. A calculator page stays `dynamic`.
-- **Credit → feature consumption maps** (10 credits per AI action) — the credit
-  pack price + quantity are captured; per-feature burn rates are not.
+> **Closed by Pricing Intelligence P3 (2026-07-31).** The first two entries below
+> are now first-class; they are kept for the record because the *reasoning* that
+> retired them is the reasoning behind their new guardrails.
 
-These are captured qualitatively by the AI source summary; making them first-class
-would need a per-model sub-schema and is out of scope until a competitor demands it.
+- ~~**Percentage fees** (`2.9% + $0.30`)~~ — `percentage_rate` is now a numeric
+  column and `price` carries the fixed part, so the two halves of the plan live on
+  one row and a change in either emits `rate_changed`. It is still **excluded from
+  cost modelling**: `costAtVolume` returns null for a `percentage` structure,
+  because its meter is money, not a countable unit, and "what it costs at 10,000
+  units" would be a figure with no meaning. It surfaces as a badge.
+- ~~**Full graduated/stair-step curves**~~ — `price_tiers` stores every published
+  band and `cost-model.ts` prices a volume against them (graduated, volume,
+  package, standard, plus a `max(usage, minimum)` floor). The bands are only ever
+  stored when the page PRINTS them: an invalid or overlapping set is dropped
+  whole, never trimmed to its valid prefix, because a half-read ladder computes a
+  confidently wrong cost. A calculator page with no printed table still stays
+  `dynamic` — probing one is P4.
+- **Credit → feature consumption maps** (10 credits per AI action) — the credit
+  pack price + quantity are captured; per-feature burn rates are not (P5).
+
+The remaining entry is captured qualitatively by the AI source summary; making it
+first-class would need a per-model sub-schema and is out of scope until a
+competitor demands it.
+
+### Reading a metered competitor (P3)
+
+A rate ($0.10/request) and a subscription ($99/mo) are not the same kind of
+number, which is why `isComparablePricePeriod` keeps usage rows out of every
+numeric aggregate. What IS comparable is a **cost at a volume**, so that is what
+the comparison layer reads:
+
+- `unit-alias.ts` gives GB / Go / gigabyte one identity, and refuses to guess a
+  meter it does not know — an unnormalised unit keeps its bands (evidence) but
+  never produces a cost point, because comparing an unknown meter against a known
+  one is arithmetic on two different things.
+- `price_points` stores the cost at four fixed preset volumes at capture time.
+- A workspace's own volume (`organizations.reference_volumes`) is computed **on
+  read**, by the same `costAtVolume`, so changing it never needs a re-capture and
+  the on-read number can never disagree with the stored one.
+- On the compare axis, a derived cost is marked: an asterisk the legend explains,
+  a lighter bar, and the volume it was read at. A competitor that publishes a
+  subscription keeps its published band — only a column with nothing chartable
+  falls through to its cost.
+- A hybrid plan's cost carries the subscription its meter sits on. Without that it
+  would enter the comparison at its overage rate alone and read as cheaper than it
+  bills.
 
 ---
 

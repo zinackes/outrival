@@ -15,14 +15,11 @@ import {
   SparkleIcon,
 } from "@/components/icons";
 import {
-  ALL_CONFIGURABLE_SOURCES,
   MONITOR_FREQUENCIES,
   PLAN_LABELS,
-  buildCoverage,
   coverageHeadline,
   minPlanForFrequency,
   planIncludesFrequency,
-  sourceState,
   type DetectedTargets,
   type MonitorFrequency,
   type Plan,
@@ -44,6 +41,7 @@ import { StatusDot } from "@/components/outrival/data-marks";
 import { sourceShortLabel } from "@/lib/source-labels";
 import { friendlyScrapeError } from "@/lib/scrape-errors";
 import { scrapeActivity } from "./shared";
+import { competitorCoverage } from "./helpers";
 import { lastScanLabel, monitorStatus, nextScanLabel, type MonitorStatus } from "./monitor-status";
 
 const label = (s: SourceType) => sourceShortLabel(s).toLowerCase();
@@ -109,13 +107,7 @@ export function CompetitorRail({
   onLockedFrequency: (freq: MonitorFrequency) => void;
   onGenerateSummary: () => void;
 }) {
-  const bySource = new Map(monitors.map((m) => [m.sourceType, m]));
-  const coverage = buildCoverage(
-    ALL_CONFIGURABLE_SOURCES.map((sourceType) => ({
-      sourceType,
-      state: sourceState({ sourceType, plan, monitor: bySource.get(sourceType) ?? null, targets }),
-    })),
-  );
+  const coverage = competitorCoverage(monitors, plan, targets);
   // Sources still being captured count as fallbacks too: a competitor added a
   // minute ago shouldn't read as "blocked, and nothing else".
   const fallbacks = [...coverage.tracked, ...coverage.pending];
@@ -318,20 +310,26 @@ function SourceRow({
   onLockedFrequency: (freq: MonitorFrequency) => void;
 }) {
   const failed = status === "failed";
+  // A refusal is not a failure of ours and not an off switch: neutral ink, its own
+  // word. The card already ends with a note saying we don't bypass a block — a red
+  // dot and "failed" three lines above it contradicted that note outright.
+  const blocked = status === "blocked";
   const off = status === "disabled" || status === "paused";
-  const tone = failed ? "bad" : off ? "neutral" : status === "ok" ? "good" : "warn";
+  const tone = failed ? "bad" : blocked || off ? "neutral" : status === "ok" ? "good" : "warn";
   const age =
     status === "running"
       ? "…"
       : status === "queued"
         ? "queued"
-        : off
-        ? "off"
-        : failed
-          ? "failed"
-          : status === "ok" && m.lastRunAt
-            ? shortAge(new Date(m.lastRunAt))
-            : "never";
+        : blocked
+          ? "blocked"
+          : off
+          ? "off"
+          : failed
+            ? "failed"
+            : status === "ok" && m.lastRunAt
+              ? shortAge(new Date(m.lastRunAt))
+              : "never";
   const nextText = nextScanLabel(m, status, monitoringPaused);
 
   return (
@@ -385,6 +383,14 @@ function SourceRow({
             {friendlyScrapeError(m.lastError, m.sourceType)}
           </p>
         )}
+        {blocked && (
+          <p className="break-words px-2 pb-1.5 text-sm leading-relaxed text-muted-foreground">
+            {m.lastError
+              ? friendlyScrapeError(m.lastError, m.sourceType)
+              : "This site doesn't allow automated collection, so we don't monitor this source."}{" "}
+            No action needed from you.
+          </p>
+        )}
         {status === "disabled" && (
           <p className="break-words px-2 pb-1.5 text-sm leading-relaxed text-muted-foreground">
             We stopped scraping this source after repeated failures. Resume to try again.
@@ -429,6 +435,16 @@ function SourceRow({
         </div>
 
         <DropdownMenuSeparator />
+        {/* A blocked source keeps the ordinary Run / Pause items below: the refusal is
+            reported, not enforced on the user. It only adds the one thing the state
+            actually calls for, which is why we stopped. */}
+        {blocked && (
+          <DropdownMenuItem asChild>
+            <Link href="/bot" target="_blank" rel="noreferrer">
+              <ShieldSlashIcon size={16} /> Why we stop at a block
+            </Link>
+          </DropdownMenuItem>
+        )}
         {status === "disabled" ? (
           <DropdownMenuItem onClick={() => onResume(m.id)} disabled={busy}>
             {busy ? <SpinnerIcon size={16} className="animate-spin" /> : <ArrowsClockwiseIcon size={16} />}

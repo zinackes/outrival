@@ -38,6 +38,7 @@ import {
   CardsThreeIcon,
   CrosshairIcon,
   PaletteIcon,
+  ShieldSlashIcon,
 } from "@/components/icons";
 import {
   Dialog,
@@ -72,9 +73,12 @@ import {
   aggregateFreshness,
   deriveAnalysisStatus,
   COMPETITOR_NAME_MAX_LENGTH,
+  blockedReach,
+  type BlockedReach,
   type Plan,
   type AnalysisStatus,
   type DetectedTargets,
+  type SourceType,
 } from "@outrival/shared";
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
 import { AnalysisProgress } from "@/components/outrival/analysis-status";
@@ -126,6 +130,7 @@ import {
   TabLoading,
   SourceSummary,
 } from "./competitor-detail/shared";
+import { competitorCoverage } from "./competitor-detail/helpers";
 import { PricingTab } from "./competitor-detail/pricing-tab";
 import { HiringTab } from "./competitor-detail/hiring-tab";
 import { ReviewsTab } from "./competitor-detail/reviews-tab";
@@ -637,6 +642,9 @@ export function CompetitorDetailView({ id }: { id: string }) {
   const lastRunMs = monitors
     .map((m) => (m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0))
     .reduce((a, b) => Math.max(a, b), 0);
+  // The same buckets the rail renders, so the title and the Sources card can never
+  // disagree about how much of this competitor refuses us.
+  const pageCoverage = competitorCoverage(monitors, plan, detectedTargets);
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -645,6 +653,8 @@ export function CompetitorDetailView({ id }: { id: string }) {
           competitor={competitor}
           lastRunMs={lastRunMs}
           sourceCount={monitors.length}
+          blockedReachVerdict={blockedReach(pageCoverage)}
+          blockedSources={pageCoverage.blocked}
           productId={productScope}
           index={rosterIdx}
           total={roster?.length ?? 0}
@@ -887,6 +897,8 @@ function Header({
   competitor,
   lastRunMs,
   sourceCount,
+  blockedReachVerdict,
+  blockedSources,
   productId,
   index,
   total,
@@ -905,6 +917,9 @@ function Header({
   competitor: Competitor;
   lastRunMs: number;
   sourceCount: number;
+  /** How far this competitor's refusals reach, and which sources they are. */
+  blockedReachVerdict: BlockedReach;
+  blockedSources: SourceType[];
   /** Active product scope, so the battle-card state matches the card you'd open. */
   productId?: string;
   index: number;
@@ -1021,6 +1036,32 @@ function Header({
             <BellSlashIcon size={14} /> Muted
           </span>
         </StatusDot>
+      )}
+
+      {/* Only a WIDESPREAD refusal is hoisted to the page title: a blocked blog is a
+          footnote on its own row, but a blocked homepage changes what this whole page
+          can claim to know. Purely informative, like the two states above it, and it
+          takes nothing away — every source keeps its Run button. */}
+      {blockedReachVerdict === "widespread" && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <StatusDot>
+                <span className="inline-flex items-center gap-1">
+                  <ShieldSlashIcon size={14} /> Blocks us
+                </span>
+              </StatusDot>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">
+            This site refuses automated collection on{" "}
+            {blockedSources.length === 1
+              ? `its ${sourceShortLabel(blockedSources[0]!).toLowerCase()}`
+              : `${blockedSources.length} of its sources`}
+            , and we don&apos;t bypass a refusal. Everything else we can reach is still
+            collected.
+          </TooltipContent>
+        </Tooltip>
       )}
 
       <div className="ml-auto flex items-center gap-2 shrink-0">

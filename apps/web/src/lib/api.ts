@@ -11,6 +11,7 @@ import type {
   ResolvedPricingTier,
   CustomMonitorHint,
   PricingModel,
+  BlockedReach,
 } from "@outrival/shared";
 
 export type { DetectionConfig, AnalysisStatus, ScrapeActivity } from "@outrival/shared";
@@ -186,7 +187,17 @@ export interface Competitor {
   analysis?: AnalysisStatus;
   // How much of this competitor we are actually watching (list endpoint only):
   // active user-facing sources, how many stopped answering, and which one to name.
-  coverage?: { sources: number; failing: number; failingSource: string | null };
+  coverage?: {
+    sources: number;
+    failing: number;
+    failingSource: string | null;
+    // Sources the SITE refuses. Kept out of `failing`: nothing is broken and there
+    // is nothing to repair. `blockedReach` says whether it is worth saying here at
+    // all — "partial" belongs on the source rows, only "widespread" is competitor-level.
+    blocked?: number;
+    blockedSource?: string | null;
+    blockedReach?: BlockedReach;
+  };
   // The competitor's last signal, whenever it happened (NOT windowed) — the roster
   // row leads with the finding, and a silent competitor still has a last move.
   latestMove?: {
@@ -659,7 +670,9 @@ export interface SectoralEligibility {
 }
 
 // Activity — user-facing view of the scraping work done for the org.
-export type ActivitySourceStatus = "ok" | "failing" | "paused" | "unscrapable";
+// "blocked" is the site refusing automated collection — a real limit, but never a
+// task: it carries no Resume and no re-scan, because both meet the same wall.
+export type ActivitySourceStatus = "ok" | "failing" | "paused" | "unscrapable" | "blocked";
 
 export interface ActivitySource {
   monitorId: string;
@@ -2422,7 +2435,17 @@ export interface ProductSummary {
   stage?: "live" | "developing" | "idea";
   lastScanAt?: string | null;
   // How much of the product's own site/repo we are still capturing.
-  coverage?: { sources: number; failing: number; failingSource: string | null };
+  coverage?: {
+    sources: number;
+    failing: number;
+    failingSource: string | null;
+    // Sources the SITE refuses. Kept out of `failing`: nothing is broken and there
+    // is nothing to repair. `blockedReach` says whether it is worth saying here at
+    // all — "partial" belongs on the source rows, only "widespread" is competitor-level.
+    blocked?: number;
+    blockedSource?: string | null;
+    blockedReach?: BlockedReach;
+  };
   // Daily signal counts on this product's competitors over 14 days, oldest first.
   activity?: number[];
   stats?: {

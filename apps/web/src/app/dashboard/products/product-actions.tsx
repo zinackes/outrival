@@ -226,8 +226,9 @@ export function ProductActionsMenu({
           <DialogHeader>
             <DialogTitle>Remove {name}?</DialogTitle>
             <DialogDescription>
-              This takes the product out of your workspace and stops its scans. Its
-              competitors stay tracked at the workspace level, and its history is kept.
+              This stops its scans and takes the product out of your workspace.
+              Competitors only it tracked move to your primary product, so none drop
+              off your roster unnoticed. Its history is kept.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

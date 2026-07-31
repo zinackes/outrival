@@ -8,7 +8,12 @@ import { ensureUserOrg } from "../lib/org";
 import { enqueueJob } from "../lib/queue";
 import { getOrgPlan, isFeatureAllowed } from "../lib/plan";
 import { getJobState } from "../lib/queue-admin";
-import { primaryProductId, productSelfCompetitorId, productCompetitorIds } from "../lib/products";
+import {
+  liveProductId,
+  primaryProductId,
+  productSelfCompetitorId,
+  productCompetitorIds,
+} from "../lib/products";
 import { analyticsQueryResult, sql } from "../lib/analytics-safe";
 
 // AI Visibility / "Share of Model" (docs/ai-visibility.md, phase 4). Read the org's
@@ -82,7 +87,9 @@ aiVisibilityRouter.get("/", async (c) => {
   // products", the org's primary product — the page is per-product now. "You" + the
   // in-scope subject set + the prompt/result filters all key off it. Legacy orgs with
   // no product fall through to org-level (productId stays undefined, no scoping).
-  let productId = c.req.query("productId") || undefined;
+  // Archived / unknown resolves to null here, so a scope cookie outliving its product
+  // lands on the primary instead of reading an empty page for a removed SKU.
+  let productId = (await liveProductId(orgId, c.req.query("productId"))) ?? undefined;
   if (!productId) productId = (await primaryProductId(orgId)) ?? undefined;
 
   // Result rows carry product_id (phase B); scope every analytics read to the product

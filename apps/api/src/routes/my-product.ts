@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { scrapeMonitor, USER_SCRAPE_PRIORITY } from "@outrival/queue";
 import {
   competitors,
@@ -28,7 +28,11 @@ import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, countUserForcedRescansToday, rescanLimitBody } from "../lib/plan";
-import { DEFAULT_PRODUCT_NAME, ensurePrimaryProductForSelf } from "../lib/products";
+import {
+  DEFAULT_PRODUCT_NAME,
+  ensurePrimaryProductForSelf,
+  liveProductId,
+} from "../lib/products";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
 
 type Variables = { user: { id: string } };
@@ -43,7 +47,14 @@ myProductRouter.use("*", authMiddleware);
  * mono-product orgs. Phase 2 scopes My Product by the selected product. */
 async function getSelf(orgId: string) {
   return db.query.competitors.findFirst({
-    where: and(eq(competitors.orgId, orgId), eq(competitors.type, "self")),
+    // Soft-deleted selfs excluded: archiving a product retires its anchor that way, and
+    // the archived one is usually the OLDEST — so without this filter the unscoped My
+    // Product view returned the product the user had just removed.
+    where: and(
+      eq(competitors.orgId, orgId),
+      eq(competitors.type, "self"),
+      isNull(competitors.deletedAt),
+    ),
     orderBy: (t, { asc }) => asc(t.createdAt),
   });
 }
@@ -53,9 +64,12 @@ async function getSelf(orgId: string) {
  * a forged or foreign productId resolves to null, so a caller can't reach another
  * org's product. Mirrors resolveProduct in battle-cards.ts. */
 async function resolveSelf(orgId: string, productId?: string | null) {
-  if (!productId) return getSelf(orgId);
+  // An archived / unknown product falls back to the primary self rather than resolving
+  // to the removed product's anchor: the scope cookie outlives the product it names.
+  const live = await liveProductId(orgId, productId);
+  if (!live) return getSelf(orgId);
   const p = await db.query.products.findFirst({
-    where: and(eq(products.id, productId), eq(products.orgId, orgId)),
+    where: and(eq(products.id, live), eq(products.orgId, orgId)),
     columns: { selfCompetitorId: true },
   });
   if (!p) return null;
@@ -64,6 +78,7 @@ async function resolveSelf(orgId: string, productId?: string | null) {
       eq(competitors.id, p.selfCompetitorId),
       eq(competitors.orgId, orgId),
       eq(competitors.type, "self"),
+      isNull(competitors.deletedAt),
     ),
   });
 }
@@ -348,7 +363,9 @@ myProductRouter.post("/site", async (c) => {
 
   // A given product's self always exists (the product wraps it); only the implicit
   // primary may need lazy creation for pre-patch-15 orgs.
-  const siteProductId = c.req.query("productId");
+  // Resolved to a LIVE product: a scope cookie pointing at an archived one must not
+  // decide whether this write counts as the primary product's.
+  const siteProductId = (await liveProductId(orgId, c.req.query("productId"))) ?? undefined;
   const self = siteProductId
     ? await resolveSelf(orgId, siteProductId)
     : await ensureSelf(orgId);
@@ -455,7 +472,7 @@ myProductRouter.post("/repo", async (c) => {
     return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
   }
 
-  const repoProductId = c.req.query("productId");
+  const repoProductId = (await liveProductId(orgId, c.req.query("productId"))) ?? undefined;
   const self = await resolveSelf(orgId, repoProductId);
   if (!self) return c.json({ error: "no_self_product" }, 404);
 
@@ -645,7 +662,7 @@ myProductRouter.get("/changes", async (c) => {
 
   // With a productId, scope to that product's self-competitor; without one, keep the
   // legacy org-wide behaviour (the primary detail page passes its productId).
-  const changesProductId = c.req.query("productId");
+  const changesProductId = (await liveProductId(orgId, c.req.query("productId"))) ?? undefined;
   const conds = [eq(selfProductChanges.orgId, orgId)];
   if (changesProductId) {
     const self = await resolveSelf(orgId, changesProductId);

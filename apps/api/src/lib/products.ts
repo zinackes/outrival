@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { products, productCompetitors, competitors, type SelfProfile } from "@outrival/db";
 import { db } from "./db";
 
@@ -11,6 +11,34 @@ export async function primaryProductId(orgId: string): Promise<string | null> {
   const p = await db.query.products.findFirst({
     where: and(eq(products.orgId, orgId), ne(products.status, "archived")),
     orderBy: [desc(products.isPrimary), asc(products.position), asc(products.createdAt)],
+    columns: { id: true },
+  });
+  return p?.id ?? null;
+}
+
+/**
+ * Collapse an inbound product scope (`?productId=`, itself fed by a long-lived cookie)
+ * to a LIVE product of the org, or null. An archived, foreign or unknown id resolves to
+ * null, which every scoped endpoint already reads as "all products".
+ *
+ * Null rather than an empty id-list is the whole point. Archiving a product used to
+ * leave the scope cookie pointing at it, and each scoped read happily kept serving the
+ * archived product's roster: the workspace showed a removed SKU's competitors and
+ * nothing else. On an org left with one product the switcher hides itself, so there was
+ * no control on screen able to unset the scope that was hiding everything — the user
+ * could neither see nor delete competitors that still counted against the plan.
+ */
+export async function liveProductId(
+  orgId: string,
+  productId?: string | null,
+): Promise<string | null> {
+  if (!productId) return null;
+  const p = await db.query.products.findFirst({
+    where: and(
+      eq(products.id, productId),
+      eq(products.orgId, orgId),
+      ne(products.status, "archived"),
+    ),
     columns: { id: true },
   });
   return p?.id ?? null;
@@ -44,7 +72,13 @@ export async function productDiscoveryTarget(
     })
     .from(products)
     .innerJoin(competitors, eq(competitors.id, products.selfCompetitorId))
-    .where(and(eq(products.id, productId), eq(products.orgId, orgId)))
+    .where(
+      and(
+        eq(products.id, productId),
+        eq(products.orgId, orgId),
+        ne(products.status, "archived"),
+      ),
+    )
     .limit(1);
   return row ?? null;
 }
@@ -59,7 +93,13 @@ export async function productCompetitorIds(orgId: string, productId: string): Pr
     .select({ competitorId: productCompetitors.competitorId })
     .from(productCompetitors)
     .innerJoin(products, eq(products.id, productCompetitors.productId))
-    .where(and(eq(productCompetitors.productId, productId), eq(products.orgId, orgId)));
+    .where(
+      and(
+        eq(productCompetitors.productId, productId),
+        eq(products.orgId, orgId),
+        ne(products.status, "archived"),
+      ),
+    );
   return rows.map((r) => r.competitorId);
 }
 
@@ -77,7 +117,13 @@ export async function productSelfCompetitorId(
   const [row] = await db
     .select({ selfCompetitorId: products.selfCompetitorId })
     .from(products)
-    .where(and(eq(products.id, productId), eq(products.orgId, orgId)))
+    .where(
+      and(
+        eq(products.id, productId),
+        eq(products.orgId, orgId),
+        ne(products.status, "archived"),
+      ),
+    )
     .limit(1);
   return row?.selfCompetitorId ?? null;
 }
@@ -176,6 +222,89 @@ export async function associateCompetitorWithProduct(
       relevanceScore: competitor?.overlapScore ?? null,
     })
     .onConflictDoNothing();
+}
+
+/**
+ * Hand an archived product's roster back to the workspace. Called when a product is
+ * archived, and mirrored once over existing rows by migration 0059.
+ *
+ * Every competitor is expected to belong to at least one LIVE product: that is the
+ * invariant `associateCompetitorWithScopedProduct` maintains on the way in, and what
+ * every product-scoped surface (roster, feed, landscape, signal tagging) reads. Archiving
+ * used to leave the junction rows in place, so a competitor tracked only by that product
+ * silently fell out of the invariant: it belonged to no live product, disappeared from
+ * every scoped view and from `signals.product_ids` tagging, yet still counted against the
+ * plan's competitor cap — billed, unreachable, undeletable from any product page.
+ *
+ * So: drop the archived product's links, and re-link whatever that orphaned onto the
+ * surviving primary. Which is exactly what the remove dialog already promises ("its
+ * competitors stay tracked at the workspace level"). Signals that carried the archived
+ * product id are re-tagged from the repaired junction — the same set `generate-signal`
+ * would compute today — so their history follows them into the product feed.
+ */
+export async function releaseProductRoster(
+  orgId: string,
+  archivedProductId: string,
+): Promise<void> {
+  const links = await db
+    .select({ competitorId: productCompetitors.competitorId })
+    .from(productCompetitors)
+    .innerJoin(products, eq(products.id, productCompetitors.productId))
+    .where(
+      and(eq(productCompetitors.productId, archivedProductId), eq(products.orgId, orgId)),
+    );
+
+  await db
+    .delete(productCompetitors)
+    .where(eq(productCompetitors.productId, archivedProductId));
+
+  const competitorIds = [...new Set(links.map((l) => l.competitorId))];
+  if (competitorIds.length > 0) {
+    // The products the archived one's competitors are STILL tracked by, so only the
+    // ones left with nothing get re-homed (a competitor shared with another SKU keeps
+    // exactly the membership it had).
+    const surviving = await db
+      .select({ competitorId: productCompetitors.competitorId })
+      .from(productCompetitors)
+      .innerJoin(products, eq(products.id, productCompetitors.productId))
+      .where(
+        and(
+          inArray(productCompetitors.competitorId, competitorIds),
+          eq(products.orgId, orgId),
+          ne(products.status, "archived"),
+        ),
+      );
+    const stillLinked = new Set(surviving.map((r) => r.competitorId));
+    const orphaned = competitorIds.filter((id) => !stillLinked.has(id));
+
+    if (orphaned.length > 0) {
+      const fallback = await primaryProductId(orgId);
+      // No live product left (an org whose last product went) — nothing to re-home
+      // onto. The competitors stay org-level and reachable in all-products scope.
+      if (fallback) {
+        for (const competitorId of orphaned) {
+          await associateCompetitorWithProduct(orgId, fallback, competitorId);
+        }
+      }
+    }
+  }
+
+  // Past signals still name the archived product. Rebuild the tag from the junction as
+  // it now stands, so a re-homed competitor's history shows up under the product that
+  // inherited it instead of staying addressed to a product that no longer exists.
+  await db.execute(sql`
+    update signals s
+    set product_ids = coalesce((
+      select jsonb_agg(pc.product_id order by p.is_primary desc, p.position asc, p.created_at asc)
+      from product_competitors pc
+      join products p on p.id = pc.product_id
+      where pc.competitor_id = s.competitor_id
+        and p.org_id = s.org_id
+        and p.status <> 'archived'
+    ), '[]'::jsonb)
+    where s.org_id = ${orgId}
+      and s.product_ids @> ${JSON.stringify([archivedProductId])}::jsonb
+  `);
 }
 
 /**

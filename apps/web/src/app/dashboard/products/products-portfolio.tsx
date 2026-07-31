@@ -17,6 +17,10 @@ import {
 import { PLAN_LABELS, type Plan } from "@outrival/shared";
 import { api, type ProductSummary } from "@/lib/api";
 import { productsSettingsQuery } from "@/lib/queries";
+import {
+  useSetProductScope,
+  useStoredScope,
+} from "@/components/dashboard/product-scope-provider";
 import { toastApiError } from "@/lib/error-helpers";
 import { shortAge } from "@/lib/format-date";
 import { sourceLabel } from "@/lib/source-labels";
@@ -78,6 +82,8 @@ const GRID = cn(
 
 export function ProductsPortfolio() {
   const queryClient = useQueryClient();
+  const activeScope = useStoredScope();
+  const setScope = useSetProductScope();
   const productsQ = useQuery(productsSettingsQuery());
   const products = productsQ.data?.products ?? null;
   const plan = (productsQ.data?.plan as Plan) ?? "free";
@@ -183,6 +189,15 @@ export function ProductsPortfolio() {
     return queryClient.invalidateQueries({ queryKey: ["products"] });
   }
 
+  // Removing the product currently in scope has to release the scope, or the cookie
+  // keeps naming a product that is gone. The provider self-heals once the roster
+  // reloads, but only the scope holder knows this the moment it happens — and on a
+  // workspace left with one product the switcher hides itself, so a scope that
+  // survived here would have no control on screen able to clear it.
+  function releaseScopeIfRemoved(ids: string[]) {
+    if (ids.includes(activeScope ?? "")) setScope(null);
+  }
+
   async function onRenameSubmit(name: string) {
     if (!renameTarget) return;
     setBusy("rename");
@@ -217,6 +232,7 @@ export function ProductsPortfolio() {
     try {
       await api.archiveProduct(removeTarget.id);
       toast.success(`Removed ${removeTarget.name}.`);
+      releaseScopeIfRemoved([removeTarget.id]);
       setRemoveTarget(null);
       await refresh();
     } catch (e) {
@@ -229,6 +245,7 @@ export function ProductsPortfolio() {
   async function onConfirmBulkRemove() {
     setBusy("bulk-remove");
     let removed = 0;
+    const removedIds: string[] = [];
     let firstError: unknown = null;
     // Sequential on purpose: the list is small (per-tier product limits), and one
     // failure must not hide how many of the others went through.
@@ -236,6 +253,7 @@ export function ProductsPortfolio() {
       try {
         await api.archiveProduct(p.id);
         removed++;
+        removedIds.push(p.id);
       } catch (e) {
         if (firstError === null) firstError = e;
       }
@@ -246,6 +264,7 @@ export function ProductsPortfolio() {
         title: removed > 0 ? "Some products couldn't be removed" : "Couldn't remove those products",
       });
     }
+    releaseScopeIfRemoved(removedIds);
     setBulkRemoveOpen(false);
     clearSelection();
     await refresh();
@@ -449,8 +468,9 @@ export function ProductsPortfolio() {
           <DialogHeader>
             <DialogTitle>Remove {removeTarget?.name ?? "product"}?</DialogTitle>
             <DialogDescription>
-              This takes the product out of your workspace and stops its scans. Its
-              competitors stay tracked at the workspace level, and its history is kept.
+              This stops its scans and takes the product out of your workspace.
+              Competitors only it tracked move to your primary product, so none drop
+              off your roster unnoticed. Its history is kept.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -485,8 +505,9 @@ export function ProductsPortfolio() {
               Remove {removableRows.length} product{removableRows.length > 1 ? "s" : ""}?
             </DialogTitle>
             <DialogDescription>
-              This takes them out of your workspace and stops their scans. Their
-              competitors stay tracked at the workspace level, and their history is kept.
+              This stops their scans and takes them out of your workspace.
+              Competitors only they tracked move to your primary product, so none drop
+              off your roster unnoticed. Their history is kept.
             </DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">

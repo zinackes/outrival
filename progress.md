@@ -757,3 +757,90 @@ vérifier en dev un concurrent à `<table>` comparatif (matrice + cellules surli
 
 **Prochaine session** : P3 — tiers / rate_structure / price_points computed.
 NE PAS commencer sans /clear. (P4 calculator probe, P5 burn rates ensuite.)
+
+### 2026-07-31 — Pricing Intelligence v2, Phase 3/5 — rate structures & cost model
+
+**Objectif** : modéliser les paliers et structures de rate, calculer des coûts effectifs
+à volumes de référence (déterministe, zéro AI), faire rentrer l'usage-based dans le
+compare, brancher les signaux tier/minimum. Branche `feat/pricing-rate-structures`.
+
+⚠️ **P2 n'avait jamais atteint `main`** : PR #361 a été mergée dans
+`feat/pricing-deterministic-signals` (P1) à 21:30, alors que #359 (P1 → main) l'avait
+été à 16:15. Les 8 commits entitlements étaient donc orphelins. Cette branche a été
+rebasée sur `origin/main` et les porte avec P3.
+
+**Réalisé** :
+- Migrations **0056** (`pricing_history` += `rate_structure` / `minimum_amount` /
+  `percentage_rate` ; tables `price_tiers` et `price_points` + index) et **0057**
+  (`organizations.reference_volumes`). Tout nullable : une ligne subscription legacy
+  est inchangée et ses colonnes vides ne sont pas une affirmation sur le plan.
+- `packages/shared/unit-alias.ts` : ~26 meters canoniques, alias EN/FR/DE/ES/IT/NL/PT
+  (patron period-vocab / entitlement-catalog : données + résolveur pur, zéro AI).
+  `resolveMeterUnit` rend `{unit, canonical}` — un meter inconnu garde le wording de la
+  page avec `canonical:false` et n'est **jamais deviné** vers un voisin. 13 tests.
+- `packages/shared/cost-model.ts` : `costAtVolume` pur pour standard / graduated /
+  volume / package + plancher `max(usage, minimum)`. L'arithmétique tourne sur les
+  PLAFONDS de bande (`to_qty`), donc les deux notations qu'une page peut imprimer
+  (« 10k–50k » et « 10 001–50 000 ») calculent à l'identique. `percentage` EXCLU : son
+  meter est de l'argent. `validateTierSet` rejette un set INVALIDE EN ENTIER (jamais
+  son préfixe valide) : une échelle à moitié lue calcule un coût faux avec assurance.
+  38 tests (bords exacts, qty 0, bande infinie, minimum, fee d'entrée).
+- Extraction (`packages/ai/extract-pricing.ts`) : zod + prompt étendus —
+  `rate_structure`, `minimum_amount`, `percentage_rate`, `tiers[]`, `cost_examples[]`.
+  maxTokens 1536 → 2048 (une réponse tronquée en plein tableau ne parse pas du tout).
+- Worker `lib/rate-structures.ts` (pur, testé) : validation code-side, écriture des
+  bandes (`price_tiers`) et des coûts aux 4 volumes preset (`price_points`,
+  `method='computed_from_tiers'`). **Trois refus** : ladder invalide droppée entière ·
+  aucun point sur un meter non normalisable · exemple chiffré cru seulement si SES DEUX
+  nombres sont dans le texte de page (patron substring P2). Un plan hybride porte la
+  souscription sur laquelle son meter s'appuie, sinon il se lit moins cher qu'il ne
+  facture. Live only, jamais backfill, jamais après le coverage guard. 15 tests.
+- `packages/shared/price-tier-diff.ts` : `diffPriceTiers` → `tier_boundary_moved`
+  (HIGH — « 0–10k @ $0.10 » → « 0–5k @ $0.10 » : une hausse dont aucun nombre imprimé
+  ne bouge) + `rate_changed` sur l'unit_price d'une bande (table de sévérité P1, baisse
+  >15% = critical). Un rate n'est JAMAIS comparé à travers une bande déplacée. Ladder
+  apparue sur un plan connu = silence (c'est l'extracteur qui lit enfin un tableau).
+  14 tests.
+- `diffPricingBatches` étendu : `minimum_introduced` / `minimum_changed` (medium) et
+  `rate_changed` sur `percentage_rate`. Comparés seulement quand LES DEUX côtés portent
+  le tampon `rate_structure` — sinon le 1er scrape post-deploy annoncerait un plancher
+  présent depuis toujours. 8 tests ajoutés (40 au total, 32 d'origine intouchés).
+- `signal-facts` : `tiers: TierFact[]` sur le kind pricing, re-diff des 2 batches par
+  LE MÊME differ shared ; bloc web « Volume bands · N moves ».
+- `packages/shared/pricing-model.ts` : `pricingModelOf` (badge flat / per_seat / usage /
+  hybrid / credits), `meteredUnits`, `cheapestCostAtVolume`, `monthlyBaseFee` (réutilisé
+  par le worker — une seule définition du fee de base).
+- Compare : `GET /api/compare` rend `pricing.model` + `pricing.meters[]` (coûts calculés
+  ON READ depuis la ladder capturée, donc changer les volumes du workspace ne
+  re-scrape rien). `derive.ts` : `priceReading(col, rates, to, meter?)` — une colonne
+  SANS prix subscription comparable entre dans la bande par son coût effectif, marquée
+  (`meter` sur le reading, astérisque + légende + barre à opacité réduite + « read at
+  10,000 requests/mo »). Sélecteur de volume dans la légende de la lens Price. Une
+  colonne qui publie une souscription garde sa bande publiée. **Zéro régression** : les
+  32 tests derive d'origine passent inchangés, + 10 nouveaux dont l'égalité stricte
+  `priceScale(set, {meter})` === `priceScale(set)` sur un set subscription-only.
+- Setting workspace `reference_volumes` (`GET/PATCH /api/settings/reference-volumes`,
+  carte dans Settings → General) : liste {unit, qty}, meters canoniques seulement,
+  vide = presets. Read-side pur.
+- Pricing tab : section **Rate structure** (bandes dépliables, minimum, %),
+  `GET /api/competitors/:id/rate-structures` (dernier batch seulement — la série
+  complète est déjà l'endpoint pricing-history).
+
+**Fichiers modifiés** : packages/db/schema/{analytics,organizations}.ts + migrations
+0056/0057 · packages/shared/{unit-alias,cost-model,price-tier-diff,pricing-model,
+pricing-diff}.ts · packages/ai/src/tasks/extract-pricing.ts · apps/workers/src/lib/
+{rate-structures,analytics,pricing-signals}.ts + core/extract-pricing.ts ·
+apps/api/src/{lib/signal-facts.ts,routes/{compare,competitors,settings}.ts} ·
+apps/web/src/{lib/api.ts,lib/queries.ts,components/dashboard/compare/{derive.ts,
+lenses.tsx},components/outrival/{signal-facts,reference-volumes-card}.tsx,
+app/dashboard/competitors/[id]/competitor-detail/rate-structures.tsx}
+
+**Tests** : typecheck 8/8 ✓ | pnpm test 12/12 ✓ (shared 510 · workers 204 · api 235 ·
+web 42 derive dont 32 d'origine inchangés)
+
+**Reste côté humain** : `pnpm db:migrate` (0055 + 0056 + 0057) sur dev puis prod ·
+vérifier en dev un concurrent à tableau de paliers (bandes dans le pricing tab, puis
+`tier_boundary_moved` au scrape suivant si une borne bouge) · PR portant P2 + P3.
+
+**Prochaine session** : P4 — calculator probe (Playwright) + burn rates. NE PAS
+commencer sans /clear.

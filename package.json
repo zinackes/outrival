@@ -14,6 +14,7 @@
     "db:generate": "pnpm --filter @outrival/db db:generate",
     "db:migrate": "pnpm --filter @outrival/db db:migrate",
     "db:baseline": "pnpm --filter @outrival/db db:baseline",
+    "db:realign-journal": "pnpm --filter @outrival/db db:realign-journal",
     "db:studio": "pnpm --filter @outrival/db db:studio",
     "trigger:dev": "pnpm --filter @outrival/workers trigger:dev"
   },

@@ -46,6 +46,8 @@ const SOURCE_LABELS: Record<string, string> = {
   job_facts: "Job description signals",
   // Internal anchor for where they hire (new country, new department, freeze).
   hiring_footprint: "Hiring footprint",
+  // Internal anchor for salary-band moves and the start of pay disclosure.
+  hiring_salary: "Salary bands",
   // Internal Hacker News anchor (Show HN launches + traction mentions).
   hackernews: "Hacker News",
   // Internal well-known / domain-fingerprint anchor (mobile-app launch, llms.txt).
@@ -98,6 +100,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   hiring_shift: "Hiring trends",
   job_facts: "Job description signals",
   hiring_footprint: "Hiring footprint",
+  hiring_salary: "Salary bands",
   hackernews: "Hacker News",
   wellknown: "App & AI footprint",
   comparison_page: "Comparison page",

@@ -4,6 +4,7 @@ import {
   detectAtsBoard,
   fetchAtsJobs,
   normalizeSalary,
+  normalizeSalaryPeriod,
   normalizeSeniority,
   parseAtsResponse,
   appendAtsJobsToHtml,
@@ -479,4 +480,112 @@ test("the JSON island round-trips the description and employment type", () => {
   const html = appendAtsJobsToHtml("<html><body></body></html>", board, jobs);
   const parsed = parseAtsJobsFromHtml(html);
   expect(parsed?.[0]?.description).toBe("We run on Kubernetes.");
+});
+
+// ─── salary period (Hiring Intelligence v2 P3) ───────────────────────────────
+
+test("normalizeSalaryPeriod: every provider spells the same interval differently", () => {
+  // Lever
+  expect(normalizeSalaryPeriod("per-year-salary")).toBe("yearly");
+  expect(normalizeSalaryPeriod("per-hour-wage")).toBe("hourly");
+  expect(normalizeSalaryPeriod("per-month-salary")).toBe("monthly");
+  // Ashby
+  expect(normalizeSalaryPeriod("PER_YEAR")).toBe("yearly");
+  expect(normalizeSalaryPeriod("PER_HOUR")).toBe("hourly");
+  // Recruitee / WTTJ
+  expect(normalizeSalaryPeriod("year")).toBe("yearly");
+  expect(normalizeSalaryPeriod("yearly")).toBe("yearly");
+  expect(normalizeSalaryPeriod("month")).toBe("monthly");
+  expect(normalizeSalaryPeriod("day")).toBe("daily");
+});
+
+test("normalizeSalaryPeriod: a period we do not model reads as 'not stated'", () => {
+  // Weekly and one-off payouts must NOT be rounded into the nearest modelled
+  // period — the band builder's amount rule handles an unstated period safely.
+  expect(normalizeSalaryPeriod("per-week-salary")).toBeNull();
+  expect(normalizeSalaryPeriod("1 TIME")).toBeNull();
+  expect(normalizeSalaryPeriod("")).toBeNull();
+  expect(normalizeSalaryPeriod(null)).toBeNull();
+});
+
+test("lever: the interval rides along with the range", () => {
+  const jobs = parseAtsResponse("lever", [
+    {
+      text: "Support Agent",
+      categories: { team: "Support" },
+      salaryRange: { min: 25, max: 32, currency: "USD", interval: "per-hour-wage" },
+    },
+  ]);
+  expect(jobs[0]?.salaryPeriod).toBe("hourly");
+});
+
+test("ashby: the interval comes off the salary component, not the equity one", () => {
+  const jobs = parseAtsResponse("ashby", {
+    jobs: [
+      {
+        title: "Staff Engineer",
+        isListed: true,
+        compensation: {
+          compensationTierSummary: "$180K – $220K • 0.1%",
+          summaryComponents: [
+            { compensationType: "Equity", interval: "1 TIME", summary: "0.1%" },
+            { compensationType: "Salary", interval: "PER_YEAR", summary: "$180K – $220K" },
+          ],
+        },
+      },
+    ],
+  });
+  expect(jobs[0]?.salaryPeriod).toBe("yearly");
+});
+
+test("recruitee / wttj: period read from their own field", () => {
+  const recruitee = parseAtsResponse("recruitee", {
+    offers: [
+      { title: "Barista", department: "Ops", salary: { min: 14, max: 16, currency: "EUR", period: "hour" } },
+    ],
+  });
+  expect(recruitee[0]?.salaryPeriod).toBe("hourly");
+
+  const wttj = parseAtsResponse("welcometothejungle", {
+    hits: [
+      {
+        name: "Développeur backend",
+        slug: "dev",
+        organization: { slug: "acme" },
+        salary_minimum: 3500,
+        salary_maximum: 4200,
+        salary_currency: "EUR",
+        salary_period: "monthly",
+      },
+    ],
+  });
+  expect(wttj[0]?.salaryPeriod).toBe("monthly");
+});
+
+test("a period with no amount behind it is dropped with the amount", () => {
+  const jobs = parseAtsResponse("lever", [
+    { text: "Engineer", categories: { team: "Eng" }, salaryRange: { interval: "per-year-salary" } },
+  ]);
+  expect(jobs[0]?.salaryMin).toBeNull();
+  expect(jobs[0]?.salaryPeriod).toBeNull();
+});
+
+test("providers with no compensation in their list payload stay null", () => {
+  const jobs = parseAtsResponse("greenhouse", {
+    jobs: [{ title: "Engineer", departments: [{ name: "Eng" }] }],
+  });
+  expect(jobs[0]?.salaryPeriod).toBeNull();
+});
+
+test("the JSON island round-trips the period", () => {
+  const board = { provider: "lever", token: "acme", boardUrl: "https://jobs.lever.co/acme" };
+  const jobs = parseAtsResponse("lever", [
+    {
+      text: "Engineer",
+      categories: { team: "Eng" },
+      salaryRange: { min: 4000, max: 5000, currency: "EUR", interval: "per-month-salary" },
+    },
+  ]);
+  const parsed = parseAtsJobsFromHtml(appendAtsJobsToHtml("<html></html>", board, jobs));
+  expect(parsed?.[0]?.salaryPeriod).toBe("monthly");
 });

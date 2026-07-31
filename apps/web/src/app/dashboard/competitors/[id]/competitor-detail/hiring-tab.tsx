@@ -5,7 +5,12 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { ArrowUpIcon, ArrowDownIcon, CaretRightIcon, ArrowSquareOutIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
-import { api, type CompetitorSignal, type HiringGeoData } from "@/lib/api";
+import {
+  api,
+  type CompetitorSignal,
+  type HiringGeoData,
+  type HiringSalaryData,
+} from "@/lib/api";
 import { HIRING_GEO_RESERVED_LABELS } from "@outrival/shared";
 import { cn } from "@/lib/utils";
 import { Sparkline } from "@/components/dashboard/sparkline";
@@ -68,6 +73,12 @@ export function HiringTab({
   const geoQuery = useQuery({
     queryKey: ["competitor", competitorId, "hiringGeo"],
     queryFn: () => api.getCompetitorHiringGeo(competitorId),
+    placeholderData: keepPreviousData,
+  });
+  // What they pay. Same contract again: secondary enrichment, never blocking.
+  const salaryQuery = useQuery({
+    queryKey: ["competitor", competitorId, "hiringSalary"],
+    queryFn: () => api.getCompetitorHiringSalary(competitorId),
     placeholderData: keepPreviousData,
   });
 
@@ -277,6 +288,8 @@ export function HiringTab({
       )}
 
       <WhereTheyHire geo={geoQuery.data ?? null} />
+
+      <Salaries salary={salaryQuery.data ?? null} />
 
       {/* One department hierarchy. This used to be three: a multi-line chart, a
           count-and-delta table, and a weekly sparkline list, all drawing the same
@@ -562,6 +575,134 @@ function WhereTheyHire({ geo }: { geo: HiringGeoData | null }) {
           {hidden === 1 ? "country" : "countries"} with fewer open roles.
         </p>
       )}
+    </TabSection>
+  );
+}
+
+/** How the disclosure badge reads. Verdict computed server-side from the same numbers. */
+const DISCLOSURE_LABEL: Record<"yes" | "partial" | "no", string> = {
+  yes: "Publishes salaries",
+  partial: "Publishes some salaries",
+  no: "No salaries published",
+};
+
+/**
+ * What a competitor pays, per department and per currency.
+ *
+ * Two rules give this card its shape, and both are visible in it. Bands are drawn
+ * PER CURRENCY, so a competitor hiring in Paris and New York gets two rows for
+ * engineering and no bar spans both — nothing here converts, because an FX rate is
+ * a number we do not capture and a "median" that moves with the euro would read as
+ * a pay change. And `n` is on every row, because a p50 over three roles and a p50
+ * over thirty are different kinds of claim.
+ *
+ * The p25–p75 bar is drawn on a scale shared by every row IN THAT CURRENCY, which
+ * is the only comparison the data supports: within one currency the rows can be
+ * read against each other, across currencies they can only be read.
+ */
+function Salaries({ salary }: { salary: HiringSalaryData | null }) {
+  if (!salary) return null;
+  const { bands, disclosure } = salary;
+  if (bands.length === 0 && disclosure.total === 0) return null;
+
+  // One scale per currency: the widest p75 in that currency anchors the axis.
+  const maxByCurrency = new Map<string, number>();
+  for (const b of bands) {
+    maxByCurrency.set(b.currency, Math.max(maxByCurrency.get(b.currency) ?? 0, b.p75));
+  }
+  const currencies = new Set(bands.map((b) => b.currency));
+
+  return (
+    <TabSection
+      title="Salaries"
+      action={
+        <span
+          className={cn(
+            "shrink-0 rounded-sm px-1.5 py-0.5 text-meta font-medium",
+            disclosure.verdict === "yes"
+              ? "bg-positive/10 text-positive"
+              : disclosure.verdict === "partial"
+                ? "bg-surface-2 text-foreground"
+                : "bg-surface-2 text-muted-foreground",
+          )}
+        >
+          {DISCLOSURE_LABEL[disclosure.verdict]}
+          {disclosure.disclosed > 0 && (
+            <>
+              {" "}
+              <span className="tabular-nums">
+                {disclosure.disclosed}/{disclosure.total}
+              </span>
+            </>
+          )}
+        </span>
+      }
+    >
+      {bands.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {disclosure.disclosed > 0
+            ? "Pay is published, but not in a form that can be compared — hourly rates, or amounts with no currency stated."
+            : "Not one of their open roles states a salary."}
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {bands.map((b) => {
+            const max = maxByCurrency.get(b.currency) ?? b.p75;
+            const left = (b.p25 / max) * 100;
+            const width = Math.max(((b.p75 - b.p25) / max) * 100, 1.5);
+            const marker = (b.p50 / max) * 100;
+            return (
+              <li
+                key={`${b.bucket}-${b.currency}`}
+                className="grid grid-cols-[minmax(6rem,1fr)_minmax(0,2fr)_auto] items-center gap-3"
+              >
+                <span className="min-w-0 truncate text-sm">
+                  {b.label}
+                  {/* The currency is part of the row's identity when there is more
+                      than one — without it two engineering rows read as a mistake. */}
+                  {currencies.size > 1 && (
+                    <span className="ml-1.5 text-xs text-muted-foreground">{b.currency}</span>
+                  )}
+                </span>
+                <span className="relative flex h-4 items-center" title={`p25–p75, n=${b.n}`}>
+                  <span className="h-1.5 w-full rounded-full bg-surface-2" aria-hidden />
+                  <span
+                    className="absolute h-1.5 rounded-full bg-link"
+                    style={{ left: `${left}%`, width: `${width}%` }}
+                    aria-hidden
+                  />
+                  <span
+                    className="absolute h-3 w-0.5 rounded-full bg-foreground"
+                    style={{ left: `calc(${marker}% - 1px)` }}
+                    aria-hidden
+                  />
+                </span>
+                <span className="flex items-center gap-2 justify-self-end">
+                  {b.series.length >= 2 && (
+                    <Sparkline
+                      data={b.series}
+                      w={56}
+                      h={18}
+                      color="var(--link)"
+                      valueLabel={b.currency}
+                    />
+                  )}
+                  <span className="text-dense tabular-nums">
+                    {formatMoney(b.p50, b.currency)}
+                  </span>
+                  <span className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-meta font-medium tabular-nums text-muted-foreground">
+                    n={b.n}
+                  </span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="pt-2 text-xs text-muted-foreground">
+        Median of the annual midpoints of the ranges they publish, per currency.
+        Hourly roles are excluded and nothing is converted between currencies.
+      </p>
     </TabSection>
   );
 }

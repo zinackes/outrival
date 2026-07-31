@@ -3,6 +3,7 @@ import {
   NonRetriable as AbortTaskRunError,
   detectHiringFootprint,
   detectHiringVelocityShifts,
+  detectSalaryShifts,
   mineJobFacts,
 } from "@outrival/queue";
 import { z } from "zod";
@@ -15,9 +16,14 @@ import {
   JobsSchema,
   type JobsExtraction,
 } from "@outrival/ai";
-import { getFromR2, normalizeDomain } from "@outrival/shared";
+import { getFromR2, normalizeDomain, hasDisclosedSalary } from "@outrival/shared";
 import { parseAtsJobsFromHtml } from "@outrival/scrapers/jobs-ats";
-import { bucketJobCounts, isoWeekStart, tallyHiringGeo } from "@outrival/scrapers/jobs-hiring";
+import {
+  bucketJobCounts,
+  isoWeekStart,
+  tallyHiringGeo,
+  tallySalaryBands,
+} from "@outrival/scrapers/jobs-hiring";
 import { declaredOpenRoles } from "@outrival/scrapers/jobs-signals";
 import { detectRemoteMode } from "@outrival/scrapers/jobs-jd-facts";
 import { jobsFromStructured } from "@outrival/scrapers/structured-data";
@@ -26,6 +32,7 @@ import {
   insertJobCounts,
   upsertHiringGeo,
   upsertHiringMetrics,
+  upsertHiringSalaryBands,
   loggedAi,
   logExtractionRun,
 } from "../lib/analytics";
@@ -44,6 +51,9 @@ interface NormalizedJob {
   salaryMin: number | null;
   salaryMax: number | null;
   salaryCurrency: string | null;
+  // Hiring Intelligence v2 P3 — the period the two amounts are quoted on, from the
+  // same ATS payload. Null on every provider that states none, and on the fallback.
+  salaryPeriod: string | null;
   // Hiring Intelligence v2 P1 — best-effort, and only ever from the ATS path (the
   // careers-page fallback captures a listing, not the bodies behind it).
   descriptionText: string | null;
@@ -94,6 +104,7 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
         salaryMin: j.salaryMin,
         salaryMax: j.salaryMax,
         salaryCurrency: j.salaryCurrency,
+        salaryPeriod: j.salaryPeriod,
         descriptionText: j.description,
         remoteMode: detectRemoteMode(j.location, j.description),
         employmentType: j.employmentType,
@@ -139,6 +150,7 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
         salaryMin: null,
         salaryMax: null,
         salaryCurrency: null,
+        salaryPeriod: null,
         descriptionText: null,
         // The listing carries no body, so only the location line can answer this.
         remoteMode: detectRemoteMode(j.location, null),
@@ -237,6 +249,7 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
           salaryMin: j.salaryMin,
           salaryMax: j.salaryMax,
           salaryCurrency: j.salaryCurrency,
+          salaryPeriod: j.salaryPeriod,
           descriptionText: j.descriptionText,
           remoteMode: j.remoteMode,
           employmentType: j.employmentType,
@@ -333,6 +346,55 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
         ...tallyResolutions(activeGeo),
       });
       await detectHiringFootprint.enqueue({ competitorId: input.competitorId });
+
+      // Hiring Intelligence v2 P3 — the same weekly upsert, over what the board
+      // PAYS. It rides the identical `authoritative` guard for a reason that is
+      // sharper here than anywhere else: a degraded fetch returns a SLICE of the
+      // board, and the median of a slice is a different number from the median of
+      // the board — indistinguishable, downstream, from the competitor changing
+      // what it pays.
+      //
+      // Salaries the bands cannot place (hourly rates, no currency, an amount too
+      // small to tell a monthly figure from an annual one) are dropped by
+      // tallySalaryBands rather than approximated, so `n` on a row always means
+      // "roles this band was actually computed from".
+      const activeSalary = [
+        ...activeExisting.map((j) => ({
+          department: j.department,
+          title: j.title,
+          salaryMin: j.salaryMin,
+          salaryMax: j.salaryMax,
+          salaryCurrency: j.salaryCurrency,
+          salaryPeriod: j.salaryPeriod,
+        })),
+        ...inserts.map((j) => ({
+          department: j.department,
+          title: j.title,
+          salaryMin: j.salaryMin,
+          salaryMax: j.salaryMax,
+          salaryCurrency: j.salaryCurrency,
+          salaryPeriod: j.salaryPeriod,
+        })),
+      ];
+      const bands = tallySalaryBands(activeSalary);
+      await upsertHiringSalaryBands(
+        bands.map((b) => ({
+          competitor_id: input.competitorId,
+          department_bucket: b.bucket,
+          currency: b.currency,
+          p25: b.p25,
+          p50: b.p50,
+          p75: b.p75,
+          n: b.n,
+          week_start: weekStart,
+          recorded_at: now,
+        })),
+      );
+      // A board that publishes nothing has nothing to signal — no band can move and
+      // disclosure cannot have started — so it never wakes the detector.
+      if (activeSalary.some(hasDisclosedSalary)) {
+        await detectSalaryShifts.enqueue({ competitorId: input.competitorId });
+      }
     }
 
     // Hiring Intelligence v2 P1 — mine the JD bodies of the postings we just

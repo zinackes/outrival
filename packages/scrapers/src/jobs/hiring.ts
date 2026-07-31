@@ -4,3 +4,4 @@
 export * from "./departments";
 export * from "./velocity";
 export * from "./footprint";
+export * from "./salary";

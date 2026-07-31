@@ -9,6 +9,7 @@ import { COMP_ACCENT, competitorColorVars } from "@/lib/competitor-color";
 import { SeverityGauge } from "@/components/outrival/severity-scale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, type CompareColumn } from "@/lib/api";
+import { formatMoney } from "@/lib/format-money";
 import { fxDateLabel, useFx } from "@/lib/fx";
 import { cn } from "@/lib/utils";
 import {
@@ -35,6 +36,7 @@ import {
   avgReview,
   axisTicks,
   displayCurrency,
+  engineeringMedianSalary,
   engineeringRoles,
   hiringScale,
   money,
@@ -616,6 +618,7 @@ export function HiringLens({ entities, expanded, onToggle }: LensProps) {
         if (!e.data) return <PendingRow key={e.id} entity={e} />;
         const total = openRoles(e.data);
         const eng = engineeringRoles(e.data);
+        const engPay = engineeringMedianSalary(e.data);
         const depts = e.data.hiring?.departments ?? [];
         if (total == null) {
           return (
@@ -635,6 +638,16 @@ export function HiringLens({ entities, expanded, onToggle }: LensProps) {
               <>
                 {total}
                 {eng != null && <span className="text-muted-foreground"> · eng {eng}</span>}
+                {/* Shown, not positioned: the figure is in ITS currency, so there
+                    is no shared scale to place it on and no conversion applied. */}
+                {engPay && (
+                  <span
+                    className="ml-2 rounded-sm bg-surface-2 px-1.5 py-0.5 text-meta font-medium"
+                    title={`Median engineering pay, ${engPay.currency}, over ${engPay.n} open roles`}
+                  >
+                    {formatMoney(engPay.p50, engPay.currency)}
+                  </span>
+                )}
               </>
             }
             detail={
@@ -660,6 +673,12 @@ export function HiringLens({ entities, expanded, onToggle }: LensProps) {
                       ratio={d.count / deptMax}
                     />
                   ))}
+                  {engPay && (
+                    <DetailPair
+                      label={`Median engineering pay (${engPay.currency}, n=${engPay.n})`}
+                      value={formatMoney(engPay.p50, engPay.currency)}
+                    />
+                  )}
                 </Detail>
               ) : undefined
             }

@@ -9,6 +9,7 @@
     "test": "turbo test",
     "check:metadata": "bun scripts/check-metadata.ts",
     "backfill:hiring-geo": "pnpm --filter @outrival/workers backfill:hiring-geo",
+    "backfill:salary-bands": "pnpm --filter @outrival/workers backfill:salary-bands",
     "db:push": "pnpm --filter @outrival/db db:push",
     "db:generate": "pnpm --filter @outrival/db db:generate",
     "db:migrate": "pnpm --filter @outrival/db db:migrate",

@@ -88,6 +88,7 @@ import {
   normalizePlanKey,
   DEPARTMENT_BUCKETS,
   DEPARTMENT_BUCKET_LABELS,
+  disclosureVerdict,
   isCountryKey,
   getBytesFromR2,
   getFromR2,
@@ -1977,6 +1978,96 @@ competitorsRouter.get("/:id/hiring-geo", async (c) => {
     other: shaped
       .filter((r) => !isCountryKey(r.code))
       .map(({ code, openCount }) => ({ code, openCount })),
+  });
+});
+
+// What a competitor pays, per department and per currency (Hiring Intelligence v2
+// P3). Two reads, deliberately different in kind:
+//
+//   `bands`      — the stored weekly percentiles (hiring_salary_bands), latest week
+//                  plus the p50 history behind each one for the sparkline. Analytics,
+//                  best-effort: no bands hides the card rather than breaking the tab.
+//   `disclosure` — computed ON READ from the CURRENT open roles, because the
+//                  question a reader asks is "if I look at their board today, will I
+//                  see pay?", not "what was the average over the last quarter". It
+//                  counts every posting carrying a figure, including the hourly rates
+//                  and currency-less amounts the bands exclude: publishing pay and
+//                  publishing pay we can band are two different claims.
+competitorsRouter.get("/:id/hiring-salary", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const [rows, [stats]] = await Promise.all([
+    analyticsQuery<{
+      department_bucket: string;
+      currency: string;
+      p25: number;
+      p50: number;
+      p75: number;
+      n: number;
+      week_start: string;
+    }>(sql`
+      SELECT department_bucket, currency, p25, p50, p75, n, week_start
+      FROM hiring_salary_bands
+      WHERE competitor_id = ${competitor.id}
+        AND recorded_at >= now() - make_interval(days => 196)
+      ORDER BY week_start ASC
+    `),
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        disclosed: sql<number>`count(*) filter (
+          where ${jobPostings.salaryMin} is not null or ${jobPostings.salaryMax} is not null
+        )::int`,
+        currency: sql<string | null>`mode() within group (order by ${jobPostings.salaryCurrency})
+          filter (where ${jobPostings.salaryCurrency} is not null)`,
+      })
+      .from(jobPostings)
+      .where(and(eq(jobPostings.competitorId, competitor.id), eq(jobPostings.isActive, true))),
+  ]);
+
+  const latestWeek = rows.reduce<string | null>(
+    (mx, r) => (mx === null || r.week_start > mx ? r.week_start : mx),
+    null,
+  );
+
+  // p50 history per (bucket, currency) — the shape behind the current number.
+  const seriesByKey = new Map<string, number[]>();
+  for (const r of rows) {
+    const key = `${r.department_bucket}|${r.currency}`;
+    seriesByKey.set(key, [...(seriesByKey.get(key) ?? []), r.p50]);
+  }
+
+  const bands = rows
+    .filter((r) => r.week_start === latestWeek)
+    .map((r) => ({
+      bucket: r.department_bucket,
+      label: DEPARTMENT_BUCKET_LABELS[r.department_bucket as DepartmentBucket] ?? r.department_bucket,
+      currency: r.currency,
+      p25: r.p25,
+      p50: r.p50,
+      p75: r.p75,
+      n: r.n,
+      series: seriesByKey.get(`${r.department_bucket}|${r.currency}`) ?? [],
+    }))
+    // Widest evidence first: a band over eight roles says more than one over three.
+    .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
+
+  const total = stats?.total ?? 0;
+  const disclosed = stats?.disclosed ?? 0;
+  return c.json({
+    weekStart: latestWeek,
+    bands,
+    disclosure: {
+      disclosed,
+      total,
+      share: total > 0 ? disclosed / total : 0,
+      verdict: disclosureVerdict(disclosed, total),
+      currency: stats?.currency ?? null,
+    },
   });
 });
 

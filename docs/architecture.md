@@ -171,6 +171,13 @@ job_postings           id, competitor_id, title, department, location, url,
                        salary_currency (patch-32 — cross-ATS hiring enrichment,
                        populated on the structured ATS API path, null on the
                        LLM/careers fallback), detected_at, closed_at, is_active
+                       + salary_period (Hiring Intelligence v2 P3, migration 0063) —
+                       'yearly'|'monthly'|'hourly'|'daily', lu dans LA MÊME réponse ATS
+                       que les montants (Lever salaryRange.interval, Ashby composant
+                       Salary, Recruitee salary.period, WTTJ salary_period), donc zéro
+                       requête en plus ; null partout ailleurs. Sans lui « 45–60 » est
+                       à la fois un taux horaire de contractor et un salaire annuel, et
+                       une bande construite sur les deux n'est pas bruitée mais FAUSSE
                        + description_text, remote_mode, employment_type,
                        facts_mined_at (Hiring Intelligence v2 P1, migration 0059).
                        + country_codes (text[]) et geo_resolution (Hiring
@@ -392,7 +399,15 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     dernier — trois kinds partagent la chaîne, donc « le précédent
                     était différent » laisserait un pays se ré-annoncer dès qu'un
                     snapshot de gel s'intercale, et un premier poste en Allemagne
-                    n'est premier qu'une fois), hackernews (mention-tracking HN via l'Algolia public,
+                    n'est premier qu'une fois), hiring_salary (ancre des deux signaux
+                    de P3 — salary_band_shift et salary_disclosure_started ; jamais
+                    semée ni scrapée. ANCRE DÉDIÉE pour la même raison que job_facts et
+                    hiring_footprint : la chaîne de snapshots d'une ancre EST son
+                    registre de dédup, et y intercaler une 4e famille de clés ferait
+                    ré-émettre les autres. `disclosure:started` ne porte pas de semaine
+                    dans sa clé, donc il est dédupé à VIE ; les bandes portent la leur,
+                    et c'est le cooldown de 4 semaines qui empêche un mouvement soutenu
+                    de re-tirer chaque semaine), hackernews (mention-tracking HN via l'Algolia public,
                     semé weekly ; garde anti-homonyme STRICTE = domaine obligatoire sauf
                     competitor.metadata.ambiguousName===false ; Show HN+domaine →
                     product/high, mention > HN_POINTS_THRESHOLD → content/medium, en
@@ -566,6 +581,26 @@ plan_entitlements   competitor_id, plan_name, feature_slug (canonique via
                     seuls pour appear/disappear/move. Mergé dans le signal
                     déterministe P1 (routePricingSignal). UI : volet Packaging du
                     pricing tab + section battle card déterministe
+hiring_salary_bands competitor_id, department_bucket, currency, p25, p50, p75, n,
+                    week_start, recorded_at — Hiring Intelligence v2 P3 (migration
+                    0063) : ce que paie un concurrent, PAR département et PAR SEMAINE
+                    ISO. Même discipline d'upsert que hiring_metrics/hiring_geo (écrit
+                    seulement sur run ATS autoritatif — la médiane d'une TRANCHE de
+                    board est un autre nombre que la médiane du board, indiscernable
+                    en aval d'un vrai mouvement de paie). La CLÉ contient la DEVISE :
+                    rien n'est jamais converti (un taux de change est une donnée
+                    variable qu'on ne capture pas, donc une « médiane » à cheval sur
+                    EUR et USD bougerait quand l'euro bouge et se lirait comme un
+                    changement de salaire), donc un concurrent qui recrute à Paris et à
+                    New York porte DEUX bandes indépendantes pour le même bucket et
+                    l'UI affiche les deux dans leur devise. Les percentiles sont des
+                    midpoints ANNUELS : chaque posting compte pour (min+max)/2, yearly
+                    ×1 et monthly ×12 ; horaire et journalier sont EXCLUS (annualiser
+                    un taux de contractor, c'est inventer un nombre d'heures que
+                    l'annonce n'a jamais écrit). `n` = le nombre de postings dont la
+                    bande a réellement été calculée, affiché partout où la bande l'est —
+                    un p50 sur deux rôles est un nombre, pas un taux de marché.
+                    Bucket 'unknown' exclu. Rien ne signale sous n=3
 job_counts          competitor_id, department, count, recorded_at
 hiring_metrics      competitor_id, department_bucket, open_count, week_start,
                     recorded_at — hiring-velocity : open-role count PAR bucket
@@ -1218,6 +1253,35 @@ carte (état live uniquement).
   └─ anchor synthétique `hiring_footprint` → R2 avant DB → snapshot → change →
        generate-signal (classification SYNTHÉTISÉE, category=hiring, severity forcée high)
 
+[par competitor dont un scrape jobs AUTORITATIF publie de la paie] detect-salary-shifts
+  └─ Hiring Intelligence v2 P3. Event-driven off extract-jobs (pas de cron), skip self /
+       deleted, et JAMAIS enqueué quand aucune offre active n'affiche de salaire (rien
+       ne peut bouger, la disclosure ne peut pas avoir commencé). ZÉRO AI dans la
+       décision : deux détecteurs purs (@outrival/scrapers/jobs-hiring `salary.ts`)
+  └─ En amont, dans extract-jobs : le stock ACTIF entier est bandé par (bucket, devise)
+       et upserté dans hiring_salary_bands pour la semaine ISO — même condition « run ATS
+       autoritatif » que hiring_metrics/hiring_geo. Base annuelle canonique
+       (@outrival/shared `salary-normalize`) : yearly ×1, monthly ×12, HORAIRE ET
+       JOURNALIER EXCLUS, midpoint (min+max)/2, JAMAIS de conversion de devises, période
+       absente inférée annuelle SEULEMENT si la borne BASSE ≥ 20 000 (sinon la posting est
+       exclue — unknown ≠ deviné, cohérent avec la géo de P2). Fourchettes poubelle
+       (borne ≤ 0, max < min) droppées EN ENTIER, jamais rognées
+  └─ `salary_band_shift` MEDIUM : p50 d'un (bucket, devise) à ±15% de la MÉDIANE de ses
+       4 semaines trailing, n≥3 des DEUX côtés, ≥2 semaines trailing qualifiantes, même
+       devise uniquement. Cooldown 4 semaines par (bucket, devise). Le dernier point de
+       la série doit ÊTRE la semaine courante. Fact block : n, les rôles comptés (titre +
+       lien + fourchette), les semaines trailing
+  └─ `salary_disclosure_started` LOW|MEDIUM (medium si ≥50% du board) : verdict `yes`
+       (≥30% ET ≥3 offres salariées) alors qu'AUCUNE offre n'affichait de paie avant, avec
+       ≥4 semaines d'historique où le board avait ≥5 postes ouverts. Émis UNE fois (dédup
+       à vie par contentHash). Le ré-armement après un retour à 0 prolongé n'est pas
+       implémenté en v1 : le re-tirer à tort sur un trou de données coûte plus qu'un signal
+       manqué sur un cas quasi inexistant
+  └─ anchor synthétique `hiring_salary` → R2 avant DB → snapshot → change →
+       generate-signal (classification SYNTHÉTISÉE, category=hiring, severity forcée).
+       Plafonné à medium : une bande de paie est une quantité agrégée lue sur une page,
+       elle ne mérite pas le canal qui bypasse la modération et envoie un email en minutes
+
 [cron dimanche 20h UTC] detect-new-competitors
   └─ par org onboardée : Exa findSimilar + scoreOverlap (batché)
   └─ dedup URL exacte + hostname normalisé
@@ -1535,6 +1599,9 @@ HIRING_FREEZE_WINDOW_DAYS=14            # hiring_freeze (P2) — fenêtre glissa
 HIRING_FREEZE_CLOSED_RATIO=0.6          # part du stock ouvert en début de fenêtre qui doit avoir fermé
 HIRING_FREEZE_MIN_OPEN=5                # sous ce stock initial, un board vidé n'est pas une nouvelle
 HIRING_FREEZE_MAX_OPENED=1              # au-delà de N ouvertures dans la fenêtre ils recrutent encore, quoi qu'il ait fermé. Trois gardes NON réglables s'y ajoutent CÔTÉ CODE : les fermetures doivent avoir été CONFIRMÉES par une capture ULTÉRIEURE du même board (un ATS qui répond 200 avec une liste courte ferme la moitié d'un board en un run — c'est la forme exacte d'un gel, et c'est la seule qui se dément au scrape suivant), le board ne doit pas avoir changé d'hôte dans la fenêtre, et un seul signal est émis par épisode (ré-armé par 2 nouvelles ouvertures, pas par une horloge)
+SALARY_BAND_SHIFT_THRESHOLD=0.15        # Hiring Intelligence v2 P3 — relative move of a (bucket, currency) p50 against the median of its trailing 4 weeks that emits a `salary_band_shift` (medium). Signed: a cut signals like a raise
+SALARY_BAND_MIN_POSTINGS=3              # postings a band needs on BOTH sides (current week AND each trailing week counted) before it can signal. Under it the band still renders — with its n — it just cannot move the needle
+SALARY_BAND_COOLDOWN_WEEKS=4            # weeks a (bucket, currency) stays quiet after firing. A band that steps up and HOLDS is one piece of news: without the cooldown the new level enters the trailing window week by week and the same move re-fires as it does. Two more guards live in code and are not tunable: at least 2 trailing weeks must clear the n floor (a "trailing median" over one week is a week-on-week comparison wearing a baseline's clothes), and the series' last point must BE the current ISO week, so a competitor whose board stopped being scraped can never fire against a baseline that aged out from under it
 HN_POINTS_THRESHOLD=50                  # hackernews source — a mention (non-Show-HN, guard-passing) must EXCEED this many points to emit a content/medium traction signal; below it the hit is stored in the snapshot JSON island but never signalled. Show HN + matching domain always signals product/high regardless.
 HN_WINDOW_DAYS=30                       # hackernews source — recency window (days) bounding the HN Algolia search_by_date fetch (created_at_i > now − window), so a heavily-mentioned competitor never hits the hard 1000-hit ceiling
 DOCS_PAGE_HASH_ENABLED=true             # docs source, mode 2 only (no OpenAPI spec found) — on top of the sitemap page list, fingerprint the top-K docs pages so a REWRITTEN page surfaces, not only a new one. The hash is taken over extractContent output (the exact text the pipeline diffs), so a build id / nonce can never churn it; a page that fails to fetch emits NO line (never a placeholder hash). false → page list only, K fewer L0 GETs per run

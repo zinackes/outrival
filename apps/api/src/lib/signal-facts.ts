@@ -3,6 +3,9 @@ import { changes, jobPostings, postingFacts } from "@outrival/db";
 import {
   diffEntitlements,
   diffPriceTiers,
+  normalizeDepartment,
+  DEPARTMENT_BUCKET_LABELS,
+  type DepartmentBucket,
   type EntitlementRow,
   type TierBandRow,
 } from "@outrival/shared";
@@ -96,7 +99,30 @@ export interface JobFact {
   postingUrl: string | null;
 }
 
+/** One open role behind a salary band, with the range its own posting states. */
+export interface BandRoleFact {
+  title: string;
+  url: string | null;
+  location: string | null;
+  salaryMin: number | null;
+  salaryMax: number | null;
+}
+
 export type SignalFacts =
+  | {
+      /** The band that moved, and the roles it was computed over (P3). */
+      kind: "salary";
+      bucketLabel: string;
+      currency: string;
+      p50Before: number;
+      p50After: number;
+      n: number;
+      /** Trailing weeks the baseline was taken over, oldest first. */
+      trailing: Array<{ weekStart: string; p50: number; n: number }>;
+      roles: BandRoleFact[];
+      /** Roles before the cap, so a truncated list can say what it is hiding. */
+      rolesTotal: number;
+    }
   | {
       kind: "hiring";
       opened: RoleFact[];
@@ -136,6 +162,9 @@ const MAX_TIER_FACTS = 8;
 // A single technology can be cited across a dozen postings; the block names the
 // evidence, it does not reproduce the board.
 const MAX_JOB_FACTS = 12;
+// A band can be computed over thirty roles; the block shows enough to check the
+// number against the source, not the whole board.
+const MAX_BAND_ROLES = 8;
 
 // How long after a change its extraction may still land. The extractor is
 // enqueued in the same scrape run, but it is the WORKER that stamps the row, and
@@ -546,6 +575,73 @@ async function entitlementFacts(
 }
 
 /**
+ * The band a `salary_band_shift` signal was about, and the roles behind it.
+ *
+ * Read off the change's OWN rawDiff rather than recomputed: the detector already
+ * decided which (bucket, currency) moved and against which trailing weeks, and
+ * re-deriving it here from a board that has moved since would show a reader numbers
+ * that do not match the sentence above them.
+ *
+ * The roles are the current open ones quoted in that currency — they are what makes
+ * the median checkable, since each carries the range its own posting prints.
+ */
+async function salaryFacts(
+  competitorId: string,
+  monitorId: string,
+  detectedAt: Date,
+): Promise<SignalFacts> {
+  const [change] = await db
+    .select({ rawDiff: changes.rawDiff })
+    .from(changes)
+    .where(and(eq(changes.monitorId, monitorId), eq(changes.detectedAt, detectedAt)))
+    .limit(1);
+
+  const raw = change?.rawDiff as Record<string, unknown> | null | undefined;
+  if (!raw || raw.kind !== "salary_band_shift") return null;
+  const bucket = typeof raw.bucket === "string" ? raw.bucket : null;
+  const currency = typeof raw.currency === "string" ? raw.currency : null;
+  if (!bucket || !currency) return null;
+
+  const roles = await db
+    .select({
+      title: jobPostings.title,
+      url: jobPostings.url,
+      location: jobPostings.location,
+      department: jobPostings.department,
+      salaryMin: jobPostings.salaryMin,
+      salaryMax: jobPostings.salaryMax,
+    })
+    .from(jobPostings)
+    .where(
+      and(
+        eq(jobPostings.competitorId, competitorId),
+        eq(jobPostings.isActive, true),
+        eq(jobPostings.salaryCurrency, currency),
+        dsql`(${jobPostings.salaryMin} is not null or ${jobPostings.salaryMax} is not null)`,
+      ),
+    )
+    .orderBy(jobPostings.title);
+
+  // The bucket is derived, not stored, so the department filter happens here — with
+  // the same normalizer the band was built by, so the two can not disagree.
+  const inBucket = roles.filter((r) => normalizeDepartment(r.department, null, r.title) === bucket);
+
+  return {
+    kind: "salary",
+    bucketLabel: DEPARTMENT_BUCKET_LABELS[bucket as DepartmentBucket] ?? bucket,
+    currency,
+    p50Before: Number(raw.p50Before ?? 0),
+    p50After: Number(raw.p50After ?? 0),
+    n: Number(raw.n ?? inBucket.length),
+    trailing: Array.isArray(raw.trailing)
+      ? (raw.trailing as Array<{ weekStart: string; p50: number; n: number }>)
+      : [],
+    roles: inBucket.slice(0, MAX_BAND_ROLES).map(({ department: _d, ...role }) => role),
+    rolesTotal: inBucket.length,
+  };
+}
+
+/**
  * The structured facts behind one signal, or null when its source has none.
  *
  * Best-effort by construction: a signal must still render if these reads fail,
@@ -563,11 +659,21 @@ export async function buildSignalFacts(args: {
 }): Promise<SignalFacts> {
   const { monitorId, competitorId, sourceType, detectedAt } = args;
   if (!monitorId || !detectedAt) return null;
-  if (sourceType !== "jobs" && sourceType !== "pricing" && sourceType !== "job_facts") {
+  if (
+    sourceType !== "jobs" &&
+    sourceType !== "pricing" &&
+    sourceType !== "job_facts" &&
+    sourceType !== "hiring_salary"
+  ) {
     return null;
   }
 
   try {
+    // The salary block reads the change's own rawDiff, not an extraction window:
+    // the detector already recorded which band moved and against what.
+    if (sourceType === "hiring_salary") {
+      return await salaryFacts(competitorId, monitorId, new Date(detectedAt));
+    }
     const window = await attributionWindow(monitorId, new Date(detectedAt));
     if (sourceType === "jobs") return await hiringFacts(competitorId, window);
     if (sourceType === "job_facts") return await jobFactsFacts(competitorId, window);

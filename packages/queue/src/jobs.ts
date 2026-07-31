@@ -250,6 +250,12 @@ export const mineJobFacts = defineJob<CompetitorRefPayload>("mine-job-facts", {
 export const detectHiringFootprint = defineJob<CompetitorRefPayload>("detect-hiring-footprint", {
   expireInSeconds: 60,
 });
+// Salary-band detectors (Hiring Intelligence v2 P3), event-triggered per competitor
+// off extract-jobs and only when the board discloses pay at all. Pure SQL + pure
+// functions, zero AI — same window as its deterministic siblings.
+export const detectSalaryShifts = defineJob<CompetitorRefPayload>("detect-salary-shifts", {
+  expireInSeconds: 60,
+});
 // Standing-query re-evaluation, targeted off generate-signal. Shares the groq lane
 // (concurrency 1) so the judge + internal Ask run never starve classify→signal.
 export const evaluateStandingQueries = defineJob<EvaluateStandingQueriesPayload>(

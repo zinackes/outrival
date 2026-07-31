@@ -204,6 +204,10 @@ interface HiringDetail {
   // titles); otherwise the raw job_counts labels are bucketed by the same
   // normalizer. Null when neither yields engineering roles.
   engineeringOpen: number | null;
+  // Median annual engineering pay in the currency the postings are quoted in
+  // (Hiring Intelligence v2 P3). Never converted and never placed on a shared
+  // scale: `n` travels with it so a median over three roles reads as one.
+  engineeringMedianSalary: { p50: number; currency: string; n: number } | null;
   capturedAt: string | null;
 }
 interface ReviewDetail {
@@ -439,6 +443,36 @@ compareRouter.get("/", async (c) => {
   `);
   const engineeringById = new Map(engineeringRows.map((r) => [r.competitorId, r.openCount]));
 
+  // What each competitor pays its engineers, in THEIR currency (Hiring Intelligence
+  // v2 P3). Deliberately not put on a shared bar: €72k and $95k are two facts, and
+  // placing them on one axis would require an FX rate we do not capture and would
+  // make the comparison move when the euro moves. The lens shows both numbers and
+  // lets the reader do the conversion they think is right.
+  //
+  // One row per competitor: the currency with the most roles behind it, on the
+  // latest week they have. A competitor hiring engineers in two currencies is real,
+  // but a compare column has room for one figure, so it shows the dominant one.
+  const engSalaryRows = await analyticsQuery<{
+    competitorId: string;
+    p50: number;
+    currency: string;
+    n: number;
+  }>(sql`
+    WITH latest AS (
+      SELECT competitor_id, max(week_start) AS w
+      FROM hiring_salary_bands WHERE competitor_id IN (${idList}) GROUP BY competitor_id
+    )
+    SELECT DISTINCT ON (b.competitor_id)
+           b.competitor_id AS "competitorId", b.p50::int AS p50, b.currency, b.n::int AS n
+    FROM hiring_salary_bands b
+    JOIN latest l ON l.competitor_id = b.competitor_id AND b.week_start = l.w
+    WHERE b.department_bucket = 'engineering'
+    ORDER BY b.competitor_id, b.n DESC
+  `);
+  const engSalaryById = new Map(
+    engSalaryRows.map((r) => [r.competitorId, { p50: r.p50, currency: r.currency, n: r.n }]),
+  );
+
   // Index analytics by competitor — fold the row-level results into per-competitor
   // detail objects (band + plans, total + departments, score + sub-scores).
   // Capture time of the detected batch, kept before the override resolution below
@@ -608,6 +642,7 @@ compareRouter.get("/", async (c) => {
         topDepartment: h.department,
         departments: [{ department: h.department, count: h.count }],
         engineeringOpen: null,
+        engineeringMedianSalary: null,
         capturedAt: h.recordedAt,
       });
     } else {
@@ -618,6 +653,7 @@ compareRouter.get("/", async (c) => {
   for (const [competitorId, detail] of hiringById) {
     detail.engineeringOpen =
       engineeringById.get(competitorId) ?? engineeringFromLabels(detail.departments);
+    detail.engineeringMedianSalary = engSalaryById.get(competitorId) ?? null;
   }
 
   const reviewsById = new Map<string, ReviewDetail[]>();

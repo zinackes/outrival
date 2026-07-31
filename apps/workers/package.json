@@ -10,7 +10,8 @@
     "trigger:dev": "trigger dev",
     "queue:dev": "bun run --hot src/queue/worker.ts",
     "queue:start": "bun run src/queue/worker.ts",
-    "backfill:hiring-geo": "bun run src/scripts/backfill-hiring-geo.ts"
+    "backfill:hiring-geo": "bun run src/scripts/backfill-hiring-geo.ts",
+    "backfill:salary-bands": "bun run src/scripts/backfill-salary-bands.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

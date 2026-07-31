@@ -5,6 +5,7 @@ export * from "./sources/coverage";
 export * from "./sources/defaults";
 export * from "./constants/departments";
 export * from "./constants/hiring-geo";
+export * from "./salary-normalize";
 export * from "./constants/plans";
 export * from "./constants/detection";
 export * from "./constants/competitor-colors";

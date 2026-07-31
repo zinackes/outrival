@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { CalendarBlankIcon, CheckIcon, CaretDownIcon, CaretRightIcon } from "@/components/icons";
-import { endOfDay, format, isSameDay, startOfDay, subDays } from "date-fns";
+import { endOfDay, format, isBefore, isSameDay, startOfDay, subDays } from "date-fns";
 import type { DateRange as RdpDateRange } from "react-day-picker";
 
 import { cn } from "@/lib/utils";
@@ -58,6 +58,9 @@ function triggerLabel(value: DateRange, presets: DatePreset[]): string {
 // (auto-flips left/right) without changing the list. The calendar lives in a
 // Popover (not a Menu) so chevrons and day clicks stay fully interactive; an
 // interact-outside guard keeps the outer popover open while picking a range.
+// Picking dates never closes anything: the range commits as soon as both ends
+// are set, and the popover stays up until the user dismisses it. Only a preset,
+// which is a whole choice in one click, closes the list.
 // Emits concrete {from,to} dates so every call site shares one model.
 export function DateRangePicker({
   value,
@@ -74,6 +77,7 @@ export function DateRangePicker({
 }) {
   const [open, setOpen] = React.useState(false);
   const [customOpen, setCustomOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState<RdpDateRange | undefined>(undefined);
   const calRef = React.useRef<HTMLDivElement>(null);
 
   // Value is custom when it matches none of the fixed presets.
@@ -84,12 +88,30 @@ export function DateRangePicker({
     if (open) setCustomOpen(isCustom);
   }, [open]);
 
-  function applyCalendar(r: RdpDateRange | undefined) {
-    // Only commit (and close everything) once both ends are picked.
-    if (r?.from && r?.to) {
-      onChange({ from: startOfDay(r.from), to: endOfDay(r.to) });
-      setOpen(false);
+  // Opening the flyout shows the range in effect; the next click starts a new one.
+  // Keyed on the timestamps, not the Date objects: a call site that rebuilds its
+  // range each render would otherwise reseed the draft on every render.
+  const fromTs = value.from.getTime();
+  const toTs = value.to.getTime();
+  React.useEffect(() => {
+    if (customOpen) setDraft({ from: new Date(fromTs), to: new Date(toTs) });
+  }, [customOpen, fromTs, toTs]);
+
+  // react-day-picker EXTENDS whatever range it is handed, so being fed a complete
+  // {from,to} made every single click produce another complete range: the picker
+  // committed and closed on the first day clicked, and a range could never be
+  // drawn. Drive the two clicks here instead, off the day that was actually
+  // clicked, and never close on our own — the popover stays up until dismissed.
+  function applyCalendar(_next: RdpDateRange | undefined, clicked: Date) {
+    if (!draft?.from || draft.to) {
+      setDraft({ from: clicked, to: undefined });
+      return;
     }
+    const backwards = isBefore(clicked, draft.from);
+    const from = backwards ? clicked : draft.from;
+    const to = backwards ? draft.from : clicked;
+    setDraft({ from, to });
+    onChange({ from: startOfDay(from), to: endOfDay(to) });
   }
 
   const itemClass = (active: boolean) =>
@@ -155,8 +177,8 @@ export function DateRangePicker({
           >
             <Calendar
               mode="range"
-              defaultMonth={value.from}
-              selected={{ from: value.from, to: value.to }}
+              defaultMonth={draft?.from ?? value.from}
+              selected={draft}
               onSelect={applyCalendar}
               numberOfMonths={1}
             />

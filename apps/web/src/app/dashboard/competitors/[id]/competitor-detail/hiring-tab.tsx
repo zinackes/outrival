@@ -5,7 +5,8 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { ArrowUpIcon, ArrowDownIcon, CaretRightIcon, ArrowSquareOutIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
-import { api, type CompetitorSignal } from "@/lib/api";
+import { api, type CompetitorSignal, type HiringGeoData } from "@/lib/api";
+import { HIRING_GEO_RESERVED_LABELS } from "@outrival/shared";
 import { cn } from "@/lib/utils";
 import { Sparkline } from "@/components/dashboard/sparkline";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
@@ -60,6 +61,13 @@ export function HiringTab({
   const velocityQuery = useQuery({
     queryKey: ["competitor", competitorId, "hiringVelocity"],
     queryFn: () => api.getCompetitorHiringVelocity(competitorId).then((v) => v.velocity),
+    placeholderData: keepPreviousData,
+  });
+  // Where the open roles are. Same contract as velocity: secondary enrichment, so
+  // the tab never blocks or errors on it — it simply doesn't render without data.
+  const geoQuery = useQuery({
+    queryKey: ["competitor", competitorId, "hiringGeo"],
+    queryFn: () => api.getCompetitorHiringGeo(competitorId),
     placeholderData: keepPreviousData,
   });
 
@@ -268,6 +276,8 @@ export function HiringTab({
         </TabSection>
       )}
 
+      <WhereTheyHire geo={geoQuery.data ?? null} />
+
       {/* One department hierarchy. This used to be three: a multi-line chart, a
           count-and-delta table, and a weekly sparkline list, all drawing the same
           axis, with the roles in a separate 30rem scroll cage below them. Each row
@@ -460,6 +470,99 @@ export function HiringTab({
         )}
       </div>
     </TabCard>
+  );
+}
+
+/** How many countries the list shows before it says how many it is holding back. */
+const GEO_ROWS = 10;
+
+/**
+ * Where a competitor's open roles are, for the latest captured week.
+ *
+ * A list, not a map: the question is "which countries, how many roles, and is any
+ * of it new", and a choropleth answers none of those at this scale while costing a
+ * rendering library and a topology file.
+ *
+ * The postings whose location could not be turned into a country are shown on the
+ * same axis as the countries, at the bottom. They are the reason to trust or
+ * distrust everything above them, and a footprint chart that quietly drops them
+ * reads as complete when it is not.
+ */
+function WhereTheyHire({ geo }: { geo: HiringGeoData | null }) {
+  if (!geo || (geo.countries.length === 0 && geo.other.length === 0)) return null;
+
+  const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
+  const label = (code: string) => {
+    if (HIRING_GEO_RESERVED_LABELS[code]) return HIRING_GEO_RESERVED_LABELS[code];
+    try {
+      return regionNames.of(code) ?? code;
+    } catch {
+      return code;
+    }
+  };
+
+  const shown = geo.countries.slice(0, GEO_ROWS);
+  const hidden = geo.countries.length - shown.length;
+  const rows = [
+    ...shown.map((r) => ({ ...r, muted: false })),
+    ...geo.other.map((r) => ({ ...r, isNew: false, muted: true })),
+  ];
+  // One scale across countries and unplaced roles, so the bars can be compared.
+  const max = Math.max(...rows.map((r) => r.openCount), 1);
+  const newCount = geo.countries.filter((r) => r.isNew).length;
+
+  return (
+    <TabSection
+      title="Where they hire"
+      action={
+        newCount > 0 ? (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            <span className="tabular-nums">{newCount}</span> new in the last 30 days
+          </span>
+        ) : undefined
+      }
+    >
+      <ul className="flex flex-col gap-2">
+        {rows.map((row) => (
+          <li
+            key={row.code}
+            className="grid grid-cols-[minmax(7rem,1fr)_minmax(0,2fr)_2.5rem] items-center gap-3"
+          >
+            <span
+              className={cn(
+                "min-w-0 truncate text-sm",
+                row.muted ? "text-muted-foreground" : "text-foreground",
+              )}
+            >
+              {label(row.code)}
+              {row.isNew && (
+                <span className="ml-2 rounded-sm bg-high/10 px-1.5 py-0.5 text-meta font-medium text-high">
+                  new
+                </span>
+              )}
+            </span>
+            <span className="h-1.5 rounded-full bg-surface-2" aria-hidden>
+              <span
+                className={cn(
+                  "block h-full rounded-full",
+                  row.muted ? "bg-muted-foreground" : "bg-link",
+                )}
+                style={{ width: `${Math.max((row.openCount / max) * 100, 4)}%` }}
+              />
+            </span>
+            <span className="text-right text-dense tabular-nums text-muted-foreground">
+              {row.openCount}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {hidden > 0 && (
+        <p className="pt-2 text-xs text-muted-foreground">
+          <span className="tabular-nums">{hidden}</span> more{" "}
+          {hidden === 1 ? "country" : "countries"} with fewer open roles.
+        </p>
+      )}
+    </TabSection>
   );
 }
 

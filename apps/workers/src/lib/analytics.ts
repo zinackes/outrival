@@ -9,6 +9,7 @@ import {
   creditBurnRates,
   jobCounts,
   hiringMetrics,
+  hiringGeo,
   reviewScores,
   signalFeed,
   scrapeRuns,
@@ -1028,6 +1029,117 @@ export async function getHiringMetricsSeries(
       .from(hiringMetrics)
       .where(and(eq(hiringMetrics.competitorId, competitorId), gte(hiringMetrics.recordedAt, since)))
       .orderBy(hiringMetrics.weekStart),
+  );
+  return rows ?? [];
+}
+
+export interface HiringGeoUpsertRow {
+  competitor_id: string;
+  /** ISO-3166-1 alpha-2, or one of HIRING_GEO_RESERVED_KEYS. */
+  country_code: string;
+  open_count: number;
+  week_start: string;
+  recorded_at: Date;
+}
+
+/**
+ * Upsert a competitor's weekly hiring footprint. Idempotent by (competitor, key,
+ * ISO week), exactly like upsertHiringMetrics: a second authoritative scrape in the
+ * same week overwrites the row so the series carries one open-count per week.
+ */
+export async function upsertHiringGeo(rows: HiringGeoUpsertRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await bestEffort("hiring_geo upsert", () =>
+    db
+      .insert(hiringGeo)
+      .values(
+        rows.map((r) => ({
+          competitorId: r.competitor_id,
+          countryCode: r.country_code,
+          openCount: r.open_count,
+          weekStart: r.week_start,
+          recordedAt: r.recorded_at,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [hiringGeo.competitorId, hiringGeo.countryCode, hiringGeo.weekStart],
+        set: {
+          openCount: sql`excluded.open_count`,
+          recordedAt: sql`excluded.recorded_at`,
+        },
+      }),
+  );
+}
+
+export interface HiringKeyWeekRow {
+  /** Country code (hiring_geo) or department bucket (hiring_metrics). */
+  key: string;
+  open_count: number;
+  week_start: string;
+}
+
+/**
+ * A competitor's ENTIRE hiring_geo history, week ascending. Deliberately unbounded
+ * in time: the question first_role_in_country asks is "has this country ever
+ * appeared", and a rolling window would turn a country they stopped hiring in six
+ * months ago into a brand-new market entry.
+ */
+export async function getHiringGeoHistory(competitorId: string): Promise<HiringKeyWeekRow[]> {
+  const rows = await bestEffortRead<HiringKeyWeekRow>("getHiringGeoHistory", () =>
+    db
+      .select({
+        key: hiringGeo.countryCode,
+        open_count: hiringGeo.openCount,
+        week_start: hiringGeo.weekStart,
+      })
+      .from(hiringGeo)
+      .where(eq(hiringGeo.competitorId, competitorId))
+      .orderBy(hiringGeo.weekStart),
+  );
+  return rows ?? [];
+}
+
+/** The same, over hiring_metrics, for new_department_opened. */
+export async function getHiringMetricsHistory(competitorId: string): Promise<HiringKeyWeekRow[]> {
+  const rows = await bestEffortRead<HiringKeyWeekRow>("getHiringMetricsHistory", () =>
+    db
+      .select({
+        key: hiringMetrics.departmentBucket,
+        open_count: hiringMetrics.openCount,
+        week_start: hiringMetrics.weekStart,
+      })
+      .from(hiringMetrics)
+      .where(eq(hiringMetrics.competitorId, competitorId))
+      .orderBy(hiringMetrics.weekStart),
+  );
+  return rows ?? [];
+}
+
+export interface HiringGeoSeriesRow {
+  country_code: string;
+  open_count: number;
+  week_start: string;
+}
+
+/**
+ * A competitor's weekly hiring footprint for the last `weeks` ISO weeks, week
+ * ascending — the history the first_role_in_country baseline is measured against.
+ */
+export async function getHiringGeoSeries(
+  competitorId: string,
+  weeks: number,
+): Promise<HiringGeoSeriesRow[]> {
+  const since = new Date(Date.now() - weeks * 7 * 86_400_000);
+  const rows = await bestEffortRead<HiringGeoSeriesRow>("getHiringGeoSeries", () =>
+    db
+      .select({
+        country_code: hiringGeo.countryCode,
+        open_count: hiringGeo.openCount,
+        week_start: hiringGeo.weekStart,
+      })
+      .from(hiringGeo)
+      .where(and(eq(hiringGeo.competitorId, competitorId), gte(hiringGeo.recordedAt, since)))
+      .orderBy(hiringGeo.weekStart),
   );
   return rows ?? [];
 }

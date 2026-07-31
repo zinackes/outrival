@@ -8,6 +8,7 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "check:metadata": "bun scripts/check-metadata.ts",
+    "backfill:hiring-geo": "bun scripts/backfill-hiring-geo.ts",
     "db:push": "pnpm --filter @outrival/db db:push",
     "db:generate": "pnpm --filter @outrival/db db:generate",
     "db:migrate": "pnpm --filter @outrival/db db:migrate",

@@ -261,6 +261,45 @@ export const hiringMetrics = pgTable(
 );
 export type HiringMetric = InferSelectModel<typeof hiringMetrics>;
 
+// Where a competitor's open roles are, per ISO week (Hiring Intelligence v2 P2).
+// Same shape and same upsert discipline as hiring_metrics — one authoritative row
+// per (competitor, key, week), so a second scrape in the same week overwrites
+// instead of doubling — and written on the same authoritative-ATS-run condition.
+//
+// `country_code` is an ISO-3166-1 alpha-2 code, EXCEPT for three reserved lowercase
+// keys that record the postings the resolver did not turn into a country:
+// "remote", "region" (EMEA, DACH — a region names no country) and "unresolved".
+// They live here rather than being dropped because the share of a board we cannot
+// place is the number that says whether the geo read can be trusted at all, and a
+// footprint chart that quietly omits it is claiming a precision it does not have.
+// Reserved keys are lowercase and real codes are uppercase, so they can never
+// collide, and first_role_in_country only ever reads uppercase keys.
+//
+// A posting naming several countries counts once in EACH of them: the question is
+// "do they hire in X", not "how do the roles divide up". The reserved rows are
+// therefore NOT a complement of the country rows and must not be summed with them.
+export const hiringGeo = pgTable(
+  "hiring_geo",
+  {
+    id: uuid(),
+    competitorId: text("competitor_id").notNull(),
+    countryCode: text("country_code").notNull(),
+    openCount: integer("open_count").notNull(),
+    /** ISO-week key "YYYY-MM-DD" (Monday, UTC) — the weekly idempotency bucket. */
+    weekStart: text("week_start").notNull(),
+    recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("hiring_geo_competitor_country_week_uk").on(
+      t.competitorId,
+      t.countryCode,
+      t.weekStart,
+    ),
+    index("hiring_geo_competitor_recorded_idx").on(t.competitorId, t.recordedAt),
+  ],
+);
+export type HiringGeoRow = InferSelectModel<typeof hiringGeo>;
+
 export const reviewScores = pgTable(
   "review_scores",
   {

@@ -6,12 +6,17 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./geo": {
+      "types": "./src/geo/index.ts",
+      "default": "./src/geo/index.ts"
     }
   },
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src"
+    "test": "bun test src",
+    "geo:build": "bun scripts/build-geo-dataset.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",

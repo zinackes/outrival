@@ -1218,3 +1218,110 @@ points creux · PR.
 **La card « Pricing — Intelligence v2 » est COMPLÈTE** (P1 diff/signaux · P2 entitlements ·
 P3 tiers + cost model + price_points + réglage workspace · P4 calculator probe + replay
 d'endpoint · P5 burn rates + courbe de coût + backfill Wayback).
+
+### 2026-07-31 — Hiring Intelligence v2 — P2 (géo offline, départements, gel) — 1 session
+
+**Objectif** : normaliser la géo des postings 100% offline (zéro AI, zéro réseau au
+runtime), agréger par pays, et émettre trois signaux déterministes —
+`first_role_in_country`, `new_department_opened`, `hiring_freeze`.
+
+**Étape 0 — recherche des briques offline (décision documentée en tête de
+`packages/shared/scripts/build-geo-dataset.ts`)** : quatre familles évaluées.
+`all-the-cities` (138k villes, ~11 Mo de JSON en dépendance RUNTIME, indexé pour du
+géospatial, ni noms de pays ni noms localisés) · `cities15000` / `cities15000-json`
+(même extract GeoNames, dernière publication il y a 9 ans) · `offline-geocoder` /
+`local-reverse-geocoder` (~12 Mo de SQLite et surtout des géocodeurs INVERSES : ils
+répondent « quelle ville à ces coordonnées », on a du texte) · `i18n-iso-countries`
+(~620 Ko, noms de pays en 79 langues — réellement utile, mais `Intl.DisplayNames`
+est DANS Node/Bun/le navigateur et rend les mêmes chaînes gratuitement).
+**Retenu : aucune dépendance runtime.** Un build script lit les dumps GeoNames et
+émet un lookup minifié COMMITTÉ (564 Ko). Ce qui a tranché n'est pas la taille mais
+le contrôle des collisions : GeoNames liste « Monaco » parmi les noms alternatifs de
+München, donc un package générique résout Monaco vers l'Allemagne. Attribution
+CC BY 4.0 dans `NOTICE` à la racine.
+
+**Le dataset** : `cities15000` (34 066 villes) + `countryInfo` + `admin1CodesASCII`
++ les alternates PAR PAYS (colonne `isolanguage`). La colonne `alternatenames` de
+cities15000 est NON typée — les variantes de Munich y incluent « MUC », « Minga » et
+« Monaco » — donc elle est ignorée au profit des fichiers par pays, filtrés sur les
+langues OFFICIELLES de la ville (« München », « Köln », « Wien », « København ») et,
+au-dessus de 400k habitants, sur les 24 locales latines (les exonymes : « Londres »,
+« Lisbonne », « Mailand »). Un nom primaire n'est JAMAIS déplacé par un alternate.
+Noms de pays : `Intl.DisplayNames` sur 24 locales à la génération, plus une courte
+liste d'alias (`usa`, `uk`, `england`, `holland`, `korea`…).
+
+**Le résolveur** (`@outrival/shared/geo`, pur, sous-chemin dédié pour que le dataset
+n'entre JAMAIS dans le bundle web — un test garde le barrel) découpe d'abord sur les
+séparateurs qui veulent dire « ou » (union), puis chaque lieu sur les séparateurs qui
+raffinent, et **intersecte** les lectures possibles de chaque partie. Aucune
+précédence fixe n'est correcte : lire le pays d'abord fait de « Atlanta, Georgia » la
+Géorgie, lire l'état d'abord fait de « Tbilisi, Georgia » les États-Unis.
+L'intersection tranche les deux sans rien savoir de la Géorgie. C'est aussi ce qui
+résout « Cambridge, MA » (le code d'état et la ville ne s'accordent que sur un pays)
+pendant que « Cambridge » seul reste honnêtement `unknown` — Angleterre 146k,
+Ontario 130k, Massachusetts 110k, aucun écart décisif. Intersection VIDE = les
+parties se contredisent : repli sur l'étiquette la plus spécifique (« Paris,
+Ontario » → Canada), puis sur toute étiquette exacte (« Lebanon, OH » → US), puis —
+si tout n'est que des villes — sur la lecture « c'est une LISTE » (« Paris,
+Lisbonne » → FR+PT : une hiérarchie ne se contredit jamais).
+
+**Mesuré sur la prod** (238 libellés distincts, 1 621 postings) : **92,4% résolus en
+pays**, 2,9% région, 2,1% remote, **2,5% `unknown`** (1,8% des postings). Les
+non-résolus restants sont corrects (« Various locations », « Hybrid », « TBD ») sauf
+« Hyderabad » (Inde 3,6M vs Pakistan 1,7M = 2,2×) et « Vancouver » (CA 662k vs
+US 190k = 3,5×), sous le seuil de 5× : c'est la règle verrouillée « écart non
+décisif ⇒ unknown », et pour un signal HIGH le silence est le bon défaut.
+
+**Signaux** (job `detect-hiring-footprint`, event-driven off extract-jobs, ancre
+DÉDIÉE `hiring_footprint`) : `first_role_in_country` (baseline ≥2 semaines),
+`new_department_opened` (≥3 semaines, `unknown` exclu), `hiring_freeze` (14 j, ≥60%
+fermés, stock ≥5, ≤1 ouverture). Zéro AI dans la décision.
+
+**Ce que la garde anti-panne du gel a coûté et pourquoi** : la vérification demandée
+sur `isActive`/`closedAt` était déjà bonne (`computeJobsDelta` n'autorise une
+fermeture que sur un run ATS AUTORITATIF ; un fetch échoué ou dégradé n'en ferme
+aucune). Restait le cas qu'elle ne couvre pas : un ATS qui répond 200 avec une liste
+courte ferme la moitié d'un board en un run — la forme EXACTE d'un gel. Le gel exige
+donc que les fermetures aient été **confirmées par une capture ULTÉRIEURE** du même
+board : un vrai gel survit au scrape suivant, un hoquet rouvre tout et fait exploser
+le compteur d'ouvertures. Coût : un cycle de scrape de latence. Bénéfice : toute
+cette classe de faux positifs.
+
+**Décisions à signaler** (elles s'écartent de la lettre du prompt, volontairement) :
+1. **Émission dans un job dédié, pas inline dans extract-jobs.** `extract-jobs` est
+   ordonné pour qu'un retry ne duplique pas de postings ; y accrocher trois
+   détecteurs qui lisent de l'historique mettrait ces écritures derrière un
+   retry-sur-échec dont elles n'ont pas besoin. Même sémantique event-driven
+   post-persist, même pattern que `detect-hiring-velocity-shifts`.
+2. **La part `unknown` est PERSISTÉE**, pas seulement loggée : `hiring_geo` porte
+   trois clés réservées minuscules (`remote`, `region`, `unresolved`) à côté des
+   codes pays majuscules. La part d'un board qu'on ne sait pas placer est ce qui dit
+   si le reste de la carte est croyable — la garder en base la rend requêtable après
+   coup, pas seulement greppable.
+
+**Fichiers modifiés** : `packages/shared/{scripts/build-geo-dataset.ts,src/geo/*,
+src/constants/hiring-geo.ts,src/index.ts,package.json}` · `packages/db/src/schema/
+{monitors,job_postings,analytics}.ts` + migration `0060` · `packages/shared/src/
+{constants/sources.ts,sources/catalog.ts}` · `packages/scrapers/src/jobs/
+{footprint.ts,hiring.ts}` · `packages/queue/src/jobs.ts` · `apps/workers/src/
+{core/{extract-jobs,detect-hiring-footprint}.ts,lib/{analytics,posting-geo}.ts,
+queue/handlers.ts,jobs/detect-hiring-footprint.job.ts}` · `apps/api/src/routes/
+competitors.ts` · `apps/web/src/{lib/{api,source-labels}.ts,app/dashboard/
+competitors/[id]/competitor-detail/hiring-tab.tsx}` · `scripts/
+backfill-hiring-geo.ts` · `NOTICE` · `.gitignore` · `docs/architecture.md`
+
+**Tests** : typecheck 8/8 ✓ · `pnpm test` 12/12 ✓ (2 218 tests, 0 fail) dont 37 sur
+le résolveur géo (homonymes, libellés FR/DE/ES/IT/NL/PL/SV, régions, multi-lieux,
+bruit « HQ — 2nd floor », scripts non-latins) et 17 sur les détecteurs (baselines,
+les cinq gardes du gel, la clé réservée `unresolved`). Deux tests structurels : le
+module géo ne peut pas appeler le réseau (check sur les sources) et le dataset ne
+peut pas entrer dans le barrel `@outrival/shared`.
+
+**Reste côté humain** : `pnpm db:migrate` sur dev puis prod (0060) · puis
+`pnpm backfill:hiring-geo` (dry run) et `--apply` pour stamper l'historique CLOSED —
+sans lui, le premier run après deploy annoncerait un « premier poste » dans chaque
+pays où le concurrent recrute depuis toujours · vérifier la carte « Where they hire »
+sur un concurrent à board ATS après un re-scan jobs.
+
+**Prochaine session** : P3 — salaires (`hiring_salary_bands`, `salary_band_shift`,
+`salary_disclosure_started`, carte salaires du tab). NE PAS commencer sans /clear.

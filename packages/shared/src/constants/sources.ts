@@ -82,6 +82,14 @@ export const SOURCE_TYPES = [
   // anchor rather than hiring_shift's, whose snapshot chain owns the velocity
   // detector's dedup hash. Kept in sync with the DB enum.
   "job_facts",
+  // Hiring footprint (Hiring Intelligence v2 P2). Like job_facts, an INTERNAL anchor
+  // source — never seeded, never scraped, never user-selectable. It anchors the
+  // chain for the three deterministic footprint signals: a country that has never
+  // appeared in the competitor's hiring history, a department bucket that has never
+  // appeared, and a board that has emptied out (a hiring freeze). Its own anchor
+  // rather than hiring_shift's, whose snapshot chain owns the velocity detector's
+  // dedup hash. Kept in sync with the DB enum.
+  "hiring_footprint",
   // Hacker News mention + Show HN tracking. Like sitemap/news/youtube, an INTERNAL
   // source — never user-selectable (excluded from plan gating, the enable route, and
   // the source tabs). Seeded weekly at creation; the scraper queries HN's public

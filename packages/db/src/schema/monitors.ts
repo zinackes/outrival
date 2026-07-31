@@ -75,6 +75,16 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // into it would make every velocity inflection re-emit. Always isActive=false;
   // the mine-job-facts job owns it.
   "job_facts",
+  // Hiring footprint — where they hire and what they open (Hiring Intelligence v2
+  // P2). Infra-only anchor source, sibling of hiring_shift and job_facts: never
+  // scraped, never user-selectable. It anchors the snapshot → change → signal chain
+  // for the three deterministic footprint signals (a country that has never
+  // appeared, a department bucket that has never appeared, a board that has emptied
+  // out). Its own anchor rather than hiring_shift's for the reason job_facts has
+  // one: that monitor's snapshot chain carries the velocity dedup hash, and
+  // interleaving would make every inflection re-emit. Always isActive=false; the
+  // detect-hiring-footprint job owns it.
+  "hiring_footprint",
   // Hacker News mention + Show HN tracking. Internal source (like news/youtube) —
   // never user-selectable. Seeded weekly at creation, isActive=true, enqueued by
   // schedule-scraping and scraped via getScraper (HN Algolia by brand); the

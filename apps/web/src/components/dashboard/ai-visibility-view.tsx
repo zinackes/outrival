@@ -161,7 +161,6 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
     try {
       const { runId: id } = await api.runAiVisibility();
       setRunId(id);
-      toast.success("Visibility check started. Results appear as engines respond.");
     } catch {
       setRunning(false);
       toast.error("Couldn't start the run.");

@@ -215,10 +215,6 @@ export function MyProductView({
             },
           },
         });
-      } else {
-        toast.success("Re-scan queued", {
-          description: "Your sources are scanned as soon as a scanner is free.",
-        });
       }
       await load(); // pick up scanning=true so the progress poll kicks in
     } catch (e) {

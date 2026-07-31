@@ -45,12 +45,9 @@ export function useForceRescan(monitorId: string, options?: Options) {
 
       // Unmetered first scrape (freshly enabled / just-retargeted URL): there's no
       // forced_rescan_log row to poll for an outcome. The parent's own scrape-progress
-      // polling (kicked off by onStarted) refreshes the row when it lands, so just
-      // confirm it started rather than polling a log id that doesn't exist.
-      if (!res.rescanLogId) {
-        toast.success("Re-scan started. The data will refresh here shortly.");
-        return;
-      }
+      // polling (kicked off by onStarted) refreshes the row and reports the result,
+      // so there's nothing to say here.
+      if (!res.rescanLogId) return;
 
       toastId = toast.loading("Re-scanning… this can take up to a minute.");
 

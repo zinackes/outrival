@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import {
   ArrowSquareOutIcon,
@@ -38,9 +37,6 @@ export function ChangeCard({
     setClassifying(true);
     try {
       await api.classifyChange(change.id);
-      toast.info("Classifying change with AI…", {
-        description: "Refreshing in a few seconds.",
-      });
       setTimeout(() => {
         onRefresh?.();
         setClassifying(false);

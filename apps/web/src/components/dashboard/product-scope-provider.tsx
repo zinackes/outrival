@@ -61,6 +61,11 @@ export function ProductScopeProvider({
   // nothing, with no escape hatch on a mono-product org (the switcher is hidden).
   // Once the org's real products load, drop a scope that isn't among them back to All
   // products (clears the cookie). Deduped with the sidebar's identical query.
+  //
+  // This leans on GET /api/products excluding ARCHIVED products. While it shipped them,
+  // a scope pointing at a removed product passed this check, so the cookie survived and
+  // every scoped feed kept rendering that product; on a workspace back down to one
+  // product the switcher hides itself, leaving no control able to clear it.
   const productsQ = useQuery(productsListQuery());
   React.useEffect(() => {
     const products = productsQ.data;

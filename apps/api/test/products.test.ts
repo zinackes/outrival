@@ -1,7 +1,16 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { changes, competitors, monitors, pricingHistory, signals, snapshots } from "@outrival/db";
+import {
+  changes,
+  competitors,
+  monitors,
+  pricingHistory,
+  productCompetitors,
+  products,
+  signals,
+  snapshots,
+} from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
 import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 
@@ -464,5 +473,124 @@ describe("add-product wizard: synchronous profile seeding", () => {
       }),
     );
     expect(res.status).toBe(400);
+  });
+});
+
+// Removing a product used to strand its roster. The junction rows stayed pointed at the
+// archived product, so a competitor only IT tracked belonged to no live product: absent
+// from every product-scoped roster, feed and landscape, untagged on new signals, and yet
+// still counted by the plan's competitor cap. Billed and unreachable at the same time.
+describe("archiving a product hands its roster back", () => {
+  let C: { orgId: string; userId: string; email: string };
+  let primaryC: string;
+  let secondC: string;
+
+  const create = async (name: string) => {
+    const res = await app.request(
+      "/api/products",
+      asUser(C.userId, C.email, { method: "POST", body: JSON.stringify({ name }) }),
+    );
+    expect(res.status).toBe(201);
+    return (await res.json()).product.id as string;
+  };
+
+  const link = async (productId: string, competitorId: string) => {
+    const res = await app.request(
+      `/api/products/${productId}/competitors/${competitorId}`,
+      asUser(C.userId, C.email, { method: "POST", body: JSON.stringify({}) }),
+    );
+    expect(res.status).toBe(200);
+  };
+
+  const productIdsOf = async (competitorId: string) =>
+    (
+      await testDb
+        .select({ productId: productCompetitors.productId })
+        .from(productCompetitors)
+        .where(eq(productCompetitors.competitorId, competitorId))
+    )
+      .map((r) => r.productId)
+      .sort();
+
+  beforeAll(async () => {
+    C = await seedOrg(testDb, { plan: "pro" });
+    await testDb.insert(competitors).values([
+      { id: "comp-c-shared", orgId: C.orgId, name: "Shared rival" },
+      { id: "comp-c-only", orgId: C.orgId, name: "Second SKU rival" },
+    ]);
+    primaryC = await create("Main");
+    secondC = await create("Side");
+    await link(primaryC, "comp-c-shared");
+    await link(secondC, "comp-c-shared");
+    await link(secondC, "comp-c-only");
+
+    // A past signal addressed to the product about to be archived.
+    await testDb
+      .insert(monitors)
+      .values({ id: "mon-c", competitorId: "comp-c-only", sourceType: "homepage" });
+    await testDb
+      .insert(snapshots)
+      .values({ id: "snp-c", monitorId: "mon-c", r2Key: "k", contentHash: "h" });
+    await testDb
+      .insert(changes)
+      .values({ id: "chg-c", monitorId: "mon-c", snapshotAfterId: "snp-c" });
+    await testDb.insert(signals).values({
+      id: "sig-c",
+      changeId: "chg-c",
+      orgId: C.orgId,
+      competitorId: "comp-c-only",
+      severity: "high",
+      category: "pricing",
+      insight: "Moved its entry tier",
+      productIds: [secondC],
+    });
+
+    const res = await app.request(
+      `/api/products/${secondC}`,
+      asUser(C.userId, C.email, { method: "DELETE" }),
+    );
+    expect(res.status).toBe(200);
+  }, HOOK_TIMEOUT_MS);
+
+  test("the archived product leaves the list the switcher reads", async () => {
+    const body = await (await app.request("/api/products", asUser(C.userId, C.email))).json();
+    const ids = (body.products as { id: string }[]).map((p) => p.id);
+    expect(ids).toContain(primaryC);
+    expect(ids).not.toContain(secondC);
+  });
+
+  test("a competitor only it tracked moves to the surviving primary", async () => {
+    expect(await productIdsOf("comp-c-only")).toEqual([primaryC]);
+  });
+
+  test("a competitor shared with another product keeps just that product", async () => {
+    expect(await productIdsOf("comp-c-shared")).toEqual([primaryC]);
+  });
+
+  test("its signals are re-addressed, not left pointing at a gone product", async () => {
+    const [row] = await testDb.select().from(signals).where(eq(signals.id, "sig-c"));
+    expect(row?.productIds).toEqual([primaryC]);
+  });
+
+  test("its page and its scoped reads are gone (404), not silently live", async () => {
+    expect((await get(C, secondC)).status).toBe(404);
+  });
+
+  test("archiving again is a no-op, not a 404", async () => {
+    const res = await app.request(
+      `/api/products/${secondC}`,
+      asUser(C.userId, C.email, { method: "DELETE" }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  test("an archived product can no longer be renamed or promoted to primary", async () => {
+    const res = await app.request(
+      `/api/products/${secondC}`,
+      asUser(C.userId, C.email, { method: "PATCH", body: JSON.stringify({ isPrimary: true }) }),
+    );
+    expect(res.status).toBe(404);
+    const [still] = await testDb.select().from(products).where(eq(products.id, primaryC));
+    expect(still?.isPrimary).toBe(true);
   });
 });

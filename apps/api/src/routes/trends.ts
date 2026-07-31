@@ -5,7 +5,7 @@ import { db } from "../lib/db";
 import { analyticsQuery, analyticsQueryResult, sql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
-import { productCompetitorIds } from "../lib/products";
+import { liveProductId, productCompetitorIds } from "../lib/products";
 
 type Variables = { user: { id: string } };
 
@@ -58,10 +58,14 @@ async function orgCompetitors(orgId: string) {
 
 // Resolve the org's competitors for a window, honouring the optional product scope.
 // Shared by /summary and /market so both read the same set (and the same tenant guard).
+// Absent, archived or unknown product → no scope at all (every org competitor). A scope
+// cookie still pointing at a removed product must not keep filtering the leaderboards
+// down to that product's roster.
 async function scopedCompetitors(orgId: string, productId?: string) {
   const comps = await orgCompetitors(orgId);
-  if (!productId) return comps;
-  const allowed = new Set(await productCompetitorIds(orgId, productId));
+  const live = await liveProductId(orgId, productId);
+  if (!live) return comps;
+  const allowed = new Set(await productCompetitorIds(orgId, live));
   return comps.filter((x) => allowed.has(x.id));
 }
 

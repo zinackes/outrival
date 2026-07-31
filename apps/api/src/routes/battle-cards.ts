@@ -54,7 +54,13 @@ async function assertOwnedCompetitor(competitorId: string, orgId: string) {
 async function resolveProduct(orgId: string, competitorId: string, given?: string) {
   if (given) {
     const p = await db.query.products.findFirst({
-      where: and(eq(products.id, given), eq(products.orgId, orgId)),
+      // Archived excluded: a card is titled "<product> vs <competitor>" and stored per
+      // couple, so a stale scope cookie would keep writing cards for a removed SKU.
+      where: and(
+        eq(products.id, given),
+        eq(products.orgId, orgId),
+        ne(products.status, "archived"),
+      ),
       columns: { id: true, selfCompetitorId: true },
     });
     if (p) return p;

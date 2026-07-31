@@ -6,7 +6,7 @@ import { db } from "../lib/db";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
-import { productCompetitorIds, productSelfCompetitorId } from "../lib/products";
+import { liveProductId, productCompetitorIds, productSelfCompetitorId } from "../lib/products";
 
 type Variables = { user: { id: string } };
 
@@ -40,11 +40,19 @@ async function orgCompetitors(orgId: string) {
 
 // The competitor ids in scope for a given product: its linked competitors
 // (product_competitors junction) PLUS the product's own self-competitor, which the
-// junction never holds. Absent product → all org competitors (callers pass null).
-async function scopedActivityIds(orgId: string, productId: string): Promise<string[]> {
+// junction never holds. Null means "no scope, all org competitors" — which is what an
+// absent product gives, and equally what an ARCHIVED or unknown one gives: a scope
+// cookie left pointing at a removed product must widen the view, never narrow it to a
+// product the user can no longer see or switch away from.
+async function scopedActivityIds(
+  orgId: string,
+  productId: string | undefined,
+): Promise<string[] | null> {
+  const live = await liveProductId(orgId, productId);
+  if (!live) return null;
   const [linked, selfId] = await Promise.all([
-    productCompetitorIds(orgId, productId),
-    productSelfCompetitorId(orgId, productId),
+    productCompetitorIds(orgId, live),
+    productSelfCompetitorId(orgId, live),
   ]);
   return selfId ? [...linked, selfId] : linked;
 }
@@ -58,8 +66,7 @@ activityRouter.get("/health", async (c) => {
 
   // patch-28 — optional product scope: restrict the source roster to the product's
   // linked competitors + its own self-product. Absent → all org competitors incl. self.
-  const productId = c.req.query("productId");
-  const restrictIds = productId ? await scopedActivityIds(orgId, productId) : null;
+  const restrictIds = await scopedActivityIds(orgId, c.req.query("productId"));
   // A product with no linked competitors → nothing to show (avoids inArray([])).
   if (restrictIds && restrictIds.length === 0) {
     return c.json({ sources: [], upcoming: [] });
@@ -489,8 +496,9 @@ function cleanSummary(s: string | null): string | null {
 // holds.
 async function scopedCompetitors(orgId: string, productId: string | undefined) {
   const comps = await orgCompetitors(orgId);
-  if (!productId) return comps;
-  const allowed = new Set(await scopedActivityIds(orgId, productId));
+  const ids = await scopedActivityIds(orgId, productId);
+  if (!ids) return comps;
+  const allowed = new Set(ids);
   return comps.filter((x) => allowed.has(x.id));
 }
 
@@ -646,10 +654,10 @@ activityRouter.get("/timeline", async (c) => {
 
   // patch-28 — optional product scope (same as /health): the product's linked
   // competitors + its own self-product.
-  const productId = c.req.query("productId");
+  const scopedIds = await scopedActivityIds(orgId, c.req.query("productId"));
   let comps = await orgCompetitors(orgId);
-  if (productId) {
-    const allowed = new Set(await scopedActivityIds(orgId, productId));
+  if (scopedIds) {
+    const allowed = new Set(scopedIds);
     comps = comps.filter((x) => allowed.has(x.id));
   }
   const nameById = new Map(comps.map((x) => [x.id, x.name]));

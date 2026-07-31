@@ -378,6 +378,12 @@ export interface ChangeRow {
   competitorId?: string;
   competitorName?: string;
   competitorUrl?: string;
+  // The signal this change became, joined in by GET /api/changes. Null when the
+  // change was classified insignificant (or not classified yet).
+  signalId?: string | null;
+  signalSeverity?: "low" | "medium" | "high" | "critical" | null;
+  signalCategory?: string | null;
+  signalInsight?: string | null;
 }
 
 // Intel → action loop (Phase B). User-set triage status on a signal.
@@ -2890,10 +2896,11 @@ export const api = {
     }),
   classifyChange: (id: string) =>
     request<{ runId: string }>(`/api/changes/${id}/classify`, { method: "POST" }),
-  listChanges: (params?: { limit?: number; competitorId?: string }) => {
+  listChanges: (params?: { limit?: number; competitorId?: string; monitorId?: string }) => {
     const q = new URLSearchParams();
     if (params?.limit) q.set("limit", String(params.limit));
     if (params?.competitorId) q.set("competitorId", params.competitorId);
+    if (params?.monitorId) q.set("monitorId", params.monitorId);
     const qs = q.toString();
     return request<{ changes: ChangeRow[] }>(`/api/changes${qs ? `?${qs}` : ""}`);
   },

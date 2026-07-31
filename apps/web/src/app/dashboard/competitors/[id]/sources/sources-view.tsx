@@ -530,9 +530,15 @@ export function SourcesView({ id }: { id: string }) {
           plan={plan}
           monitors={monitors}
           scrapingIds={scrapingIds}
+          monitoringPaused={competitor.monitoringPaused || Boolean(competitor.pausedByPlan)}
           onRun={requestRunMonitor}
           onAdd={addCustomMonitor}
+          onEdit={editMonitor}
+          onSetActive={setMonitorActive}
           onDelete={removeCustomMonitor}
+          onLockedFrequency={(frequency) =>
+            setPaywall({ code: "plan_locked_frequency", frequency, plan })
+          }
           onLocked={() =>
             setPaywall({ code: "plan_limit_custom_monitors", plan, used: 0, limit: 0 })
           }

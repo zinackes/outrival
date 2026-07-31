@@ -111,6 +111,10 @@
       "types": "./src/jobs/signals.ts",
       "default": "./src/jobs/signals.ts"
     },
+    "./jobs-jd-facts": {
+      "types": "./src/jobs/jd-facts.ts",
+      "default": "./src/jobs/jd-facts.ts"
+    },
     "./structured-data": {
       "types": "./src/structured-data/index.ts",
       "default": "./src/structured-data/index.ts"

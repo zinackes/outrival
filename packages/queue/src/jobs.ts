@@ -238,6 +238,12 @@ export const detectHiringVelocityShifts = defineJob<CompetitorRefPayload>(
   "detect-hiring-velocity-shifts",
   { expireInSeconds: 60 },
 );
+// Job-description fact mining (Hiring Intelligence v2 P1), event-triggered per
+// competitor off extract-jobs. Up to four batched model calls per run, so it gets
+// a longer window than its two sibling detectors, which do no AI at all.
+export const mineJobFacts = defineJob<CompetitorRefPayload>("mine-job-facts", {
+  expireInSeconds: 300,
+});
 // Standing-query re-evaluation, targeted off generate-signal. Shares the groq lane
 // (concurrency 1) so the judge + internal Ask run never starve classify→signal.
 export const evaluateStandingQueries = defineJob<EvaluateStandingQueriesPayload>(

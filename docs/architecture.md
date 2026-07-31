@@ -171,6 +171,44 @@ job_postings           id, competitor_id, title, department, location, url,
                        salary_currency (patch-32 — cross-ATS hiring enrichment,
                        populated on the structured ATS API path, null on the
                        LLM/careers fallback), detected_at, closed_at, is_active
+                       + description_text, remote_mode, employment_type,
+                       facts_mined_at (Hiring Intelligence v2 P1, migration 0059).
+                       Le CORPS de la JD était DÉJÀ dans les réponses ATS qu'on
+                       fetchait (Greenhouse content=true, Workable details=true,
+                       Lever/Ashby/Recruitee/Personio le portent dans le payload
+                       de liste) et jeté faute de colonne — zéro requête en plus.
+                       Null sur les providers dont la liste ne porte pas de corps
+                       (Workday, iCIMS, SmartRecruiters, WTTJ) et sur le fallback
+                       LLM/careers ; un corps manquant ne fait JAMAIS échouer un
+                       provider. remote_mode déterministe (location + JD, hybrid
+                       testé AVANT remote sinon « hybrid — 2 days remote » se lit
+                       full-remote) ; null = non résolu, jamais deviné — un
+                       « onsite » posé sur du silence fabriquerait un signal RTO.
+                       facts_mined_at = tampon « cette JD est passée au miner »,
+                       quoi qu'elle ait rendu : sans lui une JD stérile est
+                       indistinguable d'une non-minée et repart au modèle à
+                       chaque run
+
+posting_facts          id, posting_id (cascade), competitor_id, kind
+                       (tech|product_hint|team_size|market|language), value,
+                       value_key (clé de corroboration), evidence_snippet
+                       (VERBATIM), confidence, recorded_at, signalled_at
+                       — Hiring Intelligence v2 P1 (migration 0059). Facts minés
+                       des JD des nouvelles postings eng/product/data_ml
+                       uniquement, par batches de ~10 JDs/appel, cap ~40 JDs/run
+                       (le reste au run suivant), loggé ai_runs `mine_job_facts`.
+                       TROIS GARDES CÔTÉ CODE, pas dans le prompt
+                       (`@outrival/scrapers/jobs-jd-facts`) : (a) evidence_snippet
+                       qui n'est pas une sous-chaîne de la JD ⇒ fact DROPPÉ (un
+                       fact sans phrase source n'existe pas) ; (b) pré-filtre de
+                       nouveauté EN+FR+DE — pas de « new team » / « from scratch » /
+                       « de zéro » / « von Grund auf » dans la JD ⇒ aucun
+                       product_hint retenu, sinon « scale our platform » devient
+                       une fuite produit ; (c) 5 facts max par posting.
+                       signalled_at = ce qui empêche une techno de re-signaler à
+                       chaque nouveau posting qui la cite, ET la fenêtre que le
+                       fact block du signal joint (même attribution read-time que
+                       pricing/hiring, pas de change_id à backfiller)
 
 reviews                id, competitor_id, source (g2|capterra|appstore|playstore),
                        score, content, author (praise|complaint|<name>),
@@ -331,7 +369,12 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     jamais scrapée : elle porte ses propres snapshots pour ne pas polluer
                     la chaîne de dédup par content-hash du monitor pricing), hiring_shift (ancre du signal
                     d'inflexion de vélocité de recrutement par département, jamais
-                    scrapée), hackernews (mention-tracking HN via l'Algolia public,
+                    scrapée), job_facts (ancre des deux signaux minés des JD —
+                    tech_adoption et product_hint, cf. posting_facts ; jamais semée
+                    ni scrapée. ANCRE DÉDIÉE et pas hiring_shift : la chaîne de
+                    snapshots de hiring_shift porte le hash de dédup du détecteur
+                    de vélocité, y intercaler des snapshots de facts ferait
+                    ré-émettre chaque inflexion), hackernews (mention-tracking HN via l'Algolia public,
                     semé weekly ; garde anti-homonyme STRICTE = domaine obligatoire sauf
                     competitor.metadata.ambiguousName===false ; Show HN+domaine →
                     product/high, mention > HN_POINTS_THRESHOLD → content/medium, en
@@ -521,7 +564,7 @@ scrape_runs         monitor_id, competitor_id, source_type, status (success|no_c
                     duration_ms, recorded_at  — ops (patch-02/20)
 ai_runs             task (classify|classify_structured|narrate_change|insight|digest|
                     battle_card|extract_pricing|extract_jobs|extract_reviews|
-                    extract_self_profile|generate_extractor|source_summary|
+                    extract_self_profile|generate_extractor|mine_job_facts|source_summary|
                     competitor_summary|batch_summary|ask|…), provider, model,
                     status (success|parse_failed|error), recorded_at      — ops (patch-02 ;
                     `ask` = Ask Outrival, 1er logger ai_runs côté API via lib/ai-runs.ts)
@@ -843,6 +886,9 @@ carte (état live uniquement).
                    map déterministe + fallback titre, unknown compté — et UPSERT
                    hiring_metrics (competitor, bucket, semaine ISO) ; job_counts brut
                    inchangé. Puis trigger detect-hiring-velocity-shifts, event-driven)
+                  (JD mining P1 : les postings insérées QUI PORTENT UN CORPS
+                   déclenchent mine-job-facts, event-driven aussi. Jamais sur
+                   backfill — backfill-history ne rejoue que homepage/pricing)
        g2/capt → extract-reviews → praises/complaints + Postgres review_scores
                   (structured-first scores via AggregateRating ; résumé qualitatif reste IA.
                    patch-32 : l'extraction IA renvoie en plus les sous-notes /5
@@ -1072,6 +1118,29 @@ carte (état live uniquement).
        modération). Chaîne d'ancre synthétique pricing_probe → snapshot → change →
        generate-signal, human_change_before/_after = les coûts mesurés exacts
   └─ chaque tentative est écrite dans calculator_probe_runs (mesurée ou refusée)
+
+[par competitor dont un scrape jobs a inséré des postings AVEC corps] mine-job-facts
+  └─ skip self / deleted (un « ils adoptent Kubernetes » sur son propre produit est du bruit)
+  └─ sélectionne les postings NON MINÉES (facts_mined_at null) des buckets
+       engineering/product/data_ml, cap 40/run → batches de 10 → 1 appel IA par batch
+       (loggedAi `mine_job_facts`) ; le modèle PROPOSE, les 3 gardes déterministes de
+       `@outrival/scrapers/jobs-jd-facts` DÉCIDENT (substring-check du snippet, pré-filtre
+       de nouveauté pour product_hint, cap 5 facts/posting)
+  └─ insert posting_facts (onConflictDoNothing) + stamp facts_mined_at sur TOUTES les
+       postings envoyées, y compris celles qui n'ont rien rendu
+  └─ signal `tech_adoption` — DÉTERMINISTE, zéro IA dans la décision : une même valeur
+       'tech' sur ≥2 postings DISTINCTES et jamais encore signalée → 1 change groupé →
+       generate-signal avec une classification SYNTHÉTISÉE (product/medium). Tire une
+       seule fois par techno : la garde est « aucun fact de cette valeur n'a de
+       signalled_at », pas un compteur, donc les 3e et 4e postings ne ré-annoncent rien
+  └─ signal `product_hint` — medium en occurrence simple ; promu **high** UNIQUEMENT si
+       corroboré (2e posting portant la même valeur, OU un change subdomains/docs/changelog
+       de moins de 30j sur le même concurrent). JAMAIS critical, et jamais promu sur la
+       PREMIÈRE capture jobs d'un concurrent (tout y est neuf par construction, donc
+       « deux postings » n'y prouve rien)
+  └─ anchor synthétique `job_facts` (monitor isActive=false) → R2 avant DB → snapshot →
+       change → generate-signal ; dédup par content-hash préfixé du kind, donc les chaînes
+       tech et hint ne se dédupent pas l'une l'autre et un run retenté ne double pas un signal
 
 [cron dimanche 20h UTC] detect-new-competitors
   └─ par org onboardée : Exa findSimilar + scoreOverlap (batché)

@@ -66,6 +66,15 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // when a department's open-role count inflects up over hiring_metrics. Always
   // isActive=false; the detect-hiring-velocity-shifts job owns it.
   "hiring_shift",
+  // Job-description facts (Hiring Intelligence v2 P1). Infra-only anchor source,
+  // sibling of hiring_shift: never scraped, never user-selectable. It anchors the
+  // snapshot → change → signal chain for the two JD-mined signals (a technology
+  // cited across postings, an unannounced initiative described in one). A
+  // DEDICATED anchor rather than hiring_shift's: that monitor's snapshot chain
+  // carries the velocity detector's dedup hash, and interleaving facts snapshots
+  // into it would make every velocity inflection re-emit. Always isActive=false;
+  // the mine-job-facts job owns it.
+  "job_facts",
   // Hacker News mention + Show HN tracking. Internal source (like news/youtube) —
   // never user-selectable. Seeded weekly at creation, isActive=true, enqueued by
   // schedule-scraping and scraped via getScraper (HN Algolia by brand); the

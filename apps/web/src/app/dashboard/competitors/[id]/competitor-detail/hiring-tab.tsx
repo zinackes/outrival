@@ -365,6 +365,12 @@ export function HiringTab({
                         <span className="col-start-1 text-xs text-muted-foreground">
                           {[
                             role.location,
+                            // Only when it adds something the location doesn't
+                            // already say ("Remote — EU" needs no badge).
+                            role.remoteMode &&
+                            !role.location?.toLowerCase().includes(role.remoteMode)
+                              ? capitalize(role.remoteMode)
+                              : null,
                             // A posting's age separates a real bet from one that has
                             // been sitting there. postedAt shipped with patch-32 and
                             // was never rendered.
@@ -375,6 +381,28 @@ export function HiringTab({
                             .filter(Boolean)
                             .join(" · ")}
                         </span>
+                        {/* What this description states about their stack and
+                            their plans. Every value here was quoted from the JD
+                            and substring-checked against it before it was stored,
+                            so the badge is showing their words, not a summary. */}
+                        {role.facts.length > 0 && (
+                          <span className="col-start-1 row-start-3 mt-1 flex flex-wrap gap-1.5">
+                            {role.facts.slice(0, 5).map((f) => (
+                              <span
+                                key={`${f.kind}-${f.value}`}
+                                title={f.evidenceSnippet}
+                                className={cn(
+                                  "rounded-sm px-1.5 py-0.5 text-meta font-medium",
+                                  f.kind === "product_hint"
+                                    ? "bg-high/10 text-high"
+                                    : "bg-surface-2 text-muted-foreground",
+                                )}
+                              >
+                                {f.value}
+                              </span>
+                            ))}
+                          </span>
+                        )}
                         <span className="col-span-1 col-start-2 row-span-2 row-start-1 flex items-center gap-2.5">
                           {salary && (
                             <span className="text-xs tabular-nums text-muted-foreground">

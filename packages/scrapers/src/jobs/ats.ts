@@ -13,6 +13,8 @@
  * scraper embeds (see `parseAtsJobsFromHtml`) without pulling the browser stack.
  */
 
+import { htmlToPlainJd, MAX_DESCRIPTION_CHARS } from "./jd-facts";
+
 export interface AtsJob {
   title: string;
   department: string;
@@ -27,6 +29,14 @@ export interface AtsJob {
   salaryMin: number | null;
   salaryMax: number | null;
   salaryCurrency: string | null;
+  // Hiring Intelligence v2 P1 — the JD body, plain text, capped. Already present in
+  // the responses we ALREADY fetch (Greenhouse content=true, Workable details=true,
+  // Lever/Ashby/Recruitee/Personio ship it in the list payload), so this costs zero
+  // extra requests. STRICTLY best-effort: null on the providers whose list payload
+  // carries no body (Workday, iCIMS, SmartRecruiters, Welcome to the Jungle), and a
+  // missing body must never fail a provider — it only means that posting isn't mined.
+  description: string | null;
+  employmentType: string | null;
 }
 
 export interface AtsBoard {
@@ -145,6 +155,41 @@ export function normalizeSeniority(title: string, raw?: string | null): Seniorit
   return null;
 }
 
+/**
+ * Normalise a JD body from whatever shape the provider ships it in. Accepts a
+ * plain/HTML string or an array of `{title?, value?/content?}` sections (Workable
+ * and Personio split the body into named sections), joins them in order, strips
+ * the markup and caps the result. Returns null when nothing readable is there —
+ * an empty body is "not mined", never an empty JD to reason over.
+ */
+function jobDescription(...parts: unknown[]): string | null {
+  const chunks: string[] = [];
+  const push = (x: unknown): void => {
+    if (typeof x === "string") {
+      if (x.trim()) chunks.push(x);
+      return;
+    }
+    if (Array.isArray(x)) {
+      for (const item of x) push(item);
+      return;
+    }
+    if (x && typeof x === "object") {
+      const o = x as Record<string, unknown>;
+      // Lever names a section `text`, Personio `name`, others `title`. When an
+      // object turns out to carry only that field it is pushed as content, so a
+      // body mislabelled as a heading is never dropped.
+      const heading = str(o.title ?? o.name ?? o.text);
+      const body = o.value ?? o.content ?? o.body ?? o.description;
+      if (heading) chunks.push(heading);
+      push(body);
+    }
+  };
+  for (const p of parts) push(p);
+  if (chunks.length === 0) return null;
+  const text = htmlToPlainJd(chunks.join("\n\n"));
+  return text.length > 0 ? text : null;
+}
+
 /** Build a fully-shaped AtsJob from a partial, filling enrichment defaults. */
 function mkJob(p: {
   title: string;
@@ -154,6 +199,8 @@ function mkJob(p: {
   seniority?: Seniority | null;
   postedAt?: string | null;
   salary?: NormalizedSalary | null;
+  description?: string | null;
+  employmentType?: string | null;
 }): AtsJob {
   const salary = p.salary ?? { min: null, max: null, currency: null };
   return {
@@ -166,6 +213,8 @@ function mkJob(p: {
     salaryMin: salary.min,
     salaryMax: salary.max,
     salaryCurrency: salary.currency,
+    description: p.description ?? null,
+    employmentType: p.employmentType?.trim() || null,
   };
 }
 
@@ -293,6 +342,9 @@ const PROVIDERS: ProviderDef[] = [
               location: str((j?.location as { name?: unknown } | undefined)?.name) || null,
               url: str(j?.absolute_url) || null,
               postedAt: toIso(j?.first_published ?? j?.updated_at),
+              // The board API is already called with content=true, so the body is
+              // in this very response — it was parsed and discarded until P1.
+              description: jobDescription(j?.content),
             });
           })
           .filter((j) => j.title);
@@ -323,6 +375,14 @@ const PROVIDERS: ProviderDef[] = [
               // Lever carries a structured range when comp is disclosed.
               salary: normalizeSalary(p?.salaryRange ?? p?.salaryDescriptionPlain),
               seniority: normalizeSeniority(title, str(cat.commitment)),
+              // Lever ships both a plain-text and an HTML body plus the numbered
+              // `lists` (Requirements, What you'll do) that carry the real content.
+              description: jobDescription(
+                p?.descriptionPlain ?? p?.description,
+                p?.lists,
+                p?.additionalPlain ?? p?.additional,
+              ),
+              employmentType: str(cat.commitment) || null,
             });
           })
           .filter((j) => j.title);
@@ -351,6 +411,8 @@ const PROVIDERS: ProviderDef[] = [
               postedAt: toIso(j?.publishedDate ?? j?.publishedAt),
               salary: normalizeSalary(comp?.compensationTierSummary),
               seniority: normalizeSeniority(title, str(j?.employmentType)),
+              description: jobDescription(j?.descriptionPlain ?? j?.descriptionHtml),
+              employmentType: str(j?.employmentType) || null,
             });
           })
           .filter((j) => j.title);
@@ -413,6 +475,8 @@ const PROVIDERS: ProviderDef[] = [
                   ? normalizeSalary(o.salary)
                   : normalizeSalary([str(o?.min_salary), str(o?.max_salary), str(o?.currency)].join(" ")),
               seniority: normalizeSeniority(title, str(o?.experience_level) || str(o?.seniority)),
+              description: jobDescription(o?.description, o?.requirements),
+              employmentType: str(o?.employment_type_code) || str(o?.employment_type) || null,
             });
           })
           .filter((j) => j.title);
@@ -444,6 +508,14 @@ const PROVIDERS: ProviderDef[] = [
               url: id ? `https://${token}.jobs.personio.com/job/${id}` : null,
               postedAt: toIso(xmlTag(b, "createdAt")),
               seniority: normalizeSeniority(title, xmlTag(b, "seniority")),
+              // Personio splits the body into named <jobDescription> sections
+              // (Tasks, Requirements, Benefits), each a CDATA HTML fragment.
+              description: jobDescription(
+                (b.match(/<jobDescription>[\s\S]*?<\/jobDescription>/gi) ?? []).map((s) =>
+                  [xmlTag(s, "name"), xmlTag(s, "value")].filter(Boolean).join("\n"),
+                ),
+              ),
+              employmentType: xmlTag(b, "employmentType") || null,
             });
           })
           .filter((j) => j.title);
@@ -538,6 +610,10 @@ const PROVIDERS: ProviderDef[] = [
               url: str(j?.url) || str(j?.shortlink) || null,
               postedAt: toIso(j?.published_on ?? j?.created_at),
               seniority: normalizeSeniority(title, str(j?.experience) || str(j?.employment_type)),
+              // The widget is already queried with details=true, which is what
+              // fills description/requirements/benefits on each posting.
+              description: jobDescription(j?.description, j?.requirements, j?.benefits),
+              employmentType: str(j?.employment_type) || null,
             });
           })
           .filter((j) => j.title);
@@ -921,6 +997,10 @@ function coerceJob(x: unknown): AtsJob | null {
     salaryMin: coerceNum(o.salaryMin),
     salaryMax: coerceNum(o.salaryMax),
     salaryCurrency: str(o.salaryCurrency) || null,
+    // Re-capped on the way out: the island is written by the scraper and read by
+    // the worker, and only this side knows the storage cap.
+    description: str(o.description).slice(0, MAX_DESCRIPTION_CHARS) || null,
+    employmentType: str(o.employmentType) || null,
   };
 }
 

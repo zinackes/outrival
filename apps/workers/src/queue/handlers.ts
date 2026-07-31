@@ -19,6 +19,7 @@ import {
   evaluateStandingQueries,
   detectReviewThemeShifts,
   detectHiringVelocityShifts,
+  mineJobFacts,
   notifyOnboardingAnalysis,
   scheduleScraping,
   scheduleTechStack,
@@ -53,6 +54,7 @@ import { logger } from "@outrival/shared";
 import { runSendAlert } from "../core/send-alert";
 import { runExtractPricing } from "../core/extract-pricing";
 import { runExtractJobs } from "../core/extract-jobs";
+import { runMineJobFacts } from "../core/mine-job-facts";
 import { runExtractReviews } from "../core/extract-reviews";
 import { runExtractSelfProfile } from "../core/extract-self-profile";
 import { runRefreshCompetitorSummary } from "../core/refresh-competitor-summary";
@@ -165,6 +167,7 @@ export async function registerHandlers(role: WorkerRole): Promise<string[]> {
     await on(evaluateStandingQueries, runEvaluateStandingQueries);
     await on(detectReviewThemeShifts, runDetectReviewThemeShifts);
     await on(detectHiringVelocityShifts, runDetectHiringVelocityShifts);
+    await on(mineJobFacts, runMineJobFacts);
 
     // notify-onboarding-analysis polls with an in-process sleep (lib/job-wait) — a
     // rare, ≤8-min per-onboarding job; DB-only, so it lives on the light worker.

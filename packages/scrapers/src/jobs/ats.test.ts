@@ -366,3 +366,117 @@ test("Lever mode=json returning real JSON is parsed", async () => {
   expect(jobs).toHaveLength(1);
   expect(jobs![0]!.title).toBe("Staff Engineer");
 });
+
+// ─── JD bodies (Hiring Intelligence v2 P1) ───────────────────────────────────
+//
+// The bodies were already in these responses and were parsed and discarded. Each
+// provider ships them in a different shape, so each mapping gets a fixture; the
+// providers whose LIST payload carries no body must stay null rather than invent
+// one, because a null description is "not mined" and an empty string is a JD that
+// states nothing.
+
+test("greenhouse: content=true body is captured and stripped to text", () => {
+  const jobs = parseAtsResponse("greenhouse", {
+    jobs: [
+      {
+        title: "Backend Engineer",
+        content: "<p>We run on <strong>Kubernetes</strong> &amp; Go.</p>",
+      },
+    ],
+  });
+  expect(jobs[0]?.description).toBe("We run on Kubernetes & Go.");
+});
+
+test("lever: descriptionPlain plus the numbered lists that hold the content", () => {
+  const jobs = parseAtsResponse("lever", [
+    {
+      text: "Platform Engineer",
+      categories: { team: "Engineering", commitment: "Full-time" },
+      descriptionPlain: "We are building a new billing platform.",
+      lists: [{ text: "Requirements", content: "<li>Rust experience</li>" }],
+    },
+  ]);
+  expect(jobs[0]?.description).toBe(
+    "We are building a new billing platform.\n\nRequirements\n\nRust experience",
+  );
+  expect(jobs[0]?.employmentType).toBe("Full-time");
+});
+
+test("ashby: descriptionPlain + employmentType", () => {
+  const jobs = parseAtsResponse("ashby", {
+    jobs: [
+      {
+        title: "Data Engineer",
+        descriptionPlain: "You will migrate our warehouse to Snowflake.",
+        employmentType: "FullTime",
+      },
+    ],
+  });
+  expect(jobs[0]?.description).toBe("You will migrate our warehouse to Snowflake.");
+  expect(jobs[0]?.employmentType).toBe("FullTime");
+});
+
+test("workable: details=true splits the body across description/requirements/benefits", () => {
+  const jobs = parseAtsResponse("workable", {
+    jobs: [
+      {
+        title: "Site Reliability Engineer",
+        description: "<p>Own our infrastructure.</p>",
+        requirements: "<p>Terraform.</p>",
+        benefits: "<p>Stock.</p>",
+        employment_type: "Full-time",
+      },
+    ],
+  });
+  expect(jobs[0]?.description).toBe("Own our infrastructure.\n\nTerraform.\n\nStock.");
+  expect(jobs[0]?.employmentType).toBe("Full-time");
+});
+
+test("recruitee: description + requirements", () => {
+  const jobs = parseAtsResponse("recruitee", {
+    offers: [{ title: "Product Manager", description: "<p>Launch a new vertical.</p>" }],
+  });
+  expect(jobs[0]?.description).toBe("Launch a new vertical.");
+});
+
+test("personio: named jobDescription sections are joined in order", () => {
+  const xml = `<?xml version="1.0"?><workzag-jobs>
+    <position>
+      <id>1</id>
+      <name>Backend Engineer</name>
+      <department>Engineering</department>
+      <employmentType>permanent</employmentType>
+      <jobDescriptions>
+        <jobDescription><name>Tasks</name><value><![CDATA[<p>Build services in Go.</p>]]></value></jobDescription>
+        <jobDescription><name>Requirements</name><value><![CDATA[<p>Kubernetes.</p>]]></value></jobDescription>
+      </jobDescriptions>
+    </position>
+  </workzag-jobs>`;
+  const jobs = parseAtsResponse("personio", xml, "acme");
+  expect(jobs[0]?.description).toBe("Tasks\nBuild services in Go.\n\nRequirements\nKubernetes.");
+  expect(jobs[0]?.employmentType).toBe("permanent");
+});
+
+test("a provider whose list payload carries no body yields null, never an empty JD", () => {
+  const workday = parseAtsResponse(
+    "workday",
+    { jobPostings: [{ title: "Analyst", externalPath: "/job/1" }] },
+    "acme.wd5.myworkdayjobs.com/External",
+  );
+  expect(workday[0]?.description).toBeNull();
+
+  const greenhouse = parseAtsResponse("greenhouse", {
+    jobs: [{ title: "Analyst", content: "  " }],
+  });
+  expect(greenhouse[0]?.description).toBeNull();
+});
+
+test("the JSON island round-trips the description and employment type", () => {
+  const board = { provider: "greenhouse", token: "acme", boardUrl: "https://x" };
+  const jobs = parseAtsResponse("greenhouse", {
+    jobs: [{ title: "Backend Engineer", content: "<p>We run on Kubernetes.</p>" }],
+  });
+  const html = appendAtsJobsToHtml("<html><body></body></html>", board, jobs);
+  const parsed = parseAtsJobsFromHtml(html);
+  expect(parsed?.[0]?.description).toBe("We run on Kubernetes.");
+});

@@ -226,6 +226,20 @@ export interface CompetitorJob {
   salaryMin: number | null;
   salaryMax: number | null;
   salaryCurrency: string | null;
+  // Hiring Intelligence v2 P1. remoteMode is deterministic off location + JD and
+  // is null when neither states one — "onsite" is never inferred from silence.
+  remoteMode: string | null;
+  employmentType: string | null;
+  /** Facts mined out of this posting's description, each with its sentence. */
+  facts: PostingFact[];
+}
+
+/** A fact a job description states, and the words it states it in. */
+export interface PostingFact {
+  /** 'tech' | 'product_hint' | 'team_size' | 'market' | 'language' */
+  kind: string;
+  value: string;
+  evidenceSnippet: string;
 }
 
 export interface JobsByDepartment {
@@ -522,7 +536,21 @@ export type SignalFacts =
        * price rise with no price change, so the bands have to be printed. */
       tiers: TierFact[];
     }
+  | {
+      /** Facts mined out of job descriptions (Hiring Intelligence v2 P1). Each
+       * carries the verbatim sentence it came from and links its posting. */
+      kind: "job_facts";
+      facts: JobFact[];
+    }
   | null;
+
+export interface JobFact {
+  kind: string;
+  value: string;
+  evidenceSnippet: string;
+  postingTitle: string;
+  postingUrl: string | null;
+}
 
 /** How the latest capture's metered plans charge, and the bands they publish. */
 export interface RateStructures {

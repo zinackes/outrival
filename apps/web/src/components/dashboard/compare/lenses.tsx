@@ -44,7 +44,10 @@ import {
   agePhrase,
   shortAge,
   techDiff,
+  availableMeters,
+  type MeterSelection,
 } from "./derive";
+import { meterUnitLabel, PRICING_MODEL_LABELS } from "@outrival/shared";
 
 /**
  * The five lenses. Each one reads the same roster, in the same order, on one shared
@@ -114,11 +117,21 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
   // Outliers are trimmed off the axis by default; this is the way back to the true
   // spread, for when the gap IS the point.
   const [full, setFull] = useState(false);
+  // A usage-based competitor publishes no price to put on this axis, only a rate.
+  // Naming a volume turns that rate into a monthly number, which is the only form
+  // in which it can be ranked against a subscription. Empty when nobody in the set
+  // meters anything — the control then has nothing to offer and stays hidden.
+  const meters = availableMeters(cols);
+  const [meterKey, setMeterKey] = useState<string | null>(null);
+  const meter =
+    meters.find((m) => `${m.unit}|${m.qty}` === meterKey) ?? meters[0] ?? null;
   const to = displayCurrency(cols, rates);
-  const scale = priceScale(cols, { rates, to, full });
+  const scale = priceScale(cols, { rates, to, full, meter });
   if (!lensHasContent.price(entities)) return null;
 
   const canExpandScale = scale.fullMax > scale.robustMax;
+  const meterLabel = (m: MeterSelection) =>
+    `${m.qty.toLocaleString("en-US")} ${meterUnitLabel(m.unit, m.qty)}/mo`;
   const derivation = [
     scale.annualised ? "annual plans read ÷ 12" : null,
     scale.converted.length
@@ -163,9 +176,29 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
                       : `Show full scale to ${money(scale.fullMax, scale.currency)}`}
                   </button>
                 )}
+                {/* The volume metered competitors are read at. Changing it re-reads
+                    the captured ladder; nothing is re-scanned. */}
+                {meters.length > 0 && meter && (
+                  <label className="flex items-center gap-1.5">
+                    <span>usage read at</span>
+                    <select
+                      value={`${meter.unit}|${meter.qty}`}
+                      onChange={(ev) => setMeterKey(ev.target.value)}
+                      className="border-border bg-background text-foreground rounded-sm border px-1.5 py-0.5 tabular-nums"
+                      aria-label="Volume to read usage-based pricing at"
+                    >
+                      {meters.map((m) => (
+                        <option key={`${m.unit}|${m.qty}`} value={`${m.unit}|${m.qty}`}>
+                          {meterLabel(m)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 {/* What the "≈" rows were derived from, so a converted number is never
                     passed off as one the competitor published. */}
                 {derivation.length > 0 && <span>≈ {derivation.join(" · ")}</span>}
+                {meter && <span>* cost at {meterLabel(meter)}, not a published price</span>}
               </>
             }
           />
@@ -174,9 +207,10 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
     >
       {entities.map((e) => {
         if (!e.data) return <PendingRow key={e.id} entity={e} />;
-        const reading = priceReading(e.data, rates, to);
+        const reading = priceReading(e.data, rates, to, meter);
         const plans = e.data.pricing?.plans ?? [];
         const median = scale.medianEntry;
+        const model = e.data.pricing?.model ?? null;
 
         // Five readings, no gaps: nothing captured, quote-only, a one-off price with
         // no monthly equivalent, a currency no rate could reach, or a band. None of
@@ -217,6 +251,10 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
         // Both ends are held inside the axis; the value column keeps the true numbers.
         const left = Math.min(pct(entry, scale.max), 97);
         const width = Math.max(0, Math.min(pct(top, scale.max), 100) - left);
+        // A cost we computed at a volume, not a price the competitor published.
+        // The bar is drawn lighter and the number wears an asterisk the legend
+        // explains, so the two claims never read as the same one.
+        const derived = reading.meter ?? null;
 
         return (
           <MeasureRow
@@ -225,7 +263,12 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
             open={expanded.has(e.id)}
             onToggle={plans.length ? () => onToggle(e.id) : undefined}
             value={
-              entry === top ? (
+              derived ? (
+                <>
+                  ≈{money(entry, scale.currency)}
+                  <span className="text-muted-foreground">*</span>
+                </>
+              ) : entry === top ? (
                 <>
                   {reading.approx && "≈"}
                   {money(entry, scale.currency)} <span className="text-muted-foreground">flat</span>
@@ -241,11 +284,18 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
             detail={
               plans.length ? (
                 <Detail
-                  source={`${plans.length} published plan${plans.length > 1 ? "s" : ""}${
+                  source={[
+                    // How they charge leads: a per-seat $20 and a usage $20 are
+                    // different products, and the plan list alone doesn't say which.
+                    model ? PRICING_MODEL_LABELS[model] : null,
+                    `${plans.length} published plan${plans.length > 1 ? "s" : ""}`,
+                    derived ? `read at ${meterLabel(derived)}` : null,
                     e.data.pricing?.capturedAt
-                      ? `, captured ${agePhrase(e.data.pricing.capturedAt)}`
-                      : ""
-                  }`}
+                      ? `captured ${agePhrase(e.data.pricing.capturedAt)}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 >
                   {plans.map((p, i) => (
                     <DetailPair
@@ -278,7 +328,13 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
               {median != null && median <= scale.max && (
                 <MedianMark left={pct(median, scale.max)} />
               )}
-              <Bar entity={e} left={left} width={width} clipped={top > scale.max} />
+              <Bar
+                entity={e}
+                left={left}
+                width={width}
+                clipped={top > scale.max}
+                className={derived ? "opacity-60" : undefined}
+              />
             </Track>
           </MeasureRow>
         );

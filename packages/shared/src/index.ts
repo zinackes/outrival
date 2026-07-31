@@ -29,6 +29,7 @@ export * from "./entitlement-diff";
 export * from "./price-tier-diff";
 export * from "./unit-alias";
 export * from "./cost-model";
+export * from "./pricing-model";
 export * from "./logger";
 export * from "./notify";
 export * from "./redis";

@@ -18,10 +18,8 @@ import {
   costAtVolume,
   validateTierSet,
   resolveMeterUnit,
-  monthlyEquivalent,
-  isComparablePricePeriod,
+  monthlyBaseFee,
   REFERENCE_VOLUME_PRESETS,
-  normalizePlanKey,
   type CostTier,
   type RateStructure,
 } from "@outrival/shared";
@@ -50,31 +48,6 @@ function toCostTiers(raw: NonNullable<PricingPlan["tiers"]>): CostTier[] {
     unitPrice: t.unit_price ?? null,
     flatFee: t.flat_fee ?? null,
   }));
-}
-
-/**
- * The monthly subscription a metered plan sits on top of, when the batch holds
- * one under the same name — the hybrid shape the data model already uses (base
- * row + usage row, one plan_name). Without it a hybrid competitor would enter
- * the comparison at its overage rate alone and read as cheaper than it bills.
- */
-function baseFeeFor(planName: string, plans: PricingPlan[]): number {
-  const key = normalizePlanKey(planName);
-  let best: number | null = null;
-  for (const p of plans) {
-    if (normalizePlanKey(p.plan_name) !== key) continue;
-    if (!isComparablePricePeriod(p.billing_period)) continue;
-    if (p.price == null || p.price <= 0) continue;
-    const monthly = monthlyEquivalent({
-      planName: p.plan_name,
-      price: p.price,
-      currency: p.currency,
-      billingPeriod: p.billing_period,
-    });
-    if (monthly == null) continue;
-    if (best === null || monthly < best) best = monthly;
-  }
-  return best ?? 0;
 }
 
 /**
@@ -154,7 +127,7 @@ export function prepareRateStructures(args: {
       continue;
     }
 
-    const base = baseFeeFor(plan.plan_name, args.plans);
+    const base = monthlyBaseFee(plan.plan_name, args.plans);
     const model = {
       rateStructure: structure,
       tiers,

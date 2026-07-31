@@ -10,6 +10,7 @@ import type {
   PricingPlanOverride,
   ResolvedPricingTier,
   CustomMonitorHint,
+  PricingModel,
 } from "@outrival/shared";
 
 export type { DetectionConfig, AnalysisStatus, ScrapeActivity } from "@outrival/shared";
@@ -490,6 +491,27 @@ export type SignalFacts =
       tiers: TierFact[];
     }
   | null;
+
+/** How the latest capture's metered plans charge, and the bands they publish. */
+export interface RateStructures {
+  plans: Array<{
+    planName: string;
+    unit: string | null;
+    currency: string | null;
+    rateStructure: string | null;
+    minimumAmount: number | null;
+    percentageRate: number | null;
+  }>;
+  tiers: Array<{
+    planName: string;
+    unit: string | null;
+    fromQty: number;
+    toQty: number | null;
+    unitPrice: number | null;
+    flatFee: number | null;
+  }>;
+  capturedAt: string | null;
+}
 
 /** A meter and a quantity this workspace compares metered pricing at. */
 export interface ReferenceVolume {
@@ -1048,8 +1070,25 @@ export interface CompareColumn {
     top: number | null;
     currency: string | null;
     billingPeriod: string | null;
-    plans: Array<{ name: string; price: number | null; billingPeriod: string | null }>;
+    plans: Array<{
+      name: string;
+      price: number | null;
+      billingPeriod: string | null;
+      /** What a usage/per-seat price applies to; null on a flat price. */
+      unit: string | null;
+    }>;
     capturedAt: string | null;
+    /** How this competitor charges — flat, per seat, usage, base + usage, credits. */
+    model: PricingModel | null;
+    /** What buying a volume of a meter costs per month, computed on read from
+     * the captured ladder. Empty for a subscription-only competitor. */
+    meters: Array<{
+      unit: string;
+      qty: number;
+      cost: number;
+      currency: string | null;
+      planName: string;
+    }>;
   } | null;
   hiring: {
     totalOpen: number;
@@ -2594,6 +2633,10 @@ export const api = {
     ),
   getCompetitorPricingHistory: (id: string) =>
     request<{ history: PricingHistoryPoint[] }>(`/api/competitors/${id}/pricing-history`),
+  // Rate structures (P3): how the latest capture's metered plans charge — the
+  // published ladder, the monthly minimum, the percentage rate.
+  getCompetitorRateStructures: (id: string) =>
+    request<RateStructures>(`/api/competitors/${id}/rate-structures`),
   // Features × plans matrix (P2): the two most recent entitlement batches, so
   // the Packaging fold can render the matrix and highlight what moved.
   getCompetitorEntitlements: (id: string) =>

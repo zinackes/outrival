@@ -112,7 +112,20 @@ interface Reading extends Band {
   period: string;
 }
 
-export type PriceBandReading = Reading & { kind: "band" };
+/** A meter and a volume the lens is reading metered competitors at. */
+export interface MeterSelection {
+  unit: string;
+  qty: number;
+}
+
+export type PriceBandReading = Reading & {
+  kind: "band";
+  /** Set when the band is a COST AT A VOLUME rather than a published price —
+   * the reading that lets a usage-based competitor onto the axis at all. The
+   * UI marks it, because "$800/mo at 10k requests" and "$800/mo" are not the
+   * same claim. */
+  meter?: MeterSelection | null;
+};
 
 /**
  * What a column contributes to the price lens. Every branch is a reading — a column
@@ -154,11 +167,18 @@ export function priceReading(
   c: CompareColumn,
   rates: Record<string, number> | null,
   to: string = DISPLAY_CURRENCY,
+  meter: MeterSelection | null = null,
 ): PriceReading {
   const p = c.pricing;
   if (!p) return { kind: "none" };
   const plans = comparablePlans(c);
-  if (plans.length === 0) return { kind: "quote" };
+  if (plans.length === 0) {
+    // Nothing subscription-shaped to chart. Before calling it a quote, ask what
+    // the competitor costs at the selected volume: a usage-based product has a
+    // real, comparable monthly number, it just isn't printed on the page.
+    const metered = meter ? meteredReading(c, rates, to, meter) : null;
+    return metered ?? { kind: "quote" };
+  }
   const currency = p.currency ?? to;
   const factor = fxFactor(currency, to, rates);
   if (factor == null) return { kind: "foreign", currency };
@@ -175,6 +195,60 @@ export function priceReading(
     from: currency === to ? null : currency,
     period,
   };
+}
+
+/**
+ * A column read as what it costs to buy the selected volume, in `to`. One
+ * point, not a range: there is no band to draw across, only the price of that
+ * volume from whichever of its plans is cheapest there.
+ *
+ * The number itself was computed server-side by the same cost model that stored
+ * the competitor's reference points, so the axis and the pricing tab can never
+ * quote two different figures for one volume.
+ */
+function meteredReading(
+  c: CompareColumn,
+  rates: Record<string, number> | null,
+  to: string,
+  meter: MeterSelection,
+): PriceReading | null {
+  const hit = (c.pricing?.meters ?? []).find(
+    (m) => m.unit === meter.unit && m.qty === meter.qty,
+  );
+  if (!hit) return null;
+  const currency = hit.currency ?? c.pricing?.currency ?? to;
+  const factor = fxFactor(currency, to, rates);
+  if (factor == null) return { kind: "foreign", currency };
+  const value = hit.cost * factor;
+  return {
+    kind: "band",
+    entry: value,
+    top: value,
+    // Derived by construction, whatever the currency: this is arithmetic over a
+    // ladder, not a price the competitor published.
+    approx: true,
+    from: currency === to ? null : currency,
+    period: "usage",
+    meter,
+  };
+}
+
+/**
+ * The meters the compared set can actually be read on, cheapest volume first.
+ * Empty when nobody in the set publishes a rate we can price — the selector
+ * then has nothing to offer and stays hidden.
+ */
+export function availableMeters(cols: CompareColumn[]): MeterSelection[] {
+  const seen = new Map<string, MeterSelection>();
+  for (const c of cols) {
+    for (const m of c.pricing?.meters ?? []) {
+      const key = `${m.unit}|${m.qty}`;
+      if (!seen.has(key)) seen.set(key, { unit: m.unit, qty: m.qty });
+    }
+  }
+  return [...seen.values()].sort((a, b) =>
+    a.unit === b.unit ? a.qty - b.qty : a.unit.localeCompare(b.unit),
+  );
 }
 
 /**
@@ -238,11 +312,18 @@ export function robustCeiling(tops: number[]): number {
 
 export function priceScale(
   cols: CompareColumn[],
-  opts: { rates?: Record<string, number> | null; to?: string; full?: boolean } = {},
+  opts: {
+    rates?: Record<string, number> | null;
+    to?: string;
+    full?: boolean;
+    /** When set, columns with no comparable subscription price enter the scale
+     * at what they cost for this volume. Omitted → the pre-P3 scale exactly. */
+    meter?: MeterSelection | null;
+  } = {},
 ): PriceScale {
   const rates = opts.rates ?? null;
   const to = opts.to ?? displayCurrency(cols, rates);
-  const readings = cols.map((c) => priceReading(c, rates, to));
+  const readings = cols.map((c) => priceReading(c, rates, to, opts.meter ?? null));
   const bands = readings.filter((r): r is PriceBandReading => r.kind === "band");
   const tops = bands.map((b) => b.top);
   const entries = bands.map((b) => b.entry);

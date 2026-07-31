@@ -22,6 +22,7 @@ import { CompetitorPricingCard } from "@/components/outrival/competitor-pricing-
 import { myProductQuery } from "@/lib/queries";
 import { buildPricingSeries } from "./charts";
 import { PackagingMatrix } from "./packaging-matrix";
+import { RateStructures } from "./rate-structures";
 import { PricingPlansEditor } from "./pricing-plans-editor";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatTierPrice, annualPerMonthLabel } from "./helpers";
@@ -335,6 +336,11 @@ export function PricingTab({
       {/* Packaging (P2): what each plan includes, and which cells moved since the
           last capture. Renders nothing until a matrix has been captured. */}
       <PackagingMatrix competitorId={competitorId} />
+
+      {/* Rate structure (P3): the volume bands, the monthly minimum and the
+          percentage rate — the part of a metered price the tier list can't show.
+          Renders nothing until something metered has been captured. */}
+      <RateStructures competitorId={competitorId} />
 
       {/* Editing is reference work, so it folds away. The summary line carries the
           counts, which is what a reader wants before deciding to open a form. */}

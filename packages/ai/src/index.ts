@@ -116,6 +116,14 @@ export { extractEntitlements, EntitlementsSchema } from "./tasks/extract-entitle
 export type { EntitlementsExtraction, ExtractedEntitlement } from "./tasks/extract-entitlements";
 export { extractJobs, JobsSchema, JobPostingSchema } from "./tasks/extract-jobs";
 export type { JobsExtraction, ExtractedJob } from "./tasks/extract-jobs";
+// Job-description fact mining (Hiring Intelligence v2 P1). The model PROPOSES;
+// the deterministic guards in @outrival/scrapers/jobs-jd-facts decide.
+export { mineJobFacts, JobFactsSchema, MinedFactSchema } from "./tasks/mine-job-facts";
+export type {
+  JobFactsExtraction,
+  MinedFactRaw,
+  JobDescriptionInput,
+} from "./tasks/mine-job-facts";
 export { extractReviews, ReviewsSchema } from "./tasks/extract-reviews";
 export {
   extractAiVisibility,

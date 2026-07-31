@@ -69,6 +69,8 @@ describe("appendAtsJobsToHtml → parseAtsJobsFromHtml round-trip", () => {
     salaryMin: null,
     salaryMax: null,
     salaryCurrency: null,
+    description: null,
+    employmentType: null,
   };
   const jobs: AtsJob[] = [
     { title: "Senior Backend Engineer", department: "Engineering", location: "Paris", url: "https://jobs.lever.co/acme/1", ...enrichment },

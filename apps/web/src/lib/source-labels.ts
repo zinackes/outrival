@@ -42,6 +42,8 @@ const SOURCE_LABELS: Record<string, string> = {
   review_shift: "Review trends",
   // Internal anchor for hiring velocity inflections (no page scraped).
   hiring_shift: "Hiring trends",
+  // Internal anchor for facts mined out of job descriptions (no page scraped).
+  job_facts: "Job description signals",
   // Internal Hacker News anchor (Show HN launches + traction mentions).
   hackernews: "Hacker News",
   // Internal well-known / domain-fingerprint anchor (mobile-app launch, llms.txt).
@@ -92,6 +94,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   youtube: "YouTube",
   review_shift: "Review trends",
   hiring_shift: "Hiring trends",
+  job_facts: "Job description signals",
   hackernews: "Hacker News",
   wellknown: "App & AI footprint",
   comparison_page: "Comparison page",

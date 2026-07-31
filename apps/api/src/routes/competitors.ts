@@ -28,6 +28,7 @@ import {
   signals,
   snapshots,
   jobPostings,
+  postingFacts,
   reviews,
   techStackEntries,
   organizations,
@@ -1775,13 +1776,60 @@ competitorsRouter.get("/:id/jobs", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  const all = await db.query.jobPostings.findMany({
-    where: and(eq(jobPostings.competitorId, competitor.id), eq(jobPostings.isActive, true)),
-    orderBy: desc(jobPostings.detectedAt),
-  });
+  // Explicit columns, not the row: `description_text` holds up to 15k characters
+  // of job description per posting (Hiring Intelligence v2 P1), and a fifty-role
+  // board would ship most of a megabyte of prose the tab never renders. What the
+  // tab shows is mined into posting_facts and joined below.
+  const all = await db
+    .select({
+      id: jobPostings.id,
+      title: jobPostings.title,
+      department: jobPostings.department,
+      location: jobPostings.location,
+      url: jobPostings.url,
+      seniority: jobPostings.seniority,
+      postedAt: jobPostings.postedAt,
+      salaryMin: jobPostings.salaryMin,
+      salaryMax: jobPostings.salaryMax,
+      salaryCurrency: jobPostings.salaryCurrency,
+      remoteMode: jobPostings.remoteMode,
+      employmentType: jobPostings.employmentType,
+      detectedAt: jobPostings.detectedAt,
+    })
+    .from(jobPostings)
+    .where(and(eq(jobPostings.competitorId, competitor.id), eq(jobPostings.isActive, true)))
+    .orderBy(desc(jobPostings.detectedAt));
 
-  const byDepartment = new Map<string, typeof all>();
-  for (const job of all) {
+  // What each posting said about their stack and their plans. Best-effort: the
+  // tab renders unchanged when nothing has been mined.
+  const factRows = all.length
+    ? await db
+        .select({
+          postingId: postingFacts.postingId,
+          kind: postingFacts.kind,
+          value: postingFacts.value,
+          evidenceSnippet: postingFacts.evidenceSnippet,
+        })
+        .from(postingFacts)
+        .where(eq(postingFacts.competitorId, competitor.id))
+    : [];
+  const factsByPosting = new Map<string, typeof factRows>();
+  for (const f of factRows) {
+    const arr = factsByPosting.get(f.postingId) ?? [];
+    arr.push(f);
+    factsByPosting.set(f.postingId, arr);
+  }
+  const withFacts = all.map((j) => ({
+    ...j,
+    facts: (factsByPosting.get(j.id) ?? []).map(({ kind, value, evidenceSnippet }) => ({
+      kind,
+      value,
+      evidenceSnippet,
+    })),
+  }));
+
+  const byDepartment = new Map<string, typeof withFacts>();
+  for (const job of withFacts) {
     const key = job.department ?? "Other";
     const arr = byDepartment.get(key) ?? [];
     arr.push(job);

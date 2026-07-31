@@ -1,5 +1,5 @@
 import { and, eq, gte, lte, sql as dsql } from "drizzle-orm";
-import { changes, jobPostings } from "@outrival/db";
+import { changes, jobPostings, postingFacts } from "@outrival/db";
 import {
   diffEntitlements,
   diffPriceTiers,
@@ -84,6 +84,18 @@ export interface TierFact {
   after: string | null;
 }
 
+/** One fact mined out of a job description, with the sentence it came from. */
+export interface JobFact {
+  /** 'tech' | 'product_hint' | 'team_size' | 'market' | 'language' */
+  kind: string;
+  value: string;
+  /** Verbatim from the JD — substring-verified before it was ever stored. */
+  evidenceSnippet: string;
+  postingTitle: string;
+  /** The posting, so the wording can be read in full. */
+  postingUrl: string | null;
+}
+
 export type SignalFacts =
   | {
       kind: "hiring";
@@ -107,6 +119,11 @@ export type SignalFacts =
        * on either side, or it stood still. */
       tiers: TierFact[];
     }
+  | {
+      /** The JD-mined facts this signal published (Hiring Intelligence v2 P1). */
+      kind: "job_facts";
+      facts: JobFact[];
+    }
   | null;
 
 // A board can open fifty roles at once and a catalog can carry thirty plans. The
@@ -116,6 +133,9 @@ const MAX_ROLES = 25;
 const MAX_PLANS = 30;
 const MAX_ENTITLEMENT_FACTS = 10;
 const MAX_TIER_FACTS = 8;
+// A single technology can be cited across a dozen postings; the block names the
+// evidence, it does not reproduce the board.
+const MAX_JOB_FACTS = 12;
 
 // How long after a change its extraction may still land. The extractor is
 // enqueued in the same scrape run, but it is the WORKER that stamps the row, and
@@ -222,6 +242,41 @@ async function hiringFacts(
     closedTotal: closed.length,
     openNow: openNow?.n ?? 0,
   };
+}
+
+/**
+ * The facts a `job_facts` signal published, joined on the same read-time window
+ * every other block here uses. `signalled_at` is stamped by the miner at the
+ * instant it wrote the change, so the window that finds the change's siblings
+ * finds exactly the facts it was about — including the older postings a
+ * corroborated technology was cited in, which is the whole point of the block.
+ */
+async function jobFactsFacts(
+  competitorId: string,
+  window: { lower: Date; upper: Date },
+): Promise<SignalFacts> {
+  const rows = await db
+    .select({
+      kind: postingFacts.kind,
+      value: postingFacts.value,
+      evidenceSnippet: postingFacts.evidenceSnippet,
+      postingTitle: jobPostings.title,
+      postingUrl: jobPostings.url,
+    })
+    .from(postingFacts)
+    .innerJoin(jobPostings, eq(jobPostings.id, postingFacts.postingId))
+    .where(
+      and(
+        eq(postingFacts.competitorId, competitorId),
+        gte(postingFacts.signalledAt, window.lower),
+        lte(postingFacts.signalledAt, window.upper),
+      ),
+    )
+    .orderBy(postingFacts.kind, jobPostings.title)
+    .limit(MAX_JOB_FACTS);
+
+  if (rows.length === 0) return null;
+  return { kind: "job_facts", facts: rows };
 }
 
 interface PlanRow {
@@ -493,7 +548,8 @@ async function entitlementFacts(
  *
  * Best-effort by construction: a signal must still render if these reads fail,
  * so every caller treats null as "nothing to add" rather than an error. Only
- * jobs and pricing are wired up. Reviews and tech stack already carry a
+ * jobs, pricing and the JD-mined job_facts anchor are wired up. Reviews and tech
+ * stack already carry a
  * before/after pair from their deterministic detectors, so they are the smaller
  * gap; see docs/signal-evidence-audit.md wave 2.
  */
@@ -505,13 +561,15 @@ export async function buildSignalFacts(args: {
 }): Promise<SignalFacts> {
   const { monitorId, competitorId, sourceType, detectedAt } = args;
   if (!monitorId || !detectedAt) return null;
-  if (sourceType !== "jobs" && sourceType !== "pricing") return null;
+  if (sourceType !== "jobs" && sourceType !== "pricing" && sourceType !== "job_facts") {
+    return null;
+  }
 
   try {
     const window = await attributionWindow(monitorId, new Date(detectedAt));
-    return sourceType === "jobs"
-      ? await hiringFacts(competitorId, window)
-      : await pricingFacts(competitorId, window);
+    if (sourceType === "jobs") return await hiringFacts(competitorId, window);
+    if (sourceType === "job_facts") return await jobFactsFacts(competitorId, window);
+    return await pricingFacts(competitorId, window);
   } catch {
     return null;
   }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowSquareOutIcon, CaretDownIcon } from "@/components/icons";
 import type {
   EntitlementFact,
+  JobFact,
   PlanFact,
   RoleFact,
   TierFact,
@@ -29,13 +30,99 @@ import { fmtPrice, PERIOD_SHORT } from "@/components/dashboard/activity/format";
 
 const ROLES_COLLAPSED = 6;
 const PLANS_COLLAPSED = 6;
+const FACTS_COLLAPSED = 4;
 
 export function SignalFacts({ facts }: { facts: Facts }) {
   if (!facts) return null;
-  return facts.kind === "hiring" ? (
-    <HiringFacts facts={facts} />
-  ) : (
-    <PricingFacts facts={facts} />
+  if (facts.kind === "hiring") return <HiringFacts facts={facts} />;
+  if (facts.kind === "job_facts") return <JobFacts facts={facts} />;
+  return <PricingFacts facts={facts} />;
+}
+
+const JOB_FACT_LABEL: Record<string, string> = {
+  tech: "Technology",
+  product_hint: "Unannounced",
+  team_size: "Team size",
+  market: "Market",
+  language: "Language",
+};
+
+/**
+ * Facts a competitor stated in its own job descriptions.
+ *
+ * The quoted sentence IS the evidence: every snippet was verified as a substring
+ * of the description before it was stored, so what is printed here is what they
+ * wrote, and the posting is one click away for anyone who wants the paragraph
+ * around it. Grouped by value, because a technology cited in four roles is one
+ * fact with four sources, not four facts.
+ */
+function JobFacts({ facts }: { facts: Extract<Facts, { kind: "job_facts" }> }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const groups = new Map<string, { kind: string; value: string; items: JobFact[] }>();
+  for (const f of facts.facts) {
+    const key = `${f.kind}::${f.value.toLowerCase()}`;
+    const g = groups.get(key) ?? { kind: f.kind, value: f.value, items: [] };
+    g.items.push(f);
+    groups.set(key, g);
+  }
+  const all = Array.from(groups.values());
+  const shown = expanded ? all : all.slice(0, FACTS_COLLAPSED);
+
+  return (
+    <div>
+      <p className="text-dense text-muted-foreground">
+        <span className="font-medium text-foreground tabular-nums">{all.length}</span>{" "}
+        {all.length === 1 ? "fact" : "facts"} stated in their job descriptions
+      </p>
+
+      <ul className="mt-2.5 space-y-2.5">
+        {shown.map((g) => (
+          <li key={`${g.kind}-${g.value}`}>
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <span className="text-sm text-foreground">{g.value}</span>
+              <span className="text-xs text-muted-foreground">
+                {JOB_FACT_LABEL[g.kind] ?? g.kind}
+              </span>
+              {g.items.length > 1 && (
+                <span className="text-xs text-muted-foreground">
+                  <span className="tabular-nums">{g.items.length}</span> postings
+                </span>
+              )}
+            </div>
+            {/* The words they used. Quoting one source per fact keeps the block
+                readable; the rest are named by the posting count above. */}
+            <blockquote className="mt-1 border-l-2 border-border pl-2.5 text-sm text-muted-foreground">
+              “{g.items[0]!.evidenceSnippet}”
+            </blockquote>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {g.items[0]!.postingUrl ? (
+                <a
+                  href={g.items[0]!.postingUrl!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-baseline gap-1 rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                >
+                  {g.items[0]!.postingTitle}
+                  <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
+                </a>
+              ) : (
+                g.items[0]!.postingTitle
+              )}
+            </p>
+          </li>
+        ))}
+      </ul>
+
+      {all.length > FACTS_COLLAPSED && (
+        <Toggle
+          open={expanded}
+          onClick={() => setExpanded((v) => !v)}
+          closedLabel={`Show ${all.length - FACTS_COLLAPSED} more`}
+          openLabel="Show fewer"
+        />
+      )}
+    </div>
   );
 }
 

@@ -991,3 +991,62 @@ désenregistre pas), donc le premier test à vouloir un vrai navigateur recevait
 sur un concurrent à calculateur réel que les points apparaissent avec leur screenshot ·
 PR. **NE PAS** enchaîner sur P5 (burn rates, courbe de coût, backfill Wayback) sans
 /clear.
+
+---
+
+### 2026-07-31 — Hiring Intelligence v2 — P1 (JD capture + mining) — 1 session
+
+**Objectif** : capturer les corps de JDs (déjà téléchargés dans les réponses ATS,
+jetés faute de colonne) et les miner en facts SOURCÉS → signaux `tech_adoption` +
+`product_hint`. Phase 1/5 uniquement, rien touché des phases 2-5.
+
+**Réalisé** :
+- **Migration 0059** : `job_postings += description_text, remote_mode,
+  employment_type, facts_mined_at` · nouvelle table `posting_facts` · nouvelle
+  valeur d'enum `source_type = 'job_facts'`.
+- **Capture des corps, zéro requête en plus** : mapping par provider dans `ats.ts`
+  — Greenhouse (`content`, déjà fetché `content=true`), Lever (`descriptionPlain` +
+  les `lists` qui portent le vrai contenu), Ashby (`descriptionPlain`), Workable
+  (`description`/`requirements`/`benefits`, déjà `details=true`), Recruitee,
+  Personio (sections `<jobDescription>`). Workday/iCIMS/SmartRecruiters/WTTJ ne
+  portent pas de corps dans leur payload de liste → `null`, jamais une chaîne vide.
+  Best-effort strict : aucun corps manquant ne peut faire échouer un provider.
+- **Extracteur batché** (`packages/ai/src/tasks/mine-job-facts.ts`) : ~10 JDs par
+  appel, buckets engineering/product/data_ml, NOUVELLES postings seulement, cap 40
+  JDs/run, loggé `ai_runs` (`mine_job_facts`).
+- **Les 3 gardes sont du CODE, pas du prompt** (`jobs/jd-facts.ts`, pur, 18 tests) :
+  (a) substring-check — un `evidence_snippet` absent de la JD droppe le fact ;
+  (b) pré-filtre de nouveauté EN+FR+DE — pas de phrase de nouveauté ⇒ aucun
+  `product_hint` retenu ; (c) 5 facts max par posting.
+- **Signaux** : `tech_adoption` déterministe (même techno sur ≥2 postings distinctes
+  → product/medium, une seule fois par techno via `signalled_at`) · `product_hint`
+  medium, promu high seulement si corroboré (2e posting ou delta subdomains/docs/
+  changelog < 30j) et jamais sur la 1re capture jobs. Anchor `job_facts` DÉDIÉ : la
+  chaîne de snapshots de `hiring_shift` porte le hash de dédup de la vélocité.
+- **UI** : badges facts sur les postings du Hiring tab (snippet en `title`,
+  `product_hint` teinté) + bloc de facts sur le signal, snippet verbatim entre
+  guillemets et lien cliquable vers l'annonce.
+- **Régression évitée au passage** : `GET /:id/jobs` faisait un `SELECT *` — avec
+  `description_text` il aurait expédié jusqu'à 15 ko de prose par poste au
+  navigateur. Passé en colonnes explicites.
+
+**Fichiers modifiés** : packages/db/src/schema/{job_postings,posting-facts,monitors,
+index}.ts + migration 0059 · packages/shared/src/{constants/sources.ts,sources/
+catalog.ts} · packages/scrapers/src/jobs/{jd-facts.ts,ats.ts} + package.json ·
+packages/ai/src/tasks/mine-job-facts.ts + index.ts · packages/queue/src/jobs.ts ·
+apps/workers/src/{core/{extract-jobs,mine-job-facts}.ts,queue/handlers.ts,
+jobs/mine-job-facts.job.ts} · apps/api/src/{lib/signal-facts.ts,routes/
+competitors.ts} · apps/web/src/{lib/{api,source-labels}.ts,components/outrival/
+signal-facts.tsx,app/dashboard/competitors/[id]/competitor-detail/hiring-tab.tsx}
+
+**Tests** : typecheck 8/8 ✓ | pnpm test 12/12 ✓ (scrapers 126 dont 18 jd-facts
+neufs + 8 fixtures JD multi-providers · api 249)
+
+**Reste côté humain** : `pnpm db:migrate` sur dev puis prod (0059) · vérifier en dev
+sur un concurrent à board Greenhouse/Lever que les badges apparaissent après un
+re-scan jobs, puis qu'un `tech_adoption` sort quand 2 postings citent la même techno.
+
+**Prochaine session** : P2 — géo offline (recherche préalable des briques GeoNames /
+`all-the-cities` / `i18n-iso-countries`), `country_code` + `hiring_geo`,
+`first_role_in_country` / `new_department_opened` / `hiring_freeze`. NE PAS commencer
+sans /clear.

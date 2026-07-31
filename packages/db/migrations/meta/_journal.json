@@ -421,6 +421,13 @@
       "when": 1785527901236,
       "tag": "0059_wealthy_doctor_strange",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1785529930426,
+      "tag": "0060_right_sentinels",
+      "breakpoints": true
     }
   ]
 }

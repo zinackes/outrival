@@ -1064,7 +1064,7 @@ par deux ce que le même argent achète, pendant que toutes les colonnes de prix
 continuent d'afficher « inchangé ».
 
 - **Table** `credit_burn_rates` (competitor, action VERBATIM, credits, recorded_at =
-  le MÊME timestamp de batch que `pricing_history` du run). Migration **0059**.
+  le MÊME timestamp de batch que `pricing_history` du run). Migration **0060** (renumérotée au merge : #380 a pris 0059).
 - **Extraction** : `credit_burns[{action, credits}]` optionnel sur le zod
   `extract-pricing` — les burns voyagent dans la réponse de l'extraction pricing,
   donc **zéro token supplémentaire**. Conséquence assumée : une page résolue par un
@@ -1184,7 +1184,7 @@ chose à expliquer.
 
 ### Fichiers
 
-`packages/db/src/schema/analytics.ts` + migration **0059** (`credit_burn_rates`,
+`packages/db/src/schema/analytics.ts` + migration **0060** (`credit_burn_rates`,
 `pricing_history.origin`, `price_tiers.origin`) · `packages/shared/src/{credit-burn-diff,
 pricing-model,pricing-diff,index}.ts` · `packages/ai/src/tasks/extract-pricing.ts` +
 `index.ts` · `packages/scrapers/src/backfill/{cdx,index}.ts` + `package.json` (subpath) ·
@@ -1211,8 +1211,7 @@ il assure maintenant l'intention (les tiers sur devis n'ajoutent pas de série).
 
 ### Reste côté humain
 
-`pnpm db:migrate` (**0059**) sur dev puis prod — **0058 (P4) n'est appliquée nulle part**,
-donc les deux partent ensemble · vérifier en dev sur un concurrent à crédits réel que le
+`pnpm db:migrate` (**0060**) sur dev puis prod · vérifier en dev sur un concurrent à crédits réel que le
 bloc Credits se remplit, et sur un concurrent fraîchement ajouté que la timeline porte des
 points creux · PR.
 

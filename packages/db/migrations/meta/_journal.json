@@ -400,6 +400,13 @@
       "when": 1785470300355,
       "tag": "0056_lowly_swordsman",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1785471864501,
+      "tag": "0057_magenta_black_queen",
+      "breakpoints": true
     }
   ]
 }

@@ -53,6 +53,13 @@ export const organizations = pgTable("organizations", {
   // built-in default set, kept nullable rather than defaulted so widening that set
   // later reaches every org that never customised it.
   defaultSources: jsonb("default_sources").$type<SourceType[]>(),
+  // The volumes this workspace compares metered pricing at (Pricing Intelligence
+  // P3). A meter and a quantity: "10,000 requests", "500 GB". null = the preset
+  // ladder, kept nullable rather than defaulted so a change to the presets
+  // reaches every workspace that never set its own. NOT a scrape input — the
+  // cost at a custom volume is computed on read from the SAME cost model that
+  // wrote the stored points, so editing this never needs a re-capture.
+  referenceVolumes: jsonb("reference_volumes").$type<Array<{ unit: string; qty: number }>>(),
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
   // Project stage chosen at onboarding step 1: "idea" | "document" | "developing" | "live".
   // Drives which input mode the user went through and lets us adapt re-onboarding.

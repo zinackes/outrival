@@ -491,6 +491,19 @@ export type SignalFacts =
     }
   | null;
 
+/** A meter and a quantity this workspace compares metered pricing at. */
+export interface ReferenceVolume {
+  unit: string;
+  qty: number;
+}
+
+export interface ReferenceVolumes {
+  /** null = following the presets. */
+  referenceVolumes: ReferenceVolume[] | null;
+  presetQuantities: number[];
+  units: Array<{ unit: string; label: string }>;
+}
+
 /** One volume-ladder move behind a pricing signal. */
 export interface TierFact {
   planName: string;
@@ -3238,6 +3251,12 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ defaultSources }),
     }),
+  getReferenceVolumes: () => request<ReferenceVolumes>("/api/settings/reference-volumes"),
+  updateReferenceVolumes: (referenceVolumes: ReferenceVolume[] | null) =>
+    request<{ ok: true; referenceVolumes: ReferenceVolume[] | null }>(
+      "/api/settings/reference-volumes",
+      { method: "PATCH", body: JSON.stringify({ referenceVolumes }) },
+    ),
   applySourceDefaults: () =>
     request<{ created: number; competitorsTouched: number; sources: SourceType[] }>(
       "/api/settings/sources/apply",

@@ -257,6 +257,15 @@ export function sourceDefaultsQuery() {
   });
 }
 
+// The volumes this workspace compares metered pricing at. Read by the settings
+// card and by the price lens's volume selector, so the two offer the same list.
+export function referenceVolumesQuery() {
+  return queryOptions({
+    queryKey: ["referenceVolumes"] as const,
+    queryFn: () => api.getReferenceVolumes(),
+  });
+}
+
 // The org's own product ("My product"). null when no product site is set yet.
 // patch-28 — an optional productId scopes to a given product (the detail page passes
 // it). Omitted → the primary self, with the exact same cache key as before (zero

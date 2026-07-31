@@ -23,6 +23,10 @@ import {
   DEFAULT_SEED_SOURCES,
   resolveSeedSources,
   seedableSourcesForPlan,
+  resolveMeterUnit,
+  meterUnitLabel,
+  CANONICAL_METER_UNITS,
+  REFERENCE_VOLUME_PRESETS,
 } from "@outrival/shared";
 import { db } from "../lib/db";
 import {
@@ -311,6 +315,80 @@ settingsRouter.patch("/sources", async (c) => {
     .where(eq(organizations.id, orgId));
 
   return c.json({ ok: true, defaultSources: next });
+});
+
+// Reference volumes — the quantities this workspace compares metered pricing
+// at. Purely a READ-SIDE setting: the cost at a custom volume is computed from
+// the same model that wrote the stored points, so changing it never re-scrapes
+// anything and never invalidates what was captured.
+
+// Enough to cover a couple of meters at a couple of volumes. Past that the
+// price lens is a spreadsheet, not a comparison.
+const MAX_REFERENCE_VOLUMES = 8;
+
+const ReferenceVolumesSchema = z.object({
+  // null resets to the presets, so a workspace that opts back in keeps
+  // inheriting future changes to them instead of freezing today's list.
+  referenceVolumes: z
+    .array(z.object({ unit: z.string().min(1), qty: z.number().positive().finite() }))
+    .nullable(),
+});
+
+settingsRouter.get("/reference-volumes", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { referenceVolumes: true },
+  });
+
+  return c.json({
+    // What the org stored (null = following the presets), and the vocabulary the
+    // picker offers — a meter outside it has no comparable cost to read.
+    referenceVolumes: org?.referenceVolumes ?? null,
+    presetQuantities: REFERENCE_VOLUME_PRESETS,
+    units: [...CANONICAL_METER_UNITS].map((unit) => ({
+      unit,
+      label: meterUnitLabel(unit, 2),
+    })),
+  });
+});
+
+settingsRouter.patch("/reference-volumes", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = ReferenceVolumesSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+  }
+
+  // Store canonical meters only, deduped. A unit we cannot normalise has no
+  // comparable cost anywhere in the product, so keeping it would leave a
+  // setting that nothing reads and that the screen would keep showing back.
+  let next: Array<{ unit: string; qty: number }> | null = null;
+  if (parsed.data.referenceVolumes !== null) {
+    const seen = new Set<string>();
+    next = [];
+    for (const entry of parsed.data.referenceVolumes) {
+      const meter = resolveMeterUnit(entry.unit);
+      if (!meter?.canonical) continue;
+      const key = `${meter.unit}|${entry.qty}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      next.push({ unit: meter.unit, qty: entry.qty });
+      if (next.length >= MAX_REFERENCE_VOLUMES) break;
+    }
+  }
+
+  await db
+    .update(organizations)
+    .set({ referenceVolumes: next, updatedAt: new Date() })
+    .where(eq(organizations.id, orgId));
+
+  return c.json({ ok: true, referenceVolumes: next });
 });
 
 settingsRouter.post("/sources/apply", async (c) => {

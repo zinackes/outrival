@@ -214,6 +214,10 @@ export function BillingDashboard() {
   // competitor cap is below current usage (the user should know what gets paused).
   function selectPlan(plan: Plan) {
     if (!billing || plan === billing.plan) return;
+    // A failed attempt on another card must not follow the user around: the banner
+    // (and the confirm dialog, which never calls applyChange itself) would otherwise
+    // report the previous plan's failure as this plan's.
+    setError(null);
     const targetLimit = PLAN_LIMITS[plan].maxCompetitors;
     const wouldExceed = Number.isFinite(targetLimit) && used > targetLimit;
     if (plan === "free" || wouldExceed) {

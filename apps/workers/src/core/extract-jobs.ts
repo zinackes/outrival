@@ -1,5 +1,9 @@
 import { logger } from "../lib/job-logger";
-import { NonRetriable as AbortTaskRunError, detectHiringVelocityShifts } from "@outrival/queue";
+import {
+  NonRetriable as AbortTaskRunError,
+  detectHiringVelocityShifts,
+  mineJobFacts,
+} from "@outrival/queue";
 import { z } from "zod";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db, snapshots, jobPostings, monitors } from "@outrival/db";
@@ -14,6 +18,7 @@ import { getFromR2, normalizeDomain } from "@outrival/shared";
 import { parseAtsJobsFromHtml } from "@outrival/scrapers/jobs-ats";
 import { bucketJobCounts, isoWeekStart } from "@outrival/scrapers/jobs-hiring";
 import { declaredOpenRoles } from "@outrival/scrapers/jobs-signals";
+import { detectRemoteMode } from "@outrival/scrapers/jobs-jd-facts";
 import { jobsFromStructured } from "@outrival/scrapers/structured-data";
 import { htmlToText } from "../lib/html-to-text";
 import { insertJobCounts, upsertHiringMetrics, loggedAi, logExtractionRun } from "../lib/analytics";
@@ -31,6 +36,11 @@ interface NormalizedJob {
   salaryMin: number | null;
   salaryMax: number | null;
   salaryCurrency: string | null;
+  // Hiring Intelligence v2 P1 — best-effort, and only ever from the ATS path (the
+  // careers-page fallback captures a listing, not the bodies behind it).
+  descriptionText: string | null;
+  remoteMode: string | null;
+  employmentType: string | null;
 }
 
 const InputSchema = z.object({
@@ -73,6 +83,9 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
         salaryMin: j.salaryMin,
         salaryMax: j.salaryMax,
         salaryCurrency: j.salaryCurrency,
+        descriptionText: j.description,
+        remoteMode: detectRemoteMode(j.location, j.description),
+        employmentType: j.employmentType,
       }));
       await logExtractionRun({
         competitor_id: input.competitorId,
@@ -114,6 +127,10 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
         salaryMin: null,
         salaryMax: null,
         salaryCurrency: null,
+        descriptionText: null,
+        // The listing carries no body, so only the location line can answer this.
+        remoteMode: detectRemoteMode(j.location, null),
+        employmentType: null,
       }));
       logger.log("Jobs extracted", { count: jobs.length, resolution: result.resolution });
     }
@@ -207,6 +224,9 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
           salaryMin: j.salaryMin,
           salaryMax: j.salaryMax,
           salaryCurrency: j.salaryCurrency,
+          descriptionText: j.descriptionText,
+          remoteMode: j.remoteMode,
+          employmentType: j.employmentType,
           isActive: true,
           detectedAt: now,
         })),
@@ -256,6 +276,16 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
         })),
       );
       await detectHiringVelocityShifts.enqueue({ competitorId: input.competitorId });
+    }
+
+    // Hiring Intelligence v2 P1 — mine the JD bodies of the postings we just
+    // inserted. Event-driven off this run (no cron slot), and only when something
+    // NEW landed WITH a body: re-reading the same descriptions costs AI calls and
+    // can produce nothing new by construction. The job itself re-checks which
+    // postings are unmined, so a duplicate enqueue is a no-op rather than a
+    // double charge.
+    if (inserts.some((j) => j.descriptionText)) {
+      await mineJobFacts.enqueue({ competitorId: input.competitorId });
     }
 
     logger.log("Completed extract-jobs", {

@@ -74,6 +74,14 @@ export const SOURCE_TYPES = [
   // synthetic snapshot→change chain when a department's open-role count inflects up
   // over hiring_metrics (detect-hiring-velocity-shifts). Kept in sync with the DB enum.
   "hiring_shift",
+  // Job-description facts (Hiring Intelligence v2 P1). Like hiring_shift, an
+  // INTERNAL anchor source — never seeded, never scraped, never user-selectable. It
+  // only anchors the synthetic snapshot → change chain for the two signals mined out
+  // of job descriptions: a technology cited across ≥2 postings (corroborates the
+  // tech-stack scraper) and an unannounced initiative described in one. Its own
+  // anchor rather than hiring_shift's, whose snapshot chain owns the velocity
+  // detector's dedup hash. Kept in sync with the DB enum.
+  "job_facts",
   // Hacker News mention + Show HN tracking. Like sitemap/news/youtube, an INTERNAL
   // source — never user-selectable (excluded from plan gating, the enable route, and
   // the source tabs). Seeded weekly at creation; the scraper queries HN's public

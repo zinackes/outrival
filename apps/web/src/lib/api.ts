@@ -51,7 +51,16 @@ async function throwApiError(res: Response): Promise<never> {
   } catch {
     // not json, leave as text
   }
-  throw new ApiError(res.status, body, `API ${res.status}: ${text || res.statusText}`);
+  // `message` is USER-VISIBLE: several call sites still render a caught error
+  // directly, and any future one will. It used to be `API 429: {"error":…}` — the
+  // whole response body — which is how a rate-limit refusal reached the screen as
+  // "Error: Error: API 429: {…}". Prefer the sentence the API wrote for a human;
+  // otherwise a short one that names nothing but the status. The full body stays on
+  // `data` for the error configs, Sentry and the console.
+  const sent = (body as { message?: unknown } | null)?.message;
+  const message =
+    (typeof sent === "string" && sent.trim()) || `Request failed (${res.status}).`;
+  throw new ApiError(res.status, body, message);
 }
 
 // Browser-side ceiling. Sits above the API's own request bound so a slow

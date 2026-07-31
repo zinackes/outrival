@@ -78,7 +78,7 @@ import { SeverityGauge } from "@/components/outrival/severity-scale";
 import { AnalysisBadge } from "@/components/outrival/analysis-status";
 import { ProductChips } from "./product-chip";
 import { ListError } from "@/components/outrival/list-error";
-import { toastApiError } from "@/lib/error-helpers";
+import { errorMessage, toastApiError } from "@/lib/error-helpers";
 import {
   Tooltip,
   TooltipContent,
@@ -1060,7 +1060,7 @@ function AddCompetitorDialog({
       if (reason) {
         onPaywall(reason);
       } else {
-        setErr(String(e));
+        setErr(errorMessage(e));
       }
     } finally {
       setBusy(false);

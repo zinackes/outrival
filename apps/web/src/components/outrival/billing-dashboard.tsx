@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { errorMessage } from "@/lib/error-helpers";
 import { PaymentMethodDialog } from "@/components/outrival/payment-method-dialog";
 import { BillingDashboardSkeleton } from "@/app/dashboard/settings/billing/billing-skeleton";
 
@@ -205,7 +206,7 @@ export function BillingDashboard() {
       );
       setBusy(null);
     } catch (e) {
-      setError(String(e));
+      setError(errorMessage(e));
       setBusy(null);
     }
   }
@@ -238,7 +239,7 @@ export function BillingDashboard() {
         1500,
       );
     } catch (e) {
-      setError(String(e));
+      setError(errorMessage(e));
     }
     setBusy(null);
   }
@@ -252,7 +253,7 @@ export function BillingDashboard() {
   if ((error || billingQ.error) && !billing)
     return (
       <p className="text-sm text-muted-foreground">
-        Error: {error ?? String(billingQ.error)}
+        {error ?? errorMessage(billingQ.error)}
       </p>
     );
   if (!billing) return <BillingDashboardSkeleton />;

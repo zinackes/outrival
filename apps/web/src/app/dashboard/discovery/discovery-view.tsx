@@ -935,7 +935,11 @@ export function DiscoveryView() {
               }
             : undefined,
         });
-      } else if (e instanceof ApiError && e.status === 429) {
+      } else if (e instanceof ApiError && e.data.error === "cooldown") {
+        // The short anti-double-click cooldown, and ONLY it: this used to catch every
+        // 429, so the hourly AI cap (which sends no `retryInSec`) fell through here and
+        // read as "~1 min" when the real wait was a quarter of an hour. Anything else
+        // goes to toastApiError, which prints the API's own wait time.
         const retryInSec = Number(e.data.retryInSec) || 0;
         const mins = Math.max(1, Math.ceil(retryInSec / 60));
         toast.error(`Try again in ~${mins} min`, {

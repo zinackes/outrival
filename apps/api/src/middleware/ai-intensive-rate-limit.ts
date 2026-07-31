@@ -31,7 +31,7 @@ export const aiIntensiveRateLimit = createMiddleware<{
     return c.json(
       errorBody(
         "ai_rate_limit_exceeded",
-        `You've hit the cap of ${LIMIT} AI actions per hour. This limit protects shared AI capacity; it resets automatically — try again in about ${mins} minute${mins > 1 ? "s" : ""}.`,
+        `You've used this hour's ${LIMIT} AI actions. The cap protects shared AI capacity and resets on its own: try again in about ${mins} minute${mins > 1 ? "s" : ""}. Scheduled scans keep running.`,
         { userAction: "wait", retryAfterSeconds: ttl > 0 ? ttl : WINDOW_SEC },
       ),
       429,

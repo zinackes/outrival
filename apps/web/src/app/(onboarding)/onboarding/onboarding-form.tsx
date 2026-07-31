@@ -42,6 +42,7 @@ import {
   type ProductProfile,
   type ProjectStage,
 } from "@/lib/api";
+import { errorMessage } from "@/lib/error-helpers";
 import { signOut } from "@/lib/auth-client";
 import { resetUser } from "@/lib/posthog/events";
 import { useFeatureFlag } from "@/lib/posthog/use-feature-flag";
@@ -204,18 +205,21 @@ function extractMessage(err: unknown): string {
   if (err instanceof ApiError) {
     const data = err.data as { message?: unknown; error?: unknown };
     if (typeof data.message === "string") return data.message;
-    if (typeof data.error === "string" && !data.error.startsWith("plan_")) return data.error;
     if (err.status === 401) return "Session expired. Please sign in again.";
     if (err.status === 429) return "Too many requests. Wait a few seconds before trying again.";
     if (err.status >= 500) return "The server encountered an error. Try again in a moment.";
-    return err.message;
+    // Below this line the API sent no sentence, only a machine code (or nothing at
+    // all). Returning it verbatim printed "no_evidence" at the user; the shared
+    // error configs turn the ones we know about into a sentence and everything
+    // else into the generic one.
+    return errorMessage(err);
   }
   if (err instanceof Error) {
     if (err.name === "TypeError" || err.message.toLowerCase().includes("fetch"))
       return "Cannot connect to the server. Check your network connection.";
     return err.message;
   }
-  return String(err);
+  return errorMessage(err);
 }
 
 export function OnboardingForm({

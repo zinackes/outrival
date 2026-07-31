@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { errorMessage } from "@/lib/error-helpers";
 
 export function DigestSettingsSheet({
   open,
@@ -41,7 +42,7 @@ export function DigestSettingsSheet({
       return;
     }
     if (settingsQ.data) setSettings(settingsQ.data);
-    if (settingsQ.error) setError(String(settingsQ.error));
+    if (settingsQ.error) setError(errorMessage(settingsQ.error));
   }, [open, settingsQ.data, settingsQ.error]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -57,7 +58,7 @@ export function DigestSettingsSheet({
       toast.success("Digest settings saved");
       onOpenChange(false);
     } catch (e) {
-      setError(String(e));
+      setError(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -88,7 +89,7 @@ export function DigestSettingsSheet({
             </div>
           )}
           {error && !settings && (
-            <p className="text-sm text-critical">Error: {error}</p>
+            <p className="text-sm text-critical">{error}</p>
           )}
           {settings && (
             <form
@@ -143,7 +144,7 @@ export function DigestSettingsSheet({
               </div>
 
               {error && (
-                <p className="text-xs text-critical">Error: {error}</p>
+                <p className="text-xs text-critical">{error}</p>
               )}
             </form>
           )}

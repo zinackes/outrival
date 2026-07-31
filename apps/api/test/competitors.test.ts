@@ -1,7 +1,16 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
-import { changes, competitors, monitors, signals, snapshots } from "@outrival/db";
+import {
+  changes,
+  competitors,
+  monitors,
+  organizations,
+  productCompetitors,
+  products,
+  signals,
+  snapshots,
+} from "@outrival/db";
 import { SOURCE_TYPES, isConfigurableSource } from "@outrival/shared";
 import { makeTestDb, type TestDb } from "./db-harness";
 import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
@@ -475,5 +484,61 @@ describe("POST /competitors/:id/recompute-overlap evidence guard", () => {
     );
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("no_url");
+  });
+
+  // Multi-SKU: `organizations.productProfile` is the LEGACY org-wide profile, which
+  // describes the PRIMARY product only. A competitor discovered for a secondary SKU
+  // (discovery runs on that SKU's own self-profile) used to be re-judged against it,
+  // so a social-media tool scored 95 for a scheduling SKU came back at 3 against the
+  // org's VPS-hosting primary. The secondary SKU must never borrow the org profile:
+  // with nothing of its own to score against, the answer is "no profile", not a
+  // confident number about a different product.
+  test("a secondary SKU's competitor is never judged against the org profile", async () => {
+    const C = await seedOrg(testDb, { plan: "free" });
+    await testDb
+      .update(organizations)
+      .set({
+        productProfile: {
+          category: "VPS hosting",
+          audience: "IT administrators",
+          valueProp: "Hourly-billed compute",
+          pricingModel: "Usage-based",
+        },
+      })
+      .where(eq(organizations.id, C.orgId));
+
+    await testDb.insert(competitors).values([
+      { id: "self-primary-c", orgId: C.orgId, name: "Primary SKU", type: "self" },
+      // Secondary SKU with no self-profile of its own yet.
+      { id: "self-secondary-c", orgId: C.orgId, name: "Secondary SKU", type: "self" },
+      {
+        id: "comp-secondary-c",
+        orgId: C.orgId,
+        name: "Scheduler Co",
+        url: "https://scheduler.example",
+        aiSummary: "Social media scheduling for creators and agencies.",
+        overlapScore: 95,
+      },
+    ]);
+    await testDb.insert(products).values([
+      { id: "prod-primary-c", orgId: C.orgId, name: "Primary", selfCompetitorId: "self-primary-c", isPrimary: true },
+      { id: "prod-secondary-c", orgId: C.orgId, name: "Secondary", selfCompetitorId: "self-secondary-c" },
+    ]);
+    await testDb
+      .insert(productCompetitors)
+      .values({ productId: "prod-secondary-c", competitorId: "comp-secondary-c" });
+
+    const res = await app.request(
+      "/api/competitors/comp-secondary-c/recompute-overlap",
+      asUser(C.userId, C.email, { method: "POST" }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("missing_profile");
+
+    const row = await testDb.query.competitors.findFirst({
+      where: eq(competitors.id, "comp-secondary-c"),
+      columns: { overlapScore: true },
+    });
+    expect(row?.overlapScore).toBe(95);
   });
 });

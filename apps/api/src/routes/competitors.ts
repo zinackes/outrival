@@ -648,14 +648,15 @@ competitorsRouter.post("/bulk/alerts", async (c) => {
 });
 
 /**
- * Re-score the selection's overlap against the org's current product profile — the
- * roster-wide version of the kebab action, and the one the whole feature was asked
- * for: after the product profile changes, every competitor's score is stale at once.
+ * Re-score the selection's overlap, each competitor against the product it belongs
+ * to — the roster-wide version of the kebab action, and the one the whole feature
+ * was asked for: after a product profile changes, every competitor's score is stale
+ * at once.
  *
- * ONE model call for the set (scoreOverlap grades a list, independently per entry
- * against the fixed scale), so this costs one rate-limit hit instead of N, and a
- * competitor with nothing to judge it on keeps the score it already has rather than
- * taking one derived from a bare domain.
+ * ONE model call per product in the set (scoreOverlap grades a list, independently
+ * per entry against the fixed scale), so this costs one rate-limit hit instead of N,
+ * and a competitor with nothing to judge it on keeps the score it already has rather
+ * than taking one derived from a bare domain.
  */
 competitorsRouter.post("/bulk/recompute-overlap", aiIntensiveRateLimit, async (c) => {
   const user = c.get("user");
@@ -909,8 +910,9 @@ competitorsRouter.post("/", async (c) => {
     });
   }
 
-  // Score the competitive overlap against the org's product profile (best-effort,
-  // fire-and-forget). The manual-add path had no overlap at all — unlike the
+  // Score the competitive overlap against the profile of the product this competitor
+  // was just linked to (best-effort, fire-and-forget) — hence after the association
+  // above. The manual-add path had no overlap at all — unlike the
   // discovery-add path, which carries the score from discovery. Shares the scorer
   // (and its evidence ladder) with /recompute-overlap; the list/overview refetch
   // (while the first scrape runs) picks the value up. Nothing is written when the
@@ -920,6 +922,7 @@ competitorsRouter.post("/", async (c) => {
   void (async () => {
     try {
       const outcome = await scoreCompetitorOverlap(orgId, {
+        id: competitor.id,
         name: competitor.name,
         url: safeUrl.url,
         description: competitor.description,
@@ -2355,10 +2358,11 @@ competitorsRouter.patch("/:id/alerts", async (c) => {
 });
 
 // Recompute the overlap score (kebab → Recompute overlap). Re-scores this single
-// competitor against the org's current product profile — useful after the profile
-// changed. Synchronous AI call (like discovery), reusing the discovery scorer
-// through the shared evidence ladder (lib/overlap.ts) so a solo re-score is judged
-// on the same kind of material discovery had, against the same anchored scale.
+// competitor against the current profile of the product it belongs to — useful after
+// that profile changed. Synchronous AI call (like discovery), reusing the discovery
+// scorer through the shared evidence ladder (lib/overlap.ts) so a solo re-score is
+// judged on the same kind of material discovery had, for the same product, against
+// the same anchored scale.
 competitorsRouter.post("/:id/recompute-overlap", aiIntensiveRateLimit, async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");

@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { organizations } from "@outrival/db";
-import { scoreOverlap } from "@outrival/ai";
+import { scoreOverlap, selfProfileToDiscoveryProfile, type ProductProfile } from "@outrival/ai";
 import { db } from "./db";
+import { competitorAnchorProduct, productDiscoveryTarget } from "./products";
 
 /**
  * Single entry point for scoring ONE existing competitor's overlap, shared by the
@@ -15,12 +16,15 @@ import { db } from "./db";
  * back at 5, which also sinks its signals (the feed's threat sort multiplies by
  * overlapScore / 100).
  *
- * Two rules follow: the evidence comes from the same ladder everywhere, and a
- * score is never written when there is no evidence to base it on.
+ * Three rules follow: the evidence comes from the same ladder everywhere, a score
+ * is never written when there is no evidence to base it on, and the competitor is
+ * judged against the product it belongs to (see `scoringProfile`).
  */
 
 /** The competitor fields the scorer reads. */
 export interface OverlapSubject {
+  /** Resolves which product's profile this competitor is judged against. */
+  id: string;
   name: string;
   url: string | null;
   description: string | null;
@@ -63,12 +67,45 @@ export async function scoreCompetitorOverlap(
   return outcome ?? { status: "failed" };
 }
 
+// Bucket key for competitors that resolve to no product at all (an org still
+// mid-onboarding, or a legacy org with no `products` row). Product ids are UUIDs,
+// so this can never collide with one.
+const ORG_PROFILE_KEY = "org";
+
+/**
+ * The product profile a competitor is judged against.
+ *
+ * NOT the org's `productProfile`: that field is the LEGACY, org-wide profile, which
+ * in a multi-SKU org describes only the primary product. Discovery already scores
+ * per product (`detectCandidatesForProduct` runs on the SKU's own self-profile), so
+ * reading the org field here re-scored a competitor against a product it has nothing
+ * to do with — a social-media tool discovered at 95 for a scheduling SKU came back
+ * at 3 because it was re-judged against the org's VPS-hosting primary. The 3 was a
+ * correct answer to the wrong question.
+ *
+ * Anchor priority matches `competitorAnchorProduct` (the same rule battle cards and
+ * signal insights use), and the org profile stays the fallback for the PRIMARY
+ * product only — a secondary SKU must never borrow it, or it would be judged as
+ * something else entirely.
+ */
+async function scoringProfile(
+  orgId: string,
+  productKey: string,
+  orgProfile: ProductProfile | null,
+): Promise<ProductProfile | null> {
+  if (productKey === ORG_PROFILE_KEY) return orgProfile;
+  const target = await productDiscoveryTarget(orgId, productKey);
+  if (!target) return orgProfile;
+  return selfProfileToDiscoveryProfile(target.selfProfile, target.isPrimary ? orgProfile : null);
+}
+
 /**
  * Batched re-score, one outcome per subject in the order they were given.
  *
  * `scoreOverlap` already takes a LIST and grades each entry independently against
  * the fixed scale (that is how discovery scores a whole candidate pool), so the
- * bulk roster action costs ONE model call and ONE rate-limit hit rather than N.
+ * bulk roster action costs ONE model call and ONE rate-limit hit rather than N —
+ * per product, since a selection spanning two SKUs cannot share one prompt.
  * Subjects with nothing to judge them on are answered from here without ever
  * reaching the model, so a set that is half unscorable still spends one call.
  */
@@ -81,45 +118,67 @@ export async function scoreCompetitorsOverlap(
   // Per-subject preconditions first: url and evidence are properties of the row,
   // and a subject that fails them must not enter the prompt (it would take a score
   // built on a bare domain — the 85-becomes-5 failure this module exists to stop).
-  type Scorable = { url: string; name: string; evidence: string };
+  type Scorable = { id: string; url: string; name: string; evidence: string };
   type Prepared = { skip: OverlapOutcome } | Scorable;
   const prepared: Prepared[] = subjects.map((subject) => {
     if (!subject.url) return { skip: { status: "no_url" } };
     const evidence = overlapEvidence(subject);
     if (!evidence) return { skip: { status: "no_evidence" } };
-    return { url: subject.url, name: subject.name, evidence };
+    return { id: subject.id, url: subject.url, name: subject.name, evidence };
   });
 
-  const scorable = prepared.filter((p): p is Scorable => !("skip" in p));
-  const settle = (fallback: OverlapOutcome): OverlapOutcome[] =>
-    prepared.map((p) => ("skip" in p ? p.skip : fallback));
-  if (scorable.length === 0) return settle({ status: "failed" });
+  // Scorable slots start at "failed" and are overwritten by their own group, so a
+  // model outage in one product's call never writes a score for another's.
+  const outcomes: OverlapOutcome[] = prepared.map((p) =>
+    "skip" in p ? p.skip : { status: "failed" },
+  );
+
+  // One group per product the selection is anchored to.
+  const groups = new Map<string, number[]>();
+  for (const [i, p] of prepared.entries()) {
+    if ("skip" in p) continue;
+    const anchor = await competitorAnchorProduct(orgId, p.id);
+    const key = anchor?.id ?? ORG_PROFILE_KEY;
+    const group = groups.get(key);
+    if (group) group.push(i);
+    else groups.set(key, [i]);
+  }
+  if (groups.size === 0) return outcomes;
 
   const org = await db.query.organizations.findFirst({
     where: eq(organizations.id, orgId),
     columns: { productProfile: true },
   });
-  if (!org?.productProfile) return settle({ status: "no_profile" });
 
-  let scored: Awaited<ReturnType<typeof scoreOverlap>>;
-  try {
-    scored = await scoreOverlap(
-      org.productProfile,
-      scorable.map((p) => ({ url: p.url, title: p.name, snippet: p.evidence })),
-    );
-  } catch {
-    return settle({ status: "failed" });
+  for (const [key, slots] of groups) {
+    const profile = await scoringProfile(orgId, key, org?.productProfile ?? null);
+    if (!profile) {
+      for (const slot of slots) outcomes[slot] = { status: "no_profile" };
+      continue;
+    }
+
+    const items = slots.map((slot) => prepared[slot] as Scorable);
+    let scored: Awaited<ReturnType<typeof scoreOverlap>>;
+    try {
+      scored = await scoreOverlap(
+        profile,
+        items.map((p) => ({ url: p.url, title: p.name, snippet: p.evidence })),
+      );
+    } catch {
+      continue; // slots keep their "failed" default
+    }
+
+    // Results come back positionally aligned with what we sent (scoreOverlap resolves
+    // its own url/positional matching internally), so walk the group in step.
+    slots.forEach((slot, i) => {
+      const hit = scored[i];
+      // `scored: false` carries a 0 that means "no score", not "no overlap" — writing
+      // it would let one AI outage zero every competitor the user re-scores.
+      if (hit?.scored) {
+        outcomes[slot] = { status: "scored", overlapScore: hit.overlapScore, reason: hit.reason };
+      }
+    });
   }
 
-  // Results come back positionally aligned with what we sent (scoreOverlap resolves
-  // its own url/positional matching internally), so walk the scorable list in step.
-  let i = 0;
-  return prepared.map((p) => {
-    if ("skip" in p) return p.skip;
-    const hit = scored[i++];
-    // `scored: false` carries a 0 that means "no score", not "no overlap" — writing
-    // it would let one AI outage zero every competitor the user re-scores.
-    if (!hit?.scored) return { status: "failed" };
-    return { status: "scored", overlapScore: hit.overlapScore, reason: hit.reason };
-  });
+  return outcomes;
 }

@@ -33,6 +33,7 @@ export * from "./structural-changes";
 export * from "./manual-snapshots";
 export * from "./forced-rescan-log";
 export * from "./parser-extractors";
+export * from "./calculator-specs";
 export * from "./saved-views";
 export * from "./crm-destinations";
 export * from "./share-links";

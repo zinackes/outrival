@@ -11,6 +11,7 @@ import type {
   ResolvedPricingTier,
   CustomMonitorHint,
   PricingModel,
+  CostMethod,
 } from "@outrival/shared";
 
 export type { DetectionConfig, AnalysisStatus, ScrapeActivity } from "@outrival/shared";
@@ -509,6 +510,19 @@ export interface RateStructures {
     toQty: number | null;
     unitPrice: number | null;
     flatFee: number | null;
+  }>;
+  /** P3/P4 — what the meters cost at the reference volumes, and how each figure
+   * was arrived at (computed from the published ladder, or measured on the
+   * competitor's own calculator). */
+  points: Array<{
+    planName: string;
+    meterUnit: string;
+    referenceQty: number;
+    cost: number;
+    currency: string;
+    method: CostMethod;
+    capturedAt: string;
+    hasEvidence: boolean;
   }>;
   capturedAt: string | null;
 }
@@ -1080,14 +1094,21 @@ export interface CompareColumn {
     capturedAt: string | null;
     /** How this competitor charges — flat, per seat, usage, base + usage, credits. */
     model: PricingModel | null;
-    /** What buying a volume of a meter costs per month, computed on read from
-     * the captured ladder. Empty for a subscription-only competitor. */
+    /** What buying a volume of a meter costs per month: computed on read from
+     * the captured ladder, or MEASURED on the competitor's own calculator (P4).
+     * Empty for a subscription-only competitor. */
     meters: Array<{
       unit: string;
       qty: number;
       cost: number;
       currency: string | null;
       planName: string;
+      /** computed_from_tiers | calculator_probe | published. */
+      method: CostMethod;
+      /** When a measured cost was read (null for a computed one). */
+      measuredAt: string | null;
+      /** Whether a proof screenshot can be opened for a measured cost. */
+      hasEvidence: boolean;
     }>;
   } | null;
   hiring: {
@@ -2650,6 +2671,11 @@ export const api = {
   // published ladder, the monthly minimum, the percentage rate.
   getCompetitorRateStructures: (id: string) =>
     request<RateStructures>(`/api/competitors/${id}/rate-structures`),
+  // P4 — the screenshot taken while the competitor's calculator displayed a
+  // measured cost. The R2 key stays server-side: the caller names the meter and
+  // the volume, the API resolves which object that is.
+  calculatorEvidenceUrl: (id: string, unit: string, qty: number) =>
+    `${BASE}/api/competitors/${id}/calculator-evidence?unit=${encodeURIComponent(unit)}&qty=${qty}`,
   // Features × plans matrix (P2): the two most recent entitlement batches, so
   // the Packaging fold can render the matrix and highlight what moved.
   getCompetitorEntitlements: (id: string) =>

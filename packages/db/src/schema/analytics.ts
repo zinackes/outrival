@@ -131,6 +131,12 @@ export const pricePoints = pgTable(
     currency: text("currency").notNull(),
     // computed_from_tiers | calculator_probe (P4) | published
     method: text("method").notNull(),
+    // P4 — R2 key of the screenshot taken at the moment this cost was read off
+    // the competitor's own calculator: the quantity control and the total, in one
+    // frame. Mandatory for a `calculator_probe` row (the worker drops a run whose
+    // points can't all be evidenced) and null for every computed/published row,
+    // which has the page's own text as its evidence instead.
+    evidenceScreenshotKey: text("evidence_screenshot_key"),
     recordedAt: timestamp("recorded_at").notNull().defaultNow(),
   },
   (t) => [
@@ -410,6 +416,40 @@ export const backfillRuns = pgTable(
   ],
 );
 
+// Calculator probes (Pricing Intelligence P4). One row per attempt, successful or
+// not — the learning loop for a measurement that is ALLOWED to fail silently.
+// Without it, "we measure calculator pricing" would be indistinguishable from "we
+// never manage to", since a refused probe writes no points by design. `outcome`
+// carries the exact refusal (unit_unresolved, non_monotonic, login_wall…), which
+// is what says whether the next improvement belongs in the heuristics, in the
+// heal step, or nowhere because the page simply refuses us.
+export const calculatorProbeRuns = pgTable(
+  "calculator_probe_runs",
+  {
+    id: uuid(),
+    competitorId: text("competitor_id").notNull(),
+    url: text("url").notNull(),
+    // endpoint | ui | none (never got as far as reading a total)
+    strategy: text("strategy").notNull().default("none"),
+    // measured | <ProbeFailure> | <ProbeRejection> — see @outrival/scrapers
+    // (probe.ts) and @outrival/shared (calculator-probe.ts).
+    outcome: text("outcome").notNull(),
+    detail: text("detail"),
+    /** Canonical meter the control turned out to move (empty when unresolved). */
+    meterUnit: text("meter_unit").notNull().default(""),
+    /** Readings taken vs points actually stored — equal, or zero. */
+    readings: integer("readings").notNull().default(0),
+    pointsWritten: integer("points_written").notNull().default(0),
+    healed: integer("healed").notNull().default(0), // 0/1 — an AI spec was generated
+    durationMs: integer("duration_ms").notNull().default(0),
+    recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("calculator_probe_runs_recorded_idx").on(t.recordedAt),
+    index("calculator_probe_runs_competitor_recorded_idx").on(t.competitorId, t.recordedAt),
+  ],
+);
+
 // Quantified homepage claims tracked over time (patch-17): "15,000 teams",
 // "99.9% uptime". The worker reads the last value per (competitor, pattern, unit,
 // context) to detect a significant variation.
@@ -476,6 +516,7 @@ export type ScrapeRun = InferSelectModel<typeof scrapeRuns>;
 export type AiRun = InferSelectModel<typeof aiRuns>;
 export type ExtractionRun = InferSelectModel<typeof extractionRuns>;
 export type BackfillRun = InferSelectModel<typeof backfillRuns>;
+export type CalculatorProbeRun = InferSelectModel<typeof calculatorProbeRuns>;
 export type NumericClaim = InferSelectModel<typeof numericClaims>;
 export type TechStackHistory = InferSelectModel<typeof techStackHistory>;
 export type PlatformDetectionRun = InferSelectModel<typeof platformDetectionRuns>;

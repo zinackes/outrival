@@ -7,6 +7,7 @@ import {
   detectPlatform,
   extractSelfProfile,
   extractPricing,
+  probePricingCalculator,
   extractJobs,
   extractReviews,
   backfillHistory,
@@ -1838,6 +1839,28 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         changeId: deferredPricingChange?.id,
         lexicalWorth: deferredPricingChange?.lexicalWorth,
       });
+
+      // Pricing Intelligence P4 — a page whose price only exists as the answer a
+      // calculator gives is one nothing above can extract: there is no list to
+      // read. Measure it instead, by driving that calculator (see
+      // core/probe-pricing-calculator). Live captures only — a backfilled archive
+      // page has no live calculator to drive — and only when THIS capture both
+      // reads as `dynamic` and actually carries calculator inputs, so a page that
+      // merely says "usage-based pricing" in prose never opens a browser.
+      //
+      // singletonSeconds bounds it to ONE probe per competitor per day, whatever
+      // the scrape cadence: this is an interaction with someone else's site, and
+      // the pace is part of the contract, not a tuning knob.
+      if (
+        competitor.type !== "self" &&
+        pricingAnalysis?.status === "dynamic" &&
+        pricingAnalysis.signals.hasCalculator
+      ) {
+        await probePricingCalculator.enqueue(
+          { competitorId: competitor.id, monitorId: monitor.id, url: resolvedUrl },
+          { singletonKey: `probe:${competitor.id}`, singletonSeconds: 24 * 3600 },
+        );
+      }
     } else if (extractionAllowed && monitor.sourceType === "jobs") {
       await extractJobs.enqueue({
         snapshotId: newSnapshot.id,

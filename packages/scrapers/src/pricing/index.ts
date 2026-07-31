@@ -25,3 +25,12 @@ export { harvestPricing, parseAmount } from "./harvest";
 export type { HarvestedPlan, PricingHarvest } from "./harvest";
 export { parseEntitlementTable } from "./entitlement-table";
 export type { ParsedEntitlement } from "./entitlement-table";
+// Calculator probing (P4) — the PURE half only. The Playwright driver lives at
+// ./calculator/probe and is exported from the main entry, so importing this
+// barrel still never pulls Chromium in.
+export { pickControl, reachableQuantities, MAX_PRICE_DISTANCE } from "./calculator/controls";
+export type { ControlCandidate, PickedControl, ControlPick } from "./calculator/controls";
+export { pickTotal, parseTotal, readsAsYearly } from "./calculator/readings";
+export type { TotalCandidate, TotalPick } from "./calculator/readings";
+export { findPricePath, readPricePath, pathnameOf } from "./calculator/endpoint";
+export type { CapturedJson, PricePath } from "./calculator/endpoint";

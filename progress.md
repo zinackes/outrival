@@ -846,3 +846,119 @@ vérifier en dev un concurrent à tableau de paliers (bandes dans le pricing tab
 
 **Prochaine session** : P4 — calculator probe (Playwright) + burn rates. NE PAS
 commencer sans /clear.
+
+---
+
+## Pricing Intelligence v2 — P4 : calculator probe (2026-07-31)
+
+**Le problème** : une page pricing `dynamic` (calculateur) ne publie AUCUNE liste.
+Son prix n'existe que comme la réponse de son calculateur à un volume, donc tout
+l'étage d'extraction (structured → cache → heal → IA) n'a rien à extraire : ces
+concurrents entraient dans la comparaison en « No pricing captured ». P4 mesure ce
+prix en se servant du calculateur public comme un prospect, et écrit
+`price_points(method='calculator_probe')` avec la preuve.
+
+**Déclenchement** — `scrape-monitor` enqueue `probe-pricing-calculator` après une
+capture pricing LIVE dont `status='dynamic'` ET `signals.hasCalculator` (donc jamais
+sur une page qui dit juste « usage-based pricing » en prose, jamais sur backfill,
+jamais sur le self). Dédup pg-boss `singletonKey: probe:{competitorId}` +
+`singletonSeconds: 86400` = **1 probe/concurrent/jour** quelle que soit la cadence de
+scrape. `retryLimit: 0` : un probe est une INTERACTION avec le site de quelqu'un
+d'autre, pas un calcul — tous ses échecs (refus, login wall, sélecteurs morts, série
+refusée) se reproduisent à l'identique 5 s plus tard. Le probe suivant EST le retry.
+
+**Échelle de stratégie** — le contrôle est trouvé par heuristiques déterministes
+(label résolu par `unit-alias` ; un meter non canonique ⇒ **skip complet**, unknown
+n'est pas deviné), sinon par la spec cachée du concurrent (`calculator_specs`),
+sinon par **un** AI-heal qui ne nomme que des SÉLECTEURS et qui est caché ensuite.
+Le total est localisé en diffant le DOM avant/après un mouvement de contrôle :
+l'élément dont le MONTANT change EST le total — et ce même mouvement prouve que le
+contrôle pilote la page (sans ça, une série plate serait lue comme un prix plat).
+Le mouvement de découverte va au bout de la plage demandée, pas au volume voisin :
+un plancher mensuel affiche le même total à 1k et à 10k, donc un petit mouvement ne
+prouve rien. Un total libellé à l'ANNÉE est refusé plutôt que divisé par 12.
+
+**Endpoint : lu, jamais rejoué** — quand la page calcule côté serveur, le JSON de son
+propre XHR devient la source du nombre (`strategy=endpoint`) : pas de formatage, pas
+de compteur animé attrapé en cours de tween. Mais il est lu comme la réponse de la
+page à une interaction faite sur l'UI publique, jamais en forgeant des requêtes HTTP.
+**Écart assumé vs la spec P4** (qui demandait « probe HTTP pur à chaque volume, plus
+de navigateur ensuite ») : rejouer une API privée laisse le run sans screenshot, ce
+que la règle de preuve interdit, et « se servir du calculateur » et « rejouer son API »
+ne sont pas le même acte vis-à-vis de la collection doctrine. L'endpoint fournit le
+NOMBRE, l'interaction UI fournit la PREUVE, chaque point garde les deux.
+
+**Jamais un succès vide** — `validateProbeSeries` (@outrival/shared, pur) : monotonie
+(égalité tolérée en zone plate/minimum), devise unique, bornes plausibles, et
+**double lecture** (bouger le contrôle ailleurs, revenir, redemander la même quantité
+→ même total ±0,5 %). Un seul check en échec droppe le run **entier** : une série
+crue à moitié calcule une courbe de coût fausse avec assurance. Idem pour la preuve —
+un point dont le screenshot n'a pas pu être stocké fait tomber le run.
+
+**Doctrine** — robots.txt avant la 1re requête, UA OutrivalBot, rythme humain
+randomisé entre interactions, ~15 interactions max, 90 s de budget. Bannière de
+consentement = clic sur SON bouton visible (jamais un cookie posé à sa place, jamais
+un noeud supprimé). Captcha / login / paywall / non-2xx = abandon **silencieux** :
+le pipeline pricing du jour reste un succès, et `calculator_probe_runs` porte la
+raison exacte (sinon « on mesure les calculateurs » serait indiscernable de « on n'y
+arrive jamais »).
+
+**Lecture** — au (unit, qty) ÉGAL, le mesuré prime sur le calculé dans
+`cheapestCostAtVolume` : le calculé est notre arithmétique sur ce que la page
+imprime, le mesuré est la réponse de leur propre calculateur (frais, planchers et
+allocations incluses). Cheapest-wins arbitre entre plans PUBLIÉS, pas entre deux
+natures de preuve. `comparableMeters` unionne les meters publiés et mesurés — sans
+ça, un concurrent 100 % calculateur (aucune ligne `usage` publiée) aurait été mesuré
+puis jamais affiché ; compare lui fabrique aussi un `PricingDetail` quand il n'a
+aucun plan publié.
+
+**Signal** — delta probe-à-probe à quantité égale ≥5 % → `rate_changed` medium,
+≥15 % → high, **jamais critical** (critical bypasse toute la modération et envoie un
+email en minutes ; une lecture d'UI n'a pas cette certitude). Ancre synthétique
+`pricing_probe` (source_type dédiée : écrire ces snapshots sur le monitor `pricing`
+casserait sa dédup par content-hash) → snapshot → change → `generate-signal`.
+`human_change_before/_after` = les coûts mesurés exacts (« $80.00 at 100,000 requests
+→ $64.00 at 100,000 requests »).
+
+**UI** — indicateur de méthode sur chaque point : lens Price du compare (« measured on
+their calculator <date> » vs « computed from their published tiers » + lien
+screenshot) et bloc **Cost at volume** du pricing tab. Aucune nouvelle tab. Le
+screenshot passe par `GET /api/competitors/:id/calculator-evidence?unit&qty`
+(org-scopé, proxy — la clé R2 ne quitte jamais le serveur, comme le visual diff).
+
+**Fichiers** : `packages/shared/src/{calculator-probe,pricing-model,extraction/
+calculator-spec}.ts` · `packages/scrapers/src/pricing/calculator/{controls,readings,
+endpoint,probe}.ts` + fixtures · `packages/ai/src/tasks/generate-calculator-spec.ts` ·
+`packages/db/src/schema/{calculator-specs,analytics,monitors}.ts` + migration **0058**
+(colonne `price_points.evidence_screenshot_key`, tables `calculator_specs` /
+`calculator_probe_runs`, valeur d'enum `pricing_probe`) · `packages/queue/src/jobs.ts` ·
+`apps/workers/src/core/{probe-pricing-calculator,scrape-monitor}.ts` +
+`lib/analytics.ts` + `queue/handlers.ts` · `apps/api/src/routes/{compare,competitors}.ts` ·
+`apps/web/src/{lib/api.ts,components/dashboard/compare/{derive.ts,lenses.tsx},
+app/dashboard/competitors/[id]/competitor-detail/rate-structures.tsx,lib/source-labels.ts}`.
+
+**Deux pièges d'exécution corrigés en passant** : (1) `settle()` déclarait un total
+« stabilisé » sur deux lectures égales — juste après un mouvement, la page affiche
+encore l'ANCIEN total, donc un poller rapide lisait deux fois la réponse
+PRÉCÉDENTE (le recompute debouncé 200-500 ms est la norme). Un plancher
+`PRICING_PROBE_SETTLE_MIN_MS` (700 ms) précède désormais le test de stabilité.
+(2) Les constantes d'env étaient lues au CHARGEMENT du module : un importeur qui
+les pose (le test) arrivait après, donc elles étaient silencieusement ignorées et
+chaque probe payait les 2 s de courtoisie inter-domaine prévues pour un vrai site
+(fichier de test à 68 s, puis timeout sous charge parallèle). Lues par appel, +
+un module d'env importé en premier côté test : 25 s, stable.
+
+**Tests** : typecheck 8/8 ✓ · `pnpm test` 12/12 ✓. 39 tests neufs, dont **8 qui
+pilotent un vrai Chromium** contre des fixtures de calculateur servies en local
+(slider + total JS, endpoint JSON, série décroissante ⇒ drop, unité non résolue ⇒
+skip, bannière de consentement, double lecture divergente ⇒ drop, spec cachée
+rejouée, page absente ⇒ refus). Effet de bord corrigé : `scrape-patchright-pool.test.ts`
+mockait `playwright` **globalement** (mock.module s'applique au chargement et ne se
+désenregistre pas), donc le premier test à vouloir un vrai navigateur recevait un faux
+— le mock est devenu un passthrough actif seulement pendant ce fichier, avec le
+`launch` réel capturé par `bind` AVANT le mock (sinon récursion infinie).
+
+**Reste côté humain** : `pnpm db:migrate` (0058) sur dev puis prod · vérifier en dev
+sur un concurrent à calculateur réel que les points apparaissent avec leur screenshot ·
+PR. **NE PAS** enchaîner sur P5 (burn rates, courbe de coût, backfill Wayback) sans
+/clear.

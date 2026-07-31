@@ -407,6 +407,13 @@
       "when": 1785471864501,
       "tag": "0057_magenta_black_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1785514210742,
+      "tag": "0058_strong_doorman",
+      "breakpoints": true
     }
   ]
 }

@@ -1,12 +1,18 @@
-import { test, expect, mock, afterAll } from "bun:test";
+import { test, expect, mock, beforeAll, afterAll } from "bun:test";
 
 // The pooled Chromium is process-global, and since the pg-boss cutover the process
 // runs SCRAPE_CONCURRENCY scrapes at once. These tests pin the two things that
 // broke when the old "one run = one machine" assumption stopped holding.
 //
 // `playwright` is mocked here rather than launched: the behaviour under test is the
-// pool's bookkeeping, not Chromium. Nothing else in this package imports playwright,
-// so the module mock has no other reader.
+// pool's bookkeeping, not Chromium.
+//
+// The mock is a PASSTHROUGH by default, active only while this file's tests run.
+// Bun applies mock.module at LOAD time and cannot unregister it, so a mock that
+// always faked `chromium.launch` would hand a fake browser to every other file in
+// the process — which is exactly what happened to the calculator probe's live
+// browser test (it now has a real reader: src/pricing/calculator/probe.test.ts).
+// Same shape as the crawler passthrough in src/jobs/__tests__/jobs-scraper.test.ts.
 
 let launches = 0;
 let closes = 0;
@@ -41,9 +47,19 @@ function fakeBrowser() {
   };
 }
 
+const realPlaywright = await import("playwright");
+// Bound NOW, before the mock lands: mock.module mutates the exports on this same
+// namespace object, so reading `realPlaywright.chromium.launch` later would read
+// the mock and recurse forever (the trap jobs-scraper.test.ts documents).
+const realLaunch = realPlaywright.chromium.launch.bind(realPlaywright.chromium);
+let poolMockActive = false;
+
 mock.module("playwright", () => ({
+  ...realPlaywright,
   chromium: {
-    launch: async () => {
+    ...realPlaywright.chromium,
+    launch: async (options?: Parameters<typeof realLaunch>[0]) => {
+      if (!poolMockActive) return realLaunch(options);
       launches++;
       return fakeBrowser();
     },
@@ -64,9 +80,14 @@ function openGate(): () => void {
   return release;
 }
 
+beforeAll(() => {
+  poolMockActive = true;
+});
+
 afterAll(() => {
   gate = Promise.resolve();
   hangNewContext = false;
+  poolMockActive = false;
   __setPoolCeilingsForTest(null);
   mock.restore();
 });

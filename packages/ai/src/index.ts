@@ -129,6 +129,9 @@ export type {
 export type { ReviewsExtraction } from "./tasks/extract-reviews";
 export { generateExtractor } from "./tasks/generate-extractor";
 export type { ExtractorKind } from "./tasks/generate-extractor";
+// P4 — heal step for calculator probing: locates the quantity control and the
+// total (selectors only; every amount is still read by code).
+export { generateCalculatorSpec } from "./tasks/generate-calculator-spec";
 export { generateCompetitorSummary, SummarySchema } from "./tasks/competitor-summary";
 export type { CompetitorSummary, CompetitorSummaryInput } from "./tasks/competitor-summary";
 export { summarizeSource, SourceSummarySchema } from "./tasks/summarize-source";

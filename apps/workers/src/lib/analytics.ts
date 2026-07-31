@@ -14,6 +14,7 @@ import {
   aiRuns,
   extractionRuns,
   backfillRuns,
+  calculatorProbeRuns,
   numericClaims,
   techStackHistory,
   platformDetectionRuns,
@@ -532,6 +533,8 @@ export interface PricePointRow {
   effective_monthly_cost: number;
   currency: string;
   method: "computed_from_tiers" | "calculator_probe" | "published";
+  /** P4 — R2 key of the proof screenshot. Set on measured rows only. */
+  evidence_screenshot_key?: string | null;
   recorded_at: Date;
 }
 
@@ -547,9 +550,79 @@ export async function insertPricePoints(rows: PricePointRow[]): Promise<void> {
         effectiveMonthlyCost: r.effective_monthly_cost,
         currency: r.currency,
         method: r.method,
+        evidenceScreenshotKey: r.evidence_screenshot_key ?? null,
         recordedAt: r.recorded_at,
       })),
     ),
+  );
+}
+
+/**
+ * The last MEASURED batch for a competitor (Pricing Intelligence P4) — the
+ * baseline the next probe is compared against. One batch, not a window: probe
+ * runs are atomic (all points of a run share a timestamp), so "what it charged
+ * last time" is exactly the newest calculator_probe recorded_at.
+ */
+export async function getPreviousProbePoints(
+  competitorId: string,
+): Promise<PricePointRow[] | null> {
+  const rows = await bestEffortRead<PricePointRow>("getPreviousProbePoints", () =>
+    db
+      .select({
+        competitor_id: pricePoints.competitorId,
+        plan_name: pricePoints.planName,
+        meter_unit: pricePoints.meterUnit,
+        reference_qty: pricePoints.referenceQty,
+        effective_monthly_cost: pricePoints.effectiveMonthlyCost,
+        currency: pricePoints.currency,
+        method: sql<"calculator_probe">`${pricePoints.method}`,
+        recorded_at: pricePoints.recordedAt,
+      })
+      .from(pricePoints)
+      .where(
+        and(
+          eq(pricePoints.competitorId, competitorId),
+          eq(pricePoints.method, "calculator_probe"),
+          eq(
+            pricePoints.recordedAt,
+            sql`(select max(recorded_at) from price_points where competitor_id = ${competitorId} and method = 'calculator_probe')`,
+          ),
+        ),
+      )
+      .orderBy(pricePoints.meterUnit, pricePoints.referenceQty),
+  );
+  return rows && rows.length > 0 ? rows : null;
+}
+
+/** One calculator probe attempt — measured or refused (see calculator_probe_runs). */
+export interface CalculatorProbeRunRow {
+  competitor_id: string;
+  url: string;
+  strategy: "endpoint" | "ui" | "none";
+  outcome: string;
+  detail?: string | null;
+  meter_unit?: string | null;
+  readings?: number;
+  points_written?: number;
+  healed?: boolean;
+  duration_ms?: number;
+}
+
+export async function insertCalculatorProbeRun(row: CalculatorProbeRunRow): Promise<void> {
+  await bestEffort("calculator_probe_runs insert", () =>
+    db.insert(calculatorProbeRuns).values({
+      competitorId: row.competitor_id,
+      url: row.url,
+      strategy: row.strategy,
+      outcome: row.outcome,
+      detail: row.detail ?? null,
+      meterUnit: row.meter_unit ?? "",
+      readings: row.readings ?? 0,
+      pointsWritten: row.points_written ?? 0,
+      healed: row.healed ? 1 : 0,
+      durationMs: row.duration_ms ?? 0,
+      recordedAt: new Date(),
+    }),
   );
 }
 

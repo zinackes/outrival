@@ -85,6 +85,7 @@ export const ANCHOR_SOURCES: readonly SourceType[] = [
   "review_shift",
   "hiring_shift",
   "comparison_page",
+  "pricing_probe",
 ];
 
 /**

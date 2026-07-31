@@ -18,6 +18,8 @@ let A: { orgId: string; userId: string; email: string };
 let B: { orgId: string; userId: string; email: string };
 let C: { orgId: string; userId: string; email: string };
 let D: { orgId: string; userId: string; email: string };
+let aiCharges = 0;
+let aiBudgetRefuses = false;
 
 afterAll(() => closeDb());
 
@@ -29,6 +31,19 @@ beforeAll(async () => {
     enqueueJob: async () => "run_test",
     enqueueByName: async () => "run_test",
     ensureQueue: async () => {},
+  }));
+  // The hourly AI-action budget lives in Upstash, which the tests don't run. Stand in
+  // a counter so the route's OWN decision — charge a re-scan, never a first scrape —
+  // is observable; `aiBudgetRefuses` flips it to a spent budget on demand.
+  mock.module(resolve(import.meta.dir, "../src/lib/ai-actions"), () => ({
+    consumeAiAction: async () => {
+      aiCharges++;
+      return aiBudgetRefuses
+        ? { allowed: false, used: 999, limit: 120, retryAfterSeconds: 600 }
+        : { allowed: true, used: aiCharges, limit: 120, retryAfterSeconds: 0 };
+    },
+    aiRateLimitBody: () => ({ error: "ai_rate_limit_exceeded" }),
+    peekAiActions: async () => ({ used: aiCharges, limit: 120 }),
   }));
   const { monitorsRouter } = await import("../src/routes/monitors");
   app = mountApp("/api/monitors", monitorsRouter);
@@ -231,6 +246,30 @@ describe("run metering (counts re-scans, exempts first scrape)", () => {
     expect(logs).toHaveLength(1);
     expect(logs[0]?.userId).toBe(C.userId);
     expect(logs[0]?.taskId).toBe("run_test");
+  });
+
+  // The hourly AI cap used to be middleware, so it charged the request before the
+  // route could tell setup from consumption. Enabling every source on a pro roster is
+  // maxCompetitors × allowedSources = 135 clicks; charging those made the ceiling
+  // refuse the one burst it must not.
+  test("a first scrape never spends the hourly AI budget", async () => {
+    aiCharges = 0;
+    await testDb.update(monitors).set({ lastRunAt: null }).where(eq(monitors.id, "m-c-new"));
+    const res = await run(C, "m-c-new");
+    expect(res.status).toBe(200);
+    expect(aiCharges).toBe(0);
+  });
+
+  test("a re-scan spends it, and a spent budget refuses before the scrape", async () => {
+    aiCharges = 0;
+    await run(C, "m-c-ran");
+    expect(aiCharges).toBe(1);
+
+    aiBudgetRefuses = true;
+    const res = await run(C, "m-c-ran");
+    aiBudgetRefuses = false;
+    expect(res.status).toBe(429);
+    expect((await res.json()).error).toBe("ai_rate_limit_exceeded");
   });
 });
 

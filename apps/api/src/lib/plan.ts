@@ -6,6 +6,7 @@ import {
   isWithinLimit,
   productLimit,
   forcedRescansPerDay,
+  aiActionsPerHour,
   type Plan,
   type PlanFeature,
   type AlertChannel,
@@ -13,6 +14,7 @@ import {
   type MonitorFrequency,
 } from "@outrival/shared";
 import { db } from "./db";
+import { peekAiActions } from "./ai-actions";
 
 export function getPlanLimits(plan: Plan) {
   return PLAN_LIMITS[plan];
@@ -213,13 +215,14 @@ export type UsageDimension =
   | "products"
   | "battleCardsPerDay"
   | "discoveriesPerMonth"
-  | "forcedRescansPerDay";
+  | "forcedRescansPerDay"
+  | "aiActionsPerHour";
 
 export interface UsageItem {
   dimension: UsageDimension;
   used: number;
   limit: number;
-  period: "current" | "day" | "month";
+  period: "current" | "day" | "month" | "hour";
   // Cheapest plan whose cap clears current use, or null when the current plan
   // already does (drives the contextual upgrade prompt).
   suggestedPlan: Plan | null;
@@ -242,6 +245,8 @@ function usageLimit(plan: Plan, dimension: UsageDimension): number {
       return PLAN_LIMITS[plan].discoveriesPerMonth;
     case "forcedRescansPerDay":
       return forcedRescansPerDay(plan);
+    case "aiActionsPerHour":
+      return aiActionsPerHour(plan);
   }
 }
 
@@ -251,6 +256,7 @@ const USAGE_PERIOD: Record<UsageDimension, UsageItem["period"]> = {
   battleCardsPerDay: "day",
   discoveriesPerMonth: "month",
   forcedRescansPerDay: "day",
+  aiActionsPerHour: "hour",
 };
 
 /** Cheapest plan whose `dimension` cap clears `used`, or null if the current plan already does. */
@@ -278,16 +284,21 @@ async function countForcedRescansToday(orgId: string): Promise<number> {
   return row?.value ?? 0;
 }
 
-/** Every quantified per-tier cap with current use — read-only, no new schema. */
-export async function getUsageSnapshot(orgId: string): Promise<UsageSnapshot> {
+/**
+ * Every quantified per-tier cap with current use — read-only, no new schema.
+ * `userId` carries the one PER-USER counter (the hourly AI budget lives in Redis under
+ * the user's key, not the org's); omit it and that row reports an untouched budget.
+ */
+export async function getUsageSnapshot(orgId: string, userId?: string): Promise<UsageSnapshot> {
   const plan = await getOrgPlan(orgId);
-  const [competitorsUsed, productsUsed, cardsUsed, discoveriesUsed, rescansUsed] =
+  const [competitorsUsed, productsUsed, cardsUsed, discoveriesUsed, rescansUsed, aiActions] =
     await Promise.all([
       countActiveCompetitors(orgId),
       countActiveProducts(orgId),
       dimensionUsage(orgId, "battleCardsPerDay"),
       dimensionUsage(orgId, "discoveriesPerMonth"),
       countForcedRescansToday(orgId),
+      userId ? peekAiActions(userId, plan) : Promise.resolve({ used: 0, limit: aiActionsPerHour(plan) }),
     ]);
 
   const used: Record<UsageDimension, number> = {
@@ -296,6 +307,7 @@ export async function getUsageSnapshot(orgId: string): Promise<UsageSnapshot> {
     battleCardsPerDay: cardsUsed,
     discoveriesPerMonth: discoveriesUsed,
     forcedRescansPerDay: rescansUsed,
+    aiActionsPerHour: aiActions.used,
   };
 
   const items: UsageItem[] = (Object.keys(used) as UsageDimension[]).map((dimension) => ({

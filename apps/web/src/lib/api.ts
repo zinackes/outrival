@@ -948,13 +948,14 @@ export type UsageDimension =
   | "products"
   | "battleCardsPerDay"
   | "discoveriesPerMonth"
-  | "forcedRescansPerDay";
+  | "forcedRescansPerDay"
+  | "aiActionsPerHour";
 
 export interface UsageItem {
   dimension: UsageDimension;
   used: number;
   limit: number;
-  period: "current" | "day" | "month";
+  period: "current" | "day" | "month" | "hour";
   suggestedPlan: Plan | null;
 }
 

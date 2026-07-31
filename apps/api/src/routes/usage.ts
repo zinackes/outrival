@@ -16,7 +16,7 @@ usageRouter.use("*", authMiddleware);
 usageRouter.get("/", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
-  const snapshot = await getUsageSnapshot(orgId);
+  const snapshot = await getUsageSnapshot(orgId, user.id);
   // Counted-usage aggregate; tolerates ~1min staleness — short private cache
   // trims repeat compute + Neon cold-wakes (F11).
   c.header("Cache-Control", "private, max-age=60");

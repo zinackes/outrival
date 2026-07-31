@@ -9,7 +9,8 @@
     "test": "bun test --timeout 60000 test/",
     "trigger:dev": "trigger dev",
     "queue:dev": "bun run --hot src/queue/worker.ts",
-    "queue:start": "bun run src/queue/worker.ts"
+    "queue:start": "bun run src/queue/worker.ts",
+    "backfill:hiring-geo": "bun run src/scripts/backfill-hiring-geo.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

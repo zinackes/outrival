@@ -14,14 +14,18 @@
 // It never emits a signal and never writes a snapshot — it only fills columns.
 // Idempotent: re-running stamps nothing new and re-upserts the same weekly rows.
 //
-//   bun scripts/backfill-hiring-geo.ts             # every competitor, dry run
-//   bun scripts/backfill-hiring-geo.ts --apply     # write
-//   bun scripts/backfill-hiring-geo.ts --apply --competitor <id>
+//   pnpm backfill:hiring-geo                       # every competitor, dry run
+//   pnpm backfill:hiring-geo -- --apply            # write
+//   pnpm backfill:hiring-geo -- --apply --competitor <id>
+//
+// It lives in @outrival/workers rather than /scripts because it needs the
+// workspace dependencies (db + shared/geo + scrapers), which the repo root has no
+// node_modules for.
 //
 // Runs against whatever DATABASE_URL is loaded. On a shared environment, read
 // .claude/rules/production.md first.
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, competitors, jobPostings } from "@outrival/db";
 import { resolveLocation } from "@outrival/shared/geo";
 import { hiringGeo } from "@outrival/db";
@@ -60,7 +64,7 @@ async function stampCompetitor(competitorId: string) {
       await db
         .update(jobPostings)
         .set({ countryCodes: g.codes, geoResolution: g.resolution })
-        .where(sql`${jobPostings.id} = any(${g.ids})`);
+        .where(inArray(jobPostings.id, g.ids));
     }
   }
   return { stamped: rows.length, tally };
@@ -137,5 +141,11 @@ async function main(): Promise<void> {
   if (!APPLY) console.log("Re-run with --apply to write.");
 }
 
-await main();
-process.exit(0);
+// Not top-level await: this package compiles as CommonJS, and the sibling
+// one-shots (packages/db/src/migrate.ts) settle the promise the same way.
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

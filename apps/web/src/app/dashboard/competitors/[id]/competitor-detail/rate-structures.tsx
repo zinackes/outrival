@@ -31,7 +31,11 @@ export function RateStructures({ competitorId }: { competitorId: string }) {
 
   const data = q.data ?? null;
   const points = data?.points ?? [];
-  if (!data || (data.plans.length === 0 && data.tiers.length === 0 && points.length === 0)) {
+  const burns = data?.burns ?? [];
+  if (
+    !data ||
+    (data.plans.length === 0 && data.tiers.length === 0 && points.length === 0 && burns.length === 0)
+  ) {
     return null;
   }
 
@@ -52,8 +56,67 @@ export function RateStructures({ competitorId }: { competitorId: string }) {
         ))}
       </ul>
       {points.length > 0 && <CostAtVolume competitorId={competitorId} points={points} />}
+      {burns.length > 0 && <CreditBurns burns={burns} />}
     </TabSection>
   );
+}
+
+type Burn = { action: string; credits: number; previousCredits: number | null };
+
+/**
+ * What each action SPENDS from a credit balance, and what it spent last capture.
+ *
+ * The pack price is the number on the pricing page; this is the number that
+ * decides how far the pack goes. Doubling what a scan burns is a price rise that
+ * leaves every printed figure untouched, so the deltas are the point of the
+ * block, not a decoration on it — a raised cost reads as a rise, in the same
+ * direction language the rest of the tab uses.
+ */
+function CreditBurns({ burns }: { burns: Burn[] }) {
+  return (
+    <div className="mt-4 flex flex-col gap-1.5">
+      <h4 className="text-dense text-muted-foreground">Credits</h4>
+      <ul className="flex flex-col">
+        {burns.map((b) => {
+          const moved = b.previousCredits != null && b.previousCredits !== b.credits;
+          const up = moved && b.credits > b.previousCredits!;
+          return (
+            <li
+              key={b.action}
+              className="flex flex-wrap items-baseline gap-x-2 border-b border-border py-2 last:border-b-0"
+            >
+              <span className="text-sm text-foreground">{b.action}</span>
+              <span
+                className={cn(
+                  "text-sm tabular-nums",
+                  moved ? "font-medium text-foreground" : "text-foreground",
+                )}
+              >
+                {creditsLabel(b.credits)}
+              </span>
+              {moved && (
+                <span
+                  className={cn("text-xs tabular-nums", up ? "text-high" : "text-muted-foreground")}
+                  title={
+                    up
+                      ? "Costs more credits than the previous capture — the same pack now buys less"
+                      : "Costs fewer credits than the previous capture"
+                  }
+                >
+                  {up ? "up from" : "down from"} {creditsLabel(b.previousCredits!)}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function creditsLabel(credits: number): string {
+  const rounded = Math.round(credits * 100) / 100;
+  return `${rounded.toLocaleString("en-US")} credit${rounded === 1 ? "" : "s"}`;
 }
 
 type CostPoint = {

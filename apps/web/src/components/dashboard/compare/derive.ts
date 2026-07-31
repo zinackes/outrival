@@ -1,5 +1,7 @@
 import { isComparablePricePeriod, type CostMethod } from "@outrival/shared";
 import type { CompareColumn } from "@/lib/api";
+import { competitorStroke } from "@/lib/competitor-color";
+import type { CompareEntity } from "./lens";
 
 /**
  * Everything the compare page reads OUT of the matrix: the shared scales the bars
@@ -787,4 +789,44 @@ function firstClause(insight: string, max = 72): string {
   const trimmed = clause.replace(/[.;]$/, "").trim();
   const lower = trimmed.charAt(0).toLowerCase() + trimmed.slice(1);
   return lower.length > max ? `${lower.slice(0, max - 1).trimEnd()}…` : lower;
+}
+
+// ── Cost curve (P5) ─────────────────────────────────────────────────────────
+
+/** One competitor's cost-vs-volume line, plus the costs we READ rather than
+ * derived. Built here rather than in the chart module so nothing importing it
+ * pulls recharts into the route's first load. */
+export interface CostCurveSeries {
+  id: string;
+  name: string;
+  stroke: string;
+  points: Array<{ qty: number; cost: number }>;
+  marks: Array<{ qty: number; cost: number; measured: boolean }>;
+}
+
+/**
+ * Series for every entity that prices `unit`, in the set's order so a line keeps
+ * the hue its row wears.
+ *
+ * An entity with no curve for the meter is ABSENT. It is tempting to draw it flat
+ * at its subscription price, but a flat line is a claim — "this is what they cost
+ * at any volume" — and a competitor that does not sell this by the unit has not
+ * made it.
+ */
+export function costCurveSeries(entities: CompareEntity[], unit: string): CostCurveSeries[] {
+  const out: CostCurveSeries[] = [];
+  for (const e of entities) {
+    const curve = e.data?.pricing?.curves?.find((c) => c.unit === unit);
+    if (!curve || curve.points.length === 0) continue;
+    out.push({
+      id: e.id,
+      name: e.name,
+      stroke: e.mine ? "var(--primary)" : (competitorStroke(e.color) ?? "var(--border-strong)"),
+      points: curve.points,
+      marks: (e.data?.pricing?.curveMarks ?? [])
+        .filter((m) => m.unit === unit)
+        .map((m) => ({ qty: m.qty, cost: m.cost, measured: m.method === "calculator_probe" })),
+    });
+  }
+  return out;
 }

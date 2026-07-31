@@ -272,6 +272,11 @@ export interface PricingHistoryPoint {
   // size). Optional — absent on legacy/history rows. See docs/pricing-coverage-2026.md.
   unit?: string | null;
   includedQuantity?: number | null;
+  // P5 — 'archive' when this point was reconstructed from a Wayback capture, so
+  // recorded_at is the CAPTURE date rather than the moment we read the page. The
+  // chart marks those points: a reconstructed price and a monitored one are both
+  // true, but only one of them is something we watched happen.
+  origin?: "live" | "archive";
   recorded_at: string;
 }
 
@@ -550,6 +555,14 @@ export interface RateStructures {
     capturedAt: string;
     hasEvidence: boolean;
     evidenceKind: "screenshot" | "api_response" | null;
+  }>;
+  /** P5 — what each published action SPENDS from a credit balance, with what it
+   * spent in the previous capture. `previousCredits` null = the action is new, or
+   * there is no earlier capture to compare against. */
+  burns: Array<{
+    action: string;
+    credits: number;
+    previousCredits: number | null;
   }>;
   capturedAt: string | null;
 }
@@ -1140,6 +1153,26 @@ export interface CompareColumn {
       hasEvidence: boolean;
       /** Which proof: the calculator screenshot, or the pricing response the
        * volume was replayed from. */
+      evidenceKind: "screenshot" | "api_response" | null;
+    }>;
+    /** P5 — the same cost model asked at every volume: what this competitor
+     * charges as a function of quantity, one entry per meter it prices. Empty for
+     * a subscription-only competitor, and absent for a meter it does not price —
+     * a competitor with no answer is off the chart, never a flat line at zero. */
+    curves: Array<{
+      unit: string;
+      currency: string | null;
+      points: Array<{ qty: number; cost: number }>;
+    }>;
+    /** Costs we READ rather than computed — a probe on their own calculator, or a
+     * worked example the page prints. Drawn as marks over the curve. */
+    curveMarks: Array<{
+      unit: string;
+      qty: number;
+      cost: number;
+      currency: string | null;
+      method: CostMethod;
+      hasEvidence: boolean;
       evidenceKind: "screenshot" | "api_response" | null;
     }>;
   } | null;

@@ -17,6 +17,23 @@ export const COMP_ON_FILL =
 export const COMP_TEXT =
   "oklch(var(--comp-l-text) var(--comp-c) var(--comp-h))";
 
+/**
+ * A concrete stroke/fill colour for one competitor, safe to hand to an SVG
+ * attribute.
+ *
+ * COMP_ACCENT reads --comp-h / --comp-c off an ancestor, which works for a DOM
+ * element wearing that competitor's inline vars but not inside a chart, where a
+ * dozen series share one SVG. So the hue and chroma are inlined as numbers and
+ * only the per-theme LIGHTNESS stays a var — it lives on :root, so one string
+ * still renders correctly in both themes. Null when the competitor has no colour,
+ * which is the caller's cue to fall back to a neutral.
+ */
+export function competitorStroke(color: string | null | undefined): string | null {
+  const resolved = resolveCompetitorColor(color);
+  if (!resolved) return null;
+  return `oklch(var(--comp-l-accent) ${resolved.c} ${resolved.h})`;
+}
+
 export type CompetitorColorVars = CSSProperties & {
   "--comp-h"?: number;
   "--comp-c"?: number;

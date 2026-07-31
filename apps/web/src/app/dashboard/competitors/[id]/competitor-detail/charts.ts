@@ -81,9 +81,26 @@ export function buildPricingSeries(history: PricingHistoryPoint[]): {
     (p) => p.recorded_at,
     (point, p) => {
       point[p.plan_name] = p.price!;
+      // P5 — this day's price was reconstructed from a Wayback capture, not
+      // watched. Two underscore-prefixed meta keys, never series keys (the caller
+      // derives those from byPlan), so the chart can draw the point differently
+      // and name the date the archive actually holds.
+      if (p.origin === "archive") point[ARCHIVED_KEY] = 1;
+      point[CAPTURE_DAY_KEY] = longDate(p.recorded_at);
     },
   );
   return { points, byPlan };
+}
+
+/** Meta key: 1 when the day's point came from the Internet Archive. */
+export const ARCHIVED_KEY = "__archived";
+/** Meta key: the capture day, spelled out for the tooltip. */
+export const CAPTURE_DAY_KEY = "__captureDay";
+
+function longDate(iso: string): string {
+  const d = parseRecordedAt(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return formatDate(d, { day: "2-digit", month: "short", year: "numeric" });
 }
 
 export function buildJobTrend(

@@ -22,6 +22,9 @@ import { seriesStroke } from "@/lib/series-color";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CompAvatar } from "./comp-avatar";
 import { Sparkline } from "./sparkline";
+// Plain SVG, no recharts: imported directly so the page's first chart doesn't
+// arrive behind a skeleton the way the lazy market chart has to.
+import { TrendsSlopeChart } from "./trends-slope-chart";
 import { PageHead } from "./page-head";
 import {
   DateRangePicker,
@@ -781,14 +784,13 @@ export function TrendsView() {
             }
             meta={
               (market?.pricing.length ?? 0) > 0
-                ? `entry price, indexed to ${shortDate(range.from.toISOString())}`
+                ? "entry price, first vs last capture"
                 : undefined
             }
           >
             {market && market.pricing.length > 0 && (
-              <MarketPlot
+              <TrendsSlopeChart
                 series={market.pricing}
-                mode="index"
                 formatValue={(v, item) => money(v, item.unit)}
               />
             )}
@@ -842,9 +844,13 @@ export function TrendsView() {
                       : ""
                   }`
             }
+            // Each line is indexed to its OWN first capture, not to the window
+            // start: a competitor first scraped three weeks in has no reading on
+            // day one, and claiming the window start as its baseline dated a
+            // number we never took.
             meta={
               (market?.hiring.length ?? 0) > 0
-                ? `open roles, indexed to ${shortDate(range.from.toISOString())}`
+                ? "open roles, % from each competitor's first capture"
                 : undefined
             }
           >

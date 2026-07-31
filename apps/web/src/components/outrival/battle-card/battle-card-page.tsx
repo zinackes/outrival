@@ -121,6 +121,14 @@ const LONG_DATE = { day: "2-digit", month: "long", year: "numeric" } as const;
 const MAX_WATCHED_POLLS = 400;
 const MAX_BLIND_POLLS = 60;
 
+// The loop ticks fast and does its heavy work every fourth tick, so a 3s cadence is
+// preserved for the card row and for every ceiling above — `polls` still counts 3s
+// units. The fast lane exists for ONE thing: while the model is actually writing, the
+// run is read every tick, because the text it streams arrives in about a second and a
+// 3s poll would show it as a single jump rather than as writing.
+const TICK_MS = 750;
+const TICKS_PER_POLL = 4;
+
 export function BattleCardPage({ competitorId }: { competitorId: string }) {
   // patch-28 — scope the card to the active product (cookie-backed switcher, URL
   // ?product= overrides); omitted = the org's primary product (the API default).
@@ -143,6 +151,9 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
   // The live run, polled alongside the card row. Null while we have no run id or the
   // queue could not be read — the build view then claims no stage at all.
   const [job, setJob] = useState<BattleCardJob | null>(null);
+  // The same run, readable from inside the poll closure: it decides whether this tick
+  // is a fast one (the model is writing) or an ordinary 3s one.
+  const jobRef = useRef<BattleCardJob | null>(null);
   // Set when a run gave up, and the ONLY thing standing between the user and the
   // "no card yet" template they used to be dropped back into with no explanation.
   const [failure, setFailure] = useState<string | null>(null);
@@ -267,6 +278,15 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
     // A run reporting "done" should already have written its row, but the two reads
     // are not atomic. Give it a couple of ticks before calling it an empty finish.
     let doneWithoutCard = 0;
+    // How many frames of the card being written this reader actually saw. It decides
+    // what the arrival of the row means: the end of a write they watched, or a card
+    // appearing out of a skeleton — only the second is worth animating.
+    //
+    // Two frames, not one: on a fast provider the model emits the whole card in a
+    // fraction of a second, so a single frame landing just before the row is a flash,
+    // not a write. Treating that as "they watched it" would replace the paced write-in
+    // with the card popping on whole — worse than what it replaced.
+    let partialFrames = 0;
 
     const giveUp = (reason: string) => {
       stopPolling();
@@ -275,23 +295,41 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
       setStatus("failed");
     };
 
+    let tick = 0;
     pollRef.current = setInterval(async () => {
-      polls += 1;
+      tick += 1;
+      const heavy = tick % TICKS_PER_POLL === 0;
+      // A fast tick exists only to follow the text being written. Nothing else on
+      // this loop runs more often than it did before.
+      const writing = jobRef.current?.state === "running";
+      if (!heavy && !writing) return;
+      if (heavy) polls += 1;
+
       const [fresh, run] = await Promise.all([
-        load(true),
+        heavy ? load(true) : Promise.resolve(null),
         runId
           ? api
-              .getBattleCardJob(competitorId, runId)
+              .getBattleCardJob(competitorId, runId, productId)
               .then((r) => r.job)
               // A failed status read is not a failed generation — keep watching.
               .catch(() => null)
           : Promise.resolve(null),
       ]);
-      if (run) setJob(run);
+      if (run) {
+        setJob(run);
+        jobRef.current = run;
+        if (run.partial) partialFrames += 1;
+      }
+      // Everything below decides whether to reveal, give up or stop. Those are 3s
+      // decisions, taken on the same reads as before.
+      if (!heavy) return;
 
       if (fresh && fresh.generatedAt !== prevGeneratedAt) {
         setStatus("ready");
-        setWriteIn(true); // it just landed → write it in rather than pop it on
+        // Write the card in only when the reader has NOT already watched it being
+        // written. When the stream was up, the arrival is the end of a write they saw
+        // happen; replaying it as an animation would type the same card at them twice.
+        setWriteIn(partialFrames < 2);
         setWriteInFinish(false);
         revealed = true;
         clearGenMarker(competitorId, productId); // content landed → nothing to resume
@@ -342,7 +380,7 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
           "We lost track of this generation. It may still finish and land in your notifications; otherwise, try again.",
         );
       }
-    }, 3000);
+    }, TICK_MS);
   }
 
   async function onGenerate() {
@@ -513,6 +551,7 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
           evidence={evidence}
           competitorName={competitorName}
           stage={buildStage(job)}
+          partial={job?.partial ?? null}
         />
       </div>
     );

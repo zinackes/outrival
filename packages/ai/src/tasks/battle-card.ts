@@ -376,13 +376,25 @@ export async function reviseBattleCard(
    * fuzzy match that picks the wrong entry would publish the refused claim.
    */
   flaggedClaims?: string[],
+  /**
+   * Watch the cleaned card being written, with everything received so far. This is
+   * the LAST pass to touch the content, so what it emits is what gets published —
+   * which is why it is the one worth showing live. Streaming the draft instead would
+   * type out claims this pass is about to delete.
+   */
+  onPartial?: (textSoFar: string) => void,
 ): Promise<WithQuality<BattleCardContent> | null> {
   const prompt = buildRevisePrompt(input, draft, flaggedClaims);
 
   // Same ceiling as the generate pass: this one re-emits all six sections and its
   // prompt carries the evidence AND the draft, so it is the larger request of the
   // two. A truncated revise silently discards the whole verification pass.
-  const raw = await complete(AI_CONFIG.insights, { prompt, json: true, maxTokens: 3072 });
+  const raw = await complete(AI_CONFIG.insights, {
+    prompt,
+    json: true,
+    maxTokens: 3072,
+    ...(onPartial ? { onPartial } : {}),
+  });
   const parsed = safeParseJson(raw, BattleCardSchema);
   if (!parsed.ok) {
     console.error("revise_battle_card parse failed:", parsed.error, "raw:", raw.slice(0, 500));

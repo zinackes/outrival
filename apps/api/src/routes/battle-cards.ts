@@ -3,7 +3,7 @@ import { z } from "zod";
 import { and, desc, eq, gt, isNull, ne, or, sql as dsql } from "drizzle-orm";
 import { generateBattleCard, getBoss } from "@outrival/queue";
 import { battleCards, competitors, products, signals, selfProfileLastEditedAt } from "@outrival/db";
-import { getBytesFromR2, logger } from "@outrival/shared";
+import { getBytesFromR2, getFromR2, battleCardStreamKey, logger } from "@outrival/shared";
 import { db } from "../lib/db";
 import { enqueueJob, ensureQueue } from "../lib/queue";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
@@ -453,6 +453,8 @@ battleCardsRouter.get("/:id/battle-card/job/:runId", async (c) => {
           ? "done"
           : "queued";
 
+  const product = await resolveProduct(orgId, competitor.id, c.req.query("productId"));
+
   return c.json({
     job: {
       state,
@@ -460,9 +462,44 @@ battleCardsRouter.get("/:id/battle-card/job/:runId", async (c) => {
       createdAt: job.createdOn,
       startedAt: job.startedOn ?? null,
       failure,
+      // What the model has written so far, when the run is actually writing. Only
+      // while it runs: once it is done the card row is the truth, and a buffer read
+      // after that could only rewind the page to an earlier draft of it.
+      partial: state === "running" ? await streamedCard(competitor.id, product?.id ?? null) : null,
     },
   });
 });
+
+/**
+ * The text of the card currently being written, parked in R2 by the worker.
+ *
+ * Best-effort in every direction: no object (the run has not reached the pass that
+ * streams, or R2 is unhappy) reads as null, and the page just shows its skeleton as
+ * it always did. The age guard is what makes a crashed run harmless — a buffer left
+ * behind by a job that died is never shown as if it were being written now.
+ */
+const STREAM_MAX_AGE_MS = 10 * 60 * 1000;
+
+async function streamedCard(competitorId: string, productId: string | null) {
+  try {
+    const raw = await getFromR2(battleCardStreamKey(competitorId, productId));
+    const buffer = JSON.parse(raw) as {
+      startedAt?: string;
+      content?: unknown;
+      typing?: unknown;
+      typingKey?: unknown;
+    };
+    const startedAt = buffer.startedAt ? Date.parse(buffer.startedAt) : NaN;
+    if (!Number.isFinite(startedAt) || Date.now() - startedAt > STREAM_MAX_AGE_MS) return null;
+    return {
+      content: buffer.content ?? {},
+      typing: typeof buffer.typing === "string" ? buffer.typing : null,
+      typingKey: typeof buffer.typingKey === "string" ? buffer.typingKey : null,
+    };
+  } catch {
+    return null;
+  }
+}
 
 type JobState = "queued" | "running" | "done" | "failed";
 

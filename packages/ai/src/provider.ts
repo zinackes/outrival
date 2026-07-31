@@ -65,6 +65,19 @@ export interface CompletionOptions {
    * message (today's behavior).
    */
   system?: string;
+  /**
+   * Called as the reply arrives, with everything received SO FAR (not the delta), so
+   * a reader can watch the text being written instead of waiting for the whole call.
+   * Setting it switches the request to a streamed one.
+   *
+   * It is always the full prefix because a failover starts a new reply from scratch:
+   * the consumer overwrites its buffer with what it is given and a restart needs no
+   * protocol of its own. Anything already shown is superseded, never appended to.
+   *
+   * Never throws into the call — a consumer error is swallowed, since a display
+   * concern must not fail a generation.
+   */
+  onPartial?: (textSoFar: string) => void;
 }
 
 // A 429/5xx is transient. A per-provider 401/403/404 (bad key or missing model at
@@ -151,6 +164,76 @@ export function resolveReasoningEffort(
   return override ?? "low";
 }
 
+/** One provider reply, however it was fetched — the pool logic reads only this. */
+interface LLMReply {
+  content: string;
+  finishReason: string | null;
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+}
+
+type ChatBody = Parameters<OpenAI["chat"]["completions"]["create"]>[0];
+type ChatRequestOptions = { maxRetries: number };
+
+async function wholeReply(
+  client: OpenAI,
+  body: ChatBody,
+  requestOptions: ChatRequestOptions,
+): Promise<LLMReply> {
+  const res = await client.chat.completions.create({ ...body, stream: false }, requestOptions);
+  return {
+    content: res.choices[0]?.message?.content ?? "",
+    finishReason: res.choices[0]?.finish_reason ?? null,
+    usage: {
+      promptTokens: res.usage?.prompt_tokens ?? 0,
+      completionTokens: res.usage?.completion_tokens ?? 0,
+      totalTokens: res.usage?.total_tokens ?? 0,
+    },
+  };
+}
+
+/**
+ * The same call, read as it is written, so a caller can show the text arriving.
+ * Identical contract to wholeReply — the pool's failover, breaker, truncation and
+ * usage accounting are untouched by which one ran.
+ *
+ * `include_usage` asks for the usage totals as a final chunk; a provider that does
+ * not send it leaves zeros, which the cost tables already read as "uncaptured"
+ * rather than as free. A consumer that throws is not allowed to sink the call: the
+ * text keeps arriving, only the display stops updating.
+ */
+async function streamReply(
+  client: OpenAI,
+  body: ChatBody,
+  requestOptions: ChatRequestOptions,
+  onPartial: (textSoFar: string) => void,
+): Promise<LLMReply> {
+  const stream = await client.chat.completions.create(
+    { ...body, stream: true, stream_options: { include_usage: true } },
+    requestOptions,
+  );
+  let content = "";
+  let finishReason: string | null = null;
+  const usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  for await (const chunk of stream) {
+    const delta = chunk.choices[0]?.delta?.content;
+    if (delta) {
+      content += delta;
+      try {
+        onPartial(content);
+      } catch {
+        // A display concern must never fail a generation.
+      }
+    }
+    if (chunk.choices[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason;
+    if (chunk.usage) {
+      usage.promptTokens = chunk.usage.prompt_tokens ?? 0;
+      usage.completionTokens = chunk.usage.completion_tokens ?? 0;
+      usage.totalTokens = chunk.usage.total_tokens ?? 0;
+    }
+  }
+  return { content, finishReason, usage };
+}
+
 /**
  * Run a completion against the provider pool (patch-22). Picks the best available
  * provider (free before paid, skipping exhausted/breakered ones), and on a transient
@@ -198,40 +281,38 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
     // waiting out a rate limit better than giving up.
     const lastResort = tried.size >= maxAttempts;
     try {
-      const res = await clientFor(provider).chat.completions.create(
-        {
-          model,
-          // Static system prefix (when provided) before the variable user payload —
-          // a byte-identical prefix lets Groq/Cerebras auto-cache the prefill (F2).
-          messages: [
-            ...(options.system
-              ? [{ role: "system" as const, content: options.system }]
-              : []),
-            { role: "user", content: options.prompt },
-          ],
-          max_tokens: options.maxTokens ?? 1024,
-          ...(options.json && { response_format: { type: "json_object" as const } }),
-          // Only sent for reasoning models (gpt-oss) — never for Llama (undefined).
-          ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
-        },
-        { maxRetries: lastResort ? LAST_RESORT_SDK_RETRIES : 0 },
-      );
-      await trackUsage(provider.id, res.usage?.total_tokens ?? 0);
+      const body = {
+        model,
+        // Static system prefix (when provided) before the variable user payload —
+        // a byte-identical prefix lets Groq/Cerebras auto-cache the prefill (F2).
+        messages: [
+          ...(options.system
+            ? [{ role: "system" as const, content: options.system }]
+            : []),
+          { role: "user" as const, content: options.prompt },
+        ],
+        max_tokens: options.maxTokens ?? 1024,
+        ...(options.json && { response_format: { type: "json_object" as const } }),
+        // Only sent for reasoning models (gpt-oss) — never for Llama (undefined).
+        ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
+      };
+      const requestOptions = { maxRetries: lastResort ? LAST_RESORT_SDK_RETRIES : 0 };
+      const client = clientFor(provider);
+      const res = options.onPartial
+        ? await streamReply(client, body, requestOptions, options.onPartial)
+        : await wholeReply(client, body, requestOptions);
+      await trackUsage(provider.id, res.usage.totalTokens);
       // Accumulate per-task token usage for ai_runs cost attribution. Counted here
       // (with trackUsage) even on the empty-content failover below: those tokens
       // were spent, so the cost is real.
-      markUsage({
-        promptTokens: res.usage?.prompt_tokens ?? 0,
-        completionTokens: res.usage?.completion_tokens ?? 0,
-        totalTokens: res.usage?.total_tokens ?? 0,
-      });
+      markUsage(res.usage);
       // A reply cut off at max_tokens is syntactically broken JSON, and the parse
       // error it produces downstream ("Unterminated string") names the symptom, not
       // the cause. Flag it on the call scope so the task that owns the budget can
       // say so — a truncation is repaired by raising maxTokens or shrinking the
       // prompt envelope, never by retrying the same call.
-      if (res.choices[0]?.finish_reason === "length") markTruncated();
-      const content = res.choices[0]?.message?.content ?? "";
+      if (res.finishReason === "length") markTruncated();
+      const content = res.content;
       // A 200 with empty content is a failed generation, never a valid answer (every
       // prompt asks for JSON or prose). It happens when a reasoning model's hidden
       // reasoning eats the whole max_tokens budget before any answer, or on a silent

@@ -17,3 +17,17 @@ export function snapshotObjectKeys(storedKey: string): string[] {
   if (KNOWN_EXTENSIONS.some((ext) => key.endsWith(ext))) return [key];
   return [`${key}.html`, `${key}.png`, `${key}.txt`];
 }
+
+/**
+ * Where a battle card being written parks its text while the job runs, so the page
+ * can watch it arrive. Keyed by the couple the card belongs to rather than by the
+ * run, because the reader asks for a competitor and a product — it has no run id
+ * until it has started one, and it must also find the buffer of a generation it
+ * only rejoined (a reload mid-run). One card per couple, so one buffer per couple.
+ *
+ * Overwritten on every run and deleted when the card lands; a reader ignores one
+ * that has gone stale, so a crashed run leaves a harmless object, never a ghost.
+ */
+export function battleCardStreamKey(competitorId: string, productId?: string | null): string {
+  return `battle-cards/streams/${competitorId}/${productId ?? "default"}.json`;
+}

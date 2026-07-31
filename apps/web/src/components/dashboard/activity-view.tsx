@@ -12,6 +12,7 @@ import {
   activitySummaryQuery,
 } from "@/lib/queries";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
+import { usePersistedOpen } from "@/hooks/use-persisted-open";
 import { sourceLabel } from "@/lib/source-labels";
 import { cn } from "@/lib/utils";
 import {
@@ -63,6 +64,10 @@ export function ActivityView() {
   // An hour picked on the strip. It narrows the log the way the dropdowns do, so
   // the bar the user clicked and the rows they end up reading are the same work.
   const [hour, setHour] = useState<WatchHour | null>(null);
+  // "Hide quiet checks": the log lists every run by default, and this pushes the
+  // ones that found nothing back behind the per-day fold. Remembered, because a
+  // reader who wants the findings-only shape wants it on every visit.
+  const [quietFolded, setQuietFolded] = usePersistedOpen("outrival.activity.quiet.folded", false);
 
   const logRef = useRef<HTMLDivElement>(null);
   const pendingScroll = useRef(false);
@@ -79,25 +84,26 @@ export function ActivityView() {
 
   const filtered = competitor !== "all" || source !== "all" || hour !== null;
   // Unfiltered "All" is the only view whose day tallies describe the rows shown:
-  // it leads with findings and folds the quiet runs per day. Every other view is
-  // an explicit selection, so it lists exactly what was asked for.
+  // the summary counts every source, so pairing "38 checks" with a filtered list
+  // would describe work the rows do not show.
   //
-  // It also needs the tallies to EXIST. Without them there is no fold to open, so
-  // asking the feed for findings only would hide the quiet runs with no way back;
-  // when the summary is unavailable the log falls back to listing every run.
+  // Folding the quiet runs also needs the tallies to EXIST. Without them there is
+  // no fold to open, so asking the feed for findings only would hide the quiet
+  // runs with no way back; the log then lists every run whatever the preference.
   const haveTallies = (summaryQ.data?.days.length ?? 0) > 0;
   const foldable = segment === "all" && !filtered && haveTallies;
+  const foldQuiet = foldable && quietFolded;
 
   const feedParams = useMemo(() => {
     const seg = SEGMENTS.find((s) => s.id === segment)!;
     return {
       competitorId: competitor !== "all" ? competitor : undefined,
       sourceType: source !== "all" ? source : undefined,
-      statuses: foldable ? ACTIVITY_FINDING_STATUSES : seg.statuses,
+      statuses: foldQuiet ? ACTIVITY_FINDING_STATUSES : seg.statuses,
       from: hour?.from,
       to: hour?.to,
     };
-  }, [competitor, source, segment, foldable, hour]);
+  }, [competitor, source, segment, foldQuiet, hour]);
 
   const feedQ = useInfiniteQuery(activityFeedQuery(feedParams, productId));
   const events = useMemo(
@@ -213,6 +219,24 @@ export function ActivityView() {
                 ))}
               </div>
 
+              {/* Only offered where it can act: the fold is per-day and reads off
+                  the tallies, which only the unfiltered "All" view has. */}
+              {foldable && (
+                <button
+                  type="button"
+                  aria-pressed={quietFolded}
+                  onClick={() => setQuietFolded(!quietFolded)}
+                  className={cn(
+                    "rounded-md border px-2.5 py-1 text-dense font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                    quietFolded
+                      ? "border-border bg-surface-2 text-foreground"
+                      : "border-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground",
+                  )}
+                >
+                  Hide quiet checks
+                </button>
+              )}
+
               {hour && (
                 <button
                   type="button"
@@ -280,9 +304,10 @@ export function ActivityView() {
             ) : events === null ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
             ) : events.length === 0 &&
-              // The unfiltered view still has something to say with no findings at
-              // all: the day tallies carry the quiet work. Anything else is empty.
-              (!foldable || (summaryQ.data?.days ?? []).length === 0) ? (
+              // With the quiet runs folded away, a page of no findings still has
+              // something to say: the day tallies carry that work, and each day's
+              // fold opens it. Anything else with no rows is genuinely empty.
+              (!foldQuiet || (summaryQ.data?.days ?? []).length === 0) ? (
               <p className="text-sm text-muted-foreground">
                 {segment === "problems"
                   ? "No failed checks here. Every source answered."
@@ -296,6 +321,7 @@ export function ActivityView() {
                   events={events}
                   days={summaryQ.data?.days ?? []}
                   foldable={foldable}
+                  foldQuiet={foldQuiet}
                   filters={{ competitorId: feedParams.competitorId, sourceType: feedParams.sourceType }}
                   productId={productId}
                   hasMore={feedQ.hasNextPage}

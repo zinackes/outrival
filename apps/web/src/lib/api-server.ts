@@ -363,12 +363,14 @@ export async function getActivityData(productId?: string): Promise<{
       serverGet<{ sources: ActivitySource[]; upcoming: ActivityUpcoming[] }>(
         `/api/activity/health${healthScope}`,
       ),
-      // The log's first page: the outcomes that carry a finding, matching
-      // ACTIVITY_FINDING_STATUSES so the seed lands on the client's page-1 key.
+      // The log's first page, every outcome — the log's default shape, so the
+      // seed lands on the client's page-1 key. A reader who turned on "Hide quiet
+      // checks" asks for a narrower feed once mounted (the preference lives in
+      // localStorage, which the server cannot read) and pays one client fetch.
       // The summary (strip + day tallies) is NOT seeded — its key carries the
       // viewer's timezone offset, which the server cannot know without guessing.
       serverGet<{ events: ActivityEvent[]; total: number }>(
-        `/api/activity/timeline?limit=25&status=change,first_capture,failed${tlScope}`,
+        `/api/activity/timeline?limit=25${tlScope}`,
       ),
     ]);
     return {

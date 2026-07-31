@@ -55,6 +55,7 @@ import { UpdateProfileDialog } from "@/components/outrival/update-profile-dialog
 // Blocks live in ./product-detail: this file owns the page (data, scan state,
 // mutations), they own their own editing state.
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProductActionsMenu } from "./product-actions";
 import { EditableList, EditableText } from "./product-detail/fields";
 import { PricingCard } from "./product-detail/pricing-card";
 import { JobsCard } from "./product-detail/jobs-card";
@@ -413,6 +414,17 @@ export function MyProductView({
                 {p.scanning ? "Scanning…" : p.scanQueued ? "Queued" : "Re-scan"}
               </Button>
             ) : null}
+            {/* Lifecycle verbs (rename, promote, remove) — the portfolio rows' menu,
+                here so the product on screen can be managed without going back to
+                the list. Needs the product row, so the legacy no-product view
+                doesn't offer it. */}
+            {productId && (
+              <ProductActionsMenu
+                productId={productId}
+                name={title}
+                isPrimary={isPrimary}
+              />
+            )}
           </div>
         }
       />

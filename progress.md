@@ -991,3 +991,175 @@ désenregistre pas), donc le premier test à vouloir un vrai navigateur recevait
 sur un concurrent à calculateur réel que les points apparaissent avec leur screenshot ·
 PR. **NE PAS** enchaîner sur P5 (burn rates, courbe de coût, backfill Wayback) sans
 /clear.
+
+---
+
+## Pricing Intelligence v2 — P5 : burn rates, courbe de coût, backfill Wayback (2026-07-31)
+
+**La phase qui clôt la card.** Trois choses que le pricing layer ne savait pas dire :
+ce qu'une action COÛTE en crédits, ce qu'un concurrent coûte à un volume AUTRE que
+les quatre presets, et ce qu'il coûtait AVANT qu'on commence à le regarder.
+
+### 1. Burn rates — la hausse de prix que personne n'imprime
+
+Un produit qui vend des crédits a **deux** prix, et un seul est un nombre sur la page :
+ce que coûte un pack, et ce que DÉPENSE une action. Doubler « 1 scan = 1 crédit » divise
+par deux ce que le même argent achète, pendant que toutes les colonnes de prix du produit
+continuent d'afficher « inchangé ».
+
+- **Table** `credit_burn_rates` (competitor, action VERBATIM, credits, recorded_at =
+  le MÊME timestamp de batch que `pricing_history` du run). Migration **0059**.
+- **Extraction** : `credit_burns[{action, credits}]` optionnel sur le zod
+  `extract-pricing` — les burns voyagent dans la réponse de l'extraction pricing,
+  donc **zéro token supplémentaire**. Conséquence assumée : une page résolue par un
+  étage moins cher (structured-first, parser caché, harvest) ne publie aucun burn,
+  ce qui se lit « on n'a pas vu de mapping », jamais « le mapping est vide ».
+- **Grounding CÔTÉ CODE, en deux portes** (`lib/credit-burns.ts`) : (1) le libellé
+  verbatim de l'action doit exister dans le texte de la page ; (2) le chiffre de
+  crédits doit être imprimé **en tant que nombre à lui**, dans une fenêtre de 160
+  caractères autour de ce libellé. La 2e porte est celle qui compte : un `indexOf`
+  nu trouvait « 5 » dans « $599 » et « 1 » dans « 1,000 credits for $99 », donc tout
+  petit burn rate se groundait tout seul contre le prix du pack deux lignes plus haut.
+  C'est exactement la dérivation que la garde existe pour refuser. Trouvé PAR le test,
+  pas avant.
+- **Diff** (`packages/shared/src/credit-burn-diff.ts`, frère de `diffPricingBatches` /
+  `diffEntitlements` / `diffPriceTiers`) : `credit_burn_changed` **HIGH à la hausse**
+  (la hausse invisible), medium à la baisse ; `credit_action_added` / `_removed` low.
+  Clé de jointure = le wording de la page, insensible à la casse et aux espaces, et
+  rien de plus : un stemming ou des synonymes devineraient que deux actions
+  différemment nommées sont la même, et un mauvais match invente un changement de
+  taux à partir d'une reformulation. Un côté vide → `[]` (une page qu'on a ratée
+  n'est pas un produit qui a cessé de facturer en crédits).
+- **Signal** : mêmes règles que P1 exactement — mergé dans le MÊME signal déterministe
+  via `routePricingSignal({creditBurnChanges})`, live only, jamais sur backfill,
+  jamais sur un premier scrape. `human_change` exact : « OCR — 5 credits » →
+  « OCR — 8 credits ».
+- **UI** : bloc **Credits** dans le pricing tab (sous Cost at volume), action → coût,
+  delta surligné vs le batch précédent avec le sens (`up from` en `text-high`).
+
+### 2. Courbe de coût — là où le classement s'inverse
+
+La lens Price lisait chaque concurrent à **un** volume. Ça les classe en un point et
+cache la seule chose qu'un acheteur cherche : où le classement bascule. Un concurrent
+le moins cher à 1 000 requêtes est couramment le plus cher à un million.
+
+- `buildCostCurve(rows, tiers, unit)` (`packages/shared/src/pricing-model.ts`) = le
+  MÊME `cheapestCostAtVolume` posé à chaque point d'échantillonnage, donc la courbe et
+  la ligne au-dessus d'elle ne peuvent pas se contredire.
+- **Grille** : échelle 1-2-5 par décade de 1 à 10M, **plus les bornes de l'échelle que
+  la page publie**. Les décades donnent une courbe régulière sur un axe log ; les
+  bornes sont ce qui la rend VRAIE — une échelle graduated plie exactement là où une
+  bande finit, et une courbe échantillonnée sur les seules décades tirerait une droite
+  au travers du pli, en gommant le seul détail qu'on vient lire.
+- **Les points mesurés (P4) ne sont PAS fondus dans la ligne.** Un probe répond à 4
+  volumes ; les épisser dans une ligne calculée la plierait en 4 endroits arbitraires
+  et présenterait le résultat comme un modèle continu. Ils se superposent en POINTS :
+  plein = mesuré sur leur calculateur, creux = exemple chiffré que la page imprime,
+  ligne = notre arithmétique sur leurs paliers. Trois claims, trois marques.
+- **Auto-masquage** : un concurrent qui ne facture pas cette unité est ABSENT. Le
+  dessiner à plat à son prix d'abonnement serait une affirmation (« voilà ce qu'ils
+  coûtent à n'importe quel volume ») qu'il n'a pas faite.
+- La courbe n'apparaît qu'à partir de **2** concurrents sur le meter : une ligne seule
+  n'est pas une comparaison. Les volumes du workspace sont des repères verticaux.
+- Découvert par le test : une échelle **`volume` n'est légitimement PAS monotone** —
+  10 000 × $0,10 = $1 000 mais 10 001 × $0,05 = $500,05. Ce n'est ni un bug ni une
+  chose à lisser : c'est la falaise qu'un acheteur juste sous une borne paie sans le
+  savoir, et l'échantillonnage des bornes est ce qui la rend visible. L'assertion du
+  test a été corrigée, pas le modèle.
+
+### 3. Backfill Wayback du pricing — le cold start meurt
+
+Un concurrent ajouté aujourd'hui affichait un point et une promesse. L'Archive détient
+déjà trois ans de sa page pricing.
+
+- **Job dédié** `backfill-pricing-history` (`@outrival/queue`, retryLimit 0,
+  concurrency **1** — une seule conversation avec web.archive.org à la fois), déclenché
+  par le hook backfill EXISTANT sur la première capture pricing. Commande manuelle dev :
+  `POST /api/dev/competitors/:id/backfill-pricing` (`force`).
+- **Séparé de `backfill-history` plutôt que grossi dedans**, et le seeding pricing lui
+  est RETIRÉ : ce job-là interroge l'availability API « qu'y a-t-il de plus proche de
+  cette date », un aller-retour par point, et ne peut pas voir que deux de ses points
+  sont la même capture. Les laisser cohabiter écrivait deux fois le même batch.
+  `backfill-history` garde son diff jour-0 ; l'historique de prix déménage.
+  `BACKFILL_PRICING_OFFSETS_DAYS` disparaît.
+- **Pipeline** : index CDX (**1** appel, `collapse=timestamp:6`) → `sampleQuarterly`
+  (~1 capture/trimestre sur 3 ans, cap 12) → fetch séquentiel espacé → harvest
+  déterministe D'ABORD → l'IA en secours **cappée à 4 appels pour TOUT le backfill**
+  (au-delà, une capture est sautée, jamais à moitié lue) → `reconcileBillingPeriods` →
+  `pricingRatiosPlausible` → `pricing_history(origin='archive')` au timestamp de la
+  capture (+ `price_tiers` quand l'étage IA a lu une échelle).
+- **L'échantillonnage est STABLE** (première capture du trimestre, pas la plus proche
+  d'une cible mobile) : un 2e passage sélectionne les mêmes captures, donc le contrôle
+  « j'ai déjà un batch à cette date » les attrape au lieu d'écrire un quasi-doublon.
+  Une capture dont le digest est identique à la précédente gardée est sautée — l'Archive
+  vient de nous dire que rien n'a bougé.
+- **La garantie négative est la feature, et elle est mécanique** : un backfill complet
+  écrit de l'historique et **rien d'autre** — aucune row `changes`, aucune row
+  `signals`, aucun enqueue. C'est vérifié par test contre un vrai Postgres (PGlite) et
+  une Archive mockée. Un signal jamais émis ne laisse aucune trace, donc cette
+  garantie-là ne peut pas reposer sur la lecture du code.
+- **Ce qui ne s'applique PAS** : le `coverage_regression_guard` ne tourne pas entre deux
+  captures Wayback. Cette garde attrape un mé-parse de la page D'AUJOURD'HUI contre la
+  capture d'hier. Deux captures à un trimestre d'écart sont des ÉPOQUES différentes :
+  une page passée de six paliers à un sur ce trimestre est précisément l'histoire que ce
+  job existe pour enregistrer, et la refuser comme un « collapse » supprimerait le point
+  le plus intéressant du graphe. Le ratio par capture (`pricingRatiosPlausible`) tourne
+  toujours — celui-là juge un batch contre LUI-MÊME, ce qui reste valide entre époques.
+- **Politesse** : 1 appel d'index, cap dur de fetches, séquentiel + `PRICING_BACKFILL_GAP_MS`,
+  timeout court, abandon silencieux par capture, aucun re-run automatique, jamais de retry.
+
+### 4. `origin` — une règle, appliquée partout
+
+`pricing_history.origin` et `price_tiers.origin` reprennent le vocabulaire de
+`snapshots.origin`. Le besoin n'est pas cosmétique : le backfill part sur la PREMIÈRE
+capture pricing, en parallèle de `extract-pricing`. Si cette extraction ne sort aucun
+plan (page gatée, `parse_failed`), il n'existe aucun batch live — et les rows archive
+gagnaient alors `max(recorded_at)`, donc toute la lecture « courant » affichait des prix
+de 2024 comme actuels, sans marqueur.
+
+**La règle : les rows archive alimentent la timeline, et rien d'autre.** Toute lecture
+qui fait une affirmation — « ils facturent X », « leur prix d'entrée a bougé » — filtre
+`origin='live'` : `getPreviousPricing` / `getPreviousPriceTiers`, compare, landscape,
+signal-facts (cur ET prev), ask (roster + moves), activity, battle cards, products,
+trends, la page competitor. **Une** exception, l'endpoint `/pricing-history`, où les rows
+SONT l'affirmation — et là l'UI les marque : point creux, date de capture + « via
+Internet Archive » dans le tooltip, et une légende qui n'apparaît que s'il y a quelque
+chose à expliquer.
+
+### Fichiers
+
+`packages/db/src/schema/analytics.ts` + migration **0059** (`credit_burn_rates`,
+`pricing_history.origin`, `price_tiers.origin`) · `packages/shared/src/{credit-burn-diff,
+pricing-model,pricing-diff,index}.ts` · `packages/ai/src/tasks/extract-pricing.ts` +
+`index.ts` · `packages/scrapers/src/backfill/{cdx,index}.ts` + `package.json` (subpath) ·
+`apps/workers/src/lib/{credit-burns,analytics,pricing-signals}.ts` ·
+`apps/workers/src/core/{extract-pricing,backfill-history,backfill-pricing-history}.ts` ·
+`packages/queue/src/jobs.ts` + `apps/workers/src/queue/handlers.ts` ·
+`apps/api/src/routes/{competitors,compare,dev,activity,battle-cards,products,trends}.ts` +
+`lib/{landscape-data,signal-facts,ask/tools}.ts` ·
+`apps/web/src/lib/{api,competitor-color}.ts` ·
+`apps/web/src/components/dashboard/compare/{cost-curve,derive,lenses}.tsx` ·
+`apps/web/src/app/dashboard/competitors/[id]/competitor-detail/{pricing-tab,rate-structures,
+chart-line,charts}.tsx` · `.env.example` + `docs/architecture.md`.
+
+### Tests
+
+typecheck **8/8** ✓ · suites **shared 576 · api 249 · workers 225 · web 150**, 0 fail.
+Neufs : diff burn rates (8), grounding burn rates (11, dont les deux cas qui ont fait
+durcir la garde), CDX + échantillonnage trimestriel (10), courbe de coût (5, dont la
+falaise `volume`), job de backfill contre PGlite + Archive mockée (10, dont la garantie
+zéro-signal, la dédup à date égale, le cap IA atteint, la page illisible, la capture
+implausible, la page de challenge, le self). Le test de `chart-dates` a été resserré :
+il comparait la forme entière d'un point, ce qui cassait dès qu'un champ méta s'ajoutait ;
+il assure maintenant l'intention (les tiers sur devis n'ajoutent pas de série).
+
+### Reste côté humain
+
+`pnpm db:migrate` (**0059**) sur dev puis prod — **0058 (P4) n'est appliquée nulle part**,
+donc les deux partent ensemble · vérifier en dev sur un concurrent à crédits réel que le
+bloc Credits se remplit, et sur un concurrent fraîchement ajouté que la timeline porte des
+points creux · PR.
+
+**La card « Pricing — Intelligence v2 » est COMPLÈTE** (P1 diff/signaux · P2 entitlements ·
+P3 tiers + cost model + price_points + réglage workspace · P4 calculator probe + replay
+d'endpoint · P5 burn rates + courbe de coût + backfill Wayback).

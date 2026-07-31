@@ -229,6 +229,23 @@ describe("backfill-pricing-history", () => {
     process.env.PRICING_BACKFILL_MAX_AI_CALLS = "";
   });
 
+  test("a capture nothing can read writes no batch, and the run still succeeds", async () => {
+    // The archived shell of a JS-rendered pricing page: real text, no price the
+    // harvest can reach, and an AI that finds nothing either. A batch of zero
+    // plans here would read on the chart as "that quarter they published nothing".
+    const competitorId = await seedCompetitor();
+    process.env.PRICING_BACKFILL_MAX_AI_CALLS = "2";
+    aiPlans = null;
+    cdxRows = [["20240115000000", "200", "a"]];
+    archived.set("20240115000000", quotePage);
+
+    const result = await runBackfill({ competitorId, url: "https://x.test/pricing" });
+    expect(aiCalls).toBe(1);
+    expect(result.batchesWritten).toBe(0);
+    expect(result.snapshotsRead).toBe(1);
+    process.env.PRICING_BACKFILL_MAX_AI_CALLS = "";
+  });
+
   test("an implausible old capture is dropped rather than plotted", async () => {
     const competitorId = await seedCompetitor();
     process.env.PRICING_BACKFILL_MAX_AI_CALLS = "2";

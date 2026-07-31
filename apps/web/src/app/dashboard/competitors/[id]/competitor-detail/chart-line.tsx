@@ -47,6 +47,7 @@ export function MultiLineChart({
   dot = false,
   stacked = false,
   markers = [],
+  archiveKey,
 }: {
   data: Array<Record<string, number | string>>;
   seriesKeys: string[];
@@ -54,6 +55,10 @@ export function MultiLineChart({
   yDomain?: [number, number];
   yAllowDecimals?: boolean;
   dot?: boolean;
+  // P5 — the meta key marking a point rebuilt from the Internet Archive rather
+  // than watched. Those points are drawn hollow and say so in the tooltip: both
+  // prices are true, but only one of them is something we saw change.
+  archiveKey?: { archived: string; captureDay: string };
   // Stack the bands so the top edge reads as the total. Right for parts of one
   // whole (open roles per department); wrong for independent series that share an
   // axis (plan prices), where stacking would invent a sum nobody is paying.
@@ -98,6 +103,16 @@ export function MultiLineChart({
           {...chartTooltipMotion}
           contentStyle={TOOLTIP_STYLE}
           cursor={<ChartCursorLine />}
+          // The axis label is a short "14 Apr"; on an archived point that is not
+          // enough, because the whole question is WHEN the archive holds it and
+          // whether we watched it. Name both, on that point only.
+          labelFormatter={(label, payload) => {
+            if (!archiveKey) return label;
+            const point = payload?.[0]?.payload as Record<string, unknown> | undefined;
+            if (!point || point[archiveKey.archived] !== 1) return label;
+            const day = point[archiveKey.captureDay];
+            return `${typeof day === "string" ? day : label} · via Internet Archive`;
+          }}
         />
         {seriesKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
         {/* Where a detector fired. Rendered before the areas so a band never
@@ -130,22 +145,41 @@ export function MultiLineChart({
             // Every point when the caller asked for dots (reviews plots sparse
             // captures); otherwise only the newest one, which is what a monitoring
             // reader is looking for.
-            dot={
-              dot
-                ? { r: 2.5, fill: lineColor(i), strokeWidth: 0 }
-                : (props) =>
-                    props.index === lastIndex ? (
-                      <circle
-                        key={`${k}-end`}
-                        cx={props.cx}
-                        cy={props.cy}
-                        r={3.5}
-                        fill={lineColor(i)}
-                      />
-                    ) : (
-                      <g key={`${k}-${props.index}`} />
-                    )
-            }
+            dot={(props) => {
+              const point = props.payload as Record<string, unknown> | undefined;
+              // Hollow ring: the shape says "reconstructed" before any tooltip is
+              // opened, and it is drawn whether or not the series shows dots —
+              // hiding it would put an archived price on the line unannounced.
+              if (archiveKey && point?.[archiveKey.archived] === 1) {
+                return (
+                  <circle
+                    key={`${k}-archive-${props.index}`}
+                    cx={props.cx}
+                    cy={props.cy}
+                    r={3.5}
+                    fill="var(--bg)"
+                    stroke={lineColor(i)}
+                    strokeWidth={1.5}
+                  />
+                );
+              }
+              if (dot) {
+                return (
+                  <circle
+                    key={`${k}-${props.index}`}
+                    cx={props.cx}
+                    cy={props.cy}
+                    r={2.5}
+                    fill={lineColor(i)}
+                  />
+                );
+              }
+              return props.index === lastIndex ? (
+                <circle key={`${k}-end`} cx={props.cx} cy={props.cy} r={3.5} fill={lineColor(i)} />
+              ) : (
+                <g key={`${k}-${props.index}`} />
+              );
+            }}
             activeDot={{ r: 4, strokeWidth: 0 }}
             isAnimationActive={false}
           />

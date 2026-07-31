@@ -90,6 +90,10 @@ export interface RoutePricingSignalArgs {
   /** P3 — typed changes from the volume-ladder diff of the same capture, merged
    * on the same terms. One capture still emits ONE signal. */
   tierChanges?: PricingChange[];
+  /** P5 — typed changes from the credit burn-rate diff of the same capture. Same
+   * terms again: a competitor that raised what a scan burns AND raised a plan
+   * price still produces one signal, led by whichever moved harder. */
+  creditBurnChanges?: PricingChange[];
 }
 
 /**
@@ -121,6 +125,7 @@ export async function routePricingSignal(args: RoutePricingSignalArgs): Promise<
       ...diffPricingBatches(args.previous, args.current),
       ...(args.entitlementChanges ?? []),
       ...(args.tierChanges ?? []),
+      ...(args.creditBurnChanges ?? []),
     ]);
     if (pricingChanges.length === 0) return await fallback("batch_unchanged");
 

@@ -80,6 +80,13 @@ export type BackfillHistoryPayload = {
   competitorId: string;
   sourceType: string;
 };
+export type BackfillPricingHistoryPayload = {
+  competitorId: string;
+  /** Pricing URL to walk; resolved from the monitor when absent. */
+  url?: string;
+  /** Manual re-run only — bypasses the once-per-competitor guard. */
+  force?: boolean;
+};
 export type OrgRefPayload = { orgId: string };
 export type EvaluateStandingQueriesPayload = {
   orgId: string;
@@ -210,6 +217,15 @@ export const backfillHistory = defineJob<BackfillHistoryPayload>("backfill-histo
   retryLimit: 0,
   expireInSeconds: 300,
 });
+// The pricing half of the same backfill (P5): a sparse three-year walk of the
+// Archive rebuilding the price timeline. Its own job because it is long — a dozen
+// sequential fetches at a courtesy delay — and must not hold backfill-history's
+// slot. Concurrency 1: one conversation with web.archive.org at a time, whatever
+// the fleet is doing. Never retried, for the same reason as its sibling.
+export const backfillPricingHistory = defineJob<BackfillPricingHistoryPayload>(
+  "backfill-pricing-history",
+  { retryLimit: 0, expireInSeconds: 900, concurrency: 1 },
+);
 
 // Complaint-theme / hiring-velocity inflection detectors. Event-triggered per
 // competitor off extract-reviews / extract-jobs (never a cron), each emitting one

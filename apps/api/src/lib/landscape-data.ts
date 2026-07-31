@@ -162,7 +162,7 @@ export async function buildLandscape(
       WITH latest AS (
         SELECT competitor_id, max(recorded_at) AS ts
         FROM pricing_history
-        WHERE competitor_id IN (${idList})
+        WHERE competitor_id IN (${idList}) AND origin = 'live'
         GROUP BY competitor_id
       )
       SELECT DISTINCT ON (ph.competitor_id, ph.plan_name, ph.billing_period)
@@ -172,7 +172,7 @@ export async function buildLandscape(
              (ph.recorded_at AT TIME ZONE 'UTC') AS "recordedAt"
       FROM pricing_history ph
       JOIN latest l ON l.competitor_id = ph.competitor_id
-      WHERE ph.recorded_at > l.ts - interval '15 minutes'
+      WHERE ph.recorded_at > l.ts - interval '15 minutes' AND ph.origin = 'live'
       ORDER BY ph.competitor_id, ph.plan_name, ph.billing_period, ph.recorded_at DESC
     `),
 

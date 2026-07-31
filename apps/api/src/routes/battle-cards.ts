@@ -184,7 +184,8 @@ async function battleCardEvidence(competitorId: string, cardId?: string) {
     tech_count: number | null;
   }>(sql`
     WITH last_price AS (
-      SELECT max(recorded_at) AS at FROM pricing_history WHERE competitor_id = ${competitorId}
+      SELECT max(recorded_at) AS at FROM pricing_history
+      WHERE competitor_id = ${competitorId} AND origin = 'live'
     )
     SELECT
       (SELECT at AT TIME ZONE 'UTC' FROM last_price) AS pricing_at,

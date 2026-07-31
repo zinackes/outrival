@@ -48,8 +48,23 @@ export const PricingPlanSchema = z.object({
     .optional(),
 });
 
+/**
+ * What one action SPENDS from a credit balance (Pricing Intelligence P5).
+ * Emitted ONLY when the page publishes the mapping itself; `action` must be the
+ * page's own wording, because the worker checks it back against the page text
+ * before storing anything — an action nobody wrote down is dropped in code.
+ */
+export const CreditBurnSchema = z.object({
+  action: z.string(),
+  credits: z.number(),
+});
+
 export const PricingSchema = z.object({
   plans: z.array(PricingPlanSchema),
+  // Page-level, like the trial/free-plan facts: a credits product publishes ONE
+  // burn table for the whole product, not one per plan. Optional so every other
+  // stage (structured-first, cached parser, harvest floor) validates unchanged.
+  credit_burns: z.array(CreditBurnSchema).nullable().optional(),
 });
 
 export type PricingPlan = z.infer<typeof PricingPlanSchema>;
@@ -119,6 +134,11 @@ Extract the structured pricing plans from this pricing page. Write all text valu
     - Bands must be ordered and must not overlap. Copy the numbers the page prints.
     - A free allowance IS a band: "first 10,000 free, then $0.10" → [{from_qty: 0, to_qty: 10000, unit_price: 0}, {from_qty: 10000, to_qty: null, unit_price: 0.10}]
 - "cost_examples": worked totals the page PRINTS for a stated volume ("about $25 for 1M requests", "10,000 contacts = $99/mo") → [{qty, cost}]. Copy both numbers verbatim from the page. Never compute one yourself, and never restate a per-unit rate as an example. Omit when the page prints none.
+- "credit_burns": for a product that sells CREDITS, what each action SPENDS from the balance, ONLY when the page publishes that mapping itself (a "1 credit = 1 scan" line, an actions x credits table, "each export costs 2 credits") → [{action, credits}].
+    - "action" must be the page's OWN wording for the action ("OCR page", "Deep scan", "Video export"). Copy it, do not paraphrase or translate it.
+    - "credits" is how many credits ONE of that action costs, as a number.
+    - NEVER infer a mapping from a pack price, a plan allowance, or a rate. If the page only says "1,000 credits for $99" and never says what a credit buys, there are NO credit_burns.
+    - Omit the field entirely when the page publishes no such mapping.
 - If no pricing can be found, return an empty "plans" array
 
 Reply ONLY with a valid JSON object, no markdown and no surrounding text.
@@ -142,6 +162,10 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
     { "plan_name": "Bulk email", "price": 5, "currency": "USD", "billing_period": "usage", "unit": "email", "included_quantity": 1000, "rate_structure": "package" },
     { "plan_name": "Payments", "price": 0.30, "currency": "USD", "billing_period": "usage", "unit": "transaction", "rate_structure": "percentage", "percentage_rate": 2.9 },
     { "plan_name": "Enterprise", "price": null, "currency": "USD", "billing_period": "custom", "unit": null, "included_quantity": null }
+  ],
+  "credit_burns": [
+    { "action": "OCR page", "credits": 5 },
+    { "action": "Deep scan", "credits": 1 }
   ]
 }
 </format>`;

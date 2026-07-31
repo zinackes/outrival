@@ -30,7 +30,13 @@ export type PricingChangeType =
   // smaller band costs more, so it reads HIGH.
   | "tier_boundary_moved"
   | "minimum_introduced"
-  | "minimum_changed";
+  | "minimum_changed"
+  // Phase 5 — credit burn rates (see credit-burn-diff.ts). What one action SPENDS
+  // from a balance. A rise here is a price rise nobody printed: the pack price
+  // never moved, so every other pricing column reads "unchanged".
+  | "credit_burn_changed"
+  | "credit_action_added"
+  | "credit_action_removed";
 
 export type PricingChangeSeverity = "low" | "medium" | "high" | "critical";
 

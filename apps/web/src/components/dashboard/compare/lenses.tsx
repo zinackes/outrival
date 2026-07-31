@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { CatText } from "@/components/dashboard/cat-pill";
@@ -45,9 +46,17 @@ import {
   shortAge,
   techDiff,
   availableMeters,
+  costCurveSeries,
   type MeterSelection,
 } from "./derive";
 import { meterUnitLabel, PRICING_MODEL_LABELS } from "@outrival/shared";
+
+// recharts is heavy and client-only; the compare page renders four lenses and only
+// one of them ever draws a chart, so it stays off the route's first load.
+const CostCurveChart = dynamic(() => import("./cost-curve"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[260px] w-full" />,
+});
 
 /**
  * The five lenses. Each one reads the same roster, in the same order, on one shared
@@ -127,6 +136,12 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
     meters.find((m) => `${m.unit}|${m.qty}` === meterKey) ?? meters[0] ?? null;
   const to = displayCurrency(cols, rates);
   const scale = priceScale(cols, { rates, to, full, meter });
+  // The cost curves for the selected meter, and the volumes this workspace reads
+  // at — the guides that let the row above be located on the chart below.
+  const curves = meter ? costCurveSeries(entities, meter.unit) : [];
+  const meterVolumes = meter
+    ? [...new Set(meters.filter((m) => m.unit === meter.unit).map((m) => m.qty))]
+    : [];
   if (!lensHasContent.price(entities)) return null;
 
   const canExpandScale = scale.fullMax > scale.robustMax;
@@ -375,6 +390,30 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
           </MeasureRow>
         );
       })}
+      {/* P5 — the rows above read every competitor at ONE volume. That ranks them
+          at a point and hides where the ranking flips, which for metered pricing
+          is the whole question. Shown only when at least two competitors can be
+          priced across the range: one line is a fact about one product, not a
+          comparison. */}
+      {meter && curves.length > 1 && (
+        <div className="border-border mt-3 border-t pt-4">
+          <div className="text-muted-foreground mb-2 flex flex-wrap items-baseline gap-x-2 text-xs">
+            <span className="text-foreground text-dense">
+              Cost by volume · {meterUnitLabel(meter.unit, 2)}
+            </span>
+            <span>
+              lines computed from published tiers · filled points measured on their
+              calculator · hollow points printed by the page
+            </span>
+          </div>
+          <CostCurveChart
+            series={curves}
+            unit={meter.unit}
+            currency={scale.currency}
+            markers={meterVolumes}
+          />
+        </div>
+      )}
     </Lens>
   );
 }

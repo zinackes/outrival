@@ -538,7 +538,9 @@ async function latestPricingByCompetitor(ids: string[]): Promise<Map<string, Pri
   const rows = await analyticsQuery<PricingRow>(analyticsSql`
     WITH latest AS (
       SELECT competitor_id, max(recorded_at) AS rid
-      FROM pricing_history WHERE competitor_id IN (${idList}) GROUP BY competitor_id
+      FROM pricing_history
+      WHERE competitor_id IN (${idList}) AND origin = 'live'
+      GROUP BY competitor_id
     )
     SELECT p.competitor_id, p.plan_name, p.price, p.currency, p.billing_period
     FROM pricing_history p

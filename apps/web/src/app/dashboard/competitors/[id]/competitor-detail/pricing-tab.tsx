@@ -20,7 +20,7 @@ import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { CompetitorPricingCard } from "@/components/outrival/competitor-pricing-card";
 import { myProductQuery } from "@/lib/queries";
-import { buildPricingSeries } from "./charts";
+import { buildPricingSeries, ARCHIVED_KEY, CAPTURE_DAY_KEY } from "./charts";
 import { PackagingMatrix } from "./packaging-matrix";
 import { RateStructures } from "./rate-structures";
 import { PricingPlansEditor } from "./pricing-plans-editor";
@@ -132,6 +132,7 @@ export function PricingTab({
 
   // A pricing scrape in flight (client-triggered or server-side, refresh-safe)
   // lets the card say where the request actually is instead of a bare empty state.
+  const hasArchivedPoints = (history ?? []).some((p) => p.origin === "archive");
   const pricingMonitor = monitors.find((m) => m.sourceType === "pricing");
   const capture = pricingMonitor
     ? scrapeActivity(pricingMonitor, scrapingIds.has(pricingMonitor.id))
@@ -329,7 +330,22 @@ export function PricingTab({
             ) : null
           }
         >
-          <MultiLineChart data={series.points} seriesKeys={numericPlans} height={260} />
+          <MultiLineChart
+            data={series.points}
+            seriesKeys={numericPlans}
+            height={260}
+            archiveKey={{ archived: ARCHIVED_KEY, captureDay: CAPTURE_DAY_KEY }}
+          />
+          {/* Only shown when there is something to explain. A competitor added
+              today has a chart because the Archive held its old pricing pages;
+              saying so is the difference between a timeline and a claim that we
+              have been watching for two years. */}
+          {hasArchivedPoints && (
+            <p className="text-muted-foreground mt-2 text-xs">
+              Hollow points were reconstructed from the Internet Archive, not captured
+              by monitoring.
+            </p>
+          )}
         </TabSection>
       )}
 

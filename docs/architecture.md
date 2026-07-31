@@ -1414,7 +1414,14 @@ ONBOARDING_RESUME_TTL_DAYS=7                      # days an unfinished session s
 BACKFILL_ENABLED=true                            # false → no backfill (exact prior behaviour)
 BACKFILL_LOOKBACK_DAYS=90                         # age of the archive-vs-now change point
 BACKFILL_SOURCES=homepage,pricing                # sources whose archive-vs-now diff is meaningful
-BACKFILL_PRICING_OFFSETS_DAYS=30,180             # extra pricing_history seed points (deduped w/ lookback)
+# Pricing timeline backfill (P5) — the pricing half, fired by backfill-history on the
+# first pricing capture. CDX index (1 call) → ~1 capture/quarter → deterministic harvest
+# first, AI capped for the WHOLE run. Writes pricing_history(origin='archive') and NOTHING
+# else: no change, no signal, no summary. Once per competitor; re-run = dev trigger only.
+PRICING_BACKFILL_YEARS=3                         # how far back the timeline reaches
+PRICING_BACKFILL_MAX_SNAPSHOTS=12                # hard cap on archived pages fetched per competitor
+PRICING_BACKFILL_MAX_AI_CALLS=4                  # AI extractions for the whole backfill; past it a capture is skipped, never half-read
+PRICING_BACKFILL_GAP_MS=1500                     # courtesy gap between two fetches to web.archive.org
 HOMEPAGE_SCROLL_PASSES=2              # patch-16 — progressive scroll passes (homepage only)
 HOMEPAGE_LAZY_WAIT_MS=2000            # patch-16 — wait after each scroll pass
 HOMEPAGE_NARRATIVE_MIN_SEVERITY=medium  # patch-16 — min severity to spend an AI narrative

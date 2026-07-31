@@ -4,6 +4,8 @@ import {
   mergeTrendsByDate,
   buildPricingSeries,
   buildReviewScoreSeries,
+  ARCHIVED_KEY,
+  CAPTURE_DAY_KEY,
 } from "../src/app/dashboard/competitors/[id]/competitor-detail/charts";
 
 // The analytics tables store `recorded_at` as a naive `timestamp`, so the API
@@ -77,8 +79,26 @@ test("buildPricingSeries drops quote-based tiers from the points but keeps them 
   ]);
 
   expect(points).toHaveLength(1);
-  expect(points[0]).toEqual({ date: shortDate("2026-07-28 12:00:00+00"), Agency: 79 });
+  expect(points[0]!.date).toBe(shortDate("2026-07-28 12:00:00+00"));
+  expect(points[0]!.Agency).toBe(79);
+  // The quote-based tier contributes no series key. Meta keys (P5: archive
+  // provenance, capture day) are underscore-prefixed and deliberately excluded —
+  // the caller derives its series from byPlan, never from a point's keys.
+  expect(Object.keys(points[0]!).filter((k) => !k.startsWith("__") && k !== "date")).toEqual([
+    "Agency",
+  ]);
   expect(Object.keys(byPlan).sort()).toEqual(["Agency", "Enterprise"]);
+});
+
+test("buildPricingSeries marks a point rebuilt from the archive, and only that one", () => {
+  const { points } = buildPricingSeries([
+    { ...tier("Agency", 59, "2025-04-14 12:00:00+00"), origin: "archive" },
+    { ...tier("Agency", 79, "2026-04-14 12:00:00+00"), origin: "live" },
+  ]);
+
+  expect(points[0]![ARCHIVED_KEY]).toBe(1);
+  expect(points[1]![ARCHIVED_KEY]).toBeUndefined();
+  expect(points[0]![CAPTURE_DAY_KEY]).toContain("2025");
 });
 
 test("buildReviewScoreSeries orders captures by instant, not by the month label", () => {

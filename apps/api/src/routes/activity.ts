@@ -788,22 +788,22 @@ activityRouter.get("/timeline", async (c) => {
                SELECT json_agg(json_build_object('planName', php.plan_name, 'price', php.price,
                                                  'currency', php.currency, 'billingPeriod', php.billing_period))
                FROM pricing_history php
-               WHERE php.competitor_id = r.competitor_id
+               WHERE php.competitor_id = r.competitor_id AND php.origin = 'live'
                  AND php.recorded_at = (
                    SELECT max(ph3.recorded_at) FROM pricing_history ph3
-                   WHERE ph3.competitor_id = r.competitor_id
+                   WHERE ph3.competitor_id = r.competitor_id AND ph3.origin = 'live'
                      AND ph3.recorded_at < (
                        SELECT max(ph4.recorded_at) FROM pricing_history ph4
-                       WHERE ph4.competitor_id = r.competitor_id
+                       WHERE ph4.competitor_id = r.competitor_id AND ph4.origin = 'live'
                          AND ph4.recorded_at <= r.recorded_at + interval '1 hour'
                      )
                  )
              ) AS prev_plans
       FROM pricing_history ph
-      WHERE ph.competitor_id = r.competitor_id
+      WHERE ph.competitor_id = r.competitor_id AND ph.origin = 'live'
         AND ph.recorded_at = (
           SELECT max(ph2.recorded_at) FROM pricing_history ph2
-          WHERE ph2.competitor_id = r.competitor_id
+          WHERE ph2.competitor_id = r.competitor_id AND ph2.origin = 'live'
             AND ph2.recorded_at <= r.recorded_at + interval '1 hour'
         )
     ) pricecap ON r.source_type = 'pricing' AND r.status = 'success'

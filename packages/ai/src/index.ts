@@ -110,7 +110,7 @@ export { scoreOverlap } from "./tasks/score-overlap";
 export type { Candidate, ScoredCandidate } from "./tasks/score-overlap";
 export { nameKnownCompetitors } from "./tasks/name-competitors";
 export type { NamedCompetitor } from "./tasks/name-competitors";
-export { extractPricing, PricingSchema, PricingPlanSchema } from "./tasks/extract-pricing";
+export { extractPricing, PricingSchema, PricingPlanSchema, CreditBurnSchema } from "./tasks/extract-pricing";
 export type { PricingExtraction, PricingPlan } from "./tasks/extract-pricing";
 export { extractEntitlements, EntitlementsSchema } from "./tasks/extract-entitlements";
 export type { EntitlementsExtraction, ExtractedEntitlement } from "./tasks/extract-entitlements";

@@ -1,7 +1,7 @@
 import { logger } from "../lib/job-logger";
 import {
   NonRetriable as AbortTaskRunError,
-  extractPricing,
+  backfillPricingHistory,
   classifyChange,
 } from "@outrival/queue";
 import { z } from "zod";
@@ -24,10 +24,12 @@ import { logBackfillRun } from "../lib/analytics";
 // scrape-monitor, on the FIRST-ever capture of a backfillable source for a real
 // competitor. Reconstructs the recent past from the Wayback Machine so day 0 has
 // change value instead of an empty feed:
-//   - homepage → one archive capture (~lookback days ago) diffed lexically against
-//     the fresh scrape → a real "here's what moved" signal, marked in-app only.
-//   - pricing  → several archive captures seeded into pricing_history (trend depth
-//     on the pricing chart) + the lookback capture diffed for a repricing signal.
+//   - every source → one archive capture (~lookback days ago) diffed lexically
+//     against the fresh scrape → a real "here's what moved" signal, in-app only.
+//   - pricing → additionally hands the price TIMELINE to backfill-pricing-history
+//     (P5), which walks the CDX index instead of asking the availability API one
+//     date at a time. That job writes pricing_history and NOTHING else: no change,
+//     no signal, no summary.
 // Best-effort throughout: no archive / no diff → silent skip (that's day-0 status
 // quo). Never retries (an archive insert isn't idempotent), never emails/Slacks
 // (the backfill flag is derived downstream from snapshot.origin='archive').
@@ -43,12 +45,6 @@ const DAY_MS = 86_400_000;
 // only ever archived last week) — the archive-vs-current diff would be noise.
 const MIN_ARCHIVE_AGE_DAYS = 14;
 const LOOKBACK_DAYS = Number(process.env.BACKFILL_LOOKBACK_DAYS ?? 90);
-// Extra points sampled for pricing trend depth (deduped with the lookback point).
-const PRICING_OFFSETS_DAYS = (process.env.BACKFILL_PRICING_OFFSETS_DAYS ?? "30,180")
-  .split(",")
-  .map((s) => Number(s.trim()))
-  .filter((n) => Number.isFinite(n) && n > 0);
-const SCRAPER_REGION = process.env.SCRAPER_REGION ?? "FR";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -140,12 +136,18 @@ async function runBackfill(
       return { skipped: "no_current_html" };
     }
 
-    const isPricing = monitor.sourceType === "pricing";
-    // Largest offset first so the trend series fills oldest→newest; the lookback
-    // point is where we also create the change (the canonical "past vs now").
-    const offsets = isPricing
-      ? [...new Set([...PRICING_OFFSETS_DAYS, LOOKBACK_DAYS])].sort((a, b) => b - a)
-      : [LOOKBACK_DAYS];
+    // Pricing history is no longer seeded from here (P5). This job samples by
+    // DATE through the availability API, one round trip per point, and cannot see
+    // that two of its points are the same capture; backfill-pricing-history walks
+    // the CDX index instead — a dozen quarterly points over three years, harvested
+    // deterministically, with an AI cap. Firing it here keeps ONE hook: the first
+    // capture of a source is still what starts the whole reconstruction.
+    if (monitor.sourceType === "pricing") {
+      await backfillPricingHistory.enqueue({ competitorId: competitor.id, url });
+    }
+
+    // One offset: the canonical "past vs now" point, where the change is created.
+    const offsets = [LOOKBACK_DAYS];
 
     const now = Date.now();
     const seen = new Set<string>();
@@ -223,17 +225,6 @@ async function runBackfill(
         continue;
       }
       seeded++;
-
-      // Pricing: seed a backdated pricing_history batch (extract-pricing skips the
-      // summary refresh when recordedAt is set → the archive can't clobber "now").
-      if (isPricing) {
-        await extractPricing.enqueue({
-          snapshotId: archiveSnap.id,
-          competitorId: competitor.id,
-          recordedAt: page.capturedAt.toISOString(),
-          observedRegion: SCRAPER_REGION,
-        });
-      }
 
       // The change (archive → current) is created once, at the lookback offset.
       // generate-signal marks it in-app only via snapshot.origin='archive'.

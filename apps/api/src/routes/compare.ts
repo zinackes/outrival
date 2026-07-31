@@ -10,8 +10,10 @@ import {
   type CompetitorOverrides,
   normalizeDepartment,
   cheapestCostAtVolume,
+  buildCostCurve,
   comparableMeters,
   pricingModelOf,
+  type CostCurve,
   REFERENCE_VOLUME_PRESETS,
   type MeteredRow,
   type PricingModel,
@@ -170,6 +172,27 @@ interface PricingDetail {
   // workspace changing its reference volumes never needs a re-capture.
   model: PricingModel | null;
   meters: MeterCostDetail[];
+  // P5 — the same cost model asked at every volume instead of at four, so the
+  // lens can draw what a competitor charges as a CURVE. A single volume ranks
+  // competitors at one point and hides where the ranking flips; the curve is
+  // where a buyer sees the crossover, and where a `volume` ladder's cliff shows.
+  // Computed on read, self-hiding: a competitor that does not meter the unit
+  // simply has no curve for it.
+  curves: CostCurve[];
+  // The points we did not compute but READ: a probe on their own calculator, or
+  // a worked example the page prints. Drawn as marks over the curve, because
+  // "their calculator answered this" is a different claim from "our arithmetic
+  // over their published ladder says this".
+  curveMarks: CurveMark[];
+}
+interface CurveMark {
+  unit: string;
+  qty: number;
+  cost: number;
+  currency: string | null;
+  method: CostMethod;
+  hasEvidence: boolean;
+  evidenceKind: "screenshot" | "api_response" | null;
 }
 interface HiringDetail {
   totalOpen: number;
@@ -291,7 +314,9 @@ compareRouter.get("/", async (c) => {
   const detectedPlans = await analyticsQuery<RawPricingPlan>(sql`
     WITH latest AS (
       SELECT competitor_id, max(recorded_at) AS rid
-      FROM pricing_history WHERE competitor_id IN (${idList}) GROUP BY competitor_id
+      FROM pricing_history
+      WHERE competitor_id IN (${idList}) AND origin = 'live'
+      GROUP BY competitor_id
     )
     SELECT p.competitor_id AS "competitorId", p.plan_name AS "planName", p.price,
            p.currency, p.billing_period AS "billingPeriod", p.recorded_at AS "recordedAt",
@@ -308,7 +333,9 @@ compareRouter.get("/", async (c) => {
   const tierRows = await analyticsQuery<RawPriceTier>(sql`
     WITH latest AS (
       SELECT competitor_id, max(recorded_at) AS rid
-      FROM price_tiers WHERE competitor_id IN (${idList}) GROUP BY competitor_id
+      FROM price_tiers
+      WHERE competitor_id IN (${idList}) AND origin = 'live'
+      GROUP BY competitor_id
     )
     SELECT t.competitor_id AS "competitorId", t.plan_name, t.unit,
            t.from_qty, t.to_qty, t.unit_price, t.flat_fee
@@ -319,21 +346,26 @@ compareRouter.get("/", async (c) => {
   // P4 — the latest MEASURED batch: what a calculator-priced competitor's own
   // calculator quoted at each reference volume. Read alongside the ladders
   // because it OUTRANKS them at an equal (unit, qty) — see cheapestCostAtVolume.
-  const measuredRows = await analyticsQuery<RawMeasuredPoint>(sql`
+  // Both READ provenances, each keeping its own latest batch: a page can publish a
+  // worked example AND be probed, and the two are captured on different cadences.
+  // `calculator_probe` alone feeds the ranking (it is the only one allowed to
+  // outrank the computed cost); both are drawn as marks over the curve (P5).
+  const measuredRows = await analyticsQuery<RawMeasuredPoint & { method: CostMethod }>(sql`
     WITH latest AS (
-      SELECT competitor_id, max(recorded_at) AS rid
+      SELECT competitor_id, method, max(recorded_at) AS rid
       FROM price_points
-      WHERE competitor_id IN (${idList}) AND method = 'calculator_probe'
-      GROUP BY competitor_id
+      WHERE competitor_id IN (${idList}) AND method IN ('calculator_probe', 'published')
+      GROUP BY competitor_id, method
     )
     SELECT pp.competitor_id AS "competitorId", pp.plan_name AS "planName",
            pp.meter_unit AS "meterUnit", pp.reference_qty AS "referenceQty",
            pp.effective_monthly_cost AS "effectiveMonthlyCost", pp.currency,
-           pp.recorded_at AS "measuredAt",
+           pp.recorded_at AS "measuredAt", pp.method,
            (pp.evidence_key IS NOT NULL) AS "hasEvidence",
            pp.evidence_kind AS "evidenceKind"
     FROM price_points pp
-    JOIN latest l ON l.competitor_id = pp.competitor_id AND pp.recorded_at = l.rid
+    JOIN latest l ON l.competitor_id = pp.competitor_id AND l.method = pp.method
+      AND pp.recorded_at = l.rid
     ORDER BY pp.competitor_id, pp.meter_unit, pp.reference_qty
   `);
 
@@ -431,6 +463,8 @@ compareRouter.get("/", async (c) => {
         capturedAt: pricingCapturedAt.get(p.competitorId) ?? null,
         model: null,
         meters: [],
+        curves: [],
+        curveMarks: [],
       };
       pricingById.set(p.competitorId, cur);
     }
@@ -465,7 +499,22 @@ compareRouter.get("/", async (c) => {
     tiersByComp.set(t.competitorId, list);
   }
   const measuredByComp = new Map<string, MeasuredCost[]>();
+  const marksByComp = new Map<string, CurveMark[]>();
   for (const m of measuredRows) {
+    const marks = marksByComp.get(m.competitorId) ?? [];
+    marks.push({
+      unit: m.meterUnit,
+      qty: m.referenceQty,
+      cost: m.effectiveMonthlyCost,
+      currency: m.currency,
+      method: m.method,
+      hasEvidence: m.hasEvidence,
+      evidenceKind: m.evidenceKind,
+    });
+    marksByComp.set(m.competitorId, marks);
+    // Only a probe may outrank the computed cost (see cheapestCostAtVolume): a
+    // published example is the page's own arithmetic, not its calculator's answer.
+    if (m.method !== "calculator_probe") continue;
     const list = measuredByComp.get(m.competitorId) ?? [];
     list.push({
       planName: m.planName,
@@ -494,6 +543,8 @@ compareRouter.get("/", async (c) => {
       capturedAt: null,
       model: null,
       meters: [],
+      curves: [],
+      curveMarks: [],
     });
   }
 
@@ -539,7 +590,13 @@ compareRouter.get("/", async (c) => {
           evidenceKind: best.evidenceKind ?? null,
         });
       }
+      // P5 — the same reading, generalised: what this competitor charges at every
+      // volume rather than at four. Null when its published rows cannot price the
+      // meter, in which case it is simply absent from that curve.
+      const curve = buildCostCurve(rows, ladders, unit);
+      if (curve) detail.curves.push(curve);
     }
+    detail.curveMarks = marksByComp.get(competitorId) ?? [];
   }
 
   const hiringById = new Map<string, HiringDetail>();

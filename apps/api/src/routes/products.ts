@@ -22,6 +22,7 @@ import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { enqueueJob } from "../lib/queue";
 import { getOrgPlan } from "../lib/plan";
+import { releaseProductRoster } from "../lib/products";
 import {
   deriveProfileFromUrl,
   deriveProfileFromDescription,
@@ -131,11 +132,25 @@ productsRouter.post(
   },
 );
 
-/** A product owned by the org, or null. */
+/** A product owned by the org, archived ones included. */
 async function ownedProduct(productId: string, orgId: string) {
   return db.query.products.findFirst({
     where: and(eq(products.id, productId), eq(products.orgId, orgId)),
   });
+}
+
+/**
+ * A LIVE product owned by the org, or null. Every route that reads or mutates a product
+ * as if it were part of the workspace goes through this: an archived product is gone as
+ * far as the UI is concerned (it is absent from the list, from the switcher and from the
+ * portfolio), so letting it still be renamed, promoted to primary, or linked to a new
+ * competitor would resurrect it in the data while it stays invisible on screen — and a
+ * competitor linked to it would be born orphaned. Only DELETE looks past this, to answer
+ * idempotently for a product already archived.
+ */
+async function liveOwnedProduct(productId: string, orgId: string) {
+  const product = await ownedProduct(productId, orgId);
+  return product && product.status !== "archived" ? product : null;
 }
 
 // Daily buckets behind each product's sparkline. Same window as the competitor
@@ -200,7 +215,12 @@ productsRouter.get("/", async (c) => {
       })
       .from(products)
       .innerJoin(competitors, eq(competitors.id, products.selfCompetitorId))
-      .where(eq(products.orgId, orgId))
+      // Archived products are OUT. Every surface already filtered them client-side —
+      // except the scope self-heal, which drops a scope pointing at a product missing
+      // from this list. Shipping archived rows made that check pass on a removed
+      // product, so the cookie stayed on it and the workspace kept rendering a SKU the
+      // user had deleted, with no switcher left to escape it.
+      .where(and(eq(products.orgId, orgId), ne(products.status, "archived")))
       .orderBy(asc(products.position), asc(products.name)),
 
     getOrgPlan(orgId),
@@ -217,14 +237,26 @@ productsRouter.get("/", async (c) => {
       .from(productCompetitors)
       .innerJoin(products, eq(products.id, productCompetitors.productId))
       .innerJoin(competitors, eq(competitors.id, productCompetitors.competitorId))
-      .where(and(eq(products.orgId, orgId), isNull(competitors.deletedAt))),
+      .where(
+        and(
+          eq(products.orgId, orgId),
+          ne(products.status, "archived"),
+          isNull(competitors.deletedAt),
+        ),
+      ),
 
     db
       .select({ productId: productCompetitors.productId, value: count() })
       .from(productCompetitors)
       .innerJoin(products, eq(products.id, productCompetitors.productId))
       .innerJoin(competitors, eq(competitors.id, productCompetitors.competitorId))
-      .where(and(eq(products.orgId, orgId), isNull(competitors.deletedAt)))
+      .where(
+        and(
+          eq(products.orgId, orgId),
+          ne(products.status, "archived"),
+          isNull(competitors.deletedAt),
+        ),
+      )
       .groupBy(productCompetitors.productId),
   ]);
 
@@ -430,7 +462,7 @@ productsRouter.get("/", async (c) => {
 productsRouter.get("/:id", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
-  const product = await ownedProduct(c.req.param("id"), orgId);
+  const product = await liveOwnedProduct(c.req.param("id"), orgId);
   if (!product) return c.json({ error: "Not found" }, 404);
 
   const linked = await db
@@ -587,7 +619,7 @@ function pricePosition<R extends { competitorId: string; overrides: unknown }>(
 productsRouter.get("/:id/pricing-position", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
-  const product = await ownedProduct(c.req.param("id"), orgId);
+  const product = await liveOwnedProduct(c.req.param("id"), orgId);
   if (!product) return c.json({ error: "Not found" }, 404);
 
   const linked = await db
@@ -766,7 +798,7 @@ const PatchSchema = z.object({
 productsRouter.patch("/:id", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
-  const product = await ownedProduct(c.req.param("id"), orgId);
+  const product = await liveOwnedProduct(c.req.param("id"), orgId);
   if (!product) return c.json({ error: "Not found" }, 404);
 
   const body = await c.req.json().catch(() => null);
@@ -802,8 +834,12 @@ productsRouter.patch("/:id", async (c) => {
 productsRouter.delete("/:id", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
+  // The only route that looks past `liveOwnedProduct`: re-archiving an already archived
+  // product is a no-op the caller can repeat safely (a double-click, a retried bulk
+  // remove), not a 404 that reads as "that product was never yours".
   const product = await ownedProduct(c.req.param("id"), orgId);
   if (!product) return c.json({ error: "Not found" }, 404);
+  if (product.status === "archived") return c.json({ ok: true });
 
   if (product.isPrimary) {
     return c.json(
@@ -832,6 +868,11 @@ productsRouter.delete("/:id", async (c) => {
     .set({ isActive: false })
     .where(eq(monitors.competitorId, product.selfCompetitorId));
 
+  // Hand its competitors back to the workspace. Left linked to the archived product they
+  // belonged to no live product: absent from every scoped roster and feed, untagged on
+  // new signals, yet still counted by the plan's competitor cap.
+  await releaseProductRoster(orgId, product.id);
+
   return c.json({ ok: true });
 });
 
@@ -841,7 +882,7 @@ productsRouter.delete("/:id", async (c) => {
 productsRouter.post("/:id/competitors/:competitorId", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
-  const product = await ownedProduct(c.req.param("id"), orgId);
+  const product = await liveOwnedProduct(c.req.param("id"), orgId);
   if (!product) return c.json({ error: "Not found" }, 404);
 
   const competitorId = c.req.param("competitorId");
@@ -868,7 +909,7 @@ productsRouter.post("/:id/competitors/:competitorId", async (c) => {
 productsRouter.delete("/:id/competitors/:competitorId", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
-  const product = await ownedProduct(c.req.param("id"), orgId);
+  const product = await liveOwnedProduct(c.req.param("id"), orgId);
   if (!product) return c.json({ error: "Not found" }, 404);
 
   await db

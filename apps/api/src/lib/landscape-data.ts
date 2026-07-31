@@ -3,7 +3,12 @@ import { competitors, monitors, jobPostings } from "@outrival/db";
 import { getFromR2 } from "@outrival/shared";
 import { db } from "./db";
 import { analyticsQueryResult, sql } from "./analytics-safe";
-import { primaryProductId, productCompetitorIds, productSelfCompetitorId } from "./products";
+import {
+  liveProductId,
+  primaryProductId,
+  productCompetitorIds,
+  productSelfCompetitorId,
+} from "./products";
 import {
   computeLandscapeInsights,
   type InsightPricingRow,
@@ -84,7 +89,16 @@ export interface LandscapeResult {
   degraded: boolean;
 }
 
-export async function buildLandscape(orgId: string, productId?: string): Promise<LandscapeResult> {
+export async function buildLandscape(
+  orgId: string,
+  requestedProductId?: string,
+): Promise<LandscapeResult> {
+  // An archived / unknown product scopes to nothing meaningful, so it reads as "all
+  // products" — the same rule every scoped endpoint follows. It matters twice here:
+  // the dashboard passes the scope cookie, and a public share link stores the product
+  // it was minted for, which the user may since have removed.
+  const productId = (await liveProductId(orgId, requestedProductId)) ?? undefined;
+
   // Roster: the org's competitors (self excluded — it renders as "You").
   let comps = await db
     .select({

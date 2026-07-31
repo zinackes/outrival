@@ -87,7 +87,13 @@ type DiscoveryScope = { kind: "product"; productId: string } | { kind: "all" };
 async function resolveScope(orgId: string, raw?: string): Promise<DiscoveryScope> {
   if (raw) {
     const owned = await db.query.products.findFirst({
-      where: and(eq(products.id, raw), eq(products.orgId, orgId)),
+      // Archived excluded, so a scope cookie left on a removed product falls through to
+      // the org-wide union instead of running discovery for a SKU that no longer exists.
+      where: and(
+        eq(products.id, raw),
+        eq(products.orgId, orgId),
+        ne(products.status, "archived"),
+      ),
       columns: { id: true },
     });
     if (owned) return { kind: "product", productId: owned.id };

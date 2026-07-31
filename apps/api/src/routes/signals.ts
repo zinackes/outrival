@@ -27,6 +27,7 @@ import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { logApiAiRun } from "../lib/ai-runs";
 import { notFound } from "../lib/errors";
+import { liveProductId } from "../lib/products";
 import { buildSignalFacts } from "../lib/signal-facts";
 
 type Variables = { user: { id: string } };
@@ -55,6 +56,17 @@ type FeedQuery = {
   actionStatus?: string;
   sort: "threat" | "recent";
 };
+
+/**
+ * Every product scope that reaches this file passes through here. It comes from a
+ * year-long cookie, so it outlives the product it names: an archived / unknown id is
+ * dropped and the feed reads as "all products". Filtering on it instead would leave the
+ * feed permanently empty (nothing is tagged with a removed product), and on a workspace
+ * down to one product the switcher is hidden, so no control on screen could clear it.
+ */
+async function liveScope(orgId: string, raw: string | undefined): Promise<string | undefined> {
+  return (await liveProductId(orgId, raw)) ?? undefined;
+}
 
 function parseFeedQuery(c: Context): FeedQuery {
   const csv = (v: string | undefined) =>
@@ -176,6 +188,7 @@ signalsRouter.get("/", async (c) => {
   const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50), 1), 200);
   const offset = Math.max(Number(c.req.query("offset") ?? 0), 0);
   const f = parseFeedQuery(c);
+  f.productId = await liveScope(orgId, f.productId);
 
   // Every feed filter (product/competitor/category/severity/quick-view/search) is
   // applied server-side now, so the LIMIT keeps the right window and the totals add up
@@ -293,7 +306,7 @@ signalsRouter.get("/", async (c) => {
 signalsRouter.get("/facets", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
-  const productId = c.req.query("productId") || undefined;
+  const productId = await liveScope(orgId, c.req.query("productId"));
 
   const base = [
     eq(signals.orgId, orgId),
@@ -369,7 +382,7 @@ const BRIEF_TTL_MS = 30 * 60 * 1000;
 signalsRouter.get("/brief", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
-  const productId = c.req.query("productId") || undefined;
+  const productId = await liveScope(orgId, c.req.query("productId"));
   const refresh = c.req.query("refresh") === "1";
   const cacheKey = `${orgId}:${productId ?? ""}`;
 
@@ -461,6 +474,7 @@ signalsRouter.post("/mark-all-read", async (c) => {
   }
 
   const f = parseFeedQuery(c);
+  f.productId = await liveScope(orgId, f.productId);
   const conds = feedConds(orgId, f);
   // Subquery (needs the competitors join for the guards/search) → UPDATE by id IN (…).
   const matching = db
@@ -483,6 +497,7 @@ signalsRouter.get("/export", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
   const f = parseFeedQuery(c);
+  f.productId = await liveScope(orgId, f.productId);
   const conds = feedConds(orgId, f);
 
   const rows = await db

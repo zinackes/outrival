@@ -177,8 +177,8 @@ export function ProductsSettings() {
           <DialogHeader>
             <DialogTitle>Remove {deleteTarget?.name ?? "product"}?</DialogTitle>
             <DialogDescription>
-              This takes the product out of your workspace and stops its scans. Its
-              competitors stay tracked at the workspace level.
+              This stops its scans and takes the product out of your workspace.
+              Competitors only it tracked move to your primary product.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

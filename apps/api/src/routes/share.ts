@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import { shareLinks, products } from "@outrival/db";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
@@ -63,8 +63,14 @@ shareRouter.post("/", async (c) => {
   // Landscape link: scoped to a product (defaults to primary).
   let productId = typeof body.productId === "string" ? body.productId : undefined;
   if (productId) {
+    // Archived excluded: minting a public snapshot of a removed product would publish a
+    // view the owner can no longer open themselves.
     const owned = await db.query.products.findFirst({
-      where: and(eq(products.id, productId), eq(products.orgId, orgId)),
+      where: and(
+        eq(products.id, productId),
+        eq(products.orgId, orgId),
+        ne(products.status, "archived"),
+      ),
       columns: { id: true },
     });
     if (!owned) return c.json({ error: "not_found" }, 404);

@@ -41,7 +41,11 @@ import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { enqueueJob } from "../lib/queue";
-import { associateCompetitorWithScopedProduct, productCompetitorIds } from "../lib/products";
+import {
+  associateCompetitorWithScopedProduct,
+  liveProductId,
+  productCompetitorIds,
+} from "../lib/products";
 import {
   seedCompetitorMonitors,
   enqueueFirstScrapes,
@@ -1210,7 +1214,10 @@ competitorsRouter.get("/", async (c) => {
   // patch-28 — optional product scope: restrict to the competitors linked to a given
   // product (product_competitors). Absent → all org competitors (unchanged). The join
   // on products.orgId keeps it tenant-safe (a forged productId yields no rows).
-  const productIdFilter = c.req.query("productId");
+  // An archived / unknown product resolves to null here, i.e. all products. Serving its
+  // roster instead showed a removed SKU's competitors and hid every live one, with no
+  // switcher left to change scope on a single-product org.
+  const productIdFilter = await liveProductId(orgId, c.req.query("productId"));
   let restrictIds: string[] | null = null;
   if (productIdFilter) {
     restrictIds = await productCompetitorIds(orgId, productIdFilter);

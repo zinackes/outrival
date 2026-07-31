@@ -571,3 +571,58 @@ describe("POST /competitors/:id/recompute-overlap evidence guard", () => {
     expect(row?.overlapScore).toBe(95);
   });
 });
+
+// The product scope rides a year-long cookie, so it outlives the product it names.
+// Serving the archived product's roster meant the workspace showed a removed SKU's
+// competitors and hid every live one, with no switcher left to change scope on an org
+// back down to one product: the competitors still counted against the plan cap but
+// could not be opened or deleted from any surface.
+describe("GET /competitors under a stale product scope", () => {
+  let S: { orgId: string; userId: string; email: string };
+  let livePid: string;
+  let archivedPid: string;
+
+  beforeAll(async () => {
+    S = await seedOrg(testDb, { plan: "pro" });
+    await testDb.insert(competitors).values([
+      { id: "comp-live-s", orgId: S.orgId, name: "Live rival" },
+      { id: "comp-archived-s", orgId: S.orgId, name: "Stranded rival" },
+      { id: "self-live-s", orgId: S.orgId, name: "Us", type: "self" },
+      { id: "self-archived-s", orgId: S.orgId, name: "Retired SKU", type: "self" },
+    ]);
+    await testDb.insert(products).values([
+      { id: "prod-live-s", orgId: S.orgId, name: "Main", selfCompetitorId: "self-live-s", isPrimary: true },
+      {
+        id: "prod-archived-s",
+        orgId: S.orgId,
+        name: "Retired",
+        selfCompetitorId: "self-archived-s",
+        status: "archived",
+      },
+    ]);
+    await testDb.insert(productCompetitors).values([
+      { productId: "prod-live-s", competitorId: "comp-live-s" },
+      { productId: "prod-archived-s", competitorId: "comp-archived-s" },
+    ]);
+    livePid = "prod-live-s";
+    archivedPid = "prod-archived-s";
+  }, 30_000);
+
+  const names = async (query: string) => {
+    const res = await app.request(`/api/competitors${query}`, asUser(S.userId, S.email));
+    expect(res.status).toBe(200);
+    return ((await res.json()).competitors as { name: string }[]).map((c) => c.name).sort();
+  };
+
+  test("a live product scope still narrows to its own roster", async () => {
+    expect(await names(`?productId=${livePid}`)).toEqual(["Live rival"]);
+  });
+
+  test("an archived product scope widens to the workspace instead of serving its roster", async () => {
+    expect(await names(`?productId=${archivedPid}`)).toEqual(["Live rival", "Stranded rival"]);
+  });
+
+  test("an unknown product id widens the same way (no empty dead end)", async () => {
+    expect(await names("?productId=does-not-exist")).toEqual(["Live rival", "Stranded rival"]);
+  });
+});

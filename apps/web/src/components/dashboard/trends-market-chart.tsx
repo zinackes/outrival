@@ -19,6 +19,12 @@ import {
 } from "@/components/dashboard/chart-motion";
 import { formatDate } from "@/lib/format-date";
 import { seriesStroke } from "@/lib/series-color";
+import {
+  asOfKey,
+  buildCarriedGrid,
+  rawKey,
+  type ChartRow,
+} from "@/components/dashboard/trends-chart-model";
 
 /**
  * Every competitor on one axis.
@@ -32,6 +38,24 @@ import { seriesStroke } from "@/lib/series-color";
  * page exists to answer ("who moved, and how far") is the one the chart shows.
  * Reviews stay `absolute` — 0 to 5 is already a shared scale, and a drop from 4.6
  * to 4.3 has to read as a drop, not as -6.5%.
+ *
+ * Three properties make the plot readable, and each fixes a way the earlier
+ * version misreported the data:
+ *
+ * 1. **Every series carries a value at every x.** Competitors are scraped on
+ *    staggered days, so a row only ever held the one or two that reported that
+ *    day. `connectNulls` drew the bridge, but the tooltip filters on the payload,
+ *    so hovering a plot of twelve lines named ONE of them. Each series is now
+ *    carried forward from its last observation, which is what the bridged line
+ *    already claimed on screen: a price holds until we see it change. The carried
+ *    reading states the date it was actually taken, so "unchanged" is never
+ *    confused with "re-measured".
+ * 2. **The x axis is time, not a category list.** With string categories, 27 days
+ *    between two captures rendered the same width as one, so the shape of the
+ *    market was the shape of our scrape schedule.
+ * 3. **The curve steps, it doesn't glide.** A price, an open-role count and a
+ *    review score all hold flat and then jump. `monotone` over sparse captures
+ *    drew a smooth ramp nobody's pricing page ever performed.
  */
 export interface MarketChartProps {
   series: TrendsMarketSeries[];
@@ -49,11 +73,6 @@ export interface MarketChartProps {
   highlighted?: string | null;
 }
 
-/** Raw captured value, carried alongside the plotted one so the tooltip can state both. */
-const rawKey = (competitorId: string) => `raw:${competitorId}`;
-
-type ChartRow = Record<string, string | number>;
-
 function TooltipCard({
   active,
   payload,
@@ -61,6 +80,7 @@ function TooltipCard({
   series,
   mode,
   formatValue,
+  labelFor,
 }: {
   active?: boolean;
   payload?: Array<{
@@ -69,10 +89,11 @@ function TooltipCard({
     color?: string;
     payload?: ChartRow;
   }>;
-  label?: string;
+  label?: number;
   series: TrendsMarketSeries[];
   mode: "index" | "absolute";
   formatValue: MarketChartProps["formatValue"];
+  labelFor: (stamp: number) => string;
 }) {
   if (!active || !payload?.length) return null;
   const byId = new Map(series.map((s) => [s.competitorId, s]));
@@ -83,10 +104,15 @@ function TooltipCard({
       const item = byId.get(id);
       if (!item || entry.value == null) return null;
       const raw = row?.[rawKey(id)];
+      const asOf = row?.[asOfKey(id)];
       return {
         item,
         plotted: entry.value,
         raw: typeof raw === "number" ? raw : null,
+        // Only worth saying when the reading predates the hovered date: on the day
+        // of a capture it would put "as of today" on every row.
+        staleSince:
+          typeof asOf === "number" && label != null && asOf < label ? asOf : null,
         color: entry.color,
       };
     })
@@ -96,9 +122,11 @@ function TooltipCard({
 
   return (
     <div
-      className={`pointer-events-none min-w-[11rem] rounded-md border border-border bg-popover px-2.5 py-2 shadow-sm ${chartTooltipCardMotion}`}
+      className={`pointer-events-none min-w-[13rem] rounded-md border border-border bg-popover px-2.5 py-2 shadow-sm ${chartTooltipCardMotion}`}
     >
-      <div className="mb-1.5 text-meta text-muted-foreground">{label}</div>
+      <div className="mb-1.5 text-meta text-muted-foreground">
+        {label != null ? labelFor(label) : null}
+      </div>
       <div className="flex flex-col gap-1">
         {entries.map((entry) => (
           <div
@@ -108,12 +136,17 @@ function TooltipCard({
             <span className="inline-flex min-w-0 items-center gap-1.5">
               <span
                 aria-hidden
-                className="size-1.5 shrink-0 rounded-full"
+                className="h-0.5 w-2.5 shrink-0 rounded-full"
                 style={{ background: entry.color }}
               />
               <span className="truncate">{entry.item.competitorName}</span>
             </span>
             <span className="shrink-0 tabular-nums">
+              {entry.staleSince !== null && (
+                <span className="mr-1.5 text-muted-foreground">
+                  {labelFor(entry.staleSince)}
+                </span>
+              )}
               {entry.raw != null && formatValue(entry.raw, entry.item)}
               {mode === "index" && (
                 <span className="ml-1.5 text-muted-foreground">
@@ -142,41 +175,39 @@ export function TrendsMarketChart({
     [series, hidden],
   );
 
+  // A competitor's colour is its identity, so it has to survive the legend being
+  // used as a filter. Indexing into the fallback palette by position in `visible`
+  // repainted every unassigned line below a switched-off one, and left the key's
+  // swatch pointing at a colour no longer on the plot.
+  const paletteSlot = useMemo(
+    () => new Map(series.map((s, i) => [s.competitorId, i])),
+    [series],
+  );
+
   // Switching a series off while pointing at its key entry would otherwise leave
   // the highlight on a line that is no longer plotted, fading every remaining one
   // with nothing to look at.
   const active = visible.some((s) => s.competitorId === highlighted) ? highlighted : null;
 
-  // One row per captured day, holding whichever competitors reported that day.
-  // `connectNulls` bridges the gaps so a weekly source doesn't render as dots. The
-  // axis label carries the year once the window spans one, otherwise two "Jan 5"
-  // ticks a year apart would collapse onto the same category.
-  const data = useMemo<ChartRow[]>(() => {
-    const stamps = visible.flatMap((s) => s.points.map((p) => new Date(p.t).getTime()));
-    const spansYears =
-      stamps.length > 0 && Math.max(...stamps) - Math.min(...stamps) > 300 * 86_400_000;
-    const labelFor = (iso: string) =>
-      formatDate(iso, spansYears ? { month: "short", year: "2-digit" } : { month: "short", day: "numeric" });
-
-    const rows = new Map<string, ChartRow>();
-    for (const item of visible) {
-      const base = item.points[0]?.value;
-      for (const point of item.points) {
-        let row = rows.get(point.t);
-        if (!row) {
-          row = { t: labelFor(point.t), __sort: new Date(point.t).getTime() };
-          rows.set(point.t, row);
-        }
-        row[item.competitorId] =
-          mode === "index"
-            ? base
-              ? Math.round(((point.value - base) / base) * 1000) / 10
-              : 0
-            : point.value;
-        row[rawKey(item.competitorId)] = point.value;
-      }
-    }
-    return [...rows.values()].sort((a, b) => Number(a.__sort) - Number(b.__sort));
+  const { data, ticks, domain, labelFor } = useMemo(() => {
+    const grid = buildCarriedGrid(visible, mode);
+    // The original timestamp string is kept for formatting: round-tripping a
+    // stamp through `toISOString()` would shift the printed day by the reader's
+    // UTC offset. The axis label carries the year once the window spans one,
+    // otherwise two "Jan 5" ticks a year apart would read as the same date.
+    const format = (stamp: number) =>
+      formatDate(
+        grid.isoByStamp.get(stamp) ?? new Date(stamp).toISOString(),
+        grid.spansYears
+          ? { month: "short", year: "2-digit" }
+          : { month: "short", day: "numeric" },
+      );
+    return {
+      data: grid.rows,
+      ticks: grid.ticks,
+      domain: grid.domain,
+      labelFor: format,
+    };
   }, [visible, mode]);
 
   if (visible.length === 0 || data.length === 0) {
@@ -197,11 +228,15 @@ export function TrendsMarketChart({
           <CartesianGrid stroke="var(--border)" vertical={false} />
           <XAxis
             dataKey="t"
+            type="number"
+            scale="time"
+            domain={domain ?? ["dataMin", "dataMax"]}
+            ticks={ticks}
+            tickFormatter={labelFor}
             stroke="var(--border)"
             tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
             tickLine={false}
             minTickGap={28}
-            interval="preserveStartEnd"
           />
           <YAxis
             stroke="var(--border)"
@@ -220,17 +255,27 @@ export function TrendsMarketChart({
           <Tooltip
             {...chartTooltipMotion}
             cursor={<ChartCursorLine />}
-            content={<TooltipCard series={visible} mode={mode} formatValue={formatValue} />}
+            content={
+              <TooltipCard
+                series={visible}
+                mode={mode}
+                formatValue={formatValue}
+                labelFor={labelFor}
+              />
+            }
           />
-          {visible.map((item, i) => {
+          {visible.map((item) => {
             const dimmed = active != null && active !== item.competitorId;
             return (
               <Line
                 key={item.competitorId}
-                type="monotone"
+                // A price, a headcount and a score hold until the next capture
+                // moves them, so the line holds too and jumps on the day we read
+                // the new value.
+                type="stepAfter"
                 dataKey={item.competitorId}
                 name={item.competitorName}
-                stroke={seriesStroke(item.color, i)}
+                stroke={seriesStroke(item.color, paletteSlot.get(item.competitorId) ?? 0)}
                 // Your own product is the reference every other line is read against,
                 // so it carries the only heavier stroke on the chart.
                 strokeWidth={item.isSelf ? 2.5 : 1.5}

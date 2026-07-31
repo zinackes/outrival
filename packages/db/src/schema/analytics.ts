@@ -76,6 +76,14 @@ export const pricingHistory = pgTable(
     // a percentage plan is one row with both halves. Excluded from cost modelling
     // (its meter is money, not a countable unit) — surfaced as a badge.
     percentageRate: doublePrecision("percentage_rate"),
+    // Where the capture behind this batch came from — the same vocabulary
+    // snapshots.origin uses, because it answers the same question one table
+    // further down (Pricing Intelligence P5). 'archive' = reconstructed from a
+    // Wayback capture, so its recorded_at is the CAPTURE date, not the moment we
+    // read it. Kept as a column rather than inferred from an old recorded_at: a
+    // backfilled point and a genuinely old live point are the same shape, and the
+    // timeline has to say which one the reader is looking at.
+    origin: text("origin").notNull().default("live"),
     recordedAt: timestamp("recorded_at").notNull().defaultNow(),
   },
   (t) => [index("pricing_history_competitor_recorded_idx").on(t.competitorId, t.recordedAt)],
@@ -103,6 +111,11 @@ export const priceTiers = pgTable(
     unitPrice: doublePrecision("unit_price"),
     // Flat fee charged for entering the band (stair-step ladders).
     flatFee: doublePrecision("flat_fee"),
+    // Same meaning as pricing_history.origin (P5). A ladder read off a Wayback
+    // capture is a ladder that WAS, so every "what does this competitor charge
+    // now" read filters it out — otherwise a competitor whose live extraction
+    // has not landed yet would be costed on a two-year-old ladder.
+    origin: text("origin").notNull().default("live"),
     recordedAt: timestamp("recorded_at").notNull().defaultNow(),
   },
   (t) => [
@@ -148,6 +161,30 @@ export const pricePoints = pgTable(
   (t) => [
     index("price_points_competitor_recorded_idx").on(t.competitorId, t.recordedAt),
     index("price_points_competitor_unit_idx").on(t.competitorId, t.meterUnit),
+  ],
+);
+
+// What one action SPENDS from a credit balance (Pricing Intelligence P5). The
+// price rise nobody prints: a product that sells credits can leave the pack
+// price untouched and quietly double what a scan costs, and every price column
+// in the product would keep reading "unchanged".
+//
+// Written ONLY when the page publishes the mapping itself ("1 credit = 1 scan",
+// an actions x credits table). `action` is the page's VERBATIM wording — it is
+// the proof, and it is also the join key across captures, so a rephrased action
+// reads as one removed and one added rather than as a rate change. Same batch
+// timestamp as the pricing_history rows of the capture: one scrape, one moment.
+export const creditBurnRates = pgTable(
+  "credit_burn_rates",
+  {
+    id: uuid(),
+    competitorId: text("competitor_id").notNull(),
+    action: text("action").notNull(),
+    credits: doublePrecision("credits").notNull(),
+    recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("credit_burn_rates_competitor_recorded_idx").on(t.competitorId, t.recordedAt),
   ],
 );
 
@@ -522,6 +559,7 @@ export const platformDetectionRuns = pgTable(
 export type PricingHistory = InferSelectModel<typeof pricingHistory>;
 export type PriceTier = InferSelectModel<typeof priceTiers>;
 export type PricePoint = InferSelectModel<typeof pricePoints>;
+export type CreditBurnRate = InferSelectModel<typeof creditBurnRates>;
 export type JobCount = InferSelectModel<typeof jobCounts>;
 export type ReviewScore = InferSelectModel<typeof reviewScores>;
 export type SignalFeed = InferSelectModel<typeof signalFeed>;

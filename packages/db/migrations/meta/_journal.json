@@ -414,6 +414,13 @@
       "when": 1785524744767,
       "tag": "0058_dapper_vision",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1785526813454,
+      "tag": "0059_damp_payback",
+      "breakpoints": true
     }
   ]
 }

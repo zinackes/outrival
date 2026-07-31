@@ -6,6 +6,7 @@ import {
   planEntitlements,
   priceTiers,
   pricePoints,
+  creditBurnRates,
   jobCounts,
   hiringMetrics,
   reviewScores,
@@ -21,6 +22,7 @@ import {
   aiVisibilityResults,
 } from "@outrival/db";
 import { and, desc, eq, gt, gte, inArray, lt, ne, sql } from "drizzle-orm";
+import type { CreditBurnRow } from "@outrival/shared";
 
 // Time-series / analytics access for the workers. These tables used to live in
 // ClickHouse; they are now plain Postgres tables in the same Neon database.
@@ -387,6 +389,10 @@ export interface PricingHistoryRow {
   rate_structure?: string | null;
   minimum_amount?: number | null;
   percentage_rate?: number | null;
+  // P5 — 'archive' when the batch was reconstructed from a Wayback capture, so
+  // recorded_at is the CAPTURE date. Omitted = 'live', which is every caller but
+  // the pricing backfill.
+  origin?: "live" | "archive";
   recorded_at: Date;
 }
 
@@ -412,6 +418,7 @@ export async function insertPricingHistory(rows: PricingHistoryRow[]): Promise<v
         rateStructure: r.rate_structure ?? null,
         minimumAmount: r.minimum_amount ?? null,
         percentageRate: r.percentage_rate ?? null,
+        origin: r.origin ?? "live",
         recordedAt: r.recorded_at,
       })),
     ),
@@ -502,6 +509,8 @@ export interface PriceTierRow {
   to_qty: number | null;
   unit_price: number | null;
   flat_fee: number | null;
+  /** P5 — same meaning as PricingHistoryRow.origin. Omitted = 'live'. */
+  origin?: "live" | "archive";
   recorded_at: Date;
 }
 
@@ -517,6 +526,7 @@ export async function insertPriceTiers(rows: PriceTierRow[]): Promise<void> {
         toQty: r.to_qty,
         unitPrice: r.unit_price,
         flatFee: r.flat_fee,
+        origin: r.origin ?? "live",
         recordedAt: r.recorded_at,
       })),
     ),
@@ -631,6 +641,54 @@ export async function insertCalculatorProbeRun(row: CalculatorProbeRunRow): Prom
   );
 }
 
+// What each published action SPENDS from a credit balance (Pricing Intelligence
+// P5). Same batch timestamp as the pricing_history rows of the run — one capture,
+// one moment. No `origin`: the backfill never extracts burns (its harvest floor
+// reads prices, not mappings), so every row here is live by construction.
+export interface CreditBurnRateRow {
+  competitor_id: string;
+  action: string;
+  credits: number;
+  recorded_at: Date;
+}
+
+export async function insertCreditBurnRates(rows: CreditBurnRateRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await bestEffort("credit_burn_rates insert", () =>
+    db.insert(creditBurnRates).values(
+      rows.map((r) => ({
+        competitorId: r.competitor_id,
+        action: r.action,
+        credits: r.credits,
+        recordedAt: r.recorded_at,
+      })),
+    ),
+  );
+}
+
+// The latest stored burn table — the diff baseline, read BEFORE the fresh batch
+// is inserted, like getPreviousPricing / getPreviousEntitlements.
+export async function getPreviousCreditBurns(
+  competitorId: string,
+): Promise<CreditBurnRow[] | null> {
+  const rows = await bestEffortRead<CreditBurnRow>("getPreviousCreditBurns", () =>
+    db
+      .select({ action: creditBurnRates.action, credits: creditBurnRates.credits })
+      .from(creditBurnRates)
+      .where(
+        and(
+          eq(creditBurnRates.competitorId, competitorId),
+          eq(
+            creditBurnRates.recordedAt,
+            sql`(select max(recorded_at) from credit_burn_rates where competitor_id = ${competitorId})`,
+          ),
+        ),
+      )
+      .orderBy(creditBurnRates.action),
+  );
+  return rows && rows.length > 0 ? rows : null;
+}
+
 // The latest stored ladder — the diff baseline, read BEFORE the fresh batch is
 // inserted, like getPreviousPricing / getPreviousEntitlements.
 export async function getPreviousPriceTiers(
@@ -652,9 +710,12 @@ export async function getPreviousPriceTiers(
       .where(
         and(
           eq(priceTiers.competitorId, competitorId),
+          // Live only, same reason as getPreviousPricing: a ladder read off a
+          // Wayback capture is a ladder that WAS.
+          eq(priceTiers.origin, "live"),
           eq(
             priceTiers.recordedAt,
-            sql`(select max(recorded_at) from price_tiers where competitor_id = ${competitorId})`,
+            sql`(select max(recorded_at) from price_tiers where competitor_id = ${competitorId} and origin = 'live')`,
           ),
         ),
       )
@@ -1123,9 +1184,15 @@ export async function getPreviousPricing(
       .where(
         and(
           eq(pricingHistory.competitorId, competitorId),
+          // The baseline of a LIVE run is the last live batch. An archive batch
+          // (P5 Wayback backfill) is backdated, so it normally loses `max()`
+          // anyway — but on a competitor whose first live extraction has not
+          // landed yet it would win, and the differ would compare today's page
+          // against a two-year-old one and call every number a repricing.
+          eq(pricingHistory.origin, "live"),
           eq(
             pricingHistory.recordedAt,
-            sql`(select max(recorded_at) from pricing_history where competitor_id = ${competitorId})`,
+            sql`(select max(recorded_at) from pricing_history where competitor_id = ${competitorId} and origin = 'live')`,
           ),
         ),
       )

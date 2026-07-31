@@ -11,7 +11,13 @@ import {
   type PricingExtraction,
   type PricingPlan,
 } from "@outrival/ai";
-import { getFromR2, PRICING_STATUSES, diffPriceTiers } from "@outrival/shared";
+import {
+  getFromR2,
+  PRICING_STATUSES,
+  diffPriceTiers,
+  diffCreditBurns,
+  type CreditBurnRow,
+} from "@outrival/shared";
 import { pricingFromStructured } from "@outrival/scrapers/structured-data";
 import {
   pricingRatiosPlausible,
@@ -30,10 +36,13 @@ import {
   getPreviousEntitlements,
   insertPriceTiers,
   insertPricePoints,
+  insertCreditBurnRates,
   getPreviousPriceTiers,
+  getPreviousCreditBurns,
   loggedAi,
   type PriceTierRow,
 } from "../lib/analytics";
+import { prepareCreditBurns } from "../lib/credit-burns";
 import { prepareRateStructures } from "../lib/rate-structures";
 import { stagedExtract } from "../lib/staged-extract";
 import { isSuspectedPricingCollapse } from "../lib/pricing-guard";
@@ -142,10 +151,16 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
     const harvestEnabled = process.env.PRICING_HARVEST_ENABLED !== "false";
     const sections = splitProductLines(html);
     const collected: PricingPlan[] = [];
+    // P5 — the credit burn table is a PAGE-level fact (one mapping for the whole
+    // product), so it is collected across sections rather than per line. Only the
+    // AI stage emits it; a page resolved by structured-first / the cached parser /
+    // the harvest floor publishes none, which reads as "we saw no mapping".
+    const collectedBurns: Array<{ action: string; credits: number }> = [];
     let anyResolved = false;
     for (const section of sections) {
       const result = await extractSection(section.html);
       if (result.data) anyResolved = true;
+      if (result.data?.credit_burns) collectedBurns.push(...result.data.credit_burns);
       // L2 harvest floor: when the staged extractor found no plans yet the section
       // visibly carries prices, an AI-free DOM harvest recovers the entry price / band
       // / per-card rows the SaaS-tuned AI floor drops on hosting/e-commerce layouts.
@@ -308,6 +323,25 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
       }
     }
 
+    // P5 — what one action SPENDS from a credit balance. Live runs only, same
+    // reasoning as P2/P3, and grounded in code against the page text before a
+    // single row is believed (lib/credit-burns). Zero extra AI: the burns rode
+    // the pricing extraction's own response.
+    let creditBurns: CreditBurnRow[] = [];
+    let previousBurns: CreditBurnRow[] | null = null;
+    if (!input.recordedAt) {
+      const prepared = prepareCreditBurns({ raw: collectedBurns, pageText: text });
+      creditBurns = prepared.rows;
+      const { substring, ungrounded, invalid, cap } = prepared.dropped;
+      if (substring + ungrounded + invalid + cap > 0) {
+        logger.log("Credit burn rows dropped by guards", {
+          competitorId: input.competitorId,
+          ...prepared.dropped,
+        });
+      }
+      if (creditBurns.length > 0) previousBurns = await getPreviousCreditBurns(input.competitorId);
+    }
+
     // Keep every plan, including quote-based tiers (price null — "Enterprise",
     // "Contact sales", "Custom"): they're real plans the user wants to see. The
     // pricing_history.price column is nullable; numeric readers (charts, trends,
@@ -345,6 +379,17 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
       await insertPriceTiers(rateStructures.tierRows);
       await insertPricePoints(rateStructures.pointRows);
     }
+    // Same batch timestamp again. An empty result inserts nothing rather than an
+    // empty batch: the prior mapping stays the baseline, so one scrape that
+    // failed to read the table can't erase what the page still publishes.
+    await insertCreditBurnRates(
+      creditBurns.map((b) => ({
+        competitor_id: input.competitorId,
+        action: b.action,
+        credits: b.credits,
+        recorded_at: recordedAt,
+      })),
+    );
 
     // Pricing Intelligence P1 — the deterministic batch→batch diff becomes the
     // pricing signal (or hands the deferred change back to the lexical path).
@@ -373,6 +418,8 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
                 currency: plans[0]?.currency ?? null,
               })
             : [],
+        // P5 — a rise in what an action burns is a price rise nobody printed.
+        creditBurnChanges: previousBurns ? diffCreditBurns(previousBurns, creditBurns) : [],
       });
     }
 
@@ -385,6 +432,7 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
       rateStructures: rateStructures
         ? { tiers: rateStructures.tierRows.length, points: rateStructures.pointRows.length }
         : null,
+      creditBurns: creditBurns.length,
       pricingSignal: routed?.emitted ?? "backfill",
     });
     return { ok: true, plansInserted: plans.length };

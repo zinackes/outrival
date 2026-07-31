@@ -1353,6 +1353,9 @@ export interface BattleCard {
   id: string;
   competitorId: string;
   orgId: string;
+  // The SKU this card was written for (patch-28). Null on a legacy card written
+  // before products existed. Server truth — never re-derive it from the scope.
+  productId: string | null;
   content: BattleCardContent;
   pdfR2Key: string | null;
   generatedAt: string;
@@ -3341,7 +3344,7 @@ export const api = {
   // The evidence readiness on its own, which GET /battle-card cannot serve because it
   // 404s until a card exists. Powers the empty state and the build view.
   getBattleCardEvidence: (competitorId: string, productId?: string) =>
-    request<{ evidence: BattleCardEvidence }>(
+    request<{ evidence: BattleCardEvidence; productId: string | null }>(
       `/api/competitors/${competitorId}/battle-card/evidence${productId ? `?productId=${productId}` : ""}`,
     ),
   generateBattleCard: (competitorId: string, productId?: string) =>

@@ -162,20 +162,18 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
   useCompetitorScopeGuard(competitorId, competitor?.name);
   const productsQ = useQuery(productsListQuery());
   const evidenceQ = useQuery(battleCardEvidenceQuery(competitorId, productId));
-  const evidence = evidenceQ.data ?? null;
+  const evidence = evidenceQ.data?.evidence ?? null;
 
-  // The product this card is about: the active scope, else the org's primary — the
-  // same resolution the API does, so the title never names a different SKU than the
-  // one the card was written for.
+  // The product this card is about, TAKEN FROM THE SERVER: the card's own productId,
+  // else the product the API resolved this request to. Re-deriving it here was the
+  // bug — in all-products scope there is no productId to send, so the page fell back
+  // to the org's primary and titled the page "<primary> vs X" over a card written
+  // for the SKU that actually tracks X.
+  const resolvedProductId = card?.productId ?? evidenceQ.data?.productId ?? productId ?? null;
   const product = useMemo(() => {
     const list = productsQ.data ?? [];
-    return (
-      list.find((p) => p.id === productId) ??
-      list.find((p) => p.isPrimary && p.status !== "archived") ??
-      list[0] ??
-      null
-    );
-  }, [productsQ.data, productId]);
+    return list.find((p) => p.id === resolvedProductId) ?? null;
+  }, [productsQ.data, resolvedProductId]);
 
   async function refreshStaleness() {
     try {

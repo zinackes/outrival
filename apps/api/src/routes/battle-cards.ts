@@ -263,7 +263,14 @@ battleCardsRouter.get("/:id/battle-card/evidence", async (c) => {
     columns: { id: true },
   });
 
-  return c.json({ evidence: await battleCardEvidence(competitor.id, card?.id) });
+  // The resolved product travels with the evidence. In all-products scope the web
+  // sends no productId, so it had to guess which SKU the card is about and guessed
+  // the org's PRIMARY — naming the wrong product above a card written for another
+  // one. The resolution lives here (product_competitors anchor), so the answer does.
+  return c.json({
+    evidence: await battleCardEvidence(competitor.id, card?.id),
+    productId: product?.id ?? null,
+  });
 });
 
 // Whether the battle card is worth regenerating (patch-22 intelligent rate limiting):

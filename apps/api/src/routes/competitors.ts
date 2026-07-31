@@ -88,6 +88,7 @@ import {
   normalizePlanKey,
   DEPARTMENT_BUCKETS,
   DEPARTMENT_BUCKET_LABELS,
+  isCountryKey,
   getBytesFromR2,
   getFromR2,
   isHiddenSource,
@@ -1921,6 +1922,62 @@ competitorsRouter.get("/:id/hiring-velocity", async (c) => {
   });
 
   return c.json({ velocity });
+});
+
+// Where a competitor's open roles are (Hiring Intelligence v2 P2). Reads the most
+// recent ISO week of hiring_geo plus, per key, the first week it ever appeared —
+// which is what lets the tab flag a country they only just started hiring in.
+//
+// The three reserved lowercase keys ("remote", "region", "unresolved") come back in
+// `other`, separated from the countries but NOT dropped: the share of a board we
+// could not place is what tells the reader how much of the map to believe, and it
+// is the only honest denominator for the rest of the card. Best-effort like every
+// analytics read — an empty footprint hides the card rather than breaking the tab.
+competitorsRouter.get("/:id/hiring-geo", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const rows = await analyticsQuery<{
+    country_code: string;
+    open_count: number;
+    week_start: string;
+    first_week: string;
+  }>(sql`
+    WITH latest AS (
+      SELECT max(week_start) AS w FROM hiring_geo WHERE competitor_id = ${competitor.id}
+    ),
+    firsts AS (
+      SELECT country_code, min(week_start) AS first_week
+      FROM hiring_geo WHERE competitor_id = ${competitor.id}
+      GROUP BY country_code
+    )
+    SELECT g.country_code, g.open_count, g.week_start, firsts.first_week
+    FROM hiring_geo g
+    JOIN latest ON g.week_start = latest.w
+    LEFT JOIN firsts ON firsts.country_code = g.country_code
+    WHERE g.competitor_id = ${competitor.id} AND g.open_count > 0
+    ORDER BY g.open_count DESC
+  `);
+
+  const newSince = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+  const shaped = rows.map((r) => ({
+    code: r.country_code,
+    openCount: r.open_count,
+    // A country whose FIRST recorded week is inside the last 30 days. Not "it grew"
+    // — it did not exist in this competitor's footprint a month ago.
+    isNew: Boolean(r.first_week && r.first_week >= newSince),
+  }));
+
+  return c.json({
+    weekStart: rows[0]?.week_start ?? null,
+    countries: shaped.filter((r) => isCountryKey(r.code)),
+    other: shaped
+      .filter((r) => !isCountryKey(r.code))
+      .map(({ code, openCount }) => ({ code, openCount })),
+  });
 });
 
 /** How many praises / complaints "In their words" shows once restatements are out. */

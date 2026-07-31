@@ -173,6 +173,15 @@ job_postings           id, competitor_id, title, department, location, url,
                        LLM/careers fallback), detected_at, closed_at, is_active
                        + description_text, remote_mode, employment_type,
                        facts_mined_at (Hiring Intelligence v2 P1, migration 0059).
+                       + country_codes (text[]) et geo_resolution (Hiring
+                       Intelligence v2 P2, migration 0060) — la ligne `location`
+                       résolue 100% OFFLINE et ZÉRO AI (@outrival/shared/geo).
+                       country_codes = tous les ISO-3166-1 alpha-2 nommés (« Paris /
+                       London » en fait deux) ; geo_resolution = COMMENT ça a été lu
+                       ('country' | 'region' | 'remote' | 'unknown'). Les deux null =
+                       le posting est antérieur à P2 et n'est pas passé au rattrapage ;
+                       'unknown' = il a été LU et n'a pas résolu, ce qui est un fait
+                       différent et affiché comme tel.
                        Le CORPS de la JD était DÉJÀ dans les réponses ATS qu'on
                        fetchait (Greenhouse content=true, Workable details=true,
                        Lever/Ashby/Recruitee/Personio le portent dans le payload
@@ -374,7 +383,16 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     ni scrapée. ANCRE DÉDIÉE et pas hiring_shift : la chaîne de
                     snapshots de hiring_shift porte le hash de dédup du détecteur
                     de vélocité, y intercaler des snapshots de facts ferait
-                    ré-émettre chaque inflexion), hackernews (mention-tracking HN via l'Algolia public,
+                    ré-émettre chaque inflexion), hiring_footprint (ancre des trois signaux
+                    déterministes de P2 — first_role_in_country,
+                    new_department_opened, hiring_freeze ; jamais semée ni scrapée.
+                    ANCRE DÉDIÉE pour la même raison que job_facts : la chaîne de
+                    snapshots de hiring_shift porte le hash de dédup de la vélocité.
+                    Dédup contre TOUS les snapshots de l'ancre, pas seulement le
+                    dernier — trois kinds partagent la chaîne, donc « le précédent
+                    était différent » laisserait un pays se ré-annoncer dès qu'un
+                    snapshot de gel s'intercale, et un premier poste en Allemagne
+                    n'est premier qu'une fois), hackernews (mention-tracking HN via l'Algolia public,
                     semé weekly ; garde anti-homonyme STRICTE = domaine obligatoire sauf
                     competitor.metadata.ambiguousName===false ; Show HN+domaine →
                     product/high, mention > HN_POINTS_THRESHOLD → content/medium, en
@@ -555,6 +573,22 @@ hiring_metrics      competitor_id, department_bucket, open_count, week_start,
                     (competitor, bucket, week_start) → UPSERT (un re-scrape la même
                     semaine écrase, jamais de doublon). Écrit seulement sur run ATS
                     autoritatif ; alimente les sparklines Hiring + le détecteur d'inflexion
+hiring_geo          competitor_id, country_code, open_count, week_start, recorded_at
+                    — Hiring Intelligence v2 P2 (migration 0060) : où sont les postes
+                    ouverts, PAR pays et PAR semaine ISO. Même discipline d'upsert que
+                    hiring_metrics (unique (competitor, country_code, week_start), écrit
+                    seulement sur run ATS autoritatif). `country_code` est un ISO-3166-1
+                    alpha-2 SAUF trois clés réservées EN MINUSCULES — `remote`, `region`
+                    (EMEA/DACH : une région ne nomme aucun pays) et `unresolved` — qui
+                    comptent les postings que le résolveur n'a pas placés. Elles vivent
+                    dans la table plutôt que d'être jetées parce que la PART d'un board
+                    qu'on ne sait pas placer est le chiffre qui dit si le reste de la
+                    carte est croyable ; un graphe qui les omet en silence revendique une
+                    précision qu'il n'a pas. Minuscule vs majuscule ⇒ zéro collision, et
+                    first_role_in_country ne lit que les clés majuscules. Un posting qui
+                    nomme 2 pays compte dans LES DEUX (la question est « recrutent-ils
+                    en X », pas comment les postes se répartissent) : les lignes ne sont
+                    donc PAS une partition et ne se somment pas
 review_scores       competitor_id, source, score, review_count, sentiment_score,
                     sub_ease_of_use, sub_support, sub_features, sub_value (Nullable —
                     patch-32 sous-notes /5), recorded_at
@@ -1142,6 +1176,31 @@ carte (état live uniquement).
        change → generate-signal ; dédup par content-hash préfixé du kind, donc les chaînes
        tech et hint ne se dédupent pas l'une l'autre et un run retenté ne double pas un signal
 
+[par competitor dont un scrape jobs AUTORITATIF vient d'écrire la semaine] detect-hiring-footprint
+  └─ Hiring Intelligence v2 P2. Event-driven off extract-jobs (pas de cron), skip self /
+       deleted. ZÉRO AI dans la décision : trois détecteurs purs
+       (@outrival/scrapers/jobs-hiring `footprint.ts`) sur des comptes
+  └─ En amont, dans extract-jobs : la `location` de chaque posting est résolue OFFLINE
+       (@outrival/shared/geo — dataset GeoNames construit et COMMITTÉ, zéro dépendance
+       runtime, zéro réseau, cas non résolu = 'unknown' JAMAIS deviné) puis le board actif
+       entier est agrégé en hiring_geo pour la semaine ISO (même condition « run ATS
+       autoritatif » que hiring_metrics). Les postings actives antérieures à P2 sont
+       stampées au passage, donc la feature se remplit en un cycle de scrape même sans le
+       rattrapage. Tally resolved/region/remote/unknown loggé ET persisté (clés réservées)
+  └─ `first_role_in_country` HIGH : un pays présent cette semaine et dans AUCUNE semaine
+       antérieure de hiring_geo. Baseline ≥2 semaines — sinon l'onboarding d'un concurrent
+       annoncerait un « premier poste » dans les six pays où il recrute depuis toujours
+  └─ `new_department_opened` HIGH : un bucket canonique (unknown exclu) présent cette
+       semaine et dans aucune semaine antérieure de hiring_metrics. Baseline ≥3 semaines
+  └─ `hiring_freeze` HIGH : sur 14 j glissants, fermetures ≥60% du stock ouvert en début de
+       fenêtre, stock initial ≥5, ≤1 ouverture. Trois gardes anti-panne : fermetures
+       CONFIRMÉES par une capture ultérieure du même board, hôte du board inchangé sur la
+       fenêtre, et un seul signal par épisode (ré-armé par ≥2 nouvelles ouvertures). La
+       fermeture elle-même n'est possible que sur un run AUTORITATIF (computeJobsDelta) :
+       un fetch échoué ou dégradé ne ferme jamais rien
+  └─ anchor synthétique `hiring_footprint` → R2 avant DB → snapshot → change →
+       generate-signal (classification SYNTHÉTISÉE, category=hiring, severity forcée high)
+
 [cron dimanche 20h UTC] detect-new-competitors
   └─ par org onboardée : Exa findSimilar + scoreOverlap (batché)
   └─ dedup URL exacte + hostname normalisé
@@ -1455,6 +1514,10 @@ REVIEW_THEME_WINDOW_DAYS=42             # review complaint-theme shift — recen
 REVIEW_THEME_LOOKBACK_DAYS=84           # review complaint-theme shift — total review_scores series read (baseline = lookback − window)
 REVIEW_SCORE_DROP_THRESHOLD=0.2         # Reviews v2 — aggregate-score inflection fallback for surface sources (Trustpilot public: score, no verbatims/themes). When no complaint theme rises, a sustained drop of the average review score by ≥ this many points (baseline → recent window, same windows as the theme detector) emits one "reviews" signal via the detect-review-theme-shifts anchor
 HIRING_SPIKE_THRESHOLD=0.5              # hiring-velocity — a department's weekly open-role count must exceed (1 + this) × its trailing 4-week average (≥4 weeks history) to emit a "hiring" inflection signal; high severity for engineering/sales, medium otherwise. Event-driven off extract-jobs (no cron slot)
+HIRING_FREEZE_WINDOW_DAYS=14            # hiring_freeze (P2) — fenêtre glissante sur laquelle les fermetures sont comptées
+HIRING_FREEZE_CLOSED_RATIO=0.6          # part du stock ouvert en début de fenêtre qui doit avoir fermé
+HIRING_FREEZE_MIN_OPEN=5                # sous ce stock initial, un board vidé n'est pas une nouvelle
+HIRING_FREEZE_MAX_OPENED=1              # au-delà de N ouvertures dans la fenêtre ils recrutent encore, quoi qu'il ait fermé. Trois gardes NON réglables s'y ajoutent CÔTÉ CODE : les fermetures doivent avoir été CONFIRMÉES par une capture ULTÉRIEURE du même board (un ATS qui répond 200 avec une liste courte ferme la moitié d'un board en un run — c'est la forme exacte d'un gel, et c'est la seule qui se dément au scrape suivant), le board ne doit pas avoir changé d'hôte dans la fenêtre, et un seul signal est émis par épisode (ré-armé par 2 nouvelles ouvertures, pas par une horloge)
 HN_POINTS_THRESHOLD=50                  # hackernews source — a mention (non-Show-HN, guard-passing) must EXCEED this many points to emit a content/medium traction signal; below it the hit is stored in the snapshot JSON island but never signalled. Show HN + matching domain always signals product/high regardless.
 HN_WINDOW_DAYS=30                       # hackernews source — recency window (days) bounding the HN Algolia search_by_date fetch (created_at_i > now − window), so a heavily-mentioned competitor never hits the hard 1000-hit ceiling
 DOCS_PAGE_HASH_ENABLED=true             # docs source, mode 2 only (no OpenAPI spec found) — on top of the sitemap page list, fingerprint the top-K docs pages so a REWRITTEN page surfaces, not only a new one. The hash is taken over extractContent output (the exact text the pipeline diffs), so a build id / nonce can never churn it; a page that fails to fetch emits NO line (never a placeholder hash). false → page list only, K fewer L0 GETs per run

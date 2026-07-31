@@ -244,6 +244,12 @@ export const detectHiringVelocityShifts = defineJob<CompetitorRefPayload>(
 export const mineJobFacts = defineJob<CompetitorRefPayload>("mine-job-facts", {
   expireInSeconds: 300,
 });
+// Hiring footprint detectors (Hiring Intelligence v2 P2), event-triggered per
+// competitor off extract-jobs. Pure SQL + pure functions, zero AI — same window as
+// its two deterministic siblings.
+export const detectHiringFootprint = defineJob<CompetitorRefPayload>("detect-hiring-footprint", {
+  expireInSeconds: 60,
+});
 // Standing-query re-evaluation, targeted off generate-signal. Shares the groq lane
 // (concurrency 1) so the judge + internal Ask run never starve classify→signal.
 export const evaluateStandingQueries = defineJob<EvaluateStandingQueriesPayload>(

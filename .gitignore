@@ -30,3 +30,7 @@ PRODUCT.md
 
 # Audit mailbox credentials are env-only (scripts/poll-inbox.ts reads AUDIT_IMAP_*).
 audit/**/*.local
+
+# GeoNames dumps cached by packages/shared/scripts/build-geo-dataset.ts. Build-time
+# input only — the committed output is src/geo/dataset.generated.ts.
+packages/shared/scripts/.geo-cache/

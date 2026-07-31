@@ -1,6 +1,7 @@
 import { logger } from "../lib/job-logger";
 import {
   NonRetriable as AbortTaskRunError,
+  detectHiringFootprint,
   detectHiringVelocityShifts,
   mineJobFacts,
 } from "@outrival/queue";
@@ -16,14 +17,21 @@ import {
 } from "@outrival/ai";
 import { getFromR2, normalizeDomain } from "@outrival/shared";
 import { parseAtsJobsFromHtml } from "@outrival/scrapers/jobs-ats";
-import { bucketJobCounts, isoWeekStart } from "@outrival/scrapers/jobs-hiring";
+import { bucketJobCounts, isoWeekStart, tallyHiringGeo } from "@outrival/scrapers/jobs-hiring";
 import { declaredOpenRoles } from "@outrival/scrapers/jobs-signals";
 import { detectRemoteMode } from "@outrival/scrapers/jobs-jd-facts";
 import { jobsFromStructured } from "@outrival/scrapers/structured-data";
 import { htmlToText } from "../lib/html-to-text";
-import { insertJobCounts, upsertHiringMetrics, loggedAi, logExtractionRun } from "../lib/analytics";
+import {
+  insertJobCounts,
+  upsertHiringGeo,
+  upsertHiringMetrics,
+  loggedAi,
+  logExtractionRun,
+} from "../lib/analytics";
 import { stagedExtract } from "../lib/staged-extract";
 import { computeJobsDelta } from "../lib/jobs-delta";
+import { stampGeo, stampMissingGeo, tallyResolutions } from "../lib/posting-geo";
 
 interface NormalizedJob {
   title: string;
@@ -41,6 +49,9 @@ interface NormalizedJob {
   descriptionText: string | null;
   remoteMode: string | null;
   employmentType: string | null;
+  // Hiring Intelligence v2 P2 — resolved offline from `location`, never guessed.
+  countryCodes: string[] | null;
+  geoResolution: string;
 }
 
 const InputSchema = z.object({
@@ -86,6 +97,7 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
         descriptionText: j.description,
         remoteMode: detectRemoteMode(j.location, j.description),
         employmentType: j.employmentType,
+        ...stampGeo(j.location),
       }));
       await logExtractionRun({
         competitor_id: input.competitorId,
@@ -131,6 +143,7 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
         // The listing carries no body, so only the location line can answer this.
         remoteMode: detectRemoteMode(j.location, null),
         employmentType: null,
+        ...stampGeo(j.location),
       }));
       logger.log("Jobs extracted", { count: jobs.length, resolution: result.resolution });
     }
@@ -227,6 +240,8 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
           descriptionText: j.descriptionText,
           remoteMode: j.remoteMode,
           employmentType: j.employmentType,
+          countryCodes: j.countryCodes,
+          geoResolution: j.geoResolution,
           isActive: true,
           detectedAt: now,
         })),
@@ -276,6 +291,48 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
         })),
       );
       await detectHiringVelocityShifts.enqueue({ competitorId: input.competitorId });
+
+      // Hiring footprint (Hiring Intelligence v2 P2): the same authoritative-run
+      // condition, the same weekly upsert — one row per (competitor, country, ISO
+      // week) — over the WHOLE active board, not just this run's additions.
+      //
+      // Postings that were already active when P2 shipped carry no resolution yet,
+      // so they are stamped here on the way past. That is a one-time cost per
+      // posting (the filter is `geoResolution is null`), which means the feature
+      // fills itself in over one scrape cycle even without the backfill command.
+      const closed = new Set(closedIds);
+      const activeExisting = existing.filter((j) => !closed.has(j.id));
+      const stamped = await stampMissingGeo(
+        activeExisting.filter((j) => j.geoResolution === null),
+      );
+      const activeGeo = [
+        ...activeExisting.map((j) => stamped.get(j.id) ?? {
+          countryCodes: j.countryCodes,
+          geoResolution: j.geoResolution,
+        }),
+        ...inserts.map((j) => ({
+          countryCodes: j.countryCodes,
+          geoResolution: j.geoResolution,
+        })),
+      ];
+      const geoCounts = tallyHiringGeo(activeGeo);
+      await upsertHiringGeo(
+        Array.from(geoCounts.entries()).map(([countryCode, count]) => ({
+          competitor_id: input.competitorId,
+          country_code: countryCode,
+          open_count: count,
+          week_start: weekStart,
+          recorded_at: now,
+        })),
+      );
+      // The learning loop for the offline dataset: what share of a real board it
+      // can place. The counts also survive in hiring_geo's reserved rows, so this
+      // is queryable after the fact rather than only greppable.
+      logger.log("Hiring geo resolved", {
+        competitorId: input.competitorId,
+        ...tallyResolutions(activeGeo),
+      });
+      await detectHiringFootprint.enqueue({ competitorId: input.competitorId });
     }
 
     // Hiring Intelligence v2 P1 — mine the JD bodies of the postings we just

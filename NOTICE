@@ -1,0 +1,21 @@
+Outrival — third-party data attribution
+=======================================
+
+GeoNames
+--------
+`packages/shared/src/geo/dataset.generated.ts` is built from the GeoNames
+geographical database:
+
+  - cities15000        (cities above 15,000 inhabitants, plus capitals)
+  - countryInfo        (ISO 3166-1 codes, English country names, languages)
+  - admin1CodesASCII   (first-level administrative subdivisions)
+  - alternatenames/*   (per-country alternate place names, language-tagged)
+
+  Source:  https://www.geonames.org/  ·  https://download.geonames.org/export/dump/
+  Licence: Creative Commons Attribution 4.0 (CC BY 4.0)
+           https://creativecommons.org/licenses/by/4.0/
+
+The extract is transformed (folded to lookup keys, filtered by language and
+population, and reduced to country codes plus populations) by
+`packages/shared/scripts/build-geo-dataset.ts`. No GeoNames web service is
+called at runtime.

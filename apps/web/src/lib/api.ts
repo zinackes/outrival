@@ -266,6 +266,18 @@ export interface HiringVelocityBucket {
   current: number;
 }
 
+/**
+ * Where a competitor's open roles are, for the latest captured week (P2).
+ * `countries` are ISO-3166-1 alpha-2; `other` carries the postings that named no
+ * country, which the card shows rather than hides — a footprint that omits what it
+ * could not place is claiming a precision it does not have.
+ */
+export interface HiringGeoData {
+  weekStart: string | null;
+  countries: Array<{ code: string; openCount: number; isNew: boolean }>;
+  other: Array<{ code: string; openCount: number }>;
+}
+
 export interface PricingHistoryPoint {
   plan_name: string;
   // null for quote-based tiers (Enterprise / "Contact sales" / Custom).
@@ -2758,6 +2770,8 @@ export const api = {
     request<{ trends: JobTrendPoint[] }>(`/api/competitors/${id}/job-trends`),
   getCompetitorHiringVelocity: (id: string) =>
     request<{ velocity: HiringVelocityBucket[] }>(`/api/competitors/${id}/hiring-velocity`),
+  getCompetitorHiringGeo: (id: string) =>
+    request<HiringGeoData>(`/api/competitors/${id}/hiring-geo`),
   getCompetitorReviews: (id: string) =>
     request<ReviewsData>(`/api/competitors/${id}/reviews`),
   getCompetitorReviewScores: (id: string) =>

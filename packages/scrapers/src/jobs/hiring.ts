@@ -3,3 +3,4 @@
 // it without pulling the browser/cheerio stack.
 export * from "./departments";
 export * from "./velocity";
+export * from "./footprint";

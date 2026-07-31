@@ -115,6 +115,13 @@ export function errorConfig(err: unknown): ErrorConfig {
   return typeof sent === "string" && sent.trim() ? { ...base, description: sent } : base;
 }
 
+// One clean sentence for the inline error slots that render a bare string (a form's
+// `<p className="text-destructive">`, a sheet's load failure). Callers used to put
+// `String(e)` there, which printed the class name plus the raw response body.
+export function errorMessage(err: unknown): string {
+  return errorConfig(err).description;
+}
+
 // Surfaces a transient error as a sonner toast in three parts, never leaking the
 // raw error. Callers may override the title to keep their context (e.g. "Couldn't
 // enable that source") while the clean description + retry action come from the

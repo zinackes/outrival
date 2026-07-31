@@ -12,6 +12,7 @@ import type {
   CustomMonitorHint,
   PricingModel,
   CostMethod,
+  BlockedReach,
 } from "@outrival/shared";
 
 export type { DetectionConfig, AnalysisStatus, ScrapeActivity } from "@outrival/shared";
@@ -52,7 +53,16 @@ async function throwApiError(res: Response): Promise<never> {
   } catch {
     // not json, leave as text
   }
-  throw new ApiError(res.status, body, `API ${res.status}: ${text || res.statusText}`);
+  // `message` is USER-VISIBLE: several call sites still render a caught error
+  // directly, and any future one will. It used to be `API 429: {"error":…}` — the
+  // whole response body — which is how a rate-limit refusal reached the screen as
+  // "Error: Error: API 429: {…}". Prefer the sentence the API wrote for a human;
+  // otherwise a short one that names nothing but the status. The full body stays on
+  // `data` for the error configs, Sentry and the console.
+  const sent = (body as { message?: unknown } | null)?.message;
+  const message =
+    (typeof sent === "string" && sent.trim()) || `Request failed (${res.status}).`;
+  throw new ApiError(res.status, body, message);
 }
 
 // Browser-side ceiling. Sits above the API's own request bound so a slow
@@ -178,7 +188,17 @@ export interface Competitor {
   analysis?: AnalysisStatus;
   // How much of this competitor we are actually watching (list endpoint only):
   // active user-facing sources, how many stopped answering, and which one to name.
-  coverage?: { sources: number; failing: number; failingSource: string | null };
+  coverage?: {
+    sources: number;
+    failing: number;
+    failingSource: string | null;
+    // Sources the SITE refuses. Kept out of `failing`: nothing is broken and there
+    // is nothing to repair. `blockedReach` says whether it is worth saying here at
+    // all — "partial" belongs on the source rows, only "widespread" is competitor-level.
+    blocked?: number;
+    blockedSource?: string | null;
+    blockedReach?: BlockedReach;
+  };
   // The competitor's last signal, whenever it happened (NOT windowed) — the roster
   // row leads with the finding, and a silent competitor still has a last move.
   latestMove?: {
@@ -370,6 +390,12 @@ export interface ChangeRow {
   competitorId?: string;
   competitorName?: string;
   competitorUrl?: string;
+  // The signal this change became, joined in by GET /api/changes. Null when the
+  // change was classified insignificant (or not classified yet).
+  signalId?: string | null;
+  signalSeverity?: "low" | "medium" | "high" | "critical" | null;
+  signalCategory?: string | null;
+  signalInsight?: string | null;
 }
 
 // Intel → action loop (Phase B). User-set triage status on a signal.
@@ -659,7 +685,9 @@ export interface SectoralEligibility {
 }
 
 // Activity — user-facing view of the scraping work done for the org.
-export type ActivitySourceStatus = "ok" | "failing" | "paused" | "unscrapable";
+// "blocked" is the site refusing automated collection — a real limit, but never a
+// task: it carries no Resume and no re-scan, because both meet the same wall.
+export type ActivitySourceStatus = "ok" | "failing" | "paused" | "unscrapable" | "blocked";
 
 export interface ActivitySource {
   monitorId: string;
@@ -2432,7 +2460,17 @@ export interface ProductSummary {
   stage?: "live" | "developing" | "idea";
   lastScanAt?: string | null;
   // How much of the product's own site/repo we are still capturing.
-  coverage?: { sources: number; failing: number; failingSource: string | null };
+  coverage?: {
+    sources: number;
+    failing: number;
+    failingSource: string | null;
+    // Sources the SITE refuses. Kept out of `failing`: nothing is broken and there
+    // is nothing to repair. `blockedReach` says whether it is worth saying here at
+    // all — "partial" belongs on the source rows, only "widespread" is competitor-level.
+    blocked?: number;
+    blockedSource?: string | null;
+    blockedReach?: BlockedReach;
+  };
   // Daily signal counts on this product's competitors over 14 days, oldest first.
   activity?: number[];
   stats?: {
@@ -2912,10 +2950,11 @@ export const api = {
     }),
   classifyChange: (id: string) =>
     request<{ runId: string }>(`/api/changes/${id}/classify`, { method: "POST" }),
-  listChanges: (params?: { limit?: number; competitorId?: string }) => {
+  listChanges: (params?: { limit?: number; competitorId?: string; monitorId?: string }) => {
     const q = new URLSearchParams();
     if (params?.limit) q.set("limit", String(params.limit));
     if (params?.competitorId) q.set("competitorId", params.competitorId);
+    if (params?.monitorId) q.set("monitorId", params.monitorId);
     const qs = q.toString();
     return request<{ changes: ChangeRow[] }>(`/api/changes${qs ? `?${qs}` : ""}`);
   },

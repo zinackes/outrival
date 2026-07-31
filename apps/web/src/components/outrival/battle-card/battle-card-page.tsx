@@ -16,11 +16,13 @@ import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { useCompetitorScopeGuard } from "@/hooks/use-competitor-scope-guard";
 import {
   api,
+  ApiError,
   type BattleCard,
   type BattleCardContent,
   type BattleCardJob,
   type BattleCardStaleness,
 } from "@/lib/api";
+import { errorConfig, toastApiError, type ErrorConfig } from "@/lib/error-helpers";
 import {
   battleCardEvidenceQuery,
   competitorDetailQuery,
@@ -138,7 +140,10 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
 
   const [card, setCard] = useState<BattleCard | null>(null);
   const [status, setStatus] = useState<Status>("loading");
-  const [error, setError] = useState<string | null>(null);
+  // Why the PAGE couldn't be shown, already turned into user-facing copy. A refused
+  // ACTION (rate limit, plan lock) never lands here — it toasts and leaves the page
+  // standing, because destroying the card to report a refusal loses more than it says.
+  const [error, setError] = useState<ErrorConfig | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<BattleCardContent>(EMPTY_CONTENT);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
@@ -206,14 +211,14 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
       if (!silent) setStatus("ready");
       return res.battleCard;
     } catch (e) {
-      if (String(e).includes("404")) {
+      if (e instanceof ApiError && e.status === 404) {
         // A 404 mid-generation just means the row isn't written yet — keep the build
         // view instead of flashing the empty state.
         if (!silent) setStatus("absent");
         return null;
       }
       if (!silent) {
-        setError(String(e));
+        setError(errorConfig(e));
         setStatus("error");
       }
       return null;
@@ -406,13 +411,13 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
       // 403 plan_* feature locks → paywallFromError; the 429 daily-cap quota →
       // tierLimitFromError. Both render the same dialog with quota-aware copy.
       const reason = paywallFromError(e) ?? tierLimitFromError(e);
-      if (reason) {
-        setPaywall(reason);
-        setStatus(card ? "ready" : "absent");
-      } else {
-        setError(String(e));
-        setStatus("error");
-      }
+      if (reason) setPaywall(reason);
+      // Anything else — the hourly AI cap, a provider outage, a dropped connection —
+      // is a refusal to START, not a page that failed to load. It used to replace the
+      // whole page with the raw envelope; the card the user already had is worth more
+      // than the error is, so it stays and the reason arrives as a toast.
+      else toastApiError(e, { title: "Couldn't generate the card", onRetry: onGenerate });
+      setStatus(card ? "ready" : "absent");
     }
   }
 
@@ -427,8 +432,10 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
       setEditing(false);
       setStatus("ready");
     } catch (e) {
-      setError(String(e));
-      setStatus("error");
+      // Stay in the editor: swapping to the error page discarded the edits the user
+      // had just typed, which is a worse outcome than the failed save itself.
+      toastApiError(e, { title: "Couldn't save your changes", onRetry: onSave });
+      setStatus("ready");
     }
   }
 
@@ -460,9 +467,28 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
     return (
       <div className="space-y-6">
         {head()}
-        <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          Error: {error}
-        </p>
+        <TabCard>
+          <div className="flex flex-col gap-4 p-5">
+            <div className="flex items-start gap-2.5">
+              <WarningCircleIcon size={20} className="mt-px shrink-0 text-critical" />
+              <div className="flex flex-col gap-1.5">
+                <h3 className="text-content font-semibold tracking-tight leading-tight">
+                  {error?.title ?? "Couldn't load this card"}
+                </h3>
+                <p className="max-w-prose text-sm text-muted-foreground">
+                  {error?.description ?? "The card didn't load. Try again in a moment."}
+                </p>
+              </div>
+            </div>
+            {error?.action?.type !== "wait" && (
+              <div>
+                <Button size="sm" onClick={() => void load()}>
+                  <ArrowsClockwiseIcon size={16} /> {error?.action?.label ?? "Try again"}
+                </Button>
+              </div>
+            )}
+          </div>
+        </TabCard>
       </div>
     );
   }

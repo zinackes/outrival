@@ -1,6 +1,19 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, asc, desc, eq, gte, isNull, isNotNull, ne, inArray, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  isNull,
+  isNotNull,
+  ne,
+  or,
+  inArray,
+  notInArray,
+  sql,
+} from "drizzle-orm";
 import { captureServerEvent } from "../lib/posthog";
 import {
   detectPlatform,
@@ -76,6 +89,10 @@ import {
   isAutomaticSource,
   isConfigurableSource,
   planAllowsMonitorSource,
+  isRefused,
+  blockedReach,
+  buildCoverage,
+  type SourceState,
   type SourceType,
   type MonitorFrequency,
   type PricingTier,
@@ -1346,12 +1363,21 @@ competitorsRouter.get("/", async (c) => {
         lastRunAt: monitors.lastRunAt,
         lastFailedAt: monitors.lastFailedAt,
         markedUnscrapable: monitors.markedUnscrapable,
+        // A refusal is not a failure, and the roster said it was: a site that
+        // declines automated collection was counted alongside broken URLs and
+        // timeouts, so a well-covered competitor read as failing.
+        refusedAt: monitors.refusedAt,
+        lastFailureCategory: monitors.lastFailureCategory,
       })
       .from(monitors)
       .where(
         and(
           inArray(monitors.competitorId, ids),
-          eq(monitors.isActive, true),
+          // A refusal also switches the source OFF, so `isActive = true` alone hid
+          // every blocked row from the roster — the comment above promised they were
+          // selected, and they were not. Refused rows are readmitted by name, which
+          // leaves a source the USER paused out of it, as before.
+          or(eq(monitors.isActive, true), isNotNull(monitors.refusedAt)),
           notInArray(monitors.sourceType, ["tech_stack", "sitemap", "news", "subdomains"]),
         ),
       ),
@@ -1438,18 +1464,43 @@ competitorsRouter.get("/", async (c) => {
   function coverageOf(rows: typeof monitorRows) {
     let failing = 0;
     let failingSource: string | null = null;
+    const blocked: string[] = [];
     for (const m of rows) {
+      // A refusal is reported on its own terms, never inside `failing`: nothing is
+      // broken and there is nothing to repair, so counting it as a failure made a
+      // well-covered competitor read as falling over.
+      if (isRefused({ ...m, sourceType: m.sourceType as SourceType })) {
+        blocked.push(m.sourceType);
+        continue;
+      }
       const run = m.lastRunAt ? new Date(m.lastRunAt).getTime() : null;
       const failed = m.lastFailedAt ? new Date(m.lastFailedAt).getTime() : null;
       const isFailing =
         m.markedUnscrapable || (failed !== null && (run === null || failed >= run));
       if (!isFailing) continue;
       failing++;
-      // Name one source. A refusal outranks a transient failure, since it is the
-      // one the user can act on (an unscrapable source stays dead until re-armed).
       if (failingSource === null || m.markedUnscrapable) failingSource = m.sourceType;
     }
-    return { sources: rows.length, failing, failingSource };
+    // How far the refusals reach, so the roster only speaks up when what we know
+    // about this competitor actually changed (a blocked blog stays on its own row,
+    // a blocked homepage does not). The states below are the coarse ones this cell
+    // can see; `blockedReach` only ever separates blocked from still-collecting.
+    const reach = blockedReach(
+      buildCoverage(
+        rows.map((m) => ({
+          sourceType: m.sourceType as SourceType,
+          state: (blocked.includes(m.sourceType) ? "blocked" : "tracking") as SourceState,
+        })),
+      ),
+    );
+    return {
+      sources: rows.length,
+      failing,
+      failingSource,
+      blocked: blocked.length,
+      blockedSource: blocked[0] ?? null,
+      blockedReach: reach,
+    };
   }
 
   // A competitor linked to EVERY product is relevant everywhere: chips would repeat

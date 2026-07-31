@@ -114,6 +114,24 @@ function detectedAbsent(source: SourceType, targets: DetectedTargets | null): bo
 }
 
 /**
+ * Whether the site itself REFUSED automated collection on this monitor's last run
+ * (a block, a challenge, or a robots Disallow) as opposed to failing transiently.
+ *
+ * The single definition of a refusal. `sourceState` derives "blocked" from it, and
+ * so does every surface that renders a status icon — before this existed only the
+ * Sources page knew, so a competitor page could show a red "failed, resume it"
+ * three lines above its own note saying the site blocks us and nothing is owed.
+ */
+export function isRefused(monitor: MonitorCoverageFields | null | undefined): boolean {
+  if (!monitor) return false;
+  // Same staleness rule the states below use: a later successful capture disproves
+  // an older refusal, and the diagnosis columns are sticky.
+  const failing =
+    toMs(monitor.lastFailedAt) > toMs(monitor.lastRunAt) || monitor.markedUnscrapable === true;
+  return failing && (!!monitor.refusedAt || monitor.lastFailureCategory === "anti_bot");
+}
+
+/**
  * Classify one source for one competitor. Pure — the same inputs always give the
  * same state, so the Sources page, the coverage headline and the tests all agree.
  */
@@ -144,7 +162,7 @@ export function sourceState(args: {
   const failing =
     toMs(monitor.lastFailedAt) > toMs(monitor.lastRunAt) || monitor.markedUnscrapable === true;
   const category = failing ? (monitor.lastFailureCategory ?? null) : null;
-  if (failing && (monitor.refusedAt || category === "anti_bot")) return "blocked";
+  if (isRefused(monitor)) return "blocked";
   if (category === "login_required") return "login_required";
   if (category === "geo_blocked") return "geo_blocked";
   // site_dead / site_redirected / spa_empty / unknown all share one action set
@@ -299,4 +317,43 @@ export function coverageHeadline(
  */
 export function fallbackSources(cov: SourceCoverage, exclude: SourceType): SourceType[] {
   return [...cov.tracked, ...cov.pending].filter((s) => s !== exclude);
+}
+
+/**
+ * Sources whose refusal changes what can be said about the competitor as a whole,
+ * rather than costing one row of detail. The homepage anchors platform detection,
+ * profile extraction, pricing discovery and the visual diff; pricing is half of what
+ * the product is bought for. Losing either is not "one source down".
+ */
+export const KEYSTONE_SOURCES: readonly SourceType[] = ["homepage", "pricing"];
+
+export type BlockedReach =
+  /** Nothing refuses us. */
+  | "none"
+  /** Some sources refuse us, and the overall picture survives it. */
+  | "partial"
+  /** A keystone surface, or most of what we watch, refuses us. */
+  | "widespread";
+
+/**
+ * How far a competitor's refusals reach.
+ *
+ * `partial` stays on the source rows: a blocked blog is a footnote, and hoisting it
+ * to the competitor would cry wolf about a competitor we still read well. Only
+ * `widespread` earns a line at the competitor level (roster, page header), because
+ * only then does "what we know about them" actually change.
+ *
+ * Informative in both cases. Neither verdict withholds a control from the user, and
+ * neither pauses anything: the only thing that stops at a refusal is the scrape, in
+ * the worker, on the source that was refused.
+ */
+export function blockedReach(cov: SourceCoverage): BlockedReach {
+  if (cov.blocked.length === 0) return "none";
+  if (cov.blocked.some((s) => KEYSTONE_SOURCES.includes(s))) return "widespread";
+  // Majority of what we are supposed to be collecting. Sources that are off, locked,
+  // absent or never enabled stay out of the denominator: none of them is a refusal,
+  // and counting them would let a barely-configured competitor read as widely
+  // blocked on the strength of one blocked blog.
+  const collecting = cov.tracked.length + cov.pending.length + cov.blocked.length;
+  return cov.blocked.length * 2 >= collecting ? "widespread" : "partial";
 }

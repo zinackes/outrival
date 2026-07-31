@@ -424,6 +424,10 @@ export function SourceRow({
             </Button>
           )}
 
+          {/* A refusal is stated, never enforced on the user: the Run button stays on
+              a blocked source. The site may have changed its robots.txt, or the URL
+              may now point somewhere open, and only a fresh attempt can find out.
+              What stops at a refusal is the SCRAPE, in the worker, not the control. */}
           {monitor && state !== "locked" && state !== "not_available" && (
             <Button
               size="sm"

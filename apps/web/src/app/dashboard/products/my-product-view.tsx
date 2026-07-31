@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { myProductQuery, myProductChangesQuery, productsListQuery } from "@/lib/queries";
 import {
   ArrowsClockwiseIcon,
+  BroadcastIcon,
   NotePencilIcon,
   SpinnerIcon,
   ClockIcon,
@@ -53,6 +55,7 @@ import { UpdateProfileDialog } from "@/components/outrival/update-profile-dialog
 // Blocks live in ./product-detail: this file owns the page (data, scan state,
 // mutations), they own their own editing state.
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProductActionsMenu } from "./product-actions";
 import { EditableList, EditableText } from "./product-detail/fields";
 import { PricingCard } from "./product-detail/pricing-card";
 import { JobsCard } from "./product-detail/jobs-card";
@@ -215,10 +218,6 @@ export function MyProductView({
             },
           },
         });
-      } else {
-        toast.success("Re-scan queued", {
-          description: "Your sources are scanned as soon as a scanner is free.",
-        });
       }
       await load(); // pick up scanning=true so the progress poll kicks in
     } catch (e) {
@@ -378,6 +377,18 @@ export function MyProductView({
                 Update profile
               </Button>
             )}
+            {/* What we collect on this product — the same manage-sources sheet a
+                competitor gets (toggle, cadence, URL, custom pages), on the self
+                monitors. Needs the product route, so the legacy no-product view
+                (productId undefined) doesn't offer it. */}
+            {productId && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/dashboard/products/${productId}/sources`}>
+                  <BroadcastIcon className="size-4" />
+                  Sources
+                </Link>
+              </Button>
+            )}
             {p.url ? (
               // Live product: site + pricing monitors exist, so offer selective re-scan.
               <RescanMenu
@@ -403,6 +414,17 @@ export function MyProductView({
                 {p.scanning ? "Scanning…" : p.scanQueued ? "Queued" : "Re-scan"}
               </Button>
             ) : null}
+            {/* Lifecycle verbs (rename, promote, remove) — the portfolio rows' menu,
+                here so the product on screen can be managed without going back to
+                the list. Needs the product row, so the legacy no-product view
+                doesn't offer it. */}
+            {productId && (
+              <ProductActionsMenu
+                productId={productId}
+                name={title}
+                isPrimary={isPrimary}
+              />
+            )}
           </div>
         }
       />

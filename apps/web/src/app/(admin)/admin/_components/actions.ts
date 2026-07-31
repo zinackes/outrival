@@ -6,7 +6,6 @@ import { api } from "@/lib/api";
 export async function forceScrape(monitorId: string): Promise<void> {
   try {
     await api.adminForceScrape(monitorId);
-    toast.success("Scrape triggered", { description: `Monitor ${monitorId.slice(0, 8)}…` });
   } catch {
     toast.error("Could not trigger scrape");
   }

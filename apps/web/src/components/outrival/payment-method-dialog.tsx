@@ -12,6 +12,7 @@ import {
 import { SpinnerIcon } from "@/components/icons";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { errorMessage } from "@/lib/error-helpers";
 import {
   Dialog,
   DialogContent,
@@ -59,7 +60,7 @@ export function PaymentMethodDialog({
         if (!cancelled) setClientSecret(r.clientSecret);
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) setError(errorMessage(e));
       });
     return () => {
       cancelled = true;
@@ -161,7 +162,7 @@ function PaymentMethodForm({
       await api.setDefaultPaymentMethod(pmId);
       onUpdated();
     } catch (err) {
-      setError(String(err));
+      setError(errorMessage(err));
       setBusy(false);
     }
   }

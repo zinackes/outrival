@@ -8,8 +8,6 @@ import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { AnimatePresence, motion } from "motion/react";
 import {
   PlusIcon,
-  CheckIcon,
-  MinusIcon,
   MagnifyingGlassIcon,
   ArrowRightIcon,
   SpinnerIcon,
@@ -19,6 +17,7 @@ import {
   BinocularsIcon,
   BuildingsIcon,
   PauseCircleIcon,
+  ShieldSlashIcon,
 } from "@/components/icons";
 import { EmptyState } from "./empty-state";
 import { toast } from "sonner";
@@ -78,7 +77,7 @@ import { SeverityGauge } from "@/components/outrival/severity-scale";
 import { AnalysisBadge } from "@/components/outrival/analysis-status";
 import { ProductChips } from "./product-chip";
 import { ListError } from "@/components/outrival/list-error";
-import { toastApiError } from "@/lib/error-helpers";
+import { errorMessage, toastApiError } from "@/lib/error-helpers";
 import {
   Tooltip,
   TooltipContent,
@@ -88,6 +87,7 @@ import { CatText } from "./cat-pill";
 import { TableSkeleton } from "./skeletons";
 import { ActivitySpark } from "./activity-spark";
 import { CompetitorsBulkBar } from "./competitors-bulk-bar";
+import { SelectBox } from "./select-box";
 import { feedItemMotion } from "@/lib/motion";
 
 type SortBy = "lastMove" | "activity" | "overlap" | "name";
@@ -216,7 +216,14 @@ function enrich(competitors: Competitor[]) {
     const moveAgeDays = move
       ? (now - new Date(move.createdAt).getTime()) / 86_400_000
       : null;
-    const coverage = c.coverage ?? { sources: 0, failing: 0, failingSource: null };
+    const coverage = c.coverage ?? {
+      sources: 0,
+      failing: 0,
+      failingSource: null,
+      blocked: 0,
+      blockedSource: null,
+      blockedReach: "none" as const,
+    };
     return {
       ...c,
       signals7d: stats.signals7d,
@@ -719,7 +726,9 @@ function CompetitorRow({
   const router = useRouter();
   const href = `/dashboard/competitors/${row.id}`;
   const cov = row.coverage;
-  const live = cov.sources - cov.failing;
+  // Refusals leave `failing` now, so they have to be netted out here too or a site
+  // that blocks us would be counted among the sources we are collecting.
+  const live = cov.sources - cov.failing - (cov.blocked ?? 0);
 
   return (
     <div
@@ -860,9 +869,27 @@ function CompetitorRow({
           </span>
         ) : cov.failing > 0 ? (
           <>
+            {/* "blocked" used to label every failure here, which is the word for the
+                one case that is NOT a failure. A source that stopped answering is
+                broken and worth the warning hue. */}
             <span className="flex min-w-0 items-center gap-1.5 font-medium text-high">
               <span className="size-1.5 shrink-0 rounded-full bg-high" />
-              <span className="truncate">{sourceLabel(cov.failingSource)} blocked</span>
+              <span className="truncate">{sourceLabel(cov.failingSource)} stopped answering</span>
+            </span>
+            <span className="text-meta text-muted-foreground tabular-nums">
+              {live} of {cov.sources} live
+            </span>
+          </>
+        ) : cov.blockedReach === "widespread" ? (
+          <>
+            {/* Only a WIDESPREAD refusal reaches the roster: a blocked blog stays on
+                its own source row. Muted ink, because this is a fact about the site
+                and not a task waiting on the user. */}
+            <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+              <ShieldSlashIcon className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate">
+                {cov.blocked === 1 ? `${sourceLabel(cov.blockedSource)} blocked` : "Blocks us"}
+              </span>
             </span>
             <span className="text-meta text-muted-foreground tabular-nums">
               {live} of {cov.sources} live
@@ -915,52 +942,8 @@ function CompetitorRow({
   );
 }
 
-/**
- * The selection column's box, used both by the header (select-all) and by every row.
- * Always rendered, always a tab stop: a checkbox that only exists on hover can't be
- * found by a keyboard, and can't be found at all on a touch screen, which is what made
- * the whole roster look like it had no selection at all.
- *
- * `mixed` is the header's third state — some rows selected, not all — and maps to
- * aria-checked="mixed", the value a screen reader needs to not announce a partial
- * selection as a complete one.
- */
-function SelectBox({
-  checked,
-  mixed,
-  label,
-  onToggle,
-}: {
-  checked: boolean;
-  mixed?: boolean;
-  label: string;
-  onToggle: (e: React.MouseEvent) => void;
-}) {
-  const on = checked || mixed === true;
-  return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={mixed ? "mixed" : checked}
-      aria-label={label}
-      onClick={(e) => {
-        // The row is navigated by a stretched link covering it; this box sits above
-        // that overlay, so the click must not also reach it.
-        e.preventDefault();
-        e.stopPropagation();
-        onToggle(e);
-      }}
-      className={cn(
-        "relative z-10 flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
-        on
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border-strong text-transparent hover:border-foreground/50",
-      )}
-    >
-      {mixed ? <MinusIcon size={16} /> : <CheckIcon size={16} />}
-    </button>
-  );
-}
+// SelectBox moved to ./select-box so the products portfolio shares the same
+// selection control.
 
 function BucketChip({
   label,
@@ -1060,7 +1043,7 @@ function AddCompetitorDialog({
       if (reason) {
         onPaywall(reason);
       } else {
-        setErr(String(e));
+        setErr(errorMessage(e));
       }
     } finally {
       setBusy(false);

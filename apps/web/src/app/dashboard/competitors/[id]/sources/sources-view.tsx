@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
-import { toast } from "sonner";
 import { ArrowLeftIcon, CaretRightIcon, SpinnerIcon, PlayIcon } from "@/components/icons";
 import {
   ALL_CONFIGURABLE_SOURCES,
@@ -99,7 +98,7 @@ function detectedTargetsOf(techStack: TechStackData): DetectedTargets | null {
 }
 
 /** A group heading inside the single sheet, replacing what used to be a whole Card. */
-function GroupLabel({
+export function GroupLabel({
   children,
   aside,
   tone,
@@ -288,9 +287,6 @@ export function SourcesView({ id }: { id: string }) {
     setTechScraping(true);
     try {
       await api.scrapeTechStack(id);
-      toast.info("Tech-stack scan triggered", {
-        description: "Detecting third-party tech… refreshing shortly.",
-      });
       setTimeout(() => {
         void refresh();
         setTechScraping(false);
@@ -534,9 +530,15 @@ export function SourcesView({ id }: { id: string }) {
           plan={plan}
           monitors={monitors}
           scrapingIds={scrapingIds}
+          monitoringPaused={competitor.monitoringPaused || Boolean(competitor.pausedByPlan)}
           onRun={requestRunMonitor}
           onAdd={addCustomMonitor}
+          onEdit={editMonitor}
+          onSetActive={setMonitorActive}
           onDelete={removeCustomMonitor}
+          onLockedFrequency={(frequency) =>
+            setPaywall({ code: "plan_locked_frequency", frequency, plan })
+          }
           onLocked={() =>
             setPaywall({ code: "plan_limit_custom_monitors", plan, used: 0, limit: 0 })
           }

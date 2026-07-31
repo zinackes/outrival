@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { errorMessage } from "@/lib/error-helpers";
 import {
   Select,
   SelectContent,
@@ -59,7 +60,7 @@ export function DetectionConfigSheet({
       setConfig(configQ.data);
       setExcludedText(configQ.data.excludedDomains.join("\n"));
     }
-    if (configQ.error) setError(String(configQ.error));
+    if (configQ.error) setError(errorMessage(configQ.error));
   }, [open, configQ.data, configQ.error]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -85,7 +86,7 @@ export function DetectionConfigSheet({
       toast.success("Detection settings saved");
       onOpenChange(false);
     } catch (e) {
-      setError(String(e));
+      setError(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -112,7 +113,7 @@ export function DetectionConfigSheet({
             </div>
           )}
           {error && !config && (
-            <p className="text-sm text-critical">Error: {error}</p>
+            <p className="text-sm text-critical">{error}</p>
           )}
           {config && (
             <form
@@ -240,7 +241,7 @@ export function DetectionConfigSheet({
                 </p>
               </div>
 
-              {error && <p className="text-xs text-critical">Error: {error}</p>}
+              {error && <p className="text-xs text-critical">{error}</p>}
             </form>
           )}
         </div>

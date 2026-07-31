@@ -52,7 +52,10 @@ function writeDismissed(next: string[]) {
   }
 }
 
-const STATE_RANK: Record<string, number> = { unscrapable: 0, failing: 1, paused: 2 };
+// Blocked sorts last on purpose. The three above it are repairs the user can make;
+// a refusal is a standing fact about the site, so it states itself under the work
+// rather than heading a list of things to do.
+const STATE_RANK: Record<string, number> = { unscrapable: 0, failing: 1, paused: 2, blocked: 3 };
 
 export function Attention({
   sources,
@@ -141,6 +144,9 @@ function explain(s: ActivitySource): string {
   const last = s.lastRunAt
     ? `Last answered ${formatDistanceToNow(new Date(s.lastRunAt), { addSuffix: true })}.`
     : "It has never answered.";
+  if (s.status === "blocked") {
+    return `${last} This site doesn't allow automated collection, so Outrival stops rather than working around it.`;
+  }
   if (s.status === "unscrapable") {
     return `${last} Outrival paused it after repeated failures and is not retrying on its own.`;
   }
@@ -169,9 +175,18 @@ function AttentionRow({
   const resume = async () => {
     setResuming(true);
     try {
-      if (source.status === "unscrapable") await api.resumeMonitor(source.monitorId);
+      // A blocked source needs the same repair as an auto-paused one: its refusal
+      // has to be cleared before the scheduler will look at it again. Flipping
+      // isActive alone would leave markedUnscrapable set and the click would do
+      // nothing visible.
+      if (source.status === "unscrapable" || source.status === "blocked")
+        await api.resumeMonitor(source.monitorId);
       else await api.updateMonitor(source.monitorId, { isActive: true });
-      toast.success(`${sourceLabel(source.sourceType)} resumed. It runs on the next check.`);
+      toast.success(
+        source.status === "blocked"
+          ? `${sourceLabel(source.sourceType)} will be tried again on the next check. If the site still refuses us, we stop there again.`
+          : `${sourceLabel(source.sourceType)} resumed. It runs on the next check.`,
+      );
       onChanged();
     } catch (err) {
       toastApiError(err, { title: "Couldn't resume this source" });
@@ -191,6 +206,8 @@ function AttentionRow({
       {...feedItemMotion}
       className="grid grid-cols-[8px_18px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1.5 border-b border-border py-2.5 pl-1 transition-colors last:border-b-0 hover:bg-surface-2 max-sm:grid-cols-[8px_18px_minmax(0,1fr)]"
     >
+      {/* Critical ink is reserved for what is actually broken. A refusal gets the
+          hollow dot the paused rows use: real, stated, not an alarm. */}
       <span
         className={
           source.status === "failing" || source.status === "unscrapable"
@@ -216,13 +233,17 @@ function AttentionRow({
         <span className="text-muted-foreground">{explain(source)}</span>
       </div>
       <div className="flex shrink-0 items-center gap-1 max-sm:col-start-3">
+        {/* A blocked row keeps its control. The refusal is ours to report, not to
+            enforce: a site can lift a block, and only an attempt finds out. The
+            label says what the click really is, since "Resume" would promise a
+            schedule rather than one more try. */}
         {source.status === "failing" ? (
           <Button size="sm" variant="secondary" onClick={forceRescan} loading={isRescanning}>
             Check now
           </Button>
         ) : (
           <Button size="sm" variant="secondary" onClick={resume} loading={resuming}>
-            Resume
+            {source.status === "blocked" ? "Try again" : "Resume"}
           </Button>
         )}
         <Button size="sm" variant="ghost" asChild>

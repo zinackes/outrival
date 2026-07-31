@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { errorMessage } from "@/lib/error-helpers";
 import { PaymentMethodDialog } from "@/components/outrival/payment-method-dialog";
 import { BillingDashboardSkeleton } from "@/app/dashboard/settings/billing/billing-skeleton";
 
@@ -205,7 +206,7 @@ export function BillingDashboard() {
       );
       setBusy(null);
     } catch (e) {
-      setError(String(e));
+      setError(errorMessage(e));
       setBusy(null);
     }
   }
@@ -214,6 +215,10 @@ export function BillingDashboard() {
   // competitor cap is below current usage (the user should know what gets paused).
   function selectPlan(plan: Plan) {
     if (!billing || plan === billing.plan) return;
+    // A failed attempt on another card must not follow the user around: the banner
+    // (and the confirm dialog, which never calls applyChange itself) would otherwise
+    // report the previous plan's failure as this plan's.
+    setError(null);
     const targetLimit = PLAN_LIMITS[plan].maxCompetitors;
     const wouldExceed = Number.isFinite(targetLimit) && used > targetLimit;
     if (plan === "free" || wouldExceed) {
@@ -234,7 +239,7 @@ export function BillingDashboard() {
         1500,
       );
     } catch (e) {
-      setError(String(e));
+      setError(errorMessage(e));
     }
     setBusy(null);
   }
@@ -248,7 +253,7 @@ export function BillingDashboard() {
   if ((error || billingQ.error) && !billing)
     return (
       <p className="text-sm text-muted-foreground">
-        Error: {error ?? String(billingQ.error)}
+        {error ?? errorMessage(billingQ.error)}
       </p>
     );
   if (!billing) return <BillingDashboardSkeleton />;

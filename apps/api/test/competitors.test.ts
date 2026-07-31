@@ -106,13 +106,25 @@ describe("GET /competitors roster projection", () => {
     });
     await testDb.insert(monitors).values([
       { id: "mon-roster-home", competitorId: "comp-roster", sourceType: "homepage", isActive: true },
-      // A source that refused us: it must be named, and it must not count as live.
+      // Auto-paused with no diagnosis: broken, and the row names it.
       {
         id: "mon-roster-price",
         competitorId: "comp-roster",
         sourceType: "pricing",
         isActive: true,
         markedUnscrapable: true,
+      },
+      // A site that REFUSED us. It is reported apart from the failures (nothing is
+      // broken and nothing is owed), and it is `isActive: false` because that is what
+      // a refusal writes — which is exactly what used to hide it from this query.
+      {
+        id: "mon-roster-blog",
+        competitorId: "comp-roster",
+        sourceType: "blog",
+        isActive: false,
+        markedUnscrapable: true,
+        refusedAt: new Date(),
+        refusalReason: "robots_disallowed",
       },
     ]);
     await testDb
@@ -157,7 +169,17 @@ describe("GET /competitors roster projection", () => {
     expect(item?.activity).toHaveLength(14);
     expect(item?.activity[11]).toBe(1);
     expect((item?.activity as number[]).reduce((a, b) => a + b, 0)).toBe(1);
-    expect(item?.coverage).toEqual({ sources: 2, failing: 1, failingSource: "pricing" });
+    // The refused blog is counted and named on its own, never inside `failing`, and
+    // one blocked source beside two live ones stays a footnote on its row rather
+    // than a verdict about the competitor.
+    expect(item?.coverage).toEqual({
+      sources: 3,
+      failing: 1,
+      failingSource: "pricing",
+      blocked: 1,
+      blockedSource: "blog",
+      blockedReach: "partial",
+    });
   });
 
   // A competitor whose only signal predates the 14 day window still has a last
@@ -197,7 +219,14 @@ describe("GET /competitors roster projection", () => {
     expect(item?.latestMove?.insight).toBe("an old move");
     expect(item?.stats.signals7d).toBe(0);
     expect((item?.activity as number[]).every((n) => n === 0)).toBe(true);
-    expect(item?.coverage).toEqual({ sources: 1, failing: 0, failingSource: null });
+    expect(item?.coverage).toEqual({
+      sources: 1,
+      failing: 0,
+      failingSource: null,
+      blocked: 0,
+      blockedSource: null,
+      blockedReach: "none",
+    });
   });
 });
 

@@ -1,6 +1,16 @@
 // Pure, JSX-free helpers shared across the competitor-detail tabs. No React, no
 // app-local type coupling — safe to import from any tab module.
 
+import {
+  ALL_CONFIGURABLE_SOURCES,
+  buildCoverage,
+  sourceState,
+  type DetectedTargets,
+  type MonitorCoverageFields,
+  type Plan,
+  type SourceCoverage,
+} from "@outrival/shared";
+
 export function formatTierPrice(p: {
   price: number | null;
   currency: string;
@@ -101,3 +111,25 @@ export function capitalize(s: string): string {
 
 // formatMoney / salaryLabel moved to @/lib/format-money: a component outside this
 // route needs them, and a component may not import from an app route.
+
+/**
+ * This competitor's sources folded into coverage buckets.
+ *
+ * The rail computed this inline and nothing else could reach it, so the page header
+ * had no way to say a competitor blocks us — the one place a widespread refusal
+ * actually belongs. One definition, two readers, no chance of the header and the
+ * rail disagreeing about the same monitors.
+ */
+export function competitorCoverage(
+  monitors: MonitorCoverageFields[],
+  plan: Plan,
+  targets: DetectedTargets | null,
+): SourceCoverage {
+  const bySource = new Map(monitors.map((m) => [m.sourceType, m]));
+  return buildCoverage(
+    ALL_CONFIGURABLE_SOURCES.map((sourceType) => ({
+      sourceType,
+      state: sourceState({ sourceType, plan, monitor: bySource.get(sourceType) ?? null, targets }),
+    })),
+  );
+}

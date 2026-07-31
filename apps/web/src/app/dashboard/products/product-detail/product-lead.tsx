@@ -149,7 +149,12 @@ export function ProductLead({
         )}
 
         {cov && cov.sources > 0 && (
-          <LeadStat label="Sources reporting" href="/dashboard/activity">
+          // The product's own sources sheet answers both readings of this stat:
+          // "what is watched" and "what stopped answering" are managed there.
+          <LeadStat
+            label="Sources reporting"
+            href={row ? `/dashboard/products/${row.id}/sources` : "/dashboard/activity"}
+          >
             <StatValue value={cov.sources - cov.failing} />
             <span className="text-xs text-muted-foreground">of {cov.sources} watched</span>
             {cov.failing > 0 && (

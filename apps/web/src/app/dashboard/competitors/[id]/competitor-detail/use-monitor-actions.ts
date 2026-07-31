@@ -276,9 +276,6 @@ export function useMonitorActions(id: string) {
     try {
       await api.runMonitor(monitorId);
       track("scrape_triggered", { sourceType: monitor.sourceType });
-      toast.info(`Scrape queued · ${monitor.sourceType}`, {
-        description: "It runs as soon as a scanner is free. We'll tell you how it went.",
-      });
       return "ok";
     } catch (e) {
       untrackScrape(monitorId);

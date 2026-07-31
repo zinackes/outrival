@@ -492,7 +492,6 @@ export function CompetitorDetailView({ id }: { id: string }) {
       window.localStorage.setItem(summaryGenKey(id), JSON.stringify(meta));
     } catch {}
     setSummaryGenerating(true);
-    toast.info("Generating AI summary…", { description: "It updates here when it's ready." });
   }
 
   // Resume (or clear) the in-progress marker on mount / when switching competitor.

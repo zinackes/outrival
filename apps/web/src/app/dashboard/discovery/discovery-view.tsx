@@ -1004,9 +1004,8 @@ export function DiscoveryView() {
     }
   }
 
-  // Optimistic dismiss with an undo window (quick triage). The row leaves the list
-  // immediately; the "not useful" feedback is only recorded once the toast auto-closes,
-  // so an Undo within the window leaves no trace in the relevance learning.
+  // Optimistic dismiss (quick triage). The row leaving the list is the feedback —
+  // no toast. A change of heart goes through the Dismissed tab's Restore.
   async function dismiss(id: string) {
     const item = items?.find((c) => c.id === id);
     if (!item) return;
@@ -1020,12 +1019,7 @@ export function DiscoveryView() {
       toastApiError(e, { title: "Dismiss failed" });
       return;
     }
-    toast(`${candidateName(item)} dismissed`, {
-      description: "It won't be suggested again.",
-      action: { label: "Undo", onClick: () => void undoDismiss([item]) },
-      onAutoClose: () => recordDiscoveryFeedback(id, "not_useful"),
-      duration: 6000,
-    });
+    recordDiscoveryFeedback(id, "not_useful");
   }
 
   // Bulk dismiss (the weak band). No per-item feedback: clearing a band in one
@@ -1042,31 +1036,6 @@ export function DiscoveryView() {
       bumpCounts({ new: targets.length, dismissed: -targets.length });
       toastApiError(e, { title: "Dismiss failed" });
       return;
-    }
-    toast(`${targets.length} ${plural(targets.length, "suggestion")} dismissed`, {
-      action: { label: "Undo", onClick: () => void undoDismiss(targets) },
-      duration: 6000,
-    });
-  }
-
-  // Send dismissed candidates back to the queue. Shared by the Undo toast and the
-  // Restore button — the local effect depends on which list is showing, read fresh
-  // via tabRef so a tab switch mid-window can't misplace a row.
-  async function undoDismiss(targets: CompetitorCandidate[]) {
-    const ids = new Set(targets.map((t) => t.id));
-    try {
-      await api.restoreCandidates([...ids]);
-      bumpCounts({ new: ids.size, dismissed: -ids.size });
-      setItems((prev) => {
-        const base = prev ?? [];
-        if (tabRef.current !== "dismissed") {
-          const present = new Set(base.map((c) => c.id));
-          return [...base, ...targets.filter((t) => !present.has(t.id))];
-        }
-        return base.filter((c) => !ids.has(c.id)); // no longer dismissed
-      });
-    } catch (e) {
-      toastApiError(e, { title: "Undo failed" });
     }
   }
 

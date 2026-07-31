@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
-import { toast } from "sonner";
 import { ArrowLeftIcon, CaretRightIcon, SpinnerIcon, PlayIcon } from "@/components/icons";
 import {
   ALL_CONFIGURABLE_SOURCES,
@@ -288,9 +287,6 @@ export function SourcesView({ id }: { id: string }) {
     setTechScraping(true);
     try {
       await api.scrapeTechStack(id);
-      toast.info("Tech-stack scan triggered", {
-        description: "Detecting third-party tech… refreshing shortly.",
-      });
       setTimeout(() => {
         void refresh();
         setTechScraping(false);

@@ -144,25 +144,19 @@ export function MonitorEmptyState({
   }
   const activity = scrapeActivity(monitor, scrapingIds.has(monitor.id));
   const busy = activity !== null;
-  // The site refused us. Offering "Scrape now" here sends the user to press a
-  // button that cannot work, and frames a deliberate stop as an empty tab they
-  // forgot to fill. State the reason and stop.
-  if (isRefused(monitor)) {
-    return (
-      <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
-        <p className="text-sm font-semibold text-foreground">No {label} data</p>
-        <p className="text-sm text-muted-foreground max-w-md">
-          {friendlyScrapeError(monitor.lastError, monitor.sourceType)} No action needed from
-          you.
-        </p>
-      </Card>
-    );
-  }
+  // The site refused us. Say so instead of "never been scraped, run it now", which
+  // reads as a chore the user forgot. The button stays: a block can be lifted, and
+  // trying is the user's call — only the SCRAPE stops at a refusal, in the worker.
+  const refused = isRefused(monitor);
   return (
     <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
-      <p className="text-sm font-semibold text-foreground">No {label} data yet</p>
+      <p className="text-sm font-semibold text-foreground">
+        No {label} data{refused ? "" : " yet"}
+      </p>
       <p className="text-sm text-muted-foreground max-w-md">
-        {activity === "queued"
+        {refused
+          ? `${friendlyScrapeError(monitor.lastError, monitor.sourceType)} You can still try again if you think that has changed.`
+          : activity === "queued"
           ? `This source is waiting in the scan queue. It runs as soon as a scanner is free, and ${label} data lands here on its own.`
           : monitor.lastRunAt
             ? `Monitor was scraped ${formatDistanceToNow(new Date(monitor.lastRunAt), { addSuffix: true })}, but no ${label} data was extracted. The source page may not expose this data.`

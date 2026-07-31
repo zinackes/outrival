@@ -318,3 +318,42 @@ export function coverageHeadline(
 export function fallbackSources(cov: SourceCoverage, exclude: SourceType): SourceType[] {
   return [...cov.tracked, ...cov.pending].filter((s) => s !== exclude);
 }
+
+/**
+ * Sources whose refusal changes what can be said about the competitor as a whole,
+ * rather than costing one row of detail. The homepage anchors platform detection,
+ * profile extraction, pricing discovery and the visual diff; pricing is half of what
+ * the product is bought for. Losing either is not "one source down".
+ */
+export const KEYSTONE_SOURCES: readonly SourceType[] = ["homepage", "pricing"];
+
+export type BlockedReach =
+  /** Nothing refuses us. */
+  | "none"
+  /** Some sources refuse us, and the overall picture survives it. */
+  | "partial"
+  /** A keystone surface, or most of what we watch, refuses us. */
+  | "widespread";
+
+/**
+ * How far a competitor's refusals reach.
+ *
+ * `partial` stays on the source rows: a blocked blog is a footnote, and hoisting it
+ * to the competitor would cry wolf about a competitor we still read well. Only
+ * `widespread` earns a line at the competitor level (roster, page header), because
+ * only then does "what we know about them" actually change.
+ *
+ * Informative in both cases. Neither verdict withholds a control from the user, and
+ * neither pauses anything: the only thing that stops at a refusal is the scrape, in
+ * the worker, on the source that was refused.
+ */
+export function blockedReach(cov: SourceCoverage): BlockedReach {
+  if (cov.blocked.length === 0) return "none";
+  if (cov.blocked.some((s) => KEYSTONE_SOURCES.includes(s))) return "widespread";
+  // Majority of what we are supposed to be collecting. Sources that are off, locked,
+  // absent or never enabled stay out of the denominator: none of them is a refusal,
+  // and counting them would let a barely-configured competitor read as widely
+  // blocked on the strength of one blocked blog.
+  const collecting = cov.tracked.length + cov.pending.length + cov.blocked.length;
+  return cov.blocked.length * 2 >= collecting ? "widespread" : "partial";
+}

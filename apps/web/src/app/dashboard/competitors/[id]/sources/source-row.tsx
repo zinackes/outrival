@@ -12,7 +12,6 @@ import {
   PlusIcon,
 } from "@/components/icons";
 import {
-  ATTENTION_OF,
   MONITOR_FREQUENCIES,
   PLAN_LABELS,
   isReviewSource,
@@ -425,11 +424,11 @@ export function SourceRow({
             </Button>
           )}
 
-          {/* The "closed" family (blocked / login / geo) gets no Run button: the run
-              would meet the same wall, and offering it is what turns a deliberate
-              stop into a chore the user thinks they forgot to do. Repointing the
-              page is the only real move, and it lives in the drawer below. */}
-          {monitor && state !== "locked" && state !== "not_available" && ATTENTION_OF[state] !== "closed" && (
+          {/* A refusal is stated, never enforced on the user: the Run button stays on
+              a blocked source. The site may have changed its robots.txt, or the URL
+              may now point somewhere open, and only a fresh attempt can find out.
+              What stops at a refusal is the SCRAPE, in the worker, not the control. */}
+          {monitor && state !== "locked" && state !== "not_available" && (
             <Button
               size="sm"
               variant="ghost"

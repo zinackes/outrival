@@ -15,14 +15,11 @@ import {
   SparkleIcon,
 } from "@/components/icons";
 import {
-  ALL_CONFIGURABLE_SOURCES,
   MONITOR_FREQUENCIES,
   PLAN_LABELS,
-  buildCoverage,
   coverageHeadline,
   minPlanForFrequency,
   planIncludesFrequency,
-  sourceState,
   type DetectedTargets,
   type MonitorFrequency,
   type Plan,
@@ -44,6 +41,7 @@ import { StatusDot } from "@/components/outrival/data-marks";
 import { sourceShortLabel } from "@/lib/source-labels";
 import { friendlyScrapeError } from "@/lib/scrape-errors";
 import { scrapeActivity } from "./shared";
+import { competitorCoverage } from "./helpers";
 import { lastScanLabel, monitorStatus, nextScanLabel, type MonitorStatus } from "./monitor-status";
 
 const label = (s: SourceType) => sourceShortLabel(s).toLowerCase();
@@ -109,13 +107,7 @@ export function CompetitorRail({
   onLockedFrequency: (freq: MonitorFrequency) => void;
   onGenerateSummary: () => void;
 }) {
-  const bySource = new Map(monitors.map((m) => [m.sourceType, m]));
-  const coverage = buildCoverage(
-    ALL_CONFIGURABLE_SOURCES.map((sourceType) => ({
-      sourceType,
-      state: sourceState({ sourceType, plan, monitor: bySource.get(sourceType) ?? null, targets }),
-    })),
-  );
+  const coverage = competitorCoverage(monitors, plan, targets);
   // Sources still being captured count as fallbacks too: a competitor added a
   // minute ago shouldn't read as "blocked, and nothing else".
   const fallbacks = [...coverage.tracked, ...coverage.pending];
@@ -443,17 +435,17 @@ function SourceRow({
         </div>
 
         <DropdownMenuSeparator />
-        {/* No "Run now" on a refusal. The run would reach the same wall, and offering
-            it is what makes a deliberate stop look like something the user forgot to
-            retry. The only real move is repointing the page, which lives one item
-            below on the Sources page. */}
-        {blocked ? (
+        {/* A blocked source keeps the ordinary Run / Pause items below: the refusal is
+            reported, not enforced on the user. It only adds the one thing the state
+            actually calls for, which is why we stopped. */}
+        {blocked && (
           <DropdownMenuItem asChild>
             <Link href="/bot" target="_blank" rel="noreferrer">
               <ShieldSlashIcon size={16} /> Why we stop at a block
             </Link>
           </DropdownMenuItem>
-        ) : status === "disabled" ? (
+        )}
+        {status === "disabled" ? (
           <DropdownMenuItem onClick={() => onResume(m.id)} disabled={busy}>
             {busy ? <SpinnerIcon size={16} className="animate-spin" /> : <ArrowsClockwiseIcon size={16} />}
             {busy ? "Resuming…" : "Resume monitoring"}

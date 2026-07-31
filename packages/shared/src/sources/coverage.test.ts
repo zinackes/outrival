@@ -1,5 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import {
+  blockedReach,
   isRefused,
   sourceState,
   buildCoverage,
@@ -57,6 +58,63 @@ describe("isRefused", () => {
 
   test("no monitor is not a refusal", () => {
     expect(isRefused(null)).toBe(false);
+  });
+});
+
+// Which refusals are worth saying at the COMPETITOR level. A blocked blog is a
+// footnote on its row; a blocked homepage changes what we know about them at all.
+describe("blockedReach", () => {
+  const cov = (over: Partial<Record<"tracked" | "pending" | "blocked", SourceType[]>>) =>
+    buildCoverage([
+      ...(over.tracked ?? []).map((s) => ({ sourceType: s, state: "tracking" as const })),
+      ...(over.pending ?? []).map((s) => ({ sourceType: s, state: "pending" as const })),
+      ...(over.blocked ?? []).map((s) => ({ sourceType: s, state: "blocked" as const })),
+    ]);
+
+  test("no refusal at all", () => {
+    expect(blockedReach(cov({ tracked: ["homepage", "blog"] }))).toBe("none");
+  });
+
+  test("a blocked blog beside a healthy roster stays on its own row", () => {
+    expect(
+      blockedReach(cov({ tracked: ["homepage", "pricing", "jobs", "changelog"], blocked: ["blog"] })),
+    ).toBe("partial");
+  });
+
+  test("a blocked homepage is competitor-level however much else works", () => {
+    expect(
+      blockedReach(cov({ tracked: ["blog", "jobs", "changelog", "docs"], blocked: ["homepage"] })),
+    ).toBe("widespread");
+  });
+
+  test("most of what we watch refusing is competitor-level too", () => {
+    expect(blockedReach(cov({ tracked: ["jobs"], blocked: ["blog", "changelog"] }))).toBe(
+      "widespread",
+    );
+  });
+
+  test("sources merely off or absent never inflate the reach", () => {
+    // One blocked blog against one tracked source: without the denominator rule, a
+    // barely-configured competitor would read as widely blocked.
+    const c = buildCoverage([
+      { sourceType: "homepage", state: "tracking" },
+      { sourceType: "jobs", state: "not_configured" },
+      { sourceType: "docs", state: "locked" },
+      { sourceType: "status", state: "not_available" },
+      { sourceType: "blog", state: "blocked" },
+    ]);
+    expect(blockedReach(c)).toBe("widespread");
+    // …and with a second live source the same blocked blog drops back to a footnote.
+    expect(
+      blockedReach(
+        buildCoverage([
+          { sourceType: "homepage", state: "tracking" },
+          { sourceType: "changelog", state: "tracking" },
+          { sourceType: "jobs", state: "not_configured" },
+          { sourceType: "blog", state: "blocked" },
+        ]),
+      ),
+    ).toBe("partial");
   });
 });
 

@@ -175,9 +175,18 @@ function AttentionRow({
   const resume = async () => {
     setResuming(true);
     try {
-      if (source.status === "unscrapable") await api.resumeMonitor(source.monitorId);
+      // A blocked source needs the same repair as an auto-paused one: its refusal
+      // has to be cleared before the scheduler will look at it again. Flipping
+      // isActive alone would leave markedUnscrapable set and the click would do
+      // nothing visible.
+      if (source.status === "unscrapable" || source.status === "blocked")
+        await api.resumeMonitor(source.monitorId);
       else await api.updateMonitor(source.monitorId, { isActive: true });
-      toast.success(`${sourceLabel(source.sourceType)} resumed. It runs on the next check.`);
+      toast.success(
+        source.status === "blocked"
+          ? `${sourceLabel(source.sourceType)} will be tried again on the next check. If the site still refuses us, we stop there again.`
+          : `${sourceLabel(source.sourceType)} resumed. It runs on the next check.`,
+      );
       onChanged();
     } catch (err) {
       toastApiError(err, { title: "Couldn't resume this source" });
@@ -224,18 +233,17 @@ function AttentionRow({
         <span className="text-muted-foreground">{explain(source)}</span>
       </div>
       <div className="flex shrink-0 items-center gap-1 max-sm:col-start-3">
-        {/* A blocked row carries no repair at all. "Check now" reaches the same wall
-            and "Resume" un-pauses a source the scheduler will refuse to run — both
-            read as a fix the user failed to apply for something that is not theirs
-            to fix. The row states the limit and links to the source; that is all
-            there is to offer. */}
-        {source.status === "blocked" ? null : source.status === "failing" ? (
+        {/* A blocked row keeps its control. The refusal is ours to report, not to
+            enforce: a site can lift a block, and only an attempt finds out. The
+            label says what the click really is, since "Resume" would promise a
+            schedule rather than one more try. */}
+        {source.status === "failing" ? (
           <Button size="sm" variant="secondary" onClick={forceRescan} loading={isRescanning}>
             Check now
           </Button>
         ) : (
           <Button size="sm" variant="secondary" onClick={resume} loading={resuming}>
-            Resume
+            {source.status === "blocked" ? "Try again" : "Resume"}
           </Button>
         )}
         <Button size="sm" variant="ghost" asChild>

@@ -19,6 +19,7 @@ import {
   BinocularsIcon,
   BuildingsIcon,
   PauseCircleIcon,
+  ShieldSlashIcon,
 } from "@/components/icons";
 import { EmptyState } from "./empty-state";
 import { toast } from "sonner";
@@ -216,7 +217,14 @@ function enrich(competitors: Competitor[]) {
     const moveAgeDays = move
       ? (now - new Date(move.createdAt).getTime()) / 86_400_000
       : null;
-    const coverage = c.coverage ?? { sources: 0, failing: 0, failingSource: null };
+    const coverage = c.coverage ?? {
+      sources: 0,
+      failing: 0,
+      failingSource: null,
+      blocked: 0,
+      blockedSource: null,
+      blockedReach: "none" as const,
+    };
     return {
       ...c,
       signals7d: stats.signals7d,
@@ -719,7 +727,9 @@ function CompetitorRow({
   const router = useRouter();
   const href = `/dashboard/competitors/${row.id}`;
   const cov = row.coverage;
-  const live = cov.sources - cov.failing;
+  // Refusals leave `failing` now, so they have to be netted out here too or a site
+  // that blocks us would be counted among the sources we are collecting.
+  const live = cov.sources - cov.failing - (cov.blocked ?? 0);
 
   return (
     <div
@@ -860,9 +870,27 @@ function CompetitorRow({
           </span>
         ) : cov.failing > 0 ? (
           <>
+            {/* "blocked" used to label every failure here, which is the word for the
+                one case that is NOT a failure. A source that stopped answering is
+                broken and worth the warning hue. */}
             <span className="flex min-w-0 items-center gap-1.5 font-medium text-high">
               <span className="size-1.5 shrink-0 rounded-full bg-high" />
-              <span className="truncate">{sourceLabel(cov.failingSource)} blocked</span>
+              <span className="truncate">{sourceLabel(cov.failingSource)} stopped answering</span>
+            </span>
+            <span className="text-meta text-muted-foreground tabular-nums">
+              {live} of {cov.sources} live
+            </span>
+          </>
+        ) : cov.blockedReach === "widespread" ? (
+          <>
+            {/* Only a WIDESPREAD refusal reaches the roster: a blocked blog stays on
+                its own source row. Muted ink, because this is a fact about the site
+                and not a task waiting on the user. */}
+            <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+              <ShieldSlashIcon className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate">
+                {cov.blocked === 1 ? `${sourceLabel(cov.blockedSource)} blocked` : "Blocks us"}
+              </span>
             </span>
             <span className="text-meta text-muted-foreground tabular-nums">
               {live} of {cov.sources} live

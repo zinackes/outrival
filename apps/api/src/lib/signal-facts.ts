@@ -250,11 +250,12 @@ async function pricingFacts(
   const rows = await analyticsQuery<PlanRow>(sql`
     WITH cur AS (
       SELECT max(recorded_at) AS ts FROM pricing_history
-      WHERE competitor_id = ${competitorId}
+      WHERE competitor_id = ${competitorId} AND origin = 'live'
         AND recorded_at >= ${window.lower} AND recorded_at <= ${window.upper}
     ), prev AS (
       SELECT max(ph.recorded_at) AS ts FROM pricing_history ph, cur
-      WHERE ph.competitor_id = ${competitorId} AND ph.recorded_at < cur.ts
+      WHERE ph.competitor_id = ${competitorId} AND ph.origin = 'live'
+        AND ph.recorded_at < cur.ts
     )
     SELECT 'current' AS side, ph.plan_name AS "planName", ph.price,
            ph.currency, ph.billing_period AS "billingPeriod",
@@ -380,11 +381,12 @@ async function tierFacts(
   const rows = await analyticsQuery<TierBatchRow>(sql`
     WITH cur AS (
       SELECT max(recorded_at) AS ts FROM price_tiers
-      WHERE competitor_id = ${competitorId}
+      WHERE competitor_id = ${competitorId} AND origin = 'live'
         AND recorded_at >= ${window.lower} AND recorded_at <= ${window.upper}
     ), prev AS (
       SELECT max(pt.recorded_at) AS ts FROM price_tiers pt, cur
-      WHERE pt.competitor_id = ${competitorId} AND pt.recorded_at < cur.ts
+      WHERE pt.competitor_id = ${competitorId} AND pt.origin = 'live'
+        AND pt.recorded_at < cur.ts
     )
     SELECT 'current' AS side, pt.plan_name, pt.unit, pt.from_qty, pt.to_qty,
            pt.unit_price, pt.flat_fee

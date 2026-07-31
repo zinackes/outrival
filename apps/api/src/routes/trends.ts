@@ -135,7 +135,7 @@ trendsRouter.get("/summary", async (c) => {
                PARTITION BY competitor_id, plan_name, billing_period ORDER BY recorded_at
              ) AS prev_price
       FROM pricing_history
-      WHERE competitor_id IN (${idList})
+      WHERE competitor_id IN (${idList}) AND origin = 'live'
         AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
     )
     SELECT competitor_id AS "competitorId", plan_name AS "planName", price,
@@ -261,7 +261,7 @@ trendsRouter.get("/market", async (c) => {
              min(price)::float AS value,
              (array_agg(currency ORDER BY price ASC))[1] AS currency
       FROM pricing_history
-      WHERE competitor_id IN (${idList})
+      WHERE competitor_id IN (${idList}) AND origin = 'live'
         AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
         AND price > 0
         AND (billing_period IS NULL OR billing_period NOT IN ('yearly', 'usage'))
@@ -376,7 +376,7 @@ trendsRouter.get("/series", async (c) => {
     points = await analyticsQuery<SeriesPoint>(sql`
       SELECT (recorded_at AT TIME ZONE 'UTC') AS "t", plan_name AS "key", price AS "value"
       FROM pricing_history
-      WHERE competitor_id = ${competitorId}
+      WHERE competitor_id = ${competitorId} AND origin = 'live'
         AND price IS NOT NULL
         AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
       ORDER BY recorded_at ASC

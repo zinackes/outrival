@@ -238,11 +238,14 @@ const getPricingHistory: AskTool = {
     const id = owned.id;
 
     const detected = await analyticsQuery<RawPricingPlan>(sql`
-      WITH latest AS (SELECT max(recorded_at) AS rid FROM pricing_history WHERE competitor_id = ${id})
+      WITH latest AS (
+        SELECT max(recorded_at) AS rid FROM pricing_history
+        WHERE competitor_id = ${id} AND origin = 'live'
+      )
       SELECT plan_name AS "planName", price, currency, billing_period AS "billingPeriod",
              (latest.rid AT TIME ZONE 'UTC') AS "capturedAt"
       FROM pricing_history, latest
-      WHERE competitor_id = ${id} AND recorded_at = latest.rid
+      WHERE competitor_id = ${id} AND origin = 'live' AND recorded_at = latest.rid
       ORDER BY price
     `);
     // Apply the user's per-plan overlay so Ask grounds on the plans the user sees
@@ -266,7 +269,7 @@ const getPricingHistory: AskTool = {
       WITH ranked AS (
         SELECT plan_name, price, billing_period, recorded_at,
                lag(price) OVER (PARTITION BY plan_name, billing_period ORDER BY recorded_at) AS prev_price
-        FROM pricing_history WHERE competitor_id = ${id}
+        FROM pricing_history WHERE competitor_id = ${id} AND origin = 'live'
       )
       SELECT plan_name AS "planName", price, prev_price AS "prevPrice",
              billing_period AS "billingPeriod", (recorded_at AT TIME ZONE 'UTC') AS "recordedAt"
@@ -556,7 +559,8 @@ const rankPricing: AskTool = {
       analyticsQuery<RawRosterPricing>(sql`
         WITH latest AS (
           SELECT competitor_id, max(recorded_at) AS rid
-          FROM pricing_history WHERE competitor_id IN (${ids})
+          FROM pricing_history
+          WHERE competitor_id IN (${ids}) AND origin = 'live'
           GROUP BY competitor_id
         )
         SELECT p.competitor_id AS "competitorId", p.plan_name AS "planName", p.price,
@@ -576,7 +580,7 @@ const rankPricing: AskTool = {
                  lag(price) OVER (
                    PARTITION BY competitor_id, plan_name, billing_period ORDER BY recorded_at
                  ) AS prev_price
-          FROM pricing_history WHERE competitor_id IN (${ids})
+          FROM pricing_history WHERE competitor_id IN (${ids}) AND origin = 'live'
         )
         SELECT competitor_id AS "competitorId", plan_name AS "planName", price,
                prev_price AS "prevPrice", billing_period AS "billingPeriod",

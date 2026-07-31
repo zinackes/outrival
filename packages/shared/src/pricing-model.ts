@@ -196,6 +196,87 @@ export function cheapestCostAtVolume(
   return best;
 }
 
+// ---------------------------------------------------------------------------
+// The cost curve — one competitor's price as a FUNCTION of volume (P5)
+// ---------------------------------------------------------------------------
+
+export const COST_CURVE_MIN_QTY = 1;
+export const COST_CURVE_MAX_QTY = 10_000_000;
+
+/**
+ * The volumes a curve is sampled at: a 1-2-5 ladder per decade from 1 to 10M,
+ * plus the boundaries of whatever ladder the competitor published.
+ *
+ * The decades give an evenly spaced curve on a log axis. The boundaries are what
+ * make it TRUE: a graduated ladder bends exactly where a band ends, and a curve
+ * sampled only on round decades would draw a straight line straight through the
+ * bend — smoothing away the one feature the reader is looking for. Each boundary
+ * contributes its last covered quantity and the first quantity past it, so the
+ * step in a `volume` ladder renders as a step rather than a ramp.
+ */
+export function costCurveVolumes(tiers: readonly CostTier[] = []): number[] {
+  const out = new Set<number>();
+  for (let decade = 1; decade <= COST_CURVE_MAX_QTY; decade *= 10) {
+    for (const m of [1, 2, 5]) {
+      const q = decade * m;
+      if (q >= COST_CURVE_MIN_QTY && q <= COST_CURVE_MAX_QTY) out.add(q);
+    }
+  }
+  for (const t of tiers) {
+    if (t.toQty == null || !Number.isFinite(t.toQty)) continue;
+    for (const q of [t.toQty, t.toQty + 1]) {
+      if (q >= COST_CURVE_MIN_QTY && q <= COST_CURVE_MAX_QTY) out.add(q);
+    }
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+export interface CostCurvePoint {
+  qty: number;
+  cost: number;
+}
+
+export interface CostCurve {
+  unit: string;
+  currency: string | null;
+  points: CostCurvePoint[];
+}
+
+/**
+ * What this competitor charges for `unit` across the whole volume range, read
+ * off the ladder it published — the same `cheapestCostAtVolume` that answers the
+ * single-volume question, asked at every sample point, so the curve and the row
+ * above it can never disagree.
+ *
+ * MEASURED points are deliberately NOT folded in. A probe answers at four
+ * reference volumes; splicing those into a computed line would bend it at four
+ * arbitrary places and present the result as one continuous model. The measured
+ * costs belong ON the chart, as points with their own evidence — a different
+ * kind of claim, drawn as a different kind of mark.
+ *
+ * Returns null when nothing prices this meter: a competitor with no answer is
+ * absent from the chart, never a flat line at zero.
+ */
+export function buildCostCurve(
+  rows: readonly MeteredRow[],
+  tiers: readonly TierBandRow[],
+  unit: string,
+): CostCurve | null {
+  const ladder = tiers
+    .filter((t) => t.unit == null || resolveMeterUnit(t.unit)?.unit === unit)
+    .map(toCostTier);
+
+  const points: CostCurvePoint[] = [];
+  let currency: string | null = null;
+  for (const qty of costCurveVolumes(ladder)) {
+    const best = cheapestCostAtVolume(rows, tiers, unit, qty);
+    if (!best) continue;
+    points.push({ qty, cost: best.cost });
+    currency ??= best.currency;
+  }
+  return points.length > 0 ? { unit, currency, points } : null;
+}
+
 function toCostTier(t: TierBandRow): CostTier {
   return {
     fromQty: t.from_qty,

@@ -28,7 +28,14 @@ export interface CreditBurnRow {
   credits: number;
 }
 
-const actionKey = (action: string): string => action.trim().toLowerCase().replace(/\s+/g, " ");
+/** The match key for one action. Exported so every surface that pairs two
+ * batches — the differ here, the read side that highlights what moved — pairs
+ * them by the SAME rule, and a row can never be "changed" in one and "added" in
+ * the other. */
+export const creditBurnActionKey = (action: string): string =>
+  action.trim().toLowerCase().replace(/\s+/g, " ");
+
+const actionKey = creditBurnActionKey;
 
 const pct = (prev: number, next: number): number =>
   prev === 0 ? 0 : Math.round(((next - prev) / prev) * 1000) / 10;

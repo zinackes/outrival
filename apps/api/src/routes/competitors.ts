@@ -93,6 +93,7 @@ import {
   blockedReach,
   buildCoverage,
   type SourceState,
+  creditBurnActionKey,
   type SourceType,
   type MonitorFrequency,
   type PricingTier,
@@ -454,10 +455,10 @@ async function buildOverview(competitorId: string) {
     }>(sql`
       SELECT plan_name, price, currency, billing_period
       FROM pricing_history
-      WHERE competitor_id = ${competitorId}
+      WHERE competitor_id = ${competitorId} AND origin = 'live'
         AND recorded_at = (
           SELECT max(recorded_at) FROM pricing_history
-          WHERE competitor_id = ${competitorId}
+          WHERE competitor_id = ${competitorId} AND origin = 'live'
         )
       ORDER BY price ASC
     `),
@@ -497,7 +498,7 @@ async function buildOverview(competitorId: string) {
       WITH entry AS (
         SELECT recorded_at, min(price) AS price
         FROM pricing_history
-        WHERE competitor_id = ${competitorId}
+        WHERE competitor_id = ${competitorId} AND origin = 'live'
           AND price IS NOT NULL AND price > 0
         GROUP BY recorded_at
       )
@@ -2049,6 +2050,13 @@ competitorsRouter.get("/:id/positioning-history", async (c) => {
   return c.json({ versions: collapsePositioningVersions(rows) });
 });
 
+// The price TIMELINE — and the one pricing read in the product that keeps
+// `origin='archive'` rows (P5). Everywhere else a batch reconstructed from the
+// Internet Archive is filtered out, because every other read makes a claim
+// ("they charge X", "their entry price moved") and a Wayback capture cannot
+// support one. Here the rows ARE the claim: this is what the page charged, and
+// when. The UI marks the archived points so the two never read as one series
+// captured the same way.
 competitorsRouter.get("/:id/pricing-history", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
@@ -2065,6 +2073,7 @@ competitorsRouter.get("/:id/pricing-history", async (c) => {
     trial_days: number | null;
     trial_requires_card: boolean | null;
     has_free_plan: boolean | null;
+    origin: string;
     recorded_at: string;
   }>(sql`
     SELECT plan_name, price, currency, billing_period,
@@ -2072,6 +2081,7 @@ competitorsRouter.get("/:id/pricing-history", async (c) => {
            trial_days,
            (trial_requires_card = 1) AS trial_requires_card,
            (has_free_plan = 1) AS has_free_plan,
+           origin,
            recorded_at::text AS recorded_at
     FROM pricing_history
     WHERE competitor_id = ${competitor.id}
@@ -2106,9 +2116,10 @@ competitorsRouter.get("/:id/rate-structures", async (c) => {
            rate_structure AS "rateStructure", minimum_amount AS "minimumAmount",
            percentage_rate AS "percentageRate", recorded_at::text AS "capturedAt"
     FROM pricing_history
-    WHERE competitor_id = ${competitor.id}
+    WHERE competitor_id = ${competitor.id} AND origin = 'live'
       AND recorded_at = (
-        SELECT max(recorded_at) FROM pricing_history WHERE competitor_id = ${competitor.id}
+        SELECT max(recorded_at) FROM pricing_history
+        WHERE competitor_id = ${competitor.id} AND origin = 'live'
       )
       AND (rate_structure IS NOT NULL OR minimum_amount IS NOT NULL OR percentage_rate IS NOT NULL)
     ORDER BY plan_name
@@ -2125,9 +2136,10 @@ competitorsRouter.get("/:id/rate-structures", async (c) => {
     SELECT plan_name AS "planName", unit, from_qty AS "fromQty", to_qty AS "toQty",
            unit_price AS "unitPrice", flat_fee AS "flatFee"
     FROM price_tiers
-    WHERE competitor_id = ${competitor.id}
+    WHERE competitor_id = ${competitor.id} AND origin = 'live'
       AND recorded_at = (
-        SELECT max(recorded_at) FROM price_tiers WHERE competitor_id = ${competitor.id}
+        SELECT max(recorded_at) FROM price_tiers
+        WHERE competitor_id = ${competitor.id} AND origin = 'live'
       )
     ORDER BY plan_name, from_qty
   `);
@@ -2175,7 +2187,45 @@ competitorsRouter.get("/:id/rate-structures", async (c) => {
     (a, b) => a.meterUnit.localeCompare(b.meterUnit) || a.referenceQty - b.referenceQty,
   );
 
-  return c.json({ plans, tiers, points, capturedAt: plans[0]?.capturedAt ?? null });
+  // P5 — what each published action SPENDS from a credit balance, plus what it
+  // spent in the batch before, so the tab can show the rise rather than only the
+  // current number. Two batches, one query: the pack price is what a page
+  // advertises, the burn rate is what actually determines how far the pack goes.
+  const burnRows = await analyticsQuery<{
+    action: string;
+    credits: number;
+    isCurrent: boolean;
+  }>(sql`
+    WITH batches AS (
+      SELECT DISTINCT recorded_at FROM credit_burn_rates
+      WHERE competitor_id = ${competitor.id}
+      ORDER BY recorded_at DESC LIMIT 2
+    ), cur AS (SELECT max(recorded_at) AS ts FROM batches),
+       prev AS (SELECT min(recorded_at) AS ts FROM batches)
+    SELECT b.action, b.credits, (b.recorded_at = (SELECT ts FROM cur)) AS "isCurrent"
+    FROM credit_burn_rates b
+    WHERE b.competitor_id = ${competitor.id}
+      AND b.recorded_at IN ((SELECT ts FROM cur), (SELECT ts FROM prev))
+    ORDER BY b.action
+  `);
+  const previousBurns = new Map(
+    burnRows.filter((r) => !r.isCurrent).map((r) => [creditBurnActionKey(r.action), r.credits]),
+  );
+  const burns = burnRows
+    .filter((r) => r.isCurrent)
+    .map((r) => {
+      // Undefined = the action is new (or there is no prior batch at all, in which
+      // case every action is "new" and the UI shows no deltas — correct: a first
+      // capture has nothing to compare against).
+      const before = previousBurns.get(creditBurnActionKey(r.action));
+      return {
+        action: r.action,
+        credits: r.credits,
+        previousCredits: before ?? null,
+      };
+    });
+
+  return c.json({ plans, tiers, points, burns, capturedAt: plans[0]?.capturedAt ?? null });
 });
 
 // P4 — the proof behind one measured cost: the screenshot taken while the
@@ -2357,7 +2407,7 @@ async function latestDetectedPricing(competitorId: string): Promise<PricingTier[
     SELECT plan_name, price, currency, billing_period, unit, included_quantity,
            (recorded_at AT TIME ZONE 'UTC')::text AS recorded_at
     FROM pricing_history
-    WHERE competitor_id = ${competitorId}
+    WHERE competitor_id = ${competitorId} AND origin = 'live'
     ORDER BY recorded_at DESC
     LIMIT 60
   `);

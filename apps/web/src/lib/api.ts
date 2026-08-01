@@ -2209,7 +2209,7 @@ export type AdminScrapingHealth = {
   // because the gate judged them pure rewrites. Suppression is invisible to the
   // customer by construction, so this ratio is the only way to notice the gate has
   // drifted from "drops copy passes" to "eats real signal".
-  cosmeticGate: { suppressed: number; totalChanges: number };
+  cosmeticGate: { suppressed: number; rotatingList: number; totalChanges: number };
   deadMonitors: AdminDeadMonitor[];
   // Collection doctrine: top competitors that refused us over 7 days, and why.
   refusedDomains: AdminRefusedDomain[];

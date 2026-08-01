@@ -77,7 +77,12 @@ export function SignalsBriefRow({
         selected ? "bg-accent" : "hover:bg-accent/50 focus-visible:bg-accent/50",
       )}
     >
-      <SparkleIcon size={16} className="mt-0.5 shrink-0 text-link" aria-hidden />
+      {/* Sits in the signal rows' avatar slot (row px-3 + the 10px severity gauge
+          + its 6px gap), so this row and the feed under it share one text column.
+          The gauge slot stays empty: the brief has no severity of its own. */}
+      <span className="mt-0.5 ml-4 flex w-[18px] shrink-0 justify-center">
+        <SparkleIcon size={16} className="text-link" aria-hidden />
+      </span>
       <span className="min-w-0">
         <span className="block truncate text-dense font-semibold text-foreground">
           Brief of the week

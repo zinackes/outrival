@@ -942,10 +942,13 @@ export function SignalsView() {
   }
 
   // One master-list row. No reserved selection gutter (that read as a permanent
-  // empty column): the checkbox overlays the row's severity-icon slot, which fades
+  // empty column): the checkbox overlays the row's competitor avatar, which fades
   // out underneath (SignalRow `selecting`), so the list is a clean single column at
   // rest and the box appears on row hover — or on every row once a selection is
-  // live. The checkbox is a SIBLING of the row button (never nested — invalid HTML).
+  // live. The severity gauge to its left stays lit throughout: it is why the row is
+  // worth reading, so hovering must not blank it. left-7/top-2.5 is that avatar's
+  // box (row px-3 + the 10px gauge + its 6px gap).
+  // The checkbox is a SIBLING of the row button (never nested — invalid HTML).
   const renderRow = (signal: Signal) => {
     const id = signal.id;
     const isChecked = selected.has(id);
@@ -954,7 +957,7 @@ export function SignalsView() {
         <div className="group/row relative">
           <div
             className={cn(
-              "absolute left-3 top-3 z-10 transition-opacity",
+              "absolute left-7 top-2.5 z-10 transition-opacity",
               // Reveal-on-hover is gated to hover-capable devices. globals.css drops
               // the `@media (hover: hover)` gate from `hover:` project-wide (tap
               // feedback), but on touch that makes a tap reveal this interactive
@@ -1224,7 +1227,7 @@ export function SignalsView() {
   );
 }
 
-// Row selection checkbox — overlays the row's severity-icon slot (positioned by the
+// Row selection checkbox — overlays the row's competitor avatar (positioned by the
 // wrapper in renderRow). Its visibility/pointer-events are driven there (hover, or a
 // live selection); here it's just the box. Not a tab stop until a selection is live
 // or it's checked, so an invisible-at-rest overlay never traps keyboard focus.

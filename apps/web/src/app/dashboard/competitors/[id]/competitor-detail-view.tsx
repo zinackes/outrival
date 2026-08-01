@@ -17,6 +17,7 @@ import {
   BriefcaseIcon,
   StarIcon,
   FileTextIcon,
+  NewspaperIcon,
   SparkleIcon,
   SwordIcon,
   SpinnerIcon,
@@ -137,6 +138,7 @@ import { ReviewsTab } from "./competitor-detail/reviews-tab";
 import { OverviewTab } from "./competitor-detail/overview-tab";
 import { ActivityTab } from "./competitor-detail/activity-tab";
 import { ProductTab } from "./competitor-detail/product-tab";
+import { ContentTab } from "./competitor-detail/content-tab";
 import { readMobileApps } from "./competitor-detail/mobile-apps";
 import { PRODUCT_SOURCES } from "./competitor-detail/product-lenses";
 import { useMonitorActions } from "./competitor-detail/use-monitor-actions";
@@ -156,6 +158,8 @@ const TABS: Array<{ key: TabKey; label: string; icon: typeof PulseIcon }> = [
   { key: "pricing", label: "Pricing", icon: CurrencyDollarIcon },
   { key: "hiring", label: "Hiring", icon: BriefcaseIcon },
   { key: "reviews", label: "Reviews", icon: StarIcon },
+  // Content sits next to Positioning: both answer "what are they saying".
+  { key: "content", label: "Content", icon: NewspaperIcon },
   { key: "product", label: "Positioning", icon: FileTextIcon },
 ];
 
@@ -167,6 +171,7 @@ const TAB_SOURCES: Partial<Record<TabKey, string[]>> = {
   pricing: ["pricing"],
   hiring: ["jobs"],
   reviews: ["appstore_reviews", "trustpilot_public"],
+  content: ["blog", "changelog", "roadmap", "docs"],
   product: [...PRODUCT_SOURCES],
 };
 
@@ -816,6 +821,16 @@ export function CompetitorDetailView({ id }: { id: string }) {
                   setPaywall({ code: "plan_locked_source", source, plan })
                 }
                 detectedAppStoreUrl={mobileApps?.ios?.url ?? null}
+              />
+            </TabsContent>
+            <TabsContent value="content" className={TAB_PANEL_CLASS}>
+              <ContentTab
+                competitorId={id}
+                signals={recentSignals}
+                monitors={monitors}
+                scrapingIds={scrapingIds}
+                onRun={requestRunMonitor}
+                onEnable={enableMonitor}
               />
             </TabsContent>
             <TabsContent value="product" className={TAB_PANEL_CLASS}>

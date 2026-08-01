@@ -29,6 +29,7 @@ export * from "./pricing-diff";
 export * from "./entitlement-catalog";
 export * from "./industry-catalog";
 export * from "./customer-name";
+export * from "./editorial-metrics";
 export * from "./entitlement-diff";
 export * from "./price-tier-diff";
 export * from "./credit-burn-diff";

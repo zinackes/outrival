@@ -141,6 +141,13 @@ export const SOURCE_TYPES = [
   // `blog` monitors, whose snapshot chains carry their own dedup. Kept in sync with
   // the DB source_type enum.
   "customer_proof",
+  // Editorial-shift anchor (Content Intelligence v2 P4). INTERNAL, never seeded /
+  // scraped / user-selectable — it anchors the snapshot → change → signal chain
+  // when the mix of subjects a competitor's blog covers over 90 days diverges from
+  // the 90 before it. Kept off the `blog` monitor, whose snapshot chain carries its
+  // own dedup and whose changes already belong to the lexical classifier. Kept in
+  // sync with the DB source_type enum.
+  "editorial_shift",
   // Developer documentation — the competitor's technical roadmap surface. USER-
   // SELECTABLE (pro+), enabled through the standard enable route with an optional
   // URL override. Structured-first, two modes: (1) an OpenAPI/Swagger spec is found

@@ -42,7 +42,78 @@ export function SignalFacts({ facts }: { facts: Facts }) {
   if (facts.kind === "content") return <ContentFacts facts={facts} />;
   if (facts.kind === "case_study") return <CaseStudyFacts facts={facts} />;
   if (facts.kind === "customer_win") return <CustomerWinFacts facts={facts} />;
+  if (facts.kind === "editorial") return <EditorialFacts facts={facts} />;
   return <PricingFacts facts={facts} />;
+}
+
+/**
+ * What a competitor's blog moved onto, and off.
+ *
+ * The two windows are printed side by side with their post counts, because the
+ * divergence is a claim about two SETS and a reader who cannot see how many posts
+ * each held cannot judge it. Rising and declining lead — they are what the signal
+ * says — and the full top-five of each window sits underneath as the evidence.
+ */
+function EditorialFacts({ facts }: { facts: Extract<Facts, { kind: "editorial" }> }) {
+  const move = (list: typeof facts.rising, tone: "up" | "down") =>
+    list.length === 0 ? null : (
+      <li className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className="w-16 shrink-0 text-xs text-muted-foreground">
+          {tone === "up" ? "Rising" : "Declining"}
+        </span>
+        {list.map((t) => (
+          <span key={t.topic} className="text-sm text-foreground">
+            {t.topic}{" "}
+            <span
+              className={cn(
+                "text-xs tabular-nums",
+                tone === "up" ? "text-high" : "text-positive",
+              )}
+            >
+              {t.then} → {t.now}
+            </span>
+          </span>
+        ))}
+      </li>
+    );
+
+  return (
+    <div>
+      <p className="text-dense text-muted-foreground">
+        <span className="font-medium text-foreground tabular-nums">{facts.currentPosts}</span>{" "}
+        posts read in the last{" "}
+        <span className="tabular-nums">{facts.windowDays}</span> days ·{" "}
+        <span className="tabular-nums">{facts.previousPosts}</span> in the{" "}
+        <span className="tabular-nums">{facts.windowDays}</span> before · divergence{" "}
+        <span className="text-foreground tabular-nums">{facts.divergence.toFixed(2)}</span>
+      </p>
+
+      <ul className="mt-2.5 space-y-2">
+        {move(facts.rising, "up")}
+        {move(facts.declining, "down")}
+      </ul>
+
+      <div className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
+        {[
+          { label: "Now", topics: facts.currentTopics, n: facts.currentPosts },
+          { label: "Before", topics: facts.previousTopics, n: facts.previousPosts },
+        ].map((side) => (
+          <div key={side.label}>
+            <p className="text-xs text-muted-foreground">
+              {side.label} · <span className="tabular-nums">{side.n}</span> posts
+            </p>
+            <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+              {side.topics.map((t) => (
+                <li key={t.topic} className="text-xs text-muted-foreground">
+                  {t.topic} <span className="text-foreground tabular-nums">{t.count}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 const ITEM_TYPE_LABEL: Record<string, string> = {

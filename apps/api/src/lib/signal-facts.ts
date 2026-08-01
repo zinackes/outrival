@@ -134,6 +134,21 @@ export interface CustomerFact {
   evidenceUrl: string | null;
 }
 
+/** One subject a competitor's blog covered in a window, and how much of it. */
+export interface TopicFact {
+  topic: string;
+  count: number;
+}
+
+/** One subject and where it stood in each of the two windows. */
+export interface TopicMoveFact {
+  topic: string;
+  /** Posts carrying it in the newer window. */
+  now: number;
+  /** And in the older one. */
+  then: number;
+}
+
 /** The cadence a shipping_velocity signal is about, and the months behind it. */
 export interface VelocityFact {
   month: string;
@@ -226,6 +241,20 @@ export type SignalFacts =
       customersTotal: number;
       /** The page they were read off, so a win can be checked at its source. */
       evidenceUrl: string | null;
+    }
+  | {
+      /** The two windows an `editorial_pivot` compared (Content Intelligence v2 P4). */
+      kind: "editorial";
+      /** Jensen-Shannon, base 2, so it reads on a real 0-to-1 scale. */
+      divergence: number;
+      windowDays: number;
+      /** Posts READ in each window — the denominator both minimums are checked on. */
+      currentPosts: number;
+      previousPosts: number;
+      currentTopics: TopicFact[];
+      previousTopics: TopicFact[];
+      rising: TopicMoveFact[];
+      declining: TopicMoveFact[];
     }
   | null;
 
@@ -468,6 +497,53 @@ async function velocityFacts(
         ? (raw.baseline as Array<{ month: string; count: number }>)
         : [],
     },
+  };
+}
+
+/** Topics a block names per window. Enough to check the move, not the whole blog. */
+const MAX_TOPIC_FACTS = 5;
+
+/**
+ * The two windows an `editorial_pivot` compared (Content Intelligence v2 P4).
+ *
+ * Read off the change's OWN rawDiff, for the reason the cadence block is: the
+ * detector already decided which posts fell in which window, and re-running the
+ * distributions now — against a window that has since slid, over posts enriched
+ * since — would print numbers that contradict the sentence above them.
+ */
+async function editorialFacts(monitorId: string, detectedAt: Date): Promise<SignalFacts> {
+  const [change] = await db
+    .select({ rawDiff: changes.rawDiff })
+    .from(changes)
+    .where(and(eq(changes.monitorId, monitorId), eq(changes.detectedAt, detectedAt)))
+    .limit(1);
+
+  const raw = change?.rawDiff as Record<string, unknown> | null | undefined;
+  if (!raw || raw.kind !== "editorial_pivot") return null;
+
+  const topics = (value: unknown): TopicFact[] =>
+    Array.isArray(value)
+      ? (value as TopicFact[])
+          .filter((t) => typeof t?.topic === "string")
+          .slice(0, MAX_TOPIC_FACTS)
+      : [];
+  const moves = (value: unknown): TopicMoveFact[] =>
+    Array.isArray(value)
+      ? (value as TopicMoveFact[])
+          .filter((t) => typeof t?.topic === "string")
+          .slice(0, MAX_TOPIC_FACTS)
+      : [];
+
+  return {
+    kind: "editorial",
+    divergence: Number(raw.divergence ?? 0),
+    windowDays: Number(raw.windowDays ?? 90),
+    currentPosts: Number(raw.currentPosts ?? 0),
+    previousPosts: Number(raw.previousPosts ?? 0),
+    currentTopics: topics(raw.currentTopics),
+    previousTopics: topics(raw.previousTopics),
+    rising: moves(raw.rising),
+    declining: moves(raw.declining),
   };
 }
 
@@ -982,7 +1058,8 @@ export async function buildSignalFacts(args: {
     sourceType !== "changelog" &&
     sourceType !== "shipping_velocity" &&
     sourceType !== "comparison_page" &&
-    sourceType !== "customer_proof"
+    sourceType !== "customer_proof" &&
+    sourceType !== "editorial_shift"
   ) {
     return null;
   }
@@ -1003,6 +1080,9 @@ export async function buildSignalFacts(args: {
     }
     if (sourceType === "customer_proof") {
       return await customerFacts(competitorId, monitorId, new Date(detectedAt));
+    }
+    if (sourceType === "editorial_shift") {
+      return await editorialFacts(monitorId, new Date(detectedAt));
     }
     const window = await attributionWindow(monitorId, new Date(detectedAt));
     if (sourceType === "jobs") return await hiringFacts(competitorId, window);

@@ -6,6 +6,7 @@ export const TAB_KEYS: readonly TabKey[] = [
   "pricing",
   "hiring",
   "reviews",
+  "content",
   "product",
 ] as const;
 
@@ -16,8 +17,8 @@ export const TAB_KEYS: readonly TabKey[] = [
  * key without a mapping would 404 a notification a user is clicking today.
  */
 const RETIRED_TABS: Record<string, TabKey | "battle-card"> = {
-  // Content was absorbed by the wider Product & Positioning feed.
-  content: "product",
+  // `content` is NOT here any more: it is a real tab again (Content Intelligence
+  // v2 P4), so TAB_KEYS resolves it before this table is consulted.
   // Custom pages: their changes flow into the same feed; configuring them moved
   // to the Sources page.
   custom: "product",

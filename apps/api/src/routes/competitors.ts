@@ -36,6 +36,7 @@ import {
   productCompetitors,
   caseStudies,
   knownCustomers,
+  contentItems,
 } from "@outrival/db";
 import { db } from "../lib/db";
 import { scoreCompetitorOverlap, scoreCompetitorsOverlap } from "../lib/overlap";
@@ -104,6 +105,12 @@ import {
   type SourceState,
   creditBurnActionKey,
   industryLabel,
+  cadenceByMonth,
+  typeMix,
+  topicDistribution,
+  editorialWindows,
+  EDITORIAL_WINDOW_DAYS,
+  type EditorialItem,
   type SourceType,
   type MonitorFrequency,
   type PricingTier,
@@ -2611,6 +2618,236 @@ competitorsRouter.get("/:id/customers", async (c) => {
 
 /** How recent a first sighting has to be to still read as a win. */
 const CUSTOMER_WIN_WINDOW_DAYS = 90;
+
+/** Timeline page size. The tab asks for one page and then for more. */
+const CONTENT_PAGE_DEFAULT = 20;
+const CONTENT_PAGE_MAX = 50;
+/** Months the cadence chart spans, ending on the month still running. */
+const CADENCE_MONTHS = 12;
+/** Rows the Themes block shows. Beyond that it is a word cloud, not a read. */
+const THEMES_SHOWN = 6;
+
+const ContentQuerySchema = z.object({
+  /** A source_type, or "all". */
+  source: z.string().max(40).optional(),
+  /** An item_type, "unread" for the ones we have not typed, or "all". */
+  type: z.string().max(40).optional(),
+  /** Days back from now; 0 means every item we hold. */
+  period: z.coerce.number().int().min(0).max(3650).optional(),
+  limit: z.coerce.number().int().min(1).max(CONTENT_PAGE_MAX).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+/** `published_at ?? first_seen_at` — the date an item is placed on, everywhere. */
+const itemDateSql = sql`coalesce(${contentItems.publishedAt}, ${contentItems.firstSeenAt})`;
+
+/**
+ * What a competitor published, as a filtered page of rows (Content Intelligence v2 P4).
+ *
+ * Every filter is applied in SQL and the page is `limit`/`offset`, so the tab never
+ * receives a competitor's whole publication history to sift client-side — a blog
+ * plus a changelog plus a docs sitemap is thousands of rows on an established
+ * competitor.
+ *
+ * Items we have NOT read come back like any other: title, date, source. A row whose
+ * type is null is one the enrichment has not reached, and showing it as a plain
+ * entry is the honest rendering — hiding it would make the timeline claim the
+ * competitor published less than they did.
+ */
+competitorsRouter.get("/:id/content", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const parsed = ContentQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) return c.json({ error: "Invalid query" }, 400);
+  const { source, type } = parsed.data;
+  const period = parsed.data.period ?? EDITORIAL_WINDOW_DAYS;
+  const limit = parsed.data.limit ?? CONTENT_PAGE_DEFAULT;
+  const offset = parsed.data.offset ?? 0;
+
+  // An integer into make_interval rather than a Date parameter: interpolating a
+  // Date into a raw fragment is what the driver rejects.
+  const withinPeriod = period > 0 ? sql`${itemDateSql} >= now() - make_interval(days => ${period})` : undefined;
+  const base = and(eq(contentItems.competitorId, competitor.id), withinPeriod);
+
+  const sourceFilter = source && source !== "all" ? eq(contentItems.sourceType, source) : undefined;
+  const typeFilter =
+    type && type !== "all"
+      ? type === "unread"
+        ? isNull(contentItems.itemType)
+        : eq(contentItems.itemType, type)
+      : undefined;
+  const where = and(base, sourceFilter, typeFilter);
+
+  const [rows, totals, bySource] = await Promise.all([
+    db
+      .select({
+        id: contentItems.id,
+        sourceType: contentItems.sourceType,
+        itemType: contentItems.itemType,
+        status: contentItems.status,
+        title: contentItems.title,
+        url: contentItems.url,
+        publishedAt: contentItems.publishedAt,
+        firstSeenAt: contentItems.firstSeenAt,
+        topics: contentItems.topics,
+        summary: contentItems.summary,
+      })
+      .from(contentItems)
+      .where(where)
+      .orderBy(sql`${itemDateSql} desc`)
+      .limit(limit)
+      .offset(offset),
+    db.select({ n: sql<number>`count(*)::int` }).from(contentItems).where(where),
+    // Counted over the PERIOD only, not the current source/type filter: these are
+    // the numbers on the filter pills, and a pill that recounted itself every time
+    // you pressed it would read as the data changing.
+    db
+      .select({ sourceType: contentItems.sourceType, n: sql<number>`count(*)::int` })
+      .from(contentItems)
+      .where(base)
+      .groupBy(contentItems.sourceType),
+  ]);
+
+  const total = totals[0]?.n ?? 0;
+  return c.json({
+    items: rows.map((r) => ({
+      id: r.id,
+      sourceType: r.sourceType,
+      itemType: r.itemType,
+      status: r.status,
+      title: r.title,
+      url: r.url,
+      publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
+      firstSeenAt: r.firstSeenAt.toISOString(),
+      topics: r.topics ?? [],
+      summary: r.summary,
+      // "We know what this is." A row without a type has not been through the
+      // typer, whatever else we hold about it.
+      enriched: r.itemType !== null,
+    })),
+    total,
+    hasMore: offset + rows.length < total,
+    sourceCounts: Object.fromEntries(bySource.map((r) => [r.sourceType, r.n])),
+    periodDays: period,
+  });
+});
+
+/**
+ * The three aggregates the Content tab reads above its timeline: cadence, themes,
+ * and what kinds of thing they publish (Content Intelligence v2 P4).
+ *
+ * ZERO AI, like everything else in this phase. The topics were extracted and
+ * substring-checked by P2; this counts them with the same pure functions the
+ * `editorial_pivot` detector uses, so the number on the screen and the number in
+ * the signal can never disagree.
+ *
+ * One query feeds all three. Twelve months of one competitor's published items is
+ * bounded by what they publish, and reading it once beats three group-bys that
+ * would each have to re-derive the same "published_at ?? first_seen_at" date.
+ */
+competitorsRouter.get("/:id/content-summary", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const [rows, named] = await Promise.all([
+    db
+      .select({
+        sourceType: contentItems.sourceType,
+        itemType: contentItems.itemType,
+        topics: contentItems.topics,
+        publishedAt: contentItems.publishedAt,
+        firstSeenAt: contentItems.firstSeenAt,
+      })
+      .from(contentItems)
+      .where(
+        and(
+          eq(contentItems.competitorId, competitor.id),
+          sql`${itemDateSql} >= now() - make_interval(months => ${CADENCE_MONTHS})`,
+        ),
+      ),
+    // Posts of theirs that named the reader's product. Counted off the changes the
+    // named_you emitter actually wrote, not by matching brand names here: that
+    // record is the authoritative one, and it is the same set that alerted.
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(changes)
+      .innerJoin(monitors, eq(monitors.id, changes.monitorId))
+      .where(
+        and(
+          eq(monitors.competitorId, competitor.id),
+          eq(monitors.sourceType, "comparison_page"),
+          sql`${changes.rawDiff}->>'kind' = 'competitor_named_you'`,
+          sql`${changes.rawDiff}->>'source' = 'blog'`,
+          sql`${changes.detectedAt} >= now() - make_interval(days => ${EDITORIAL_WINDOW_DAYS})`,
+        ),
+      ),
+  ]);
+
+  const items: EditorialItem[] = rows;
+  const windows = editorialWindows(new Date());
+  // Topics only exist on posts we OPENED. `topics is not null` is that test: the
+  // guards always write an array, the blog baseline never touches the column.
+  const read = items.filter((i) => i.sourceType === "blog" && i.topics !== null);
+  const current = topicDistribution(read, windows.current);
+  const previous = topicDistribution(read, windows.previous);
+
+  const inCurrent = items.filter((i) => {
+    const at = i.publishedAt ?? i.firstSeenAt;
+    const t = new Date(at).getTime();
+    return t >= windows.current.start.getTime() && t < windows.current.end.getTime();
+  });
+  const inPrevious = items.filter((i) => {
+    const at = i.publishedAt ?? i.firstSeenAt;
+    const t = new Date(at).getTime();
+    return t >= windows.previous.start.getTime() && t < windows.previous.end.getTime();
+  });
+
+  // Ranked by whichever window holds more of the topic, so a subject they have
+  // STOPPED writing about still gets a row. Dropping it would leave the block
+  // showing only growth, which is not what a themes read is for.
+  const themes = [...new Set([...Object.keys(current.counts), ...Object.keys(previous.counts)])]
+    .map((topic) => ({
+      topic,
+      now: current.counts[topic] ?? 0,
+      then: previous.counts[topic] ?? 0,
+    }))
+    .sort(
+      (a, b) =>
+        Math.max(b.now, b.then) - Math.max(a.now, a.then) ||
+        b.now - a.now ||
+        a.topic.localeCompare(b.topic),
+    )
+    .slice(0, THEMES_SHOWN);
+
+  const perMonth = inCurrent.length / (EDITORIAL_WINDOW_DAYS / 30);
+  const previousPerMonth = inPrevious.length / (EDITORIAL_WINDOW_DAYS / 30);
+
+  return c.json({
+    windowDays: EDITORIAL_WINDOW_DAYS,
+    cadence: cadenceByMonth(items, { months: CADENCE_MONTHS }),
+    themes,
+    typeMix: typeMix(items, windows.current),
+    totals: {
+      published: inCurrent.length,
+      previousPublished: inPrevious.length,
+      perMonth,
+      previousPerMonth,
+      /** Blog posts we opened in each window — what the themes rest on. */
+      postsRead: current.posts,
+      previousPostsRead: previous.posts,
+      /** Items in the window we have not typed yet. The honest denominator. */
+      unread: inCurrent.filter((i) => i.itemType === null).length,
+      namesYou: named[0]?.n ?? 0,
+    },
+  });
+});
 
 const PricingOverrideSchema = z.object({
   status: z.enum(PRICING_STATUSES),

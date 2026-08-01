@@ -28,11 +28,62 @@ const GOOGLE_PER_MINUTE = JSON.stringify({
 const GOOGLE_PER_DAY = GOOGLE_PER_MINUTE.replace("PerMinute", "PerDay");
 const GOOGLE_PER_MONTH = GOOGLE_PER_MINUTE.replace("PerMinute", "PerMonth");
 
+// The real thing, captured from the production key on 2026-08-01. Kept verbatim
+// because two details here are load-bearing and neither is obvious: the per-DAY
+// quota still ships a short `retryDelay` (26s), which is exactly the hint that must
+// not be honoured, and the free-tier daily ceiling is stated outright as 20 requests
+// per model per project.
+const GOOGLE_PROD_PER_DAY = JSON.stringify({
+  error: {
+    code: 429,
+    message:
+      "You exceeded your current quota, please check your plan and billing details. " +
+      "For more information on this error, head to: " +
+      "https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, " +
+      "head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: " +
+      "generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, " +
+      "model: gemini-2.5-flash-lite\nPlease retry in 26.788447202s.",
+    status: "RESOURCE_EXHAUSTED",
+    details: [
+      {
+        "@type": "type.googleapis.com/google.rpc.Help",
+        links: [
+          {
+            description: "Learn more about Gemini API quotas",
+            url: "https://ai.google.dev/gemini-api/docs/rate-limits",
+          },
+        ],
+      },
+      {
+        "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+        violations: [
+          {
+            quotaMetric: "generativelanguage.googleapis.com/generate_content_free_tier_requests",
+            quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+            quotaDimensions: { location: "global", model: "gemini-2.5-flash-lite" },
+            quotaValue: "20",
+          },
+        ],
+      },
+      { "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay: "26s" },
+    ],
+  },
+});
+
 describe("namesSpentAllowance", () => {
   test("only a per-day or per-month quota ends the engine for the run", () => {
     expect(namesSpentAllowance(GOOGLE_PER_DAY)).toBe(true);
     expect(namesSpentAllowance(GOOGLE_PER_MONTH)).toBe(true);
     expect(namesSpentAllowance(GOOGLE_PER_MINUTE)).toBe(false);
+  });
+
+  test("reads the real production per-day refusal", () => {
+    // Captured 2026-08-01 from outrival-queue-01. The quota id sits ~800 chars into
+    // the body, well inside the 2,000 the client reads, and it survives compaction:
+    // the response on the wire has no whitespace after the colon.
+    expect(namesSpentAllowance(GOOGLE_PROD_PER_DAY)).toBe(true);
+    expect(namesSpentAllowance(JSON.stringify(JSON.parse(GOOGLE_PROD_PER_DAY)))).toBe(true);
+    expect(GOOGLE_PROD_PER_DAY.indexOf('"quotaId"')).toBeLessThan(2_000);
   });
 
   test("an unreadable 429 is a speed problem, not a spent allowance", () => {
@@ -51,6 +102,12 @@ describe("retryAfterMs", () => {
   test("never retries a per-day allowance, even when a retryDelay is offered", () => {
     // The named quota has to win over the hint, or we burn a call to be refused again.
     expect(retryAfterMs(GOOGLE_PER_DAY, new Headers())).toBeNull();
+  });
+
+  test("ignores the 26s hint production actually sends with a spent day", () => {
+    // A daily allowance that says "retry in 26s" is the whole trap: honouring it
+    // means two more refused calls per prompt, all day, on a bucket of 20.
+    expect(retryAfterMs(GOOGLE_PROD_PER_DAY, new Headers())).toBeNull();
   });
 
   test("honours a bare Retry-After header (providers with no quota metadata)", () => {

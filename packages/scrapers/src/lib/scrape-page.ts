@@ -32,6 +32,13 @@ const REFUSAL = new Set<string>([
   "robots_disallowed",
 ]);
 
+/** Whether a failure reason is the site REFUSING us rather than a transient miss.
+ *  Exported so the L0-only path (scrapeStatic) reaches the same verdict as the
+ *  cascade — a 403 is a refusal whichever function saw it. */
+export function isRefusalReason(reason: string | undefined | null): boolean {
+  return REFUSAL.has(reason ?? "");
+}
+
 /** What the cascade does with one attempt's result (collection doctrine):
  *   done     — captured, stop.
  *   refused  — the site refused us (block/challenge/robots) → stop, no escalation.

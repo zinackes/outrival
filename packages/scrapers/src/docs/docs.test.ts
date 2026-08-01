@@ -16,7 +16,7 @@ import {
   hashDocsPages,
   selectPagesToHash,
 } from "./pages";
-import { discoverDocsRoot, docsLinkIn, looksLikeDocsUrl } from "./discover";
+import { discoverDocsRoot, docsLinkIn, docsRootFromLanding, looksLikeDocsUrl } from "./discover";
 import { scrape, type DocsDeps } from "./docs.scraper";
 
 /**
@@ -378,14 +378,47 @@ describe("docs root discovery", () => {
 
   test("subdomain wins over path, path over homepage link", async () => {
     const bySubdomain = await discoverDocsRoot("https://acme.com/", {
-      reachable: async (u) => u === "https://docs.acme.com/",
+      reachable: async (u) => (u === "https://docs.acme.com/" ? u : null),
     });
     expect(bySubdomain).toEqual({ url: "https://docs.acme.com/", source: "subdomain" });
 
     const byPath = await discoverDocsRoot("https://acme.com/", {
-      reachable: async (u) => u === "https://acme.com/documentation",
+      reachable: async (u) => (u === "https://acme.com/documentation" ? u : null),
     });
     expect(byPath).toEqual({ url: "https://acme.com/documentation", source: "path" });
+  });
+
+  test("the root is where the probe LANDED, cut back to the docs segment", async () => {
+    // docs.trigger.dev serves trigger.dev/docs; docs.anthropic.com serves
+    // platform.claude.com/docs. Keeping the probed host meant the docs sitemap — which
+    // lists the landing host — filtered to zero and the source failed no_docs_index
+    // while holding hundreds of pages.
+    const redirected = await discoverDocsRoot("https://acme.com/", {
+      reachable: async (u) =>
+        u === "https://docs.acme.com/" ? "https://acme.io/docs/introduction" : null,
+    });
+    expect(redirected).toEqual({ url: "https://acme.io/docs", source: "subdomain" });
+
+    // A localised docs site keeps its locale prefix.
+    expect(docsRootFromLanding("https://acme.com/en/docs/quickstart")).toBe(
+      "https://acme.com/en/docs",
+    );
+    // A docs subdomain qualifies whole — every path on it is documentation.
+    expect(docsRootFromLanding("https://docs.acme.com/guides/auth")).toBe("https://docs.acme.com/");
+  });
+
+  test("a docs subdomain parked on the marketing site is not a docs surface", async () => {
+    // docs.sendible.com answers 200 by redirecting to www.sendible.com. Treating that
+    // as the docs root offered their site-wide marketing sitemap as documentation, and
+    // failed `no_docs_index` — a failure nobody can fix. It is an absence.
+    expect(docsRootFromLanding("https://www.acme.com/")).toBeNull();
+    expect(docsRootFromLanding("https://help.acme.com/hc/en-us")).toBeNull();
+
+    const parked = await discoverDocsRoot("https://acme.com/", {
+      reachable: async (u) => (u === "https://docs.acme.com/" ? "https://www.acme.com/" : null),
+      fetchHtml: async () => null,
+    });
+    expect(parked).toBeNull();
   });
 
   test("a nav link is the last resort, and only on the same registrable domain", async () => {
@@ -394,7 +427,7 @@ describe("docs root discovery", () => {
       <a href="https://readthedocs.io/acme">Docs</a>
     </nav></body></html>`;
     const root = await discoverDocsRoot("https://acme.com/", {
-      reachable: async (u) => u === "https://acme.com/handbook",
+      reachable: async (u) => (u === "https://acme.com/handbook" ? u : null),
       fetchHtml: async () => html,
     });
     expect(root).toEqual({ url: "https://acme.com/handbook", source: "nav" });
@@ -414,7 +447,7 @@ describe("docs root discovery", () => {
 
 describe("(c) clean degradation", () => {
   const nothingReachable: DocsDeps = {
-    reachable: async () => false,
+    reachable: async () => null,
     fetchHtml: async () => null,
     fetchBytes: async () => null,
     probeText: async () => ({ kind: "absent" }),
@@ -479,7 +512,7 @@ describe("(c) clean degradation", () => {
     // that have nothing to do with robots.txt.
     const requested: string[] = [];
     await scrape("c1", "https://docs.acme.com/", {}, {
-      reachable: async () => false,
+      reachable: async () => null,
       fetchHtml: async () => "<html><body><p>A documented page with enough content.</p></body></html>",
       probeText: async () => ({ kind: "absent" }),
       fetchBytes: async (u) => {

@@ -90,6 +90,14 @@ import {
   DEPARTMENT_BUCKET_LABELS,
   disclosureVerdict,
   isCountryKey,
+  classifyLeadershipRole,
+  momentumFacts,
+  momentumLines,
+  remoteShare,
+  remoteState,
+  REMOTE_STATE_LABELS,
+  timeToFillByBucket,
+  type LeadershipRank,
   getBytesFromR2,
   getFromR2,
   isHiddenSource,
@@ -2068,6 +2076,156 @@ competitorsRouter.get("/:id/hiring-salary", async (c) => {
       verdict: disclosureVerdict(disclosed, total),
       currency: stats?.currency ?? null,
     },
+  });
+});
+
+/** How far back closed roles are read for a time-to-fill median. */
+const TIME_TO_FILL_LOOKBACK_DAYS = 180;
+
+/**
+ * Hiring momentum (Hiring Intelligence v2 P5): the three readings P1-P4 made
+ * possible and nothing surfaced.
+ *
+ *   `remote`      how a competitor works, as a STATE plus the share behind it and
+ *                 the share of their board we could not read. The last of those is
+ *                 not decoration: it is what says how much of the first two to
+ *                 believe.
+ *   `timeToFill`  how long their roles stay open, per department. DISPLAY ONLY and
+ *                 never a signal, because half the boards state no publication date
+ *                 and the fallback (when WE first saw the role) makes the median a
+ *                 floor rather than a measurement. Flagged per bucket when it is.
+ *   `momentum`    the deterministic lines the battle card's Momentum section is
+ *                 rendered from, computed by the same pure function the worker
+ *                 hands to the card's generation as evidence, so the section and
+ *                 anything the model says about their hiring cannot disagree.
+ *
+ * Best-effort like every analytics read: an empty reading hides its card rather
+ * than breaking the tab.
+ */
+competitorsRouter.get("/:id/hiring-momentum", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const closedSince = new Date(Date.now() - TIME_TO_FILL_LOOKBACK_DAYS * 86_400_000);
+
+  const [active, closed, weeklyRows, geoRows, engBand] = await Promise.all([
+    db
+      .select({
+        title: jobPostings.title,
+        seniority: jobPostings.seniority,
+        remoteMode: jobPostings.remoteMode,
+        detectedAt: jobPostings.detectedAt,
+        salaryMin: jobPostings.salaryMin,
+        salaryMax: jobPostings.salaryMax,
+      })
+      .from(jobPostings)
+      .where(and(eq(jobPostings.competitorId, competitor.id), eq(jobPostings.isActive, true))),
+    db
+      .select({
+        department: jobPostings.department,
+        title: jobPostings.title,
+        postedAt: jobPostings.postedAt,
+        detectedAt: jobPostings.detectedAt,
+        closedAt: jobPostings.closedAt,
+      })
+      .from(jobPostings)
+      .where(
+        and(
+          eq(jobPostings.competitorId, competitor.id),
+          isNotNull(jobPostings.closedAt),
+          gte(jobPostings.closedAt, closedSince),
+        ),
+      ),
+    analyticsQuery<{ week_start: string; open_count: number }>(sql`
+      SELECT week_start, sum(open_count)::int AS open_count
+      FROM hiring_metrics
+      WHERE competitor_id = ${competitor.id}
+        AND recorded_at >= now() - make_interval(days => 112)
+      GROUP BY week_start ORDER BY week_start ASC
+    `),
+    analyticsQuery<{ country_code: string; open_count: number; first_week: string | null }>(sql`
+      WITH latest AS (
+        SELECT max(week_start) AS w FROM hiring_geo WHERE competitor_id = ${competitor.id}
+      ),
+      firsts AS (
+        SELECT country_code, min(week_start) AS first_week
+        FROM hiring_geo WHERE competitor_id = ${competitor.id}
+        GROUP BY country_code
+      )
+      SELECT g.country_code, g.open_count, f.first_week
+      FROM hiring_geo g
+      JOIN latest ON g.week_start = latest.w
+      LEFT JOIN firsts f ON f.country_code = g.country_code
+      WHERE g.competitor_id = ${competitor.id} AND g.open_count > 0
+    `),
+    analyticsQuery<{ p50: number; currency: string; n: number }>(sql`
+      SELECT p50::int AS p50, currency, n::int AS n
+      FROM hiring_salary_bands
+      WHERE competitor_id = ${competitor.id} AND department_bucket = 'engineering'
+      ORDER BY week_start DESC, n DESC
+      LIMIT 1
+    `),
+  ]);
+
+  const share = remoteShare(active);
+  const state = remoteState(share.share, share.known);
+
+  const disclosed = active.filter((p) => p.salaryMin != null || p.salaryMax != null).length;
+  const band = engBand[0] ?? null;
+
+  const leadership = active
+    .map((p) => ({
+      title: p.title,
+      detectedAt: p.detectedAt,
+      rank: classifyLeadershipRole(p.title, p.seniority),
+    }))
+    .filter((p): p is typeof p & { rank: LeadershipRank } => p.rank !== null);
+
+  const facts = momentumFacts({
+    weeklyTotals: weeklyRows.map((r) => ({ weekStart: r.week_start, openCount: r.open_count })),
+    countries: geoRows
+      .filter((r) => isCountryKey(r.country_code) && r.first_week)
+      .map((r) => ({
+        code: r.country_code,
+        firstWeek: r.first_week as string,
+        openCount: r.open_count,
+      })),
+    leadership,
+    salary:
+      active.length > 0
+        ? {
+            verdict: disclosureVerdict(disclosed, active.length),
+            engP50: band?.p50 ?? null,
+            currency: band?.currency ?? null,
+            n: band?.n ?? 0,
+          }
+        : null,
+  });
+
+  return c.json({
+    remote:
+      share.known > 0
+        ? {
+            share: share.share,
+            state,
+            label: state ? REMOTE_STATE_LABELS[state] : null,
+            remote: share.remote,
+            hybrid: share.hybrid,
+            onsite: share.onsite,
+            known: share.known,
+            unknown: share.unknown,
+            unknownShare: share.unknownShare,
+          }
+        : null,
+    // The SQL already excludes open roles; the narrowing is for the type, since a
+    // nullable column stays nullable through a where clause.
+    timeToFill: timeToFillByBucket(
+      closed.filter((p): p is typeof p & { closedAt: Date } => p.closedAt != null),
+    ),
+    momentum: momentumLines(facts),
   });
 });
 

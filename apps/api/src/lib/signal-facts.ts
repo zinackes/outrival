@@ -119,6 +119,15 @@ export interface VelocityFact {
   baseline: Array<{ month: string; count: number }>;
 }
 
+/** One executive role a `leadership_hire` signal named (P5). */
+export interface LeadershipRoleFact {
+  title: string;
+  url: string | null;
+  location: string | null;
+  /** c_level | vp_head — what makes the signal high rather than medium. */
+  rank: string;
+}
+
 /** One open role behind a salary band, with the range its own posting states. */
 export interface BandRoleFact {
   title: string;
@@ -179,6 +188,24 @@ export type SignalFacts =
       /** Entries before the cap, so a truncated list can say what it is hiding. */
       entriesTotal: number;
       velocity: VelocityFact | null;
+    }
+  | {
+      /** The two states, the shares behind them and how long the new one has
+       *  held (P5). The unread share is printed with them, because a posture
+       *  computed over a third of a board is a different claim. */
+      kind: "remote_policy";
+      from: string;
+      to: string;
+      fromShare: number;
+      toShare: number;
+      n: number;
+      unknownShare: number;
+      heldWeeks: string[];
+    }
+  | {
+      /** The executive roles this signal was about (P5). */
+      kind: "leadership";
+      roles: LeadershipRoleFact[];
     }
   | null;
 
@@ -781,6 +808,54 @@ async function salaryFacts(
 }
 
 /**
+ * The facts behind the two P5 signals, read off the change's own rawDiff.
+ *
+ * Same reasoning as the salary and cadence blocks: the detector already decided
+ * which states moved and which roles it was about, and re-deriving either from a
+ * board that has moved since would print numbers that contradict the sentence
+ * above them. The `hiring_footprint` anchor carries five kinds, so the kind is
+ * checked rather than assumed; the three P2 signals already state their whole
+ * before/after in the signal line and get no block.
+ */
+async function footprintFacts(
+  monitorId: string,
+  detectedAt: Date,
+): Promise<SignalFacts> {
+  const [change] = await db
+    .select({ rawDiff: changes.rawDiff })
+    .from(changes)
+    .where(and(eq(changes.monitorId, monitorId), eq(changes.detectedAt, detectedAt)))
+    .limit(1);
+
+  const raw = change?.rawDiff as Record<string, unknown> | null | undefined;
+  if (!raw) return null;
+
+  if (raw.kind === "remote_policy_changed") {
+    const from = typeof raw.from === "string" ? raw.from : null;
+    const to = typeof raw.to === "string" ? raw.to : null;
+    if (!from || !to) return null;
+    return {
+      kind: "remote_policy",
+      from,
+      to,
+      fromShare: Number(raw.fromShare ?? 0),
+      toShare: Number(raw.toShare ?? 0),
+      n: Number(raw.n ?? 0),
+      unknownShare: Number(raw.unknownShare ?? 0),
+      heldWeeks: Array.isArray(raw.heldWeeks) ? (raw.heldWeeks as string[]) : [],
+    };
+  }
+
+  if (raw.kind === "leadership_hire" && Array.isArray(raw.roles)) {
+    const roles = (raw.roles as LeadershipRoleFact[]).filter((r) => r && r.title);
+    if (roles.length === 0) return null;
+    return { kind: "leadership", roles };
+  }
+
+  return null;
+}
+
+/**
  * The structured facts behind one signal, or null when its source has none.
  *
  * Best-effort by construction: a signal must still render if these reads fail,
@@ -803,6 +878,7 @@ export async function buildSignalFacts(args: {
     sourceType !== "pricing" &&
     sourceType !== "job_facts" &&
     sourceType !== "hiring_salary" &&
+    sourceType !== "hiring_footprint" &&
     sourceType !== "changelog" &&
     sourceType !== "shipping_velocity"
   ) {
@@ -819,6 +895,9 @@ export async function buildSignalFacts(args: {
     }
     if (sourceType === "shipping_velocity") {
       return await velocityFacts(competitorId, monitorId, new Date(detectedAt));
+    }
+    if (sourceType === "hiring_footprint") {
+      return await footprintFacts(monitorId, new Date(detectedAt));
     }
     const window = await attributionWindow(monitorId, new Date(detectedAt));
     if (sourceType === "jobs") return await hiringFacts(competitorId, window);

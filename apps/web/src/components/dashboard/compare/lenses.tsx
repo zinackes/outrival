@@ -13,7 +13,14 @@ import { formatMoney } from "@/lib/format-money";
 import { fxDateLabel, useFx } from "@/lib/fx";
 import { cn } from "@/lib/utils";
 import {
+  ArrowsDownUpIcon,
+  BuildingsIcon,
+  GlobeIcon,
+  type Icon as PhosphorIcon,
+} from "@/components/icons";
+import {
   Bar,
+  BarSegments,
   BarShare,
   CardRow,
   type CompareEntity,
@@ -38,9 +45,12 @@ import {
   displayCurrency,
   engineeringMedianSalary,
   engineeringRoles,
+  hiringMix,
   hiringScale,
   money,
   openRoles,
+  remoteReading,
+  topCountries,
   priceReading,
   priceScale,
   ratingScale,
@@ -51,7 +61,7 @@ import {
   costCurveSeries,
   type MeterSelection,
 } from "./derive";
-import { meterUnitLabel, PRICING_MODEL_LABELS } from "@outrival/shared";
+import { countryLabel, meterUnitLabel, PRICING_MODEL_LABELS } from "@outrival/shared";
 
 // recharts is heavy and client-only; the compare page renders four lenses and only
 // one of them ever draws a chart, so it stays off the route's first load.
@@ -579,9 +589,41 @@ export function RatingLens({ entities, expanded, onToggle }: LensProps) {
 
 // ── Hiring ──────────────────────────────────────────────────────────────────
 
+/** The three postures, and the glyph each one leads with. */
+const REMOTE_ICON: Record<string, PhosphorIcon> = {
+  office_first: BuildingsIcon,
+  hybrid_mix: ArrowsDownUpIcon,
+  remote_first: GlobeIcon,
+};
+
+/** A reading that has no shared scale to sit on, so it is shown rather than placed. */
+function MetaChip({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon?: PhosphorIcon;
+  title?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      title={title}
+      className="text-muted-foreground inline-flex items-center gap-1 rounded-sm bg-surface-2 px-1.5 py-0.5 text-meta font-medium"
+    >
+      {Icon && <Icon className="size-3.5 shrink-0" aria-hidden />}
+      {children}
+    </span>
+  );
+}
+
 export function HiringLens({ entities, expanded, onToggle }: LensProps) {
   const cols = loaded(entities);
   const scale = hiringScale(cols);
+  // The bar says what a board is MADE of as soon as one column has an
+  // authoritative ATS week. Columns without one keep the total-plus-engineering
+  // bar they have always had, on the same scale, rather than dropping out.
+  const anyMix = cols.some((c) => hiringMix(c).length > 0);
   if (!lensHasContent.hiring(entities)) return null;
 
   return (
@@ -589,9 +631,11 @@ export function HiringLens({ entities, expanded, onToggle }: LensProps) {
       id="hiring"
       title="Hiring"
       sub={
-        scale.hasEngineering
-          ? "Open roles, engineering share picked out"
-          : "Open roles across every department"
+        anyMix
+          ? "Open roles by department, and where the work happens"
+          : scale.hasEngineering
+            ? "Open roles, engineering share picked out"
+            : "Open roles across every department"
       }
       meta="open now"
       footer={
@@ -604,7 +648,12 @@ export function HiringLens({ entities, expanded, onToggle }: LensProps) {
               : undefined
           }
           legend={
-            scale.hasEngineering ? (
+            anyMix ? (
+              <span>
+                bar segments are departments in a fixed order, widest first overall;
+                hover one for its count
+              </span>
+            ) : scale.hasEngineering ? (
               <>
                 <LegendSwatch className="bg-muted-foreground/45">all open roles</LegendSwatch>
                 <LegendSwatch className="bg-muted-foreground">engineering</LegendSwatch>
@@ -619,6 +668,9 @@ export function HiringLens({ entities, expanded, onToggle }: LensProps) {
         const total = openRoles(e.data);
         const eng = engineeringRoles(e.data);
         const engPay = engineeringMedianSalary(e.data);
+        const mix = hiringMix(e.data);
+        const remote = remoteReading(e.data);
+        const countries = topCountries(e.data);
         const depts = e.data.hiring?.departments ?? [];
         if (total == null) {
           return (
@@ -628,35 +680,76 @@ export function HiringLens({ entities, expanded, onToggle }: LensProps) {
           );
         }
         const deptMax = Math.max(1, ...depts.map((d) => d.count));
+        // The mix is drawn ACROSS the total's own width, so the run still measures
+        // the board on the shared scale and the segments divide that measurement.
+        const mixTotal = mix.reduce((s, b) => s + b.count, 0);
+        const segments = mix.map((b) => ({
+          key: b.bucket,
+          label: b.label,
+          count: b.count,
+          width: mixTotal > 0 ? (b.count / mixTotal) * pct(total, scale.max) : 0,
+        }));
+        // Each chip is its own reading: a competitor with no geo keeps its mix, and
+        // a competitor with no mix keeps its remote posture.
+        const chips = (
+          <>
+            {remote?.label && (
+              <MetaChip
+                icon={REMOTE_ICON[remote.state ?? ""]}
+                title={`${Math.round(remote.share * 100)}% of the ${remote.known} roles that state where the work happens are remote or hybrid${
+                  remote.unknownShare > 0
+                    ? `; a further ${Math.round(remote.unknownShare * 100)}% of their board states no location`
+                    : ""
+                }`}
+              >
+                <span className="tabular-nums">{Math.round(remote.share * 100)}%</span> remote
+              </MetaChip>
+            )}
+            {countries.length > 0 && (
+              <MetaChip icon={GlobeIcon} title="Countries with the most open roles">
+                {countries.map((c, i) => (
+                  <span key={c.code}>
+                    {i > 0 && <span className="text-border-strong"> · </span>}
+                    {countryLabel(c.code)} <span className="tabular-nums">{c.count}</span>
+                  </span>
+                ))}
+              </MetaChip>
+            )}
+            {/* Shown, not positioned: the figure is in ITS currency, so there is no
+                shared scale to place it on and no conversion applied. */}
+            {engPay && (
+              <MetaChip
+                title={`Median engineering pay, ${engPay.currency}, over ${engPay.n} open roles`}
+              >
+                eng {formatMoney(engPay.p50, engPay.currency)}
+              </MetaChip>
+            )}
+          </>
+        );
+        const hasChips = Boolean(remote?.label || countries.length > 0 || engPay);
+
         return (
           <MeasureRow
             key={e.id}
             entity={e}
             open={expanded.has(e.id)}
-            onToggle={depts.length ? () => onToggle(e.id) : undefined}
+            onToggle={depts.length || mix.length ? () => onToggle(e.id) : undefined}
             value={
               <>
                 {total}
                 {eng != null && <span className="text-muted-foreground"> · eng {eng}</span>}
-                {/* Shown, not positioned: the figure is in ITS currency, so there
-                    is no shared scale to place it on and no conversion applied. */}
-                {engPay && (
-                  <span
-                    className="ml-2 rounded-sm bg-surface-2 px-1.5 py-0.5 text-meta font-medium"
-                    title={`Median engineering pay, ${engPay.currency}, over ${engPay.n} open roles`}
-                  >
-                    {formatMoney(engPay.p50, engPay.currency)}
-                  </span>
-                )}
               </>
             }
             detail={
-              depts.length ? (
+              depts.length || mix.length ? (
                 <Detail
                   wide
                   source={[
                     e.data.platform?.ats,
                     `${total} open role${total > 1 ? "s" : ""}`,
+                    remote && remote.unknownShare > 0
+                      ? `${Math.round(remote.unknownShare * 100)}% state no location`
+                      : null,
                     e.data.hiring?.capturedAt
                       ? `seen ${agePhrase(e.data.hiring.capturedAt)}`
                       : null,
@@ -664,15 +757,28 @@ export function HiringLens({ entities, expanded, onToggle }: LensProps) {
                     .filter(Boolean)
                     .join(" · ")}
                 >
-                  {depts.map((d, i) => (
-                    <DetailBar
-                      key={`${d.department}-${i}`}
-                      entity={e}
-                      label={d.department || "Other"}
-                      value={d.count}
-                      ratio={d.count / deptMax}
-                    />
-                  ))}
+                  {/* The canonical buckets when an ATS run bucketed them, the raw
+                      ATS labels otherwise: the second is what a careers page gives
+                      and it is still worth reading down one column. */}
+                  {mix.length > 0
+                    ? mix.map((b) => (
+                        <DetailBar
+                          key={b.bucket}
+                          entity={e}
+                          label={b.label}
+                          value={b.count}
+                          ratio={b.count / Math.max(1, ...mix.map((x) => x.count))}
+                        />
+                      ))
+                    : depts.map((d, i) => (
+                        <DetailBar
+                          key={`${d.department}-${i}`}
+                          entity={e}
+                          label={d.department || "Other"}
+                          value={d.count}
+                          ratio={d.count / deptMax}
+                        />
+                      ))}
                   {engPay && (
                     <DetailPair
                       label={`Median engineering pay (${engPay.currency}, n=${engPay.n})`}
@@ -684,9 +790,16 @@ export function HiringLens({ entities, expanded, onToggle }: LensProps) {
             }
           >
             <Track>
-              <Bar entity={e} left={0} width={pct(total, scale.max)} />
-              {eng != null && eng > 0 && <BarShare entity={e} width={pct(eng, scale.max)} />}
+              {segments.length > 0 ? (
+                <BarSegments entity={e} segments={segments} />
+              ) : (
+                <>
+                  <Bar entity={e} left={0} width={pct(total, scale.max)} />
+                  {eng != null && eng > 0 && <BarShare entity={e} width={pct(eng, scale.max)} />}
+                </>
+              )}
             </Track>
+            {hasChips && <div className="mt-1.5 flex flex-wrap gap-1">{chips}</div>}
           </MeasureRow>
         );
       })}

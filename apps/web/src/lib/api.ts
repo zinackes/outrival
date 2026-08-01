@@ -311,6 +311,39 @@ export interface HiringSalaryData {
   };
 }
 
+/**
+ * Hiring momentum (P5): how they work, how long their roles stay open, and the
+ * deterministic Momentum lines.
+ *
+ * `remote.unknownShare` is displayed WITH the state, never instead of it: a
+ * posture computed over a third of a board is a different claim from one computed
+ * over all of it. `timeToFill` is display-only and its `approx` flag means the
+ * median was built partly on the day WE first saw a role rather than the day it
+ * was published, so the number is a floor. `momentum` is already rendered: the
+ * same pure function produced the evidence the battle card was generated against.
+ */
+export interface HiringMomentumData {
+  remote: {
+    share: number;
+    state: string | null;
+    label: string | null;
+    remote: number;
+    hybrid: number;
+    onsite: number;
+    known: number;
+    unknown: number;
+    unknownShare: number;
+  } | null;
+  timeToFill: Array<{
+    bucket: string;
+    label: string;
+    medianDays: number;
+    n: number;
+    approx: boolean;
+  }>;
+  momentum: string[];
+}
+
 export interface PricingHistoryPoint {
   plan_name: string;
   // null for quote-based tiers (Enterprise / "Contact sales" / Custom).
@@ -608,7 +641,33 @@ export type SignalFacts =
       entriesTotal: number;
       velocity: VelocityFact | null;
     }
+  | {
+      /** The two postures and the shares behind them (P5). `unknownShare` is the
+       * part of the board that stated no location and is printed with them. */
+      kind: "remote_policy";
+      from: string;
+      to: string;
+      fromShare: number;
+      toShare: number;
+      n: number;
+      unknownShare: number;
+      heldWeeks: string[];
+    }
+  | {
+      /** The executive roles the signal was about (P5). */
+      kind: "leadership";
+      roles: LeadershipRoleFact[];
+    }
   | null;
+
+/** One executive role behind a `leadership_hire` signal (P5). */
+export interface LeadershipRoleFact {
+  title: string;
+  url: string | null;
+  location: string | null;
+  /** c_level | vp_head. */
+  rank: string;
+}
 
 export interface ContentEntryFact {
   title: string;
@@ -1308,6 +1367,21 @@ export interface CompareColumn {
     // Shown as a chip, never positioned on the shared bar: two currencies on one
     // axis would need an FX rate we do not capture.
     engineeringMedianSalary: { p50: number; currency: string; n: number } | null;
+    // The canonical bucket mix of the latest ATS week (P5). `departments` above is
+    // the raw ATS label of the last capture, which cannot be compared across
+    // columns; these eight buckets can. Empty without an authoritative run.
+    buckets: Array<{ bucket: string; label: string; count: number }>;
+    // How they work (P5): a state, the share behind it, and the share of the board
+    // that stated no location — which says how much of the first two to believe.
+    remote: {
+      share: number;
+      state: string | null;
+      label: string | null;
+      known: number;
+      unknownShare: number;
+    } | null;
+    // Where the open roles are, widest first (P5). Countries only.
+    topCountries: Array<{ code: string; count: number }>;
     capturedAt: string | null;
   } | null;
   reviews: Array<{
@@ -2859,6 +2933,8 @@ export const api = {
     request<HiringGeoData>(`/api/competitors/${id}/hiring-geo`),
   getCompetitorHiringSalary: (id: string) =>
     request<HiringSalaryData>(`/api/competitors/${id}/hiring-salary`),
+  getCompetitorHiringMomentum: (id: string) =>
+    request<HiringMomentumData>(`/api/competitors/${id}/hiring-momentum`),
   getCompetitorReviews: (id: string) =>
     request<ReviewsData>(`/api/competitors/${id}/reviews`),
   getCompetitorReviewScores: (id: string) =>

@@ -545,6 +545,60 @@ export function BarShare({
   );
 }
 
+/**
+ * The bar, split into the parts it is made of (a board's department mix).
+ *
+ * One hue stepped down in opacity, not eight colours. The row already spends its
+ * colour naming WHO it is, and a categorical palette on top of six identity hues
+ * is a second colour system arguing with the first. What makes the segments
+ * readable instead is that the caller passes them in a fixed order, so the same
+ * department sits in the same place on every row.
+ *
+ * The whole run still measures the total on the lens's shared scale, so a row is
+ * read against the others exactly as before; it just says what it is made of.
+ */
+export function BarSegments({
+  entity,
+  segments,
+}: {
+  entity: CompareEntity;
+  /** In reading order, each width already a percentage OF THE TRACK. */
+  segments: Array<{ key: string; label: string; count: number; width: number }>;
+}) {
+  const vars = competitorColorVars(entity.color);
+  let left = 0;
+  return (
+    <>
+      {segments.map((s, i) => {
+        const at = left;
+        left += s.width;
+        return (
+          <span
+            key={s.key}
+            // Not aria-hidden: the title IS the reading for a segment too thin to
+            // label, and a mouse or a screen reader has no other way to it.
+            title={`${s.label} ${s.count}`}
+            className={cn(
+              "absolute inset-y-0 motion-safe:transition-[left,width] motion-safe:duration-300",
+              i === 0 && "rounded-l-[3px]",
+              i === segments.length - 1 && "rounded-r-[3px]",
+              entity.mine ? "bg-primary" : !vars && "bg-border-strong",
+            )}
+            style={{
+              left: `${at}%`,
+              width: `max(${s.width}%, 2px)`,
+              // Steps down but never to nothing: the smallest department of a wide
+              // board still has to be visible against the track.
+              opacity: Math.max(1 - i * 0.13, 0.32),
+              ...(entity.mine || !vars ? {} : { ...vars, background: COMP_ACCENT }),
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 /** The dashed median reference, drawn through every row of a lens. */
 export function MedianMark({ left }: { left: number }) {
   return (

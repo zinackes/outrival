@@ -12,7 +12,12 @@ import {
   niceMax,
   priceReading,
   priceScale,
+  hiringMix,
   hiringScale,
+  openRoles,
+  remoteReading,
+  topCountries,
+  engineeringRoles,
   ratingScale,
   robustCeiling,
   shortAge,
@@ -76,6 +81,7 @@ function hiring(
   name: string,
   totalOpen: number,
   engineeringOpen: number | null,
+  over: Partial<NonNullable<CompareColumn["hiring"]>> = {},
 ): CompareColumn {
   return col({
     id,
@@ -85,7 +91,12 @@ function hiring(
       topDepartment: "Engineering",
       departments: [{ department: "Engineering", count: totalOpen }],
       engineeringOpen,
+      engineeringMedianSalary: null,
+      buckets: [],
+      remote: null,
+      topCountries: [],
       capturedAt: null,
+      ...over,
     },
   });
 }
@@ -192,6 +203,56 @@ describe("scales", () => {
       hasEngineering: true,
     });
     expect(hiringScale([hiring("b", "B", 31, null)]).hasEngineering).toBe(false);
+  });
+
+  // P5 — the lens gained a mix, a remote posture and a footprint. Each is its own
+  // reading, so a column that has none of them must keep everything it had.
+  test("hiringMix reads in the canonical bucket order, not by size", () => {
+    const c = hiring("a", "A", 12, 4, {
+      buckets: [
+        { bucket: "sales", label: "Sales", count: 6 },
+        { bucket: "engineering", label: "Engineering", count: 4 },
+        { bucket: "design", label: "Design", count: 2 },
+      ],
+    });
+    // Fixed order, because the bar is read down the column against the other rows.
+    expect(hiringMix(c).map((b) => b.bucket)).toEqual(["engineering", "design", "sales"]);
+  });
+
+  test("a column with no ATS week has no mix, no posture and no footprint", () => {
+    const c = hiring("b", "B", 31, null);
+    expect(hiringMix(c)).toEqual([]);
+    expect(remoteReading(c)).toBeNull();
+    expect(topCountries(c)).toEqual([]);
+    // And still reads exactly as it did before P5.
+    expect(openRoles(c)).toBe(31);
+    expect(engineeringRoles(c)).toBeNull();
+  });
+
+  test("topCountries is capped and stays in the order the API ranked it", () => {
+    const c = hiring("c", "C", 9, 3, {
+      topCountries: [
+        { code: "DE", count: 5 },
+        { code: "FR", count: 3 },
+        { code: "ES", count: 1 },
+      ],
+    });
+    expect(topCountries(c).map((x) => x.code)).toEqual(["DE", "FR"]);
+    expect(topCountries(c, 3).map((x) => x.code)).toEqual(["DE", "FR", "ES"]);
+  });
+
+  test("the remote posture travels with the share it was read over", () => {
+    const c = hiring("d", "D", 20, 8, {
+      remote: {
+        share: 0.74,
+        state: "remote_first",
+        label: "Remote-first",
+        known: 18,
+        unknownShare: 0.1,
+      },
+    });
+    expect(remoteReading(c)?.label).toBe("Remote-first");
+    expect(remoteReading(c)?.known).toBe(18);
   });
 
   test("ratingScale marks the winner only when there is something to win", () => {

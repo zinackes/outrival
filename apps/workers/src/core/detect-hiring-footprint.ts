@@ -9,6 +9,15 @@ import {
   normalizeDomain,
   DEPARTMENT_BUCKET_LABELS,
   isCountryKey,
+  classifyLeadershipRole,
+  detectRemotePolicyShift,
+  leadershipSeverity,
+  remoteShare,
+  remoteState,
+  REMOTE_STATE_LABELS,
+  type LeadershipRank,
+  type RemotePolicyShift,
+  type RemoteWeekPoint,
 } from "@outrival/shared";
 import {
   detectFirstAppearances,
@@ -16,6 +25,8 @@ import {
   FIRST_COUNTRY_MIN_WEEKS,
   NEW_DEPARTMENT_MIN_WEEKS,
   isoWeekStart,
+  wasActiveInWeek,
+  weeksBack,
   type DepartmentBucket,
   type WeeklyKeyRow,
 } from "@outrival/scrapers/jobs-hiring";
@@ -28,15 +39,27 @@ import { getHiringGeoHistory, getHiringMetricsHistory } from "../lib/analytics";
 // history-reading detectors off the end of it would put those writes behind a
 // retry-on-failure they do not need.
 //
-// Three deterministic signals, no AI anywhere in the decision:
+// Five deterministic signals, no AI anywhere in the decision:
 //   first_role_in_country   a country that appears in no prior week of their history
 //   new_department_opened   a department bucket that appears in no prior week
 //   hiring_freeze           a board that emptied out and did not refill
+//   remote_policy_changed   a board that moved between office / hybrid / remote (P5)
+//   leadership_hire         a C-level or VP role newly on the board (P5)
 //
-// All three are HIGH, and all three are claims about a FIRST or a STOP, which is
-// exactly what a short history manufactures. Each therefore carries a baseline (see
+// The first three are HIGH and are claims about a FIRST or a STOP, which is exactly
+// what a short history manufactures. Each therefore carries a baseline (see
 // @outrival/scrapers/jobs-hiring) and each is deduped permanently by content hash,
-// so a country is "first" exactly once in a competitor's life.
+// so a country is "first" exactly once in a competitor's life. The two P5 signals
+// carry the same discipline in their own shape: a hysteresis and a cooldown for the
+// remote state, and a first-ingest plus board-identity guard for leadership.
+//
+// WHY THEY SHARE THIS ANCHOR. An anchor's snapshot chain IS its dedup registry, so
+// the house rule is one anchor per signal family — but this anchor is the one built
+// to be shared: it dedups by content hash against EVERY snapshot rather than
+// against the latest, which is what lets several kinds interleave on one chain
+// without deduping each other. Putting these two on `hiring_shift` instead would
+// break the velocity detector, which compares the LAST snapshot only. Adding a
+// dedicated `source_type` would be a migration, and P5 ships none.
 
 const InputSchema = z.object({ competitorId: z.string() });
 
@@ -51,6 +74,22 @@ const FREEZE_THRESHOLDS = {
 };
 /** Roles they must open before a second freeze can be signalled (episode re-arm). */
 const FREEZE_REARM_OPENINGS = 2;
+
+/** ISO weeks of remote posture reconstructed per run. Four are needed (two runs of
+ *  two); the rest is slack for weeks a board was too small to be in a state. */
+const REMOTE_SERIES_WEEKS = 12;
+/**
+ * Weeks a competitor stays quiet after a remote move.
+ *
+ * A board that goes office-first and STAYS office-first is one piece of news. The
+ * hysteresis alone would not stop it re-firing: as the new state ages, the run
+ * behind it eventually satisfies the baseline again from the other side.
+ */
+const REMOTE_COOLDOWN_WEEKS = 8;
+/** Leadership roles named per signal before the line stops naming them. */
+const MAX_LEADERSHIP_ROLES = 8;
+/** Jobs snapshots read to work out which board we are looking at and since when. */
+const BOARD_HISTORY_SNAPSHOTS = 50;
 
 export async function runDetectHiringFootprint(payload: z.input<typeof InputSchema>) {
   const { competitorId } = InputSchema.parse(payload);
@@ -131,6 +170,20 @@ export async function runDetectHiringFootprint(payload: z.input<typeof InputSche
   // ── hiring_freeze ────────────────────────────────────────────────────────
   const freezeId = await evaluateFreeze(competitorId, competitor.name, competitor.url, now);
   if (freezeId) emitted.push("freeze");
+
+  // ── remote_policy_changed (P5) ───────────────────────────────────────────
+  const remoteId = await evaluateRemotePolicy(
+    competitorId,
+    competitor.name,
+    competitor.url,
+    now,
+    currentWeek,
+  );
+  if (remoteId) emitted.push("remote");
+
+  // ── leadership_hire (P5) ─────────────────────────────────────────────────
+  const leadershipId = await evaluateLeadership(competitorId, competitor.name, competitor.url);
+  if (leadershipId) emitted.push("leadership");
 
   logger.log("Completed detect-hiring-footprint", { competitorId, emitted });
   return { emitted };
@@ -410,6 +463,302 @@ async function lastFreezeChange(competitorId: string) {
     .orderBy(desc(changes.detectedAt))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * A board that moved between office-first, hybrid and remote-first (P5).
+ *
+ * The share of a live board moves every week as roles open and close, so a signal
+ * on the percentage would fire on that movement. What is emitted is a STATE
+ * transition instead, and only once the new state has held two consecutive weeks
+ * against a previous state that held two of its own.
+ *
+ * The past is reconstructed the same way the salary backfill reconstructs bands:
+ * `detected_at` / `closed_at` on every posting we have ever seen is the only
+ * history of the board we hold, and it is exact. No second system, and nothing
+ * stored — the states are derived on each run from rows P1 already wrote.
+ */
+async function evaluateRemotePolicy(
+  competitorId: string,
+  name: string,
+  competitorUrl: string | null,
+  now: Date,
+  currentWeek: string,
+): Promise<string | null> {
+  const weeks = weeksBack(currentWeek, REMOTE_SERIES_WEEKS);
+  const oldest = weeks[0];
+  if (!oldest) return null;
+  const from = new Date(`${oldest}T00:00:00.000Z`);
+
+  const postings = await db
+    .select({
+      remoteMode: jobPostings.remoteMode,
+      detectedAt: jobPostings.detectedAt,
+      closedAt: jobPostings.closedAt,
+    })
+    .from(jobPostings)
+    .where(
+      and(
+        eq(jobPostings.competitorId, competitorId),
+        or(isNull(jobPostings.closedAt), gte(jobPostings.closedAt, from)),
+      ),
+    );
+  if (postings.length === 0) return null;
+
+  const points: RemoteWeekPoint[] = weeks.map((weekStart) => {
+    const active = postings.filter((p) => wasActiveInWeek(p, weekStart));
+    const reading = remoteShare(active);
+    return {
+      weekStart,
+      state: remoteState(reading.share, reading.known),
+      share: reading.share,
+      n: reading.known,
+      unknownShare: reading.unknownShare,
+    };
+  });
+
+  const shift = detectRemotePolicyShift(points, currentWeek);
+  if (!shift) return null;
+
+  if (await inRemoteCooldown(competitorId, now)) {
+    logger.log("Remote policy still in cooldown, skipping", { competitorId });
+    return null;
+  }
+
+  return emitRemotePolicy(competitorId, name, shift, competitorUrl);
+}
+
+/** Has a remote move already been signalled inside the cooldown? */
+async function inRemoteCooldown(competitorId: string, now: Date): Promise<boolean> {
+  const since = new Date(now.getTime() - REMOTE_COOLDOWN_WEEKS * 7 * 86_400_000);
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(changes)
+    .innerJoin(monitors, eq(monitors.id, changes.monitorId))
+    .where(
+      and(
+        eq(monitors.competitorId, competitorId),
+        eq(monitors.sourceType, "hiring_footprint"),
+        gte(changes.detectedAt, since),
+        sql`${changes.rawDiff}->>'kind' = 'remote_policy_changed'`,
+      ),
+    );
+  return (row?.n ?? 0) > 0;
+}
+
+const pct = (share: number): number => Math.round(share * 100);
+
+async function emitRemotePolicy(
+  competitorId: string,
+  name: string,
+  shift: RemotePolicyShift,
+  competitorUrl: string | null,
+): Promise<string | null> {
+  const fromLabel = REMOTE_STATE_LABELS[shift.from];
+  const toLabel = REMOTE_STATE_LABELS[shift.to];
+  const unknownLine =
+    shift.unknownShare > 0
+      ? ` A further ${pct(shift.unknownShare)}% of their open roles state no location ` +
+        `we can read, and are counted in neither number.`
+      : "";
+
+  const diffText =
+    `${name} has moved from ${fromLabel.toLowerCase()} to ${toLabel.toLowerCase()} hiring: ` +
+    `${pct(shift.fromShare)}% of their open roles were remote or hybrid, now ` +
+    `${pct(shift.toShare)}% are, across ${shift.n} roles that state where the work ` +
+    `happens.\n\n` +
+    `The new posture has held for ${shift.heldWeeks.length} consecutive weeks ` +
+    `(${shift.heldWeeks.join(", ")}), which is what separates a policy change from a ` +
+    `week in which a few office roles happened to open. A hybrid role counts as half ` +
+    `a remote one, so a board that is entirely hybrid reads as hybrid rather than as ` +
+    `office-first.${unknownLine}\n\n` +
+    `Where a competitor lets people work is the term candidates compare first, and a ` +
+    `return-to-office is the moment their engineers become reachable.`;
+
+  const changeId = await writeAnchoredChange(
+    competitorId,
+    `remote:${shift.to}:${shift.weekStart}`,
+    diffText,
+    {
+      kind: "remote_policy_changed",
+      from: shift.from,
+      to: shift.to,
+      fromShare: shift.fromShare,
+      toShare: shift.toShare,
+      n: shift.n,
+      unknownShare: shift.unknownShare,
+      heldWeeks: shift.heldWeeks,
+    },
+    competitorUrl,
+  );
+  if (!changeId) return null;
+
+  await generateSignal.enqueue({
+    changeId,
+    classification: {
+      category: "hiring" as const,
+      // A posture read off a board is an aggregate, lagging quantity. It does not
+      // earn the channel that bypasses moderation and emails someone in minutes.
+      severity: "medium" as const,
+      is_significant: true,
+      reason: `${name} shifted from ${fromLabel.toLowerCase()} to ${toLabel.toLowerCase()} hiring`,
+      humanChangeBefore: `${fromLabel}, ${pct(shift.fromShare)}% remote`,
+      humanChangeAfter: `${toLabel}, ${pct(shift.toShare)}% remote (n=${shift.n})`,
+    },
+  });
+  return changeId;
+}
+
+/**
+ * Executive roles newly on the board (P5). One signal per run, listing them all.
+ *
+ * The failure mode this is built against is announcing three VPs on the day we
+ * connect a competitor's ATS. Everything on a board is new at the first capture,
+ * and everything is new again the day a company migrates ATS and every posting is
+ * re-keyed. `leadershipFloor` is the single rule that covers both.
+ */
+async function evaluateLeadership(
+  competitorId: string,
+  name: string,
+  competitorUrl: string | null,
+): Promise<string | null> {
+  const floor = await leadershipFloor(competitorId);
+  if (!floor) {
+    logger.log("No settled board history yet, skipping leadership", { competitorId });
+    return null;
+  }
+
+  const rows = await db
+    .select({
+      id: jobPostings.id,
+      title: jobPostings.title,
+      url: jobPostings.url,
+      location: jobPostings.location,
+      seniority: jobPostings.seniority,
+    })
+    .from(jobPostings)
+    .where(
+      and(
+        eq(jobPostings.competitorId, competitorId),
+        eq(jobPostings.isActive, true),
+        gt(jobPostings.detectedAt, floor),
+      ),
+    )
+    .orderBy(desc(jobPostings.detectedAt));
+
+  const hits = rows
+    .map((r) => ({ ...r, rank: classifyLeadershipRole(r.title, r.seniority) }))
+    .filter((r): r is typeof r & { rank: LeadershipRank } => r.rank !== null)
+    .slice(0, MAX_LEADERSHIP_ROLES);
+  if (hits.length === 0) return null;
+
+  const severity = leadershipSeverity(hits.map((h) => h.rank));
+  const lines = hits.map(
+    (h) =>
+      `- ${h.title}${h.location ? ` (${h.location})` : ""}${h.url ? ` — ${h.url}` : ""}`,
+  );
+
+  const diffText =
+    `${name} is hiring ${hits.length === 1 ? "an executive" : `${hits.length} executives`}:\n` +
+    `${lines.join("\n")}\n\n` +
+    `None of these roles was on their board at our previous capture. Who a company ` +
+    `hires at the top is the clearest statement of what it intends to do next: a ` +
+    `first CRO is a company deciding to sell rather than to build, and a VP of ` +
+    `Engineering is a team about to double. The titles are read from the board ` +
+    `verbatim; director-level roles are deliberately excluded, since on most boards ` +
+    `they are a senior individual-contributor band rather than the org chart.`;
+
+  const changeId = await writeAnchoredChange(
+    competitorId,
+    `leadership:${hits.map((h) => h.id).sort().join(",")}`,
+    diffText,
+    {
+      kind: "leadership_hire",
+      roles: hits.map((h) => ({
+        title: h.title,
+        url: h.url,
+        location: h.location,
+        rank: h.rank,
+      })),
+    },
+    competitorUrl,
+  );
+  if (!changeId) return null;
+
+  await generateSignal.enqueue({
+    changeId,
+    classification: {
+      // The company-level taxonomy category, not `hiring`: an executive hire is a
+      // statement about the org chart, and it reads next to the funding and M&A
+      // moves rather than next to the open-role counts.
+      category: "leadership" as const,
+      severity,
+      is_significant: true,
+      reason: `${name} posted ${hits.length === 1 ? "an executive role" : `${hits.length} executive roles`}: ${hits
+        .map((h) => h.title)
+        .slice(0, 3)
+        .join(", ")}`,
+      humanChangeBefore: "No executive roles open",
+      humanChangeAfter: hits.map((h) => h.title).join(", "),
+    },
+  });
+  return changeId;
+}
+
+/**
+ * The instant after which a posting counts as newly opened rather than newly seen.
+ *
+ * It is the SECOND-oldest capture of the board we are currently looking at, and
+ * that one rule answers both questions at once. On a competitor we just connected
+ * it excludes the whole first ingest. After an ATS migration the host changes, the
+ * run restarts on the new board, and it excludes the re-keyed batch the same way.
+ * Null when there is no second capture yet, which is the signal to stay quiet.
+ *
+ * A capture with no resolved URL does not break the run: it is a capture whose host
+ * we do not know, not a different board, and treating it as one would silence a
+ * competitor for a cycle every time a redirect went unrecorded.
+ */
+async function leadershipFloor(competitorId: string): Promise<Date | null> {
+  const snaps = await db
+    .select({ scrapedAt: snapshots.scrapedAt, resolvedUrl: snapshots.resolvedUrl })
+    .from(snapshots)
+    .innerJoin(monitors, eq(monitors.id, snapshots.monitorId))
+    .where(and(eq(monitors.competitorId, competitorId), eq(monitors.sourceType, "jobs")))
+    .orderBy(desc(snapshots.scrapedAt))
+    .limit(BOARD_HISTORY_SNAPSHOTS);
+  if (snaps.length < 2) return null;
+
+  const currentHost = normalizeDomain(snaps[0]?.resolvedUrl ?? null);
+  const onBoard: typeof snaps = [];
+  for (const s of snaps) {
+    const host = normalizeDomain(s.resolvedUrl);
+    if (host && currentHost && host !== currentHost) break;
+    onBoard.push(s);
+  }
+  // Newest first, so the second-oldest capture of this board is one in from the end.
+  const secondOldest = onBoard[onBoard.length - 2];
+  if (!secondOldest) return null;
+
+  const last = await lastLeadershipChange(competitorId);
+  return last && last > secondOldest.scrapedAt ? last : secondOldest.scrapedAt;
+}
+
+/** When this competitor was last flagged for an executive hire, if ever. */
+async function lastLeadershipChange(competitorId: string): Promise<Date | null> {
+  const [row] = await db
+    .select({ detectedAt: changes.detectedAt })
+    .from(changes)
+    .innerJoin(monitors, eq(monitors.id, changes.monitorId))
+    .where(
+      and(
+        eq(monitors.competitorId, competitorId),
+        eq(monitors.sourceType, "hiring_footprint"),
+        sql`${changes.rawDiff}->>'kind' = 'leadership_hire'`,
+      ),
+    )
+    .orderBy(desc(changes.detectedAt))
+    .limit(1);
+  return row?.detectedAt ? new Date(row.detectedAt) : null;
 }
 
 /**

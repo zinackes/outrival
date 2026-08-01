@@ -6,6 +6,7 @@ import {
   db,
   battleCards,
   competitors,
+  jobPostings,
   products,
   organizations,
   monitors,
@@ -30,7 +31,13 @@ import {
   uploadToR2,
   getFromR2,
   resolveCurrentPricing,
+  classifyLeadershipRole,
+  disclosureVerdict,
+  isCountryKey,
+  momentumFacts,
+  momentumLines,
   type CompetitorOverrides,
+  type LeadershipRank,
 } from "@outrival/shared";
 import { isCloudflareChallenge } from "@outrival/scrapers/block-detection";
 import { htmlToText } from "../lib/html-to-text";
@@ -40,6 +47,9 @@ import {
   getLatestPricingTiers,
   getLatestReviewScore,
   getReviewScoreSeries,
+  getHiringGeoHistory,
+  getHiringMetricsHistory,
+  getHiringSalaryBandSeries,
 } from "../lib/analytics";
 import { detectThemeShifts, mergeRisingThemeObjections } from "../lib/review-theme-shift";
 import { createBattleCardStream } from "../lib/battle-card-stream";
@@ -56,6 +66,96 @@ function isEmptyCard(c: BattleCardContent): boolean {
     c.common_objections.length === 0 &&
     c.when_we_win.length === 0 &&
     c.when_we_lose.length === 0
+  );
+}
+
+/** Weeks of salary history read for the engineering band on the card. */
+const MOMENTUM_SALARY_WEEKS = 8;
+
+/**
+ * The Momentum lines (Hiring Intelligence v2 P5), computed exactly as the card's
+ * own Momentum section computes them.
+ *
+ * Both sides call `momentumFacts` + `momentumLines` from @outrival/shared over the
+ * same tables, which is the point: the section is rendered deterministically and
+ * these strings are what the model is grounded on, so a claim it makes about their
+ * hiring traces to a sentence printed a few lines under it. Nothing here is a new
+ * reading of the board, only a re-read of what P1-P4 already wrote.
+ *
+ * Best-effort throughout: the analytics helpers return [] on failure, and an empty
+ * result simply means the card carries no hiring evidence, exactly like a
+ * competitor with no reviews carries none of those.
+ */
+async function loadMomentumLines(competitorId: string): Promise<string[]> {
+  const [metrics, geo, bands, active] = await Promise.all([
+    getHiringMetricsHistory(competitorId),
+    getHiringGeoHistory(competitorId),
+    getHiringSalaryBandSeries(competitorId, MOMENTUM_SALARY_WEEKS),
+    db
+      .select({
+        title: jobPostings.title,
+        seniority: jobPostings.seniority,
+        detectedAt: jobPostings.detectedAt,
+        salaryMin: jobPostings.salaryMin,
+        salaryMax: jobPostings.salaryMax,
+      })
+      .from(jobPostings)
+      .where(and(eq(jobPostings.competitorId, competitorId), eq(jobPostings.isActive, true))),
+  ]);
+
+  // Total open roles per ISO week: the buckets are a partition of the board, so
+  // summing them is the board. (hiring_geo's keys are NOT, which is why the
+  // countries below are read per key and never totalled.)
+  const weeklyTotals = new Map<string, number>();
+  for (const r of metrics) {
+    weeklyTotals.set(r.week_start, (weeklyTotals.get(r.week_start) ?? 0) + r.open_count);
+  }
+
+  // Per country: the first week it ever appeared, and how many roles it holds in
+  // the latest week we have. A country first seen recently but empty now is not a
+  // market they are in, and momentumFacts drops it on the open count.
+  const latestGeoWeek = geo.reduce((mx, r) => (r.week_start > mx ? r.week_start : mx), "");
+  const firstWeek = new Map<string, string>();
+  const currentCount = new Map<string, number>();
+  for (const r of geo) {
+    if (!isCountryKey(r.key)) continue;
+    const seen = firstWeek.get(r.key);
+    if (!seen || r.week_start < seen) firstWeek.set(r.key, r.week_start);
+    if (r.week_start === latestGeoWeek) currentCount.set(r.key, r.open_count);
+  }
+
+  const latestBandWeek = bands.reduce((mx, r) => (r.week_start > mx ? r.week_start : mx), "");
+  const engBand = bands
+    .filter((b) => b.department_bucket === "engineering" && b.week_start === latestBandWeek)
+    .sort((a, b) => b.n - a.n)[0];
+
+  const disclosed = active.filter((p) => p.salaryMin != null || p.salaryMax != null).length;
+
+  return momentumLines(
+    momentumFacts({
+      weeklyTotals: [...weeklyTotals].map(([weekStart, openCount]) => ({ weekStart, openCount })),
+      countries: [...firstWeek].map(([code, week]) => ({
+        code,
+        firstWeek: week,
+        openCount: currentCount.get(code) ?? 0,
+      })),
+      leadership: active
+        .map((p) => ({
+          title: p.title,
+          detectedAt: p.detectedAt,
+          rank: classifyLeadershipRole(p.title, p.seniority),
+        }))
+        .filter((p): p is typeof p & { rank: LeadershipRank } => p.rank !== null),
+      salary:
+        active.length > 0
+          ? {
+              verdict: disclosureVerdict(disclosed, active.length),
+              engP50: engBand?.p50 ?? null,
+              currency: engBand?.currency ?? null,
+              n: engBand?.n ?? 0,
+            }
+          : null,
+    }),
   );
 }
 
@@ -290,6 +390,7 @@ async function generate(payload: z.input<typeof InputSchema>) {
     });
     const competitorReviews = await getLatestReviewScore(competitor.id);
     const competitorHomepageExcerpt = await loadHomepageExcerpt(competitor.id);
+    const competitorMomentum = await loadMomentumLines(competitor.id);
 
     // Our own product's evidence — features / tech / pricing come from the self
     // profile (extract-self-profile keeps them current), homepage from its snapshot.
@@ -332,6 +433,7 @@ async function generate(payload: z.input<typeof InputSchema>) {
         importance: t.importance,
       })),
       competitorReviews,
+      competitorMomentum,
       reviewPraises: praisesRows.map((r) => r.content ?? "").filter(Boolean),
       reviewComplaints: complaintsRows.map((r) => r.content ?? "").filter(Boolean),
       recentSignals: recentSignals.map((s) => ({

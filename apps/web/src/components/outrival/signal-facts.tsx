@@ -39,7 +39,99 @@ export function SignalFacts({ facts }: { facts: Facts }) {
   if (facts.kind === "job_facts") return <JobFacts facts={facts} />;
   if (facts.kind === "salary") return <SalaryFacts facts={facts} />;
   if (facts.kind === "content") return <ContentFacts facts={facts} />;
+  if (facts.kind === "remote_policy") return <RemotePolicyFacts facts={facts} />;
+  if (facts.kind === "leadership") return <LeadershipFacts facts={facts} />;
   return <PricingFacts facts={facts} />;
+}
+
+const REMOTE_STATE_TEXT: Record<string, string> = {
+  office_first: "office-first",
+  hybrid_mix: "hybrid",
+  remote_first: "remote-first",
+};
+
+/**
+ * The remote posture that moved, and what it was computed over.
+ *
+ * The unread share of the board is printed alongside, not hidden: a posture read
+ * off two thirds of a board is a different claim from one read off all of it, and
+ * this is the only place the reader can tell which they are looking at. The weeks
+ * the new posture has held are the answer to "is this a policy or a busy month".
+ */
+function RemotePolicyFacts({ facts }: { facts: Extract<Facts, { kind: "remote_policy" }> }) {
+  const pct = (share: number) => Math.round(share * 100);
+  return (
+    <div>
+      <p className="text-dense text-muted-foreground">
+        {REMOTE_STATE_TEXT[facts.from] ?? facts.from} →{" "}
+        <span className="font-medium text-foreground">
+          {REMOTE_STATE_TEXT[facts.to] ?? facts.to}
+        </span>{" "}
+        · remote share <span className="tabular-nums">{pct(facts.fromShare)}%</span> →{" "}
+        <span className="font-medium text-foreground tabular-nums">{pct(facts.toShare)}%</span>{" "}
+        over <span className="tabular-nums">{facts.n}</span>{" "}
+        {facts.n === 1 ? "role" : "roles"}
+      </p>
+      {facts.heldWeeks.length > 0 && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Held for <span className="tabular-nums">{facts.heldWeeks.length}</span> consecutive
+          weeks ({facts.heldWeeks.join(", ")}).
+        </p>
+      )}
+      {facts.unknownShare > 0 && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          A further <span className="tabular-nums">{pct(facts.unknownShare)}%</span> of their
+          open roles state no location we can read, and are in neither number.
+        </p>
+      )}
+    </div>
+  );
+}
+
+const LEADERSHIP_RANK_LABEL: Record<string, string> = {
+  c_level: "C-level",
+  vp_head: "VP / Head of",
+};
+
+/**
+ * The executive roles a leadership signal was about.
+ *
+ * Titles verbatim from the board, each linked to its own posting: "they are hiring
+ * leadership" is worth nothing next to "they are hiring a Chief Revenue Officer",
+ * and the rank is what made the signal high rather than medium.
+ */
+function LeadershipFacts({ facts }: { facts: Extract<Facts, { kind: "leadership" }> }) {
+  return (
+    <div>
+      <p className="text-dense text-muted-foreground">
+        <span className="font-medium text-foreground tabular-nums">{facts.roles.length}</span>{" "}
+        executive {facts.roles.length === 1 ? "role" : "roles"} newly on their board
+      </p>
+      <ul className="mt-2.5 space-y-1.5">
+        {facts.roles.map((r, i) => (
+          <li key={`${r.title}-${i}`} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+            {r.url ? (
+              <a
+                href={r.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-baseline gap-1 rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+              >
+                {r.title}
+                <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
+              </a>
+            ) : (
+              <span>{r.title}</span>
+            )}
+            {r.location && <span className="text-xs text-muted-foreground">{r.location}</span>}
+            <span className="ml-auto text-xs text-muted-foreground">
+              {LEADERSHIP_RANK_LABEL[r.rank] ?? r.rank}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 const ITEM_TYPE_LABEL: Record<string, string> = {

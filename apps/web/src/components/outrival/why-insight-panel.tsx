@@ -194,6 +194,27 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                     </a>
                   </>
                 )}
+                {/* The live page above is not where a backfill signal's quoted
+                    lines are: they were removed before we started watching. The
+                    capture it actually read is replayable, so it gets its own
+                    link rather than being represented by the page that replaced
+                    it. */}
+                {detail.archive?.url && (
+                  <>
+                    {" · "}
+                    <a
+                      href={detail.archive.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      {detail.archive.capturedAt
+                        ? `archived ${format(new Date(detail.archive.capturedAt), "MMM d")}`
+                        : "archived capture"}
+                      <ArrowSquareOutIcon size={16} aria-hidden />
+                    </a>
+                  </>
+                )}
               </>
             ) : (
               "Where this signal came from and what changed."
@@ -262,7 +283,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                 // removed answer the same question without pretending the change
                 // had two sides.
                 <div className="mt-2.5">
-                  <DiffPreview diffText={detail.diffText} maxLines={12} />
+                  <DiffPreview diffText={detail.diffText} maxLines={12} denoise />
                 </div>
               ) : (
                 <p className="mt-2.5 text-sm text-muted-foreground">

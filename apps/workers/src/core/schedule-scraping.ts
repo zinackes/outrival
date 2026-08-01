@@ -127,7 +127,13 @@ export async function runScheduleScraping() {
     // fresh failure re-pauses them (onFailure resets lastFailedAt → 7d cooldown).
     const paused = await db.query.monitors.findMany({
       where: and(eq(monitors.isActive, false), eq(monitors.markedUnscrapable, true)),
-      columns: { id: true, isActive: true, markedUnscrapable: true, lastFailedAt: true },
+      columns: {
+        id: true,
+        isActive: true,
+        markedUnscrapable: true,
+        lastFailedAt: true,
+        sourceType: true,
+      },
     });
     const rearmIds = rearmableMonitorIds(paused, now);
     if (rearmIds.length > 0) {

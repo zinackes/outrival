@@ -1854,6 +1854,22 @@ AI_PROVIDER_1_MODEL=gpt-oss-120b   # NOT llama-3.3-70b (404 model_not_found on C
 AI_PROVIDER_1_TIER=free
 AI_PROVIDER_1_DAILY_TOKEN_QUOTA=1000000
 AI_PROVIDER_1_PRIORITY=1
+AI_PROVIDER_N_MAX_REQUEST_TOKENS=  # plafond d'UNE requête chez ce provider (≠ quota
+                                   # journalier, qui est un budget : celui-ci est un mur).
+                                   # Groq gratuit compte prompt + max_tokens contre ses
+                                   # 8k tokens/MINUTE et répond 413 au-dessus, donc une
+                                   # tâche dont le prompt est structurellement plus gros
+                                   # n'y réussira JAMAIS, quel que soit le nombre de
+                                   # retries. Mesuré sur 7j de prod : 430 appels de ce
+                                   # type, dont 198 `generate_extractor` (~12k tokens de
+                                   # HTML élagué) tous refusés, pendant que Cerebras
+                                   # servait la même tâche 206 fois. Le pool écarte
+                                   # désormais un provider qu'il dépasserait au lieu de
+                                   # dépenser l'appel ET le slot de failover pour se
+                                   # l'entendre dire — un prompt trop gros ne peut plus
+                                   # se lire comme « all_providers_failed ». VIDE = aucun
+                                   # plafond connu = comportement d'avant (on tente, le
+                                   # provider tranche)
 AI_PROVIDER_2_ID=groq              # 1 compte, prio 3. QUOTA=200000 : c'est le TPD gratuit
                                    # PUBLIÉ par Groq (8k tokens/min, 200k/jour). Il valait
                                    # 500000, donc le pool passait la fin de chaque journée à

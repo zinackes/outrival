@@ -6,6 +6,11 @@ import {
   isTooLarge,
   rateLimitBackoffSec,
 } from "./provider";
+import {
+  estimateRequestTokens,
+  providersAcceptingSize,
+  type Provider,
+} from "./provider/provider-pool";
 
 test("non-reasoning models (Llama) never receive reasoning_effort", () => {
   expect(resolveReasoningEffort("llama-3.3-70b-versatile")).toBeUndefined();
@@ -102,4 +107,50 @@ test("nothing else is mistaken for a too-large refusal", () => {
     expect(isTooLarge(apiError(status))).toBe(false);
   }
   expect(isTooLarge(new Error("boom"))).toBe(false);
+});
+
+// --- per-request size ceiling ----------------------------------------------
+//
+// The 413 above is handled well AFTER it happens. The point of a published ceiling
+// is to never spend the call: Groq's free tier caps one request at its 8000 TPM
+// allowance, `generate_extractor` sends ~12k tokens of pruned HTML, so that pairing
+// refused 198 times in a week while Cerebras served the same task 206 times. A
+// guaranteed-413 attempt also consumes the pool's last failover slot, which is how
+// an oversized prompt came back reading as "all_providers_failed".
+
+const provider = (id: string, maxRequestTokens?: number): Provider => ({
+  id,
+  baseUrl: `https://${id}.example/v1`,
+  apiKey: "k",
+  model: "gpt-oss-120b",
+  tier: "free",
+  dailyTokenQuota: 1_000_000,
+  maxRequestTokens,
+  priority: 1,
+});
+
+test("the reply budget counts toward the request, because the free tiers bill it", () => {
+  // 4000 chars ≈ 1000 prompt tokens; a 1024-token reply budget is charged against
+  // the same allowance the provider refuses the request with.
+  expect(estimateRequestTokens("x".repeat(4000), 1024)).toBe(2024);
+  expect(estimateRequestTokens("", 0)).toBe(0);
+});
+
+test("a provider is skipped only when its ceiling is genuinely below the request", () => {
+  const pool = [provider("groq", 8000), provider("cerebras")];
+
+  // Structurally oversized (generate_extractor's real shape) → only the unbounded one.
+  expect(providersAcceptingSize(pool, 12_201).map((p) => p.id)).toEqual(["cerebras"]);
+  // A normal task still reaches both — this must not narrow the pool for everyone.
+  expect(providersAcceptingSize(pool, 1_900).map((p) => p.id)).toEqual(["groq", "cerebras"]);
+  // Exactly at the ceiling is acceptable; one token over is not.
+  expect(providersAcceptingSize(pool, 8_000).map((p) => p.id)).toEqual(["groq", "cerebras"]);
+  expect(providersAcceptingSize(pool, 8_001).map((p) => p.id)).toEqual(["cerebras"]);
+});
+
+test("an unset ceiling means unknown, never zero", () => {
+  // Today's behaviour for every provider that has not declared one: attempt it and
+  // let the provider answer. A ceiling of 0 in env must read the same way.
+  expect(providersAcceptingSize([provider("mistral")], 999_999)).toHaveLength(1);
+  expect(providersAcceptingSize([provider("mistral", 0)], 999_999)).toHaveLength(1);
 });

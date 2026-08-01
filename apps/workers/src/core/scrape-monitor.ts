@@ -301,6 +301,14 @@ function benignSkipFrom(err: unknown, sourceType: string): { reason: string } | 
   if (sourceType === "docs" && msg.includes("no_docs_surface")) {
     return { reason: "no_docs_surface" };
   }
+  // `sitemap` is internal and seeded on every competitor, never chosen by a user, so
+  // "this site publishes no sitemap.xml" is a stable absence nobody can act on —
+  // exactly the shape of youtube's no_channel. The 3-strike path paused 4 of 8 prod
+  // sitemap monitors permanently; a benign skip keeps re-probing on the weekly
+  // cadence, so a site that later publishes one is picked up on its own.
+  if (sourceType === "sitemap" && msg.includes("no_sitemap_found")) {
+    return { reason: "no_sitemap_found" };
+  }
   if (sourceType === "roadmap") {
     if (msg.includes("no_roadmap_portal")) return { reason: "no_roadmap_portal" };
     if (msg.includes("portal_private")) return { reason: "portal_private" };
@@ -931,6 +939,19 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       return { changed: false, snapshotId: lastSnapshot.id };
     }
 
+    // Both anti-collapse guards below read an empty capture as "failed render or
+    // soft-block". That inference is only available on a capture that FETCHED A PAGE.
+    // A synthesized document is built by the scraper from already-parsed structured
+    // data (a feed, a sitemap, an API payload), so its emptiness is the answer, not a
+    // symptom: a competitor with no press mentions this month, no .well-known
+    // footprint, no live subdomains. hackernews and wellknown each worked around this
+    // by padding their header past COLLAPSE_FLOOR; `news` never did, and 61 of 223
+    // news monitors on prod died as `markedUnscrapable` for the crime of having a
+    // quiet month. Exempting the source class fixes them all and stops the next
+    // synthetic source from having to remember the padding trick.
+    const syntheticCapture =
+      SYNTHETIC_DOC_SOURCES.has(monitor.sourceType) || isSyntheticDocument(result.html);
+
     // First-capture anti-collapse guard: the branch below only fires when there's a
     // prior snapshot to regression-check against, so a monitor's very first scrape
     // had no emptiness guard at all — an empty shell/error page became the permanent
@@ -938,7 +959,7 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
     // change. Throw here too so Trigger retries a clean render instead of seeding
     // that baseline; a monitor that stays empty surfaces as failed (honest) rather
     // than fabricating a signal later.
-    if (!lastSnapshot && isContentCollapsed(afterContent)) {
+    if (!syntheticCapture && !lastSnapshot && isContentCollapsed(afterContent)) {
       logger.warn("Extracted content collapsed on first capture — likely failed render/soft-block, retrying", {
         monitorId: monitor.id,
         sourceType: monitor.sourceType,
@@ -956,7 +977,7 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
     // the monitor surfaces as failed (honest) instead of emitting a false signal.
     // Guarded on the prior snapshot having had real content, so a consistently
     // empty monitor doesn't retry-loop.
-    if (lastSnapshot && isContentCollapsed(afterContent)) {
+    if (!syntheticCapture && lastSnapshot && isContentCollapsed(afterContent)) {
       // Prior snapshot is already stored; a missing/unreadable R2 object (retention
       // purge, transient blip) must not fail this scrape — we just can't run the
       // regression check, so skip the throw rather than crash (null → guard below).
@@ -1063,11 +1084,7 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
     // product-line, or an api-capture doc) is built from already-parsed structured
     // data, so deny copy in it is content, not a block — running the copy heuristic
     // there would silence the monitor forever.
-    const denyCheckable =
-      COMPLETENESS_ENABLED &&
-      !monitor.apiCaptureEnabled &&
-      !SYNTHETIC_DOC_SOURCES.has(monitor.sourceType) &&
-      !isSyntheticDocument(result.html);
+    const denyCheckable = COMPLETENESS_ENABLED && !monitor.apiCaptureEnabled && !syntheticCapture;
     const denyKind = denyCheckable ? detectDenyPage(result.html) : null;
     // R6 (2026-07 audit, T5): the same cross-root check diagnoseFailure runs on the
     // failure path, applied to a 200. An own-domain source that silently resolved to

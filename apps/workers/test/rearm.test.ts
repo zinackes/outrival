@@ -15,6 +15,7 @@ const candidate = (over: Partial<RearmCandidate> = {}): RearmCandidate => ({
   isActive: false,
   markedUnscrapable: true,
   lastFailedAt: ago(8),
+  sourceType: "homepage",
   ...over,
 });
 
@@ -37,6 +38,21 @@ describe("rearmableMonitorIds — C2 auto re-arm", () => {
 
   test("does NOT re-arm when lastFailedAt is null", () => {
     expect(rearmableMonitorIds([candidate({ lastFailedAt: null })], now, 7)).toEqual([]);
+  });
+
+  test("does NOT re-arm a monitor whose source has no scraper left", () => {
+    // The re-arm is for a source that was DOWN. A retired source is gone: nothing is
+    // bound to it, so waking it buys `No scraper for source type: …` and an immediate
+    // re-pause, every 7 days, forever (prod: two trustpilot_reviews monitors sitting
+    // at 5 and 6 consecutive failures on a source retired in July).
+    expect(rearmableMonitorIds([candidate({ sourceType: "trustpilot_reviews" })], now, 7)).toEqual(
+      [],
+    );
+    expect(rearmableMonitorIds([candidate({ sourceType: "linkedin" })], now, 7)).toEqual([]);
+    // The live successor is untouched — this must not silence Trustpilot as a source.
+    expect(
+      rearmableMonitorIds([candidate({ sourceType: "trustpilot_public" })], now, 7),
+    ).toEqual(["m1"]);
   });
 
   test("filters a mixed set to only the due ones", () => {

@@ -5,7 +5,7 @@
 // + datacenter egress). An explicit refusal (403/503/challenge/robots) is surfaced
 // distinctly, never escalated.
 import { validatePublicUrl } from "@outrival/shared";
-import { scrapePage as cascadeScrape, type CascadeOutcome } from "./scrape-page";
+import { scrapePage as cascadeScrape, isRefusalReason, type CascadeOutcome } from "./scrape-page";
 import { scrapeDirect } from "./scrape-direct";
 import { isAllowed, getCrawlDelayMs } from "./robots";
 import { awaitDomainSlot } from "./rate-limit";
@@ -109,7 +109,27 @@ export async function scrapeStatic(url: string): Promise<ScrapeOutcome> {
   if (!(await isAllowed(url))) throw new Error("robots_disallowed");
   await awaitDomainSlot(url, await getCrawlDelayMs(url));
   const r = await scrapeDirect(url);
-  if (!r.ok || !r.html) throw new Error(r.failureReason ?? "static_scraping_failed");
+  if (!r.ok || !r.html) {
+    // A refusal has to keep saying so. scrape-monitor reads `refused` off the thrown
+    // error (refusalFrom) to mark the source unscrapable at once, per the collection
+    // doctrine — a plain Error here made a 403 indistinguishable from a timeout, so
+    // sites that had explicitly turned us away (Akamai, DataDome) were retried on
+    // every run for weeks.
+    if (isRefusalReason(r.failureReason)) {
+      throw new ScrapeFailedError(r.failureReason ?? "refused", {
+        ok: false,
+        refused: true,
+        failureReason: r.failureReason,
+        statusCode: r.statusCode,
+        durationMs: r.durationMs ?? 0,
+        level: null,
+        learnedLevel: null,
+        attempts: [],
+        totalDurationMs: r.durationMs ?? 0,
+      });
+    }
+    throw new Error(r.failureReason ?? "static_scraping_failed");
+  }
   return {
     html: r.html,
     text: r.text ?? stripHtml(r.html),
@@ -142,6 +162,7 @@ export async function scrapeFirstSuccess(
 ): Promise<ScrapeOutcome> {
   const base = new URL(baseUrl);
   let lastError: unknown;
+  let refusal: unknown;
 
   for (const path of candidatePaths) {
     const candidate = new URL(path, `${base.protocol}//${base.host}`).toString();
@@ -156,8 +177,14 @@ export async function scrapeFirstSuccess(
       return res;
     } catch (err) {
       lastError = err;
+      if (!refusal && err instanceof ScrapeFailedError && err.cascadeOutcome.refused) refusal = err;
     }
   }
+  // Wrapping every failure in a fresh Error dropped the one distinction the
+  // collection doctrine is built on. When a candidate was REFUSED and nothing else
+  // worked, that refusal IS the outcome — rethrow it verbatim so the worker marks the
+  // source unscrapable instead of re-probing five paths on a site that said no.
+  if (refusal) throw refusal;
   throw new Error(
     `No candidate path succeeded for ${baseUrl} (tried ${candidatePaths.join(", ")}): ${String(lastError)}`,
   );

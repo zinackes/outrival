@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { planWriteIn, visibleAt, writeInRate } from "../src/lib/write-in-cursor";
+import { drainRate, planWriteIn, visibleAt } from "../src/lib/write-in-cursor";
 
 const LINES = ["abcd", "ef", "ghijk"];
 const PLAN = planWriteIn(LINES);
@@ -51,9 +51,13 @@ test("empty lines never swallow the cursor", () => {
   expect(visibleAt(lines, plan, 3, 2)).toBe("c");
 });
 
-test("a long card writes faster rather than for longer", () => {
-  // Below the ceiling the base rate applies; above it, the rate stretches so the
-  // whole card still lands inside the cap.
-  expect(writeInRate(1000, 1100, 4500)).toBe(1100);
-  expect(writeInRate(9000, 1100, 4500)).toBe(2000);
+test("the rate follows the backlog, floored and capped", () => {
+  // A short backlog writes at the floor rather than crawling out over `seconds`.
+  expect(drainRate(100, { seconds: 5, min: 55, max: 240 })).toBe(55);
+  // In the band, the backlog sets the pace.
+  expect(drainRate(600, { seconds: 5, min: 55, max: 240 })).toBe(120);
+  // A whole card landing at once is capped, so it still reads as writing.
+  expect(drainRate(3000, { seconds: 5, min: 55, max: 240 })).toBe(240);
+  // The run-out has no ceiling — it only has to finish quickly, not stay readable.
+  expect(drainRate(3000, { seconds: 1.2, min: 320 })).toBe(2500);
 });

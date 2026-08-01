@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowsClockwiseIcon,
@@ -20,6 +21,7 @@ import {
   type BattleCard,
   type BattleCardContent,
   type BattleCardJob,
+  type BattleCardPartial,
   type BattleCardStaleness,
 } from "@/lib/api";
 import { errorConfig, toastApiError, type ErrorConfig } from "@/lib/error-helpers";
@@ -29,6 +31,7 @@ import {
   productsListQuery,
 } from "@/lib/queries";
 import { formatDate } from "@/lib/format-date";
+import { disclosureMotion } from "@/lib/motion";
 import { track } from "@/lib/posthog/events";
 import {
   PaywallDialog,
@@ -42,11 +45,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { FeedbackButtons } from "@/components/outrival/feedback-buttons";
 import { TabCard } from "@/components/outrival/tab-shell";
 import { Reveal } from "@/components/outrival/reveal";
-import { BattleCardBuild, type BuildStage } from "./build-view";
+import { BattleCardProgress, type BuildStage } from "./build-view";
 import { BattleCardEmpty } from "./empty-view";
 import { BattleCardHead, MetaDot } from "./head";
 import { ConfidenceBadge } from "./evidence";
-import { BattleCardSections } from "./sections";
+import { BattleCardSections, flattenCardLines } from "./sections";
+import { useWriteIn } from "./write-in";
 import { PackagingSection } from "./packaging";
 import { TheirCustomersSection } from "./their-customers";
 import { TopRequestedSection } from "./top-requested";
@@ -196,6 +200,32 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
     return list.find((p) => p.id === resolvedProductId) ?? null;
   }, [productsQ.data, resolvedProductId]);
 
+  // The card body is ONE subtree from the first streamed sentence to the stored card:
+  // while the run is live it renders the draft the model is writing, and when the row
+  // lands it renders that instead. The handoff is a change of props, not a change of
+  // page — which is what removes the cut where the finished card wiped the screen and
+  // typed itself a second time from empty.
+  const generating = status === "generating";
+  const partialContent = useMemo(() => partialToContent(job?.partial ?? null), [job?.partial]);
+  const bodyContent = generating
+    ? partialContent
+    : editing
+      ? draft
+      : (card?.content ?? EMPTY_CONTENT);
+  const lines = useMemo(() => flattenCardLines(bodyContent), [bodyContent]);
+  // One cursor for the whole thing, rewound only when a NEW run starts. It is what
+  // paces the text: the stream arrives in bursts, the cursor drains them.
+  const read = useWriteIn(lines, writeIn && !editing, writeInFinish, genStartedAt);
+  // The run is still live — this is what the progress block is, and the only thing
+  // that leaves when a generation ends.
+  const runInFlight = generating || (writeIn && !writeInFinish);
+  // The frames outlive it by the length of the run-out: the writing accelerates when
+  // the run ends, it does not teleport, so a section the cursor has not reached yet
+  // still has something coming. Dropping its frame with the progress block would empty
+  // the page for a second right at the moment it is supposed to settle.
+  const lastLine = lines[lines.length - 1] ?? null;
+  const stillWriting = lastLine !== null && read(lines.length - 1) !== lastLine;
+
   async function refreshStaleness() {
     try {
       setStaleness(await api.getBattleCardStaleness(competitorId, productId));
@@ -257,6 +287,8 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
     // pre-generation snapshot the marker captured.
     setGenStartedAt(marker.at);
     setStatus("generating");
+    setWriteIn(true);
+    setWriteInFinish(false);
     startPolling(marker.runId ?? null, marker.prev, loaded?.pdfR2Key ?? null);
   }
 
@@ -288,19 +320,12 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
     // A run reporting "done" should already have written its row, but the two reads
     // are not atomic. Give it a couple of ticks before calling it an empty finish.
     let doneWithoutCard = 0;
-    // How many frames of the card being written this reader actually saw. It decides
-    // what the arrival of the row means: the end of a write they watched, or a card
-    // appearing out of a skeleton — only the second is worth animating.
-    //
-    // Two frames, not one: on a fast provider the model emits the whole card in a
-    // fraction of a second, so a single frame landing just before the row is a flash,
-    // not a write. Treating that as "they watched it" would replace the paced write-in
-    // with the card popping on whole — worse than what it replaced.
-    let partialFrames = 0;
 
     const giveUp = (reason: string) => {
       stopPolling();
       clearGenMarker(competitorId, productId);
+      setWriteIn(false);
+      setWriteInFinish(false);
       setFailure(reason);
       setStatus("failed");
     };
@@ -328,19 +353,16 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
       if (run) {
         setJob(run);
         jobRef.current = run;
-        if (run.partial) partialFrames += 1;
       }
       // Everything below decides whether to reveal, give up or stop. Those are 3s
       // decisions, taken on the same reads as before.
       if (!heavy) return;
 
       if (fresh && fresh.generatedAt !== prevGeneratedAt) {
+        // The stored card takes over from the streamed draft under the SAME cursor:
+        // whatever was already on screen stays on screen and the writing continues
+        // from there. Nothing is replayed, and nothing is dropped back to empty.
         setStatus("ready");
-        // Write the card in only when the reader has NOT already watched it being
-        // written. When the stream was up, the arrival is the end of a write they saw
-        // happen; replaying it as an animation would type the same card at them twice.
-        setWriteIn(partialFrames < 2);
-        setWriteInFinish(false);
         revealed = true;
         clearGenMarker(competitorId, productId); // content landed → nothing to resume
         // The card was written from freshly gathered evidence; re-read it so the
@@ -359,9 +381,14 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
       }
       // Content is up and only the PDF is outstanding. Keep chasing it, but under the
       // same ceiling as everything else: the card is already usable, and a PDF that
-      // never lands is a "PDF pending" label, not a reason to poll forever.
+      // never lands is a "PDF pending" label, not a reason to poll forever. Giving up
+      // on it still ends the run for the page — otherwise the progress block would sit
+      // above a finished card claiming to be rendering something.
       if (revealed) {
-        if (polls >= MAX_WATCHED_POLLS) stopPolling();
+        if (polls >= MAX_WATCHED_POLLS) {
+          setWriteInFinish(true);
+          stopPolling();
+        }
         return;
       }
 
@@ -400,7 +427,9 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
     setError(null);
     setFailure(null);
     setJob(null);
-    setWriteIn(false);
+    // The write-in is armed BEFORE the first sentence arrives, not when the row lands:
+    // the streamed draft and the stored card are written by the same cursor.
+    setWriteIn(true);
     setWriteInFinish(false);
     try {
       const { runId } = await api.generateBattleCard(competitorId, productId);
@@ -421,6 +450,7 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
       // whole page with the raw envelope; the card the user already had is worth more
       // than the error is, so it stays and the reason arrives as a toast.
       else toastApiError(e, { title: "Couldn't generate the card", onRetry: onGenerate });
+      setWriteIn(false); // nothing is being written — the progress block must not stay
       setStatus(card ? "ready" : "absent");
     }
   }
@@ -563,39 +593,23 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
     );
   }
 
-  if (status === "generating") {
-    return (
-      <div className="space-y-6">
-        {head(
-          <>
-            <span>Battle card</span>
-            <MetaDot />
-            <span>{job?.state === "queued" ? "queued" : "writing it now"}</span>
-          </>,
-          <Button size="sm" disabled>
-            <DownloadSimpleIcon size={16} /> Download PDF
-          </Button>,
-        )}
-        <BattleCardBuild
-          startedAt={genStartedAt ?? Date.now()}
-          firstTime={!card}
-          evidence={evidence}
-          competitorName={competitorName}
-          stage={buildStage(job)}
-          partial={job?.partial ?? null}
-        />
-      </div>
-    );
-  }
+  // A generation with no card yet still renders the card's own frame — that is the
+  // point of the merge. Only "no card and nothing running" has nothing to show.
+  if (!card && !generating) return null;
 
-  if (!card) return null;
-
-  const showContent = editing ? draft : card.content;
-  const canDownload = !editing && Boolean(card.pdfR2Key);
+  const showContent = bodyContent;
+  const canDownload = !editing && !generating && Boolean(card?.pdfR2Key);
   const since = staleness?.since ?? null;
-  const showStale = Boolean(staleness?.needsRegeneration && since && since.total > 0);
+  const showStale =
+    !generating && Boolean(staleness?.needsRegeneration && since && since.total > 0);
 
-  const meta = editing ? (
+  const meta = generating ? (
+    <>
+      <span>Battle card</span>
+      <MetaDot />
+      <span>{job?.state === "queued" ? "queued" : "writing it now"}</span>
+    </>
+  ) : !card ? null : editing ? (
     <>
       <span>Battle card</span>
       <MetaDot />
@@ -623,7 +637,11 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
     </>
   );
 
-  const actions = editing ? (
+  const actions = generating ? (
+    <Button size="sm" disabled>
+      <DownloadSimpleIcon size={16} /> Download PDF
+    </Button>
+  ) : !card ? null : editing ? (
     <>
       <Button
         variant="outline"
@@ -693,14 +711,32 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
     </>
   );
 
-  // Ease the card in when it lands — a fresh generation swaps the build view for this
-  // subtree (a hard pop otherwise), and even a plain open reveals it behind the
-  // skeleton. `token` replays it should a newer card land while we stay on the page.
+  // Eases the card in behind the loading skeleton on a plain open. No `token`: the
+  // only thing that used to change it under our feet was a generation landing, and a
+  // generation is now WRITTEN into this same subtree — replaying the entrance on top
+  // of that is precisely the cut being removed.
   return (
     <div className="space-y-6">
       {head(meta, actions)}
-      <Reveal token={card.generatedAt}>
+      <Reveal>
         <TabCard>
+          {/* The run's own block, and the only thing that leaves when the run ends:
+              the card underneath is the same subtree from the first streamed sentence
+              onward, so finishing collapses this away instead of swapping the page. */}
+          <AnimatePresence initial={false}>
+            {runInFlight && (
+              <motion.div key="run" {...disclosureMotion}>
+                <BattleCardProgress
+                  startedAt={genStartedAt ?? Date.now()}
+                  firstTime={!card}
+                  evidence={evidence}
+                  competitorName={competitorName}
+                  stage={buildStage(job)}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Staleness is stated where the card starts, and it names what moved:
               "Regenerate" alone asks the user to spend a daily card on faith. */}
           {!editing && showStale && since && (
@@ -727,7 +763,7 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
             </div>
           )}
 
-          {!editing && confirmingRegen && (
+          {!editing && !generating && confirmingRegen && (
             <div className="flex flex-col gap-2 bg-surface-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-muted-foreground">
                 This battle card is already up to date
@@ -751,8 +787,8 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
             editing={editing}
             draft={draft}
             setDraft={setDraft}
-            writeIn={writeIn}
-            writeInFinish={writeInFinish}
+            read={read}
+            pending={runInFlight || (writeIn && stillWriting)}
           />
 
           {/* Packaging (P2): deterministic lines from the captured entitlement
@@ -761,7 +797,7 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
               product, not the scope: its "we ship it too" line reads the self
               profile, and in all-products scope the scope is empty, so it was
               answering with the org's default SKU on a card about another one. */}
-          {!editing && competitor && (
+          {!editing && card && competitor && (
             <PackagingSection
               competitorId={competitorId}
               competitorName={competitor.name}
@@ -774,7 +810,7 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
               is editable) and absent entirely when we hold no customer proof. No
               product scope: who a competitor sells to is a fact about them, not
               about which of our SKUs the card compares. */}
-          {!editing && competitor && (
+          {!editing && card && competitor && (
             <TheirCustomersSection
               competitorId={competitorId}
               competitorName={competitor.name}
@@ -786,24 +822,54 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
               roadmap we have WATCHED them ship. Deterministic like the section
               above, hidden while editing, and absent entirely when they publish no
               portal — an empty frame would state nothing. */}
-          {!editing && competitor && <TopRequestedSection competitorId={competitorId} />}
+          {!editing && card && competitor && (
+            <TopRequestedSection competitorId={competitorId} />
+          )}
 
-          <div className="flex items-center justify-between gap-3 px-5 py-3.5">
-            <p className="text-dense text-muted-foreground">
-              Edits you make here survive the next regeneration.
-            </p>
-            {/* Quality feedback (patch-21): "not useful" flags the card for
-                regeneration. autoHydrate — a single card, so it self-fetches the
-                existing verdict on mount. */}
-            {!editing && (
-              <FeedbackButtons targetType="battle_card" targetId={card.id} autoHydrate />
-            )}
-          </div>
+          {card && (
+            <div className="flex items-center justify-between gap-3 px-5 py-3.5">
+              <p className="text-dense text-muted-foreground">
+                Edits you make here survive the next regeneration.
+              </p>
+              {/* Quality feedback (patch-21): "not useful" flags the card for
+                  regeneration. autoHydrate — a single card, so it self-fetches the
+                  existing verdict on mount. */}
+              {!editing && (
+                <FeedbackButtons targetType="battle_card" targetId={card.id} autoHydrate />
+              )}
+            </div>
+          )}
         </TabCard>
       </Reveal>
       {paywallNode}
     </div>
   );
+}
+
+/**
+ * The card as the model has written it so far, in the shape the card renders — so the
+ * streamed draft and the stored row are the same kind of value and the body never has
+ * to switch renderers.
+ *
+ * The sentence still being typed is appended to its own section, so a provider that
+ * takes seconds over one long line still shows it arriving. Objections are excluded
+ * from that: they render as a pair, and half a pair has no answer to sit under.
+ */
+function partialToContent(partial: BattleCardPartial | null): BattleCardContent {
+  const c = partial?.content ?? {};
+  const content: BattleCardContent = {
+    their_strengths: c.their_strengths ?? [],
+    our_strengths: c.our_strengths ?? [],
+    their_weaknesses: c.their_weaknesses ?? [],
+    common_objections: c.common_objections ?? [],
+    when_we_win: c.when_we_win ?? [],
+    when_we_lose: c.when_we_lose ?? [],
+  };
+  const key = partial?.typingKey;
+  if (partial?.typing && key && key !== "common_objections") {
+    content[key] = [...content[key], partial.typing];
+  }
+  return content;
 }
 
 /** The stage the build view should show. Null while we have no run to read — the

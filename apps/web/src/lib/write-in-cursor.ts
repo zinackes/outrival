@@ -46,10 +46,18 @@ export function visibleAt(
 }
 
 /**
- * Characters per second for a card of `total` characters. Long cards write faster
- * rather than longer: the point is that the card lands soon, not that every card
- * takes the same time to appear.
+ * Characters per second for a cursor that is `backlog` characters behind the text we
+ * hold. Proportional, so the pace is set by how much is waiting rather than by when
+ * the bytes happened to arrive: a whole card landing in one burst writes faster than a
+ * trickle, and neither reads as a slab appearing.
+ *
+ * `min` keeps the tail from crawling once the backlog is nearly cleared; `max` keeps a
+ * burst legible as writing rather than as a jump.
  */
-export function writeInRate(total: number, base: number, maxDurationMs: number): number {
-  return Math.max(base, total / (maxDurationMs / 1000));
+export function drainRate(
+  backlog: number,
+  { seconds, min, max }: { seconds: number; min: number; max?: number },
+): number {
+  const rate = Math.max(min, backlog / seconds);
+  return max === undefined ? rate : Math.min(max, rate);
 }

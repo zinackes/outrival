@@ -1,6 +1,14 @@
 services:
   worker-light:
     image: ghcr.io/zinackes/outrival-worker:latest
+    # worker.ts asks pg-boss for a 30s graceful drain on SIGTERM, and Compose's
+    # default is to SIGKILL after 10 — so the drain never once completed and every
+    # deploy killed the handlers in flight. pg-boss cannot observe a SIGKILL: the job
+    # stays `active` until expireInSeconds (900 for scrape-monitor) expires it, then
+    # retries, and three of those pause the monitor as unscrapable. It cost up to 45
+    # scrapes on 2026-08-01 alone, a day with 15 worker deploys at SCRAPE_CONCURRENCY 3.
+    # Must stay ABOVE the 30s the code asks for, or the kill lands on the drain's tail.
+    stop_grace_period: 40s
     container_name: outrival-worker-light
     restart: unless-stopped
     env_file: .env.worker
@@ -22,6 +30,10 @@ services:
 
   worker-browser:
     image: ghcr.io/zinackes/outrival-worker:latest
+    # See worker-light: the 10s Compose default cut the 30s drain short. This is the
+    # service it hurt — a scrape runs for minutes, so it is the one whose jobs were
+    # actually in flight when a deploy landed.
+    stop_grace_period: 40s
     container_name: outrival-worker-browser
     restart: unless-stopped
     env_file: .env.worker

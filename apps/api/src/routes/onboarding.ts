@@ -113,8 +113,13 @@ async function storeProfile(
  * cadence and force-triggers the first scrape so the Phase 5 enrichment runs immediately.
  * Idempotent (one self per org). Seeds the editable selfProfile from the onboarding
  * productProfile (auto-detected). Monitors are activated later via POST /my-product/site.
+ *
+ * `productName` is what the user typed at the profile step. It only exists for the
+ * stages with no URL to read a name off (idea/document/developing), which is exactly
+ * where the product used to land as the "My product" placeholder — and it wins over
+ * the hostname, since a name someone chose beats one we derived.
  */
-async function createSelfCompetitor(orgId: string) {
+async function createSelfCompetitor(orgId: string, productName?: string) {
   const org = await db.query.organizations.findFirst({
     where: eq(organizations.id, orgId),
   });
@@ -132,7 +137,7 @@ async function createSelfCompetitor(orgId: string) {
     .insert(competitors)
     .values({
       orgId,
-      name: normalizeHostname(org.productUrl) ?? DEFAULT_PRODUCT_NAME,
+      name: productName?.trim() || normalizeHostname(org.productUrl) || DEFAULT_PRODUCT_NAME,
       url: org.productUrl,
       category: pp?.category ?? null,
       type: "self",
@@ -673,6 +678,10 @@ const CompleteSchema = z.object({
   // Patch-25: the resumable session for this run, flipped to analysis_in_progress
   // so the dashboard streaming panel knows the first pass is underway.
   onboardingSessionId: z.string().optional(),
+  // What to call the product. Only sent by the stages that have no URL to derive a
+  // name from (idea/document/developing); omitted → the "My product" placeholder,
+  // which POST /my-product/site later replaces with the hostname on go-live.
+  productName: z.string().trim().min(1).max(80).optional(),
 });
 
 onboardingRouter.post("/complete", async (c) => {
@@ -691,6 +700,7 @@ onboardingRouter.post("/complete", async (c) => {
     monitoringPrefs,
     discoveryRegion,
     onboardingSessionId,
+    productName,
   } = parsed.data;
 
   const plan = await getOrgPlan(orgId);
@@ -817,7 +827,7 @@ onboardingRouter.post("/complete", async (c) => {
   // idea/document onboarding has none, so no self-competitor is created yet. When
   // the user later re-onboards with a URL, /complete runs again and creates it.
   // Idempotent: never create a second self for the same org.
-  await createSelfCompetitor(orgId);
+  await createSelfCompetitor(orgId, productName);
 
   // patch-28 — link the discovery-added competitors to the org's primary product so
   // their signals are tagged into its feed (createSelfCompetitor created the product

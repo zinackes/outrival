@@ -3895,6 +3895,9 @@ export const api = {
     // Links the run to its resumable session so /complete can flip it to
     // analysis_in_progress (patch-25 — drives the dashboard streaming panel).
     onboardingSessionId?: string;
+    // Only sent by the stages with no product URL (idea/document/developing), where
+    // there is no hostname to name the product after. Omitted → "My product".
+    productName?: string;
   }) =>
     request<{ competitorsCreated: number }>("/api/onboarding/complete", {
       method: "POST",

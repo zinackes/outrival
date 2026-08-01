@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { resolve } from "node:path";
 import type { Hono } from "hono";
-import { eq } from "drizzle-orm";
-import { competitorCandidates, organizations } from "@outrival/db";
+import { and, eq } from "drizzle-orm";
+import { competitorCandidates, competitors, organizations, products } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
 import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 
@@ -114,5 +114,53 @@ describe("POST /onboarding/complete — digestEmail default", () => {
       where: eq(organizations.id, orgId),
     });
     expect(org?.digestEmail).toBe("reports@customer.example.com");
+  });
+});
+
+// A description / PDF / repo run has no URL, so the product used to be created as
+// the "My product" placeholder with no way to say otherwise — the name only ever
+// arrived later, from the hostname, on go-live.
+describe("POST /onboarding/complete — product name", () => {
+  async function selfAndProduct(orgId: string) {
+    const self = await testDb.query.competitors.findFirst({
+      where: and(eq(competitors.orgId, orgId), eq(competitors.type, "self")),
+    });
+    const product = await testDb.query.products.findFirst({
+      where: eq(products.orgId, orgId),
+    });
+    return { self, product };
+  }
+
+  test("a chosen name lands on both the product and its anchor", async () => {
+    const { orgId, userId, email } = await seedOrg(testDb);
+    const body = JSON.stringify({
+      selectedCompetitors: [{ name: "Rival", url: "https://named-rival.com" }],
+      monitoringPrefs: { frequency: "weekly", sources: ["homepage"] },
+      productName: "  Flagship  ",
+    });
+    const res = await app.request(
+      "/api/onboarding/complete",
+      asUser(userId, email, { method: "POST", body }),
+    );
+    expect(res.status).toBe(200);
+
+    const { self, product } = await selfAndProduct(orgId);
+    expect(product?.name).toBe("Flagship");
+    // Both rows or neither: the switcher reads products.name, the pipeline reads the
+    // competitor, and two names for one product is how "My product" survived.
+    expect(self?.name).toBe("Flagship");
+  });
+
+  test("no name still falls back to the placeholder", async () => {
+    const { orgId, userId, email } = await seedOrg(testDb);
+    const res = await app.request(
+      "/api/onboarding/complete",
+      asUser(userId, email, { method: "POST", body: completeBody() }),
+    );
+    expect(res.status).toBe(200);
+
+    const { self, product } = await selfAndProduct(orgId);
+    expect(product?.name).toBe("My product");
+    expect(self?.name).toBe("My product");
   });
 });

@@ -444,7 +444,12 @@ myProductRouter.post("/site", async (c) => {
     url,
     updatedAt: new Date(),
   };
-  if (!self.url) competitorUpdate.name = normalizeHostname(url) ?? self.name;
+  // Placeholder-only, like the products rename below: onboarding can now name a
+  // URL-less product, and taking the hostname anyway would leave the anchor and the
+  // displayed SKU under two different names.
+  if (!self.url && self.name === DEFAULT_PRODUCT_NAME) {
+    competitorUpdate.name = normalizeHostname(url) ?? self.name;
+  }
   await db.update(competitors).set(competitorUpdate).where(eq(competitors.id, self.id));
   // The switcher, page titles and breadcrumbs read products.name, not the
   // competitor's — a description/PDF product stayed "My product" everywhere after

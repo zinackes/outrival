@@ -2011,11 +2011,12 @@ AI_VISIBILITY_GEMINI_MODELS=           # liste séparée par virgules qui REMPLA
                                        # qui change de rédacteur se lit comme un mouvement de SoV.
                                        # CONFIRMER que le grounding marche sur un modèle avant de
                                        # l'ajouter (un 429 peut n'être que le bucket du jour vidé)
-AI_VISIBILITY_MODEL_DAILY_BUDGET=15    # plafond DUR côté code, par modèle et par jour UTC, appliqué
+AI_VISIBILITY_MODEL_DAILY_BUDGET=18    # plafond DUR côté code, par modèle et par jour UTC, appliqué
                                        # par une réservation dans ai_visibility_engine_budget avant
-                                       # qu'un appel ne parte. Sous les 20 mesurés du free tier : le
-                                       # projet est partagé avec l'outillage perso du propriétaire,
-                                       # et un 429 consomme une réservation lui aussi
+                                       # qu'un appel ne parte. Google énonce le plafond du free tier
+                                       # dans son propre refus : quotaValue 20, par modèle, par
+                                       # projet. Les 2 restants couvrent le « Run now » à la demande,
+                                       # et le fait qu'un 429 consomme une réservation lui aussi
 AI_VISIBILITY_TEASER_RESERVE=3         # appels/jour que le drip refuse de planifier, pour qu'une
                                        # rafale d'inscriptions trouve encore de quoi payer son teaser
 AI_VISIBILITY_TEASER_ENABLED=true      # L7 — teaser onboarding gratuit 1×/org (false → "unavailable")

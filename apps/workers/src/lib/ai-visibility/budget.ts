@@ -27,12 +27,17 @@ import type { Engine } from "./engines";
 const MIN_REQUEST_GAP_MS = Number(process.env.AI_VISIBILITY_MIN_REQUEST_GAP_MS ?? 13_000);
 
 /**
- * Requests per model per UTC day. The measured free-tier ceiling is 20; the default
- * sits under it because the project is shared with the owner's own tooling, and
- * because a reservation is spent whether the call succeeds or 429s.
+ * Requests per model per UTC day. Google states the free-tier ceiling outright in its
+ * refusal (`quotaValue: "20"`, per model, per project, measured 2026-08-01).
+ *
+ * The default leaves two of those twenty unclaimed rather than the five it used to:
+ * the second key on the project, whose client was firing up to 4,000 requests a day
+ * at a near-zero success rate, was deleted on 2026-08-01, so the buckets are the
+ * worker's alone. The remaining slack is for the on-demand "Run now" path and for the
+ * fact that a reservation is spent whether the call succeeds or 429s.
  */
 export function modelDailyCap(): number {
-  return Number(process.env.AI_VISIBILITY_MODEL_DAILY_BUDGET ?? 15);
+  return Number(process.env.AI_VISIBILITY_MODEL_DAILY_BUDGET ?? 18);
 }
 
 /**

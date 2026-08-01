@@ -194,14 +194,15 @@ export function WorkspaceSwitcher({
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              tooltip={activeProduct?.name ?? "Workspace"}
+              tooltip={(multiProduct ? activeProduct?.name : null) ?? "Workspace"}
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               {/* On a single product the switcher has nothing to disambiguate, so it
-                  keeps the brand mark; once a product is the active scope, that
-                  product's favicon IS the identity — the same mark it carries
-                  everywhere else it appears. */}
-              {activeProduct ? (
+                  keeps the brand mark — including on that product's detail page,
+                  which sets the scope and used to swap the identity out. Once
+                  several products exist and one is the active scope, that product's
+                  favicon IS the identity, the same mark it carries everywhere else. */}
+              {multiProduct && activeProduct ? (
                 <ProductTile
                   name={activeProduct.name}
                   url={activeProduct.url}

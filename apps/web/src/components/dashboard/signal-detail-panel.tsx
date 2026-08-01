@@ -244,6 +244,22 @@ export function SignalDetailPanel({
   const hasVisual =
     Boolean(detail?.screenshots?.before && detail?.screenshots?.after) &&
     !visualFailed;
+  // A backfill signal quotes a capture, not the live page: the lines it cites
+  // were removed weeks or months ago, so "Open source" lands on a page where
+  // none of them are left. The archived capture is replayable, and the chip that
+  // already declares the provenance is the honest place to reach it from.
+  const archive = detail?.archive ?? null;
+  const archivedOn = archive?.capturedAt
+    ? format(new Date(archive.capturedAt), "MMM d")
+    : null;
+  const archiveChip = (
+    <>
+      <ArchiveIcon className="size-3.5" />
+      {archivedOn ? `Archived ${archivedOn}` : "From archive"}
+    </>
+  );
+  const archiveChipClass =
+    "inline-flex items-center gap-1 rounded-sm border border-border bg-surface-2 px-2 py-0.5 text-meta font-medium text-muted-foreground";
   const changes = detail?.changes ?? [];
   // The lines the page added and removed. For the sources with no structured
   // breakdown, which is most of them, this is what makes the Evidence section
@@ -473,15 +489,26 @@ export function SignalDetailPanel({
                   {signal.filteredReason === "backfill" && (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-surface-2 px-2 py-0.5 text-meta font-medium text-muted-foreground">
-                          <ArchiveIcon className="size-3.5" />
-                          From archive
-                        </span>
+                        {archive?.url ? (
+                          <a
+                            href={archive.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={cn(
+                              archiveChipClass,
+                              "outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+                            )}
+                          >
+                            {archiveChip}
+                          </a>
+                        ) : (
+                          <span className={archiveChipClass}>{archiveChip}</span>
+                        )}
                       </TooltipTrigger>
-                      <TooltipContent>
-                        Reconstructed from the web archive. This change happened
-                        before we started monitoring, so it wasn&apos;t sent as an
-                        alert.
+                      <TooltipContent className="max-w-[280px]">
+                        {archive?.url
+                          ? "Reconstructed from the web archive, so it was never sent as an alert. Opens the capture this signal quotes; Open source opens the page as it stands now."
+                          : "Reconstructed from the web archive. This change happened before we started monitoring, so it wasn't sent as an alert."}
                       </TooltipContent>
                     </Tooltip>
                   )}

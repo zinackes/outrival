@@ -940,6 +940,10 @@ export interface SignalDetail {
   relevanceScore: number | null;
   sourceType: string | null;
   sourceUrl: string | null;
+  // The archived capture a backfill signal quotes, replayable on the Wayback
+  // Machine. `sourceUrl` points at the LIVE page, which for these signals no
+  // longer holds the text they cite. null on every live-to-live signal.
+  archive?: { url: string; capturedAt: string | null } | null;
   // Whether before/after screenshots are available for the visual diff, and when
   // each side was captured. Any source that renders can carry one (homepage always,
   // pricing on the runs that render) — never assume homepage-only.

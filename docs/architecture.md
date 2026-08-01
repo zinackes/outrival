@@ -604,7 +604,7 @@ hiring_salary_bands competitor_id, department_bucket, currency, p25, p50, p75, n
 job_counts          competitor_id, department, count, recorded_at
 ats_coverage_gaps   platform, host, competitor_id, resolution (api_adapter|json_ld|
                     ai_fallback|none), job_count, occurrences, last_seen_at —
-                    Hiring Intelligence v2 P4 (migration 0064) : COMMENT le board
+                    Hiring Intelligence v2 P4 (migration 0065) : COMMENT le board
                     jobs de chaque concurrent est réellement lu, c'est-à-dire la
                     boucle d'apprentissage qui décide du prochain adapter ATS.
                     UPSERT par (platform, competitor), pas append-only : la question

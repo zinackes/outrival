@@ -1495,7 +1495,7 @@ plancher AI). Un board Greenhouse n'atteint jamais le rung générique : test d�
   est reportée avec son titre et son département **VERBATIM**. `computeJobsDelta` clé
   sur ce couple, donc rederiver depuis la carte de listing fermerait la moitié du board
   et le rouvrirait chaque semaine. C'est le point le plus fragile de la feature.
-- **`ats_coverage_gaps`** (migration `0064`) — upsert par (plateforme, concurrent) à
+- **`ats_coverage_gaps`** (migration `0065`) — upsert par (plateforme, concurrent) à
   CHAQUE run jobs : plateforme, host, résolution (`api_adapter|json_ld|ai_fallback|
   none`), nb d'annonces, occurrences. Détection PASSIVE étendue (`detectAtsPlatform`) à
   teamtailor, join, softgarden, taleez, talentsoft, jobylon, factorial, breezy,
@@ -1545,17 +1545,40 @@ Un board résolu `json_ld` ne passe plus par `stagedExtract` : **l'appel `ai_run
 `extract_jobs` disparaît** pour ce concurrent. L'appel `source_summary` en fin de job
 est inchangé — la baisse porte sur `extract_jobs`, pas sur le total.
 
-### Reste à faire (bloqué ici, pas oublié)
+### Migration : `0065` APPLIQUÉE SUR PROD (2026-08-01), pas sur dev
 
-- **Aucune `DATABASE_URL` dans ce checkout** (pas de `.env.local`), donc : `0064`
-  **appliquée nulle part**, pas de concurrent Teamtailor peuplé en dev, `pnpm
-  ats:coverage` jamais exécuté contre de vraies lignes, et la baisse `extract_jobs` est
-  démontrée par le code + les tests, pas mesurée sur des runs.
-- **Le `when` de `0064` sortait AVANT celui de `0063`** dans `_journal.json` — le
-  migrator l'aurait sautée en affichant un succès. Réordonné à la main (0064 jamais
-  appliquée, donc aucun ledger à réaligner). À re-vérifier avant tout `db:migrate`.
-- **Collision de numéro** : la branche « Content items P1 » porte aussi un `0064`. Le
-  second mergé devra être renuméroté.
+Deux pièges franchis, tous deux invisibles sans pré-vol lecture seule :
+
+1. **Le `when` généré sortait SOUS le dernier appliqué** (1785565802379 contre
+   1785614302239). Le migrator runtime sélectionne par `when > created_at du dernier
+   appliqué` : il aurait affiché « Migrations applied » en n'écrivant RIEN. Réordonné
+   avant application.
+2. **Le numéro 0064 était déjà pris EN PROD** — par `0064_last_anita_blake`
+   (`content_items` + valeur d'enum `shipping_velocity`) de la branche
+   `feat/content-items, **qui n'est pas mergée**. `origin/main` s'arrête à 0063 :
+   **la prod est en avance d'une migration sur `main`**. La nôtre est donc renumérotée
+   **`0065_light_centennial`**. (La note « 0064 appliquée nulle part » qui traînait
+   était fausse — vérifié : la table et la valeur d'enum existent en prod.)
+
+Vérifié APRÈS application, pas déduit du message de succès : ledger 66 lignes,
+0 pending, `ats_coverage_gaps` présente avec ses 8 colonnes, sa PK, l'unique
+(platform, competitor) et l'index (resolution, last_seen_at).
+
+**Conséquence pour le merge** : les deux `0064` partaient du même parent (snapshot
+0063), donc les chaînes `prevId` divergent. Celui qui merge en SECOND doit supprimer
+son `.sql` + son snapshot + son entrée de journal et refaire `db:generate` — jamais
+renuméroter à la main un snapshot dont le parent a bougé.
+
+### Reste à faire
+
+- **Pas de dev** : aucune `DATABASE_URL` dev dans ce checkout, donc `0065` n'est PAS
+  sur la branche dev et aucun concurrent Teamtailor n'y a été peuplé.
+- **`ats_coverage_gaps` est vide en prod** : la table existe, mais elle ne se remplit
+  qu'au prochain run jobs de chaque concurrent (upsert dans `extract-jobs`), et ce code
+  n'est pas déployé. Rien à lire avec `pnpm ats:coverage` avant déploiement des workers.
+- La baisse d'`ai_runs` `extract_jobs` reste **démontrée par le code et les tests, pas
+  mesurée** — à confirmer sur prod après déploiement (le socle : 1 452 postings actives,
+  1 093 avec URL, donc le report par URL canonique a de la matière).
 - Promouvoir 2-3 plateformes en adapters selon ce que dit `ats:coverage` — mini-sessions,
   hors périmètre ici.
 

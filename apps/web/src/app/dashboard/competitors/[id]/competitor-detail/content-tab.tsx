@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { ArrowUpIcon, ArrowDownIcon, ArrowSquareOutIcon } from "@/components/icons";
@@ -8,7 +9,17 @@ import { Fact, FactStrip } from "@/components/outrival/data-marks";
 import { api, type ContentItemRow, type ContentSummary, type CompetitorSignal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Empty,
   TabLoading,
@@ -16,6 +27,13 @@ import {
   type MonitorSourceProps,
   type ScrapeActivity,
 } from "./shared";
+
+// recharts is heavy + client-only: lazy-load the plot so it stays off this route's
+// first-load bundle, exactly as the pricing / reviews / hiring tabs do.
+const CadenceBars = dynamic(() => import("./content-cadence-chart"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[200px] w-full" />,
+});
 
 /**
  * What a competitor publishes (Content Intelligence v2 P4).
@@ -72,14 +90,14 @@ const TYPE_LABEL: Record<string, string> = {
  * Colour is spent on the three types that alert, and nowhere else.
  *
  * `breaking`, `deprecation` and `security` are the ones the pipeline emits a signal
- * on, so the timeline scans for exactly what the product acts on. Tinting all
- * fourteen types would turn a dense list into a sticker sheet and leave nothing to
- * scan by — the same reason severity is rationed everywhere else in the product.
+ * on, so they borrow the product's severity badges and the timeline scans for
+ * exactly what it acts on. Tinting all fourteen types would turn a dense list into a
+ * sticker sheet and leave nothing to scan by.
  */
-const LOUD_TYPE: Record<string, string> = {
-  breaking: "bg-critical/14 text-critical",
-  deprecation: "bg-high/14 text-high",
-  security: "bg-high/14 text-high",
+const LOUD_VARIANT: Record<string, "critical" | "high"> = {
+  breaking: "critical",
+  deprecation: "high",
+  security: "high",
 };
 
 const PERIODS = [
@@ -105,7 +123,6 @@ const DAY_LABEL = new Intl.DateTimeFormat("en-US", {
   day: "2-digit",
   timeZone: "UTC",
 });
-const MONTH_SHORT = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" });
 
 /** `published_at ?? first_seen_at` — the date an item is placed on, as the API does. */
 function itemDate(item: ContentItemRow): Date {
@@ -255,16 +272,19 @@ export function ContentTab({
       <Themes themes={summary.themes} postsRead={totals.postsRead} windowDays={windowDays} />
 
       <div className="flex flex-wrap items-center gap-2 bg-surface-2/45 px-5 py-3">
-        <div className="inline-flex flex-wrap gap-1" role="group" aria-label="Source">
-          <FilterPill active={source === "all"} onClick={() => reset(() => setSource("all"))}>
+        <ToggleGroup
+          type="single"
+          value={source}
+          onValueChange={(v) => v && reset(() => setSource(v))}
+          variant="outline"
+          size="sm"
+          aria-label="Source"
+        >
+          <ToggleGroupItem value="all" className="gap-1.5 text-xs">
             All <span className="tabular-nums opacity-70">{sumCounts(timeline.sourceCounts)}</span>
-          </FilterPill>
+          </ToggleGroupItem>
           {SOURCES.filter((s) => (timeline.sourceCounts[s.key] ?? 0) > 0).map((s) => (
-            <FilterPill
-              key={s.key}
-              active={source === s.key}
-              onClick={() => reset(() => setSource(s.key))}
-            >
+            <ToggleGroupItem key={s.key} value={s.key} className="gap-1.5 text-xs">
               <span
                 aria-hidden
                 className="size-1.5 shrink-0 rounded-full"
@@ -272,38 +292,38 @@ export function ContentTab({
               />
               {s.label}{" "}
               <span className="tabular-nums opacity-70">{timeline.sourceCounts[s.key]}</span>
-            </FilterPill>
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
 
-        <label className="sr-only" htmlFor="content-type">
-          Type
-        </label>
-        <select
-          id="content-type"
-          value={type}
-          onChange={(e) => reset(() => setType(e.target.value))}
-          className="h-[30px] rounded-md border border-border bg-surface px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        <Select value={type} onValueChange={(v) => reset(() => setType(v))}>
+          <SelectTrigger size="sm" className="w-[11.5rem] text-xs" aria-label="Type">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All types</SelectItem>
+            {summary.typeMix.map((t) => (
+              <SelectItem key={t.itemType ?? "unread"} value={t.itemType ?? "unread"}>
+                {t.itemType ? (TYPE_LABEL[t.itemType] ?? t.itemType) : "Not read yet"} ({t.count})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <ToggleGroup
+          type="single"
+          value={String(period)}
+          onValueChange={(v) => v && reset(() => setPeriod(Number(v)))}
+          variant="outline"
+          size="sm"
+          aria-label="Period"
         >
-          <option value="all">All types</option>
-          {summary.typeMix.map((t) => (
-            <option key={t.itemType ?? "unread"} value={t.itemType ?? "unread"}>
-              {t.itemType ? (TYPE_LABEL[t.itemType] ?? t.itemType) : "Not read yet"} ({t.count})
-            </option>
-          ))}
-        </select>
-
-        <div className="inline-flex flex-wrap gap-1" role="group" aria-label="Period">
           {PERIODS.map((p) => (
-            <FilterPill
-              key={p.days}
-              active={period === p.days}
-              onClick={() => reset(() => setPeriod(p.days))}
-            >
+            <ToggleGroupItem key={p.days} value={String(p.days)} className="text-xs">
               {p.label}
-            </FilterPill>
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
 
         <span className="ml-auto text-xs tabular-nums text-muted-foreground">
           {timeline.total} {timeline.total === 1 ? "item" : "items"} ·{" "}
@@ -371,33 +391,6 @@ function sumCounts(counts: Record<string, number>): number {
   return Object.values(counts).reduce((n, v) => n + v, 0);
 }
 
-function FilterPill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-[30px] items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-        active
-          ? "border-border-strong bg-surface-3 text-foreground"
-          : "border-border bg-surface text-muted-foreground hover:bg-surface-3 hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
 /**
  * The editorial_pivot signal, when there is a recent one.
  *
@@ -463,15 +456,14 @@ function PivotCallout({ signal }: { signal: CompetitorSignal }) {
  * a freeze at every competitor on the 3rd), and a chart that silently omitted it
  * would leave the reader wondering where this month went.
  *
- * CSS bars rather than a charting library: twelve stacked columns and one hatched
- * one is what this needs, and the repo's lazy-loaded chart draws lines.
+ * The plot itself is recharts, lazy-loaded (`content-cadence-chart`), like every
+ * other chart in the product: this is the frame around it. It was hand-drawn CSS
+ * columns carrying a `title` attribute, so reading a month meant waiting on the
+ * browser's own tooltip for one line of text with no breakdown.
  */
 function CadenceChart({ cadence }: { cadence: ContentSummary["cadence"] }) {
-  const peak = Math.max(...cadence.map((m) => m.total), 1);
-  const step = peak <= 12 ? 4 : peak <= 40 ? 8 : 20;
-  const top = Math.ceil(peak / step) * step;
-  const gridlines = Array.from({ length: Math.floor(top / step) + 1 }, (_, i) => i * step);
   const present = SOURCES.filter((s) => cadence.some((m) => (m.bySource[s.key] ?? 0) > 0));
+  const hasPartial = cadence.some((m) => m.partial);
 
   return (
     <TabSection
@@ -487,79 +479,14 @@ function CadenceChart({ cadence }: { cadence: ContentSummary["cadence"] }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-2">
-        <div className="relative h-[180px] text-meta tabular-nums text-muted-foreground">
-          {gridlines.map((v) => (
-            <span
-              key={v}
-              className="absolute right-0 -translate-y-1/2"
-              style={{ top: `${100 - (v / top) * 100}%` }}
-            >
-              {v}
-            </span>
-          ))}
-        </div>
-        <div>
-          <div className="relative h-[180px]">
-            <div className="absolute inset-0">
-              {gridlines.map((v) => (
-                <i
-                  key={v}
-                  aria-hidden
-                  className="absolute inset-x-0 block h-px bg-border"
-                  style={{ top: `${100 - (v / top) * 100}%` }}
-                />
-              ))}
-            </div>
-            <div className="absolute inset-0 flex items-end gap-1.5">
-              {cadence.map((m) => (
-                <div
-                  key={m.month}
-                  title={`${m.month} — ${m.total} ${m.total === 1 ? "item" : "items"}${m.partial ? " (month still running)" : ""}`}
-                  className={cn(
-                    "flex h-full min-w-0 flex-1 flex-col justify-end overflow-hidden rounded-t-[3px]",
-                    m.partial && "opacity-75",
-                  )}
-                  style={{ height: `${(m.total / top) * 100}%` }}
-                >
-                  {[...SOURCES].reverse().map((s) => {
-                    const n = m.bySource[s.key] ?? 0;
-                    if (n === 0 || m.total === 0) return null;
-                    return (
-                      <div
-                        key={s.key}
-                        className={cn("w-full", m.partial && "cadence-open")}
-                        style={{ background: s.color, height: `${(n / m.total) * 100}%` }}
-                      />
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="mt-1.5 flex gap-1.5">
-            {cadence.map((m) => (
-              <span
-                key={m.month}
-                className={cn(
-                  "min-w-0 flex-1 overflow-hidden text-center text-meta tabular-nums",
-                  m.partial ? "text-muted-foreground/70" : "text-muted-foreground",
-                )}
-              >
-                {MONTH_SHORT.format(new Date(`${m.month}-01T00:00:00Z`))}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
+      <CadenceBars cadence={cadence} sources={[...present]} />
 
-      <p className="text-xs text-muted-foreground">
-        This month is still running, so it is drawn open and counts toward nothing — the cadence
-        read only ever compares months that have ended.
-      </p>
-      {/* Hatch for the open column. Inline because it is the one place in the
-          product that needs it, and it has to sit on top of the series colour. */}
-      <style>{`.cadence-open{background-image:repeating-linear-gradient(45deg,transparent 0 3px,var(--surface) 3px 6px)}`}</style>
+      {hasPartial && (
+        <p className="text-xs text-muted-foreground">
+          This month is still running, so it is drawn open and counts toward nothing — the cadence
+          read only ever compares months that have ended.
+        </p>
+      )}
     </TabSection>
   );
 }
@@ -691,7 +618,7 @@ function Timeline({ items }: { items: ContentItemRow[] }) {
 function TimelineRow({ item }: { item: ContentItemRow }) {
   const at = itemDate(item);
   const typeLabel = item.itemType ? (TYPE_LABEL[item.itemType] ?? item.itemType) : null;
-  const loud = item.itemType ? LOUD_TYPE[item.itemType] : undefined;
+  const loud = item.itemType ? LOUD_VARIANT[item.itemType] : undefined;
 
   return (
     <div className="grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-3.5 gap-y-1 border-t border-border px-5 py-3 transition-colors hover:bg-surface-3/55 sm:grid-cols-[3.25rem_minmax(0,1fr)]">
@@ -725,11 +652,23 @@ function TimelineRow({ item }: { item: ContentItemRow }) {
         {/* Roadmap entries carry a status, not a type: "planned → shipped" IS the
             reason to watch a portal, so it takes the badge slot. */}
         {item.sourceType === "roadmap" && item.status ? (
-          <Badge tone={/ship|deliver|complete|done|launch/i.test(item.status) ? "bg-positive/14 text-positive" : undefined}>
+          <Badge
+            variant="outline"
+            className={cn(
+              "text-meta capitalize",
+              /ship|deliver|complete|done|launch/i.test(item.status) &&
+                "border-positive/30 bg-positive/12 text-positive",
+            )}
+          >
             {item.status}
           </Badge>
         ) : item.enriched && typeLabel ? (
-          <Badge tone={loud}>{typeLabel}</Badge>
+          <Badge
+            variant={loud ?? "secondary"}
+            className={loud ? undefined : "text-meta capitalize"}
+          >
+            {typeLabel}
+          </Badge>
         ) : (
           <em className="text-meta not-italic text-muted-foreground">not read yet</em>
         )}
@@ -752,19 +691,6 @@ function TimelineRow({ item }: { item: ContentItemRow }) {
         </span>
       )}
     </div>
-  );
-}
-
-function Badge({ tone, children }: { tone?: string; children: React.ReactNode }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center rounded-sm px-1.5 py-0.5 text-meta font-medium capitalize",
-        tone ?? "bg-surface-2 text-muted-foreground",
-      )}
-    >
-      {children}
-    </span>
   );
 }
 

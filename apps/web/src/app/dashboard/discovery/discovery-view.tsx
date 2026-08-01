@@ -450,8 +450,18 @@ function CandidateRow({
           </span>
         </span>
 
-        <span className="hidden truncate text-dense text-muted-foreground @3xl:block">
-          {candidate.snippet?.trim() || candidate.reason || "No description captured."}
+        {/* The product badge rides at the end of the description, not in the action
+            column: that column is 7.5rem and the Track + Dismiss buttons already fill
+            it, so a badge there shrank to an unreadable sliver. */}
+        <span className="hidden min-w-0 items-center gap-2.5 @3xl:flex">
+          <span className="min-w-0 flex-1 truncate text-dense text-muted-foreground">
+            {candidate.snippet?.trim() || candidate.reason || "No description captured."}
+          </span>
+          {productLabel && (
+            <span className="hidden max-w-[7rem] shrink-0 truncate rounded-sm border border-border px-1.5 py-0.5 text-meta text-muted-foreground @5xl:block">
+              {productLabel}
+            </span>
+          )}
         </span>
 
         <span className="hidden justify-self-end text-meta text-muted-foreground tabular-nums @3xl:block">
@@ -459,11 +469,6 @@ function CandidateRow({
         </span>
 
         <span className="flex items-center justify-end gap-1">
-          {productLabel && (
-            <span className="hidden max-w-[7rem] truncate rounded-sm border border-border px-1.5 py-0.5 text-meta text-muted-foreground @5xl:inline">
-              {productLabel}
-            </span>
-          )}
           {dismissed ? (
             <>
               <Button
@@ -502,7 +507,13 @@ function CandidateRow({
               <Button
                 size="sm"
                 disabled={busy}
-                className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+                /* focus-VISIBLE, not focus-within: the row is a tabbable div, so a
+                   plain click leaves it focused and the button stayed pinned open
+                   long after the row was collapsed again. An open row shows it. */
+                className={cn(
+                  "transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100",
+                  open ? "opacity-100" : "opacity-0",
+                )}
                 onClick={(e) => {
                   e.stopPropagation();
                   onTrack();

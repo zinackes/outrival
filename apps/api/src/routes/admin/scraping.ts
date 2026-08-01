@@ -170,19 +170,23 @@ scrapingRouter.get("/scraping-health", async (c) => {
     aiFallback: resCount("ai_fallback"),
   };
 
-  // Semantic gate (materiality wave): changes recorded but never classified because
-  // the gate judged them pure rewrites. Suppressing a change is invisible by
+  // Changes recorded but never classified. Suppressing a change is invisible by
   // construction — the customer sees nothing — so the ratio is the only way to
-  // notice the gate has gone from "drops copy passes" to "eats real signal".
+  // notice a suppressor has gone from "drops copy passes" to "eats real signal".
+  // Counted per reason: `cosmetic` is the semantic gate's judgement call and can
+  // be wrong; `rotating_list` is a review capture, where the whole list is
+  // rewritten every scrape and no lexical diff was ever meaningful.
   const [gateRow] = await db
     .select({
       suppressed: sql<number>`count(*) filter (where ${changes.suppressionReason} = 'cosmetic')::int`,
+      rotatingList: sql<number>`count(*) filter (where ${changes.suppressionReason} = 'rotating_list')::int`,
       total: sql<number>`count(*)::int`,
     })
     .from(changes)
     .where(gte(changes.detectedAt, new Date(Date.now() - 24 * 60 * 60 * 1000)));
   const cosmeticGate = {
     suppressed: gateRow?.suppressed ?? 0,
+    rotatingList: gateRow?.rotatingList ?? 0,
     totalChanges: gateRow?.total ?? 0,
   };
 

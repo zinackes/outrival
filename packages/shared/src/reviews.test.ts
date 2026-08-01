@@ -1,7 +1,10 @@
 import { test, expect } from "bun:test";
+import { SOURCE_TYPES } from "./constants/sources";
 import {
   validateReviewUrl,
   isReviewSource,
+  isRotatingListSource,
+  REVIEW_SOURCE_TYPES,
   parseTrustpilotSnapshot,
   parseAppStoreSnapshot,
 } from "./reviews";
@@ -112,4 +115,26 @@ test("isReviewSource: App Store is a review source, retired aggregators are not"
   ] as const) {
     expect(isReviewSource(s)).toBe(false);
   }
+});
+
+// Every signal a review-source lexical diff ever produced in prod said the same
+// wrong thing: the list rotated. Suppressing that path is only safe if the
+// predicate covers every review source the enum has — including the aggregators
+// retired from REVIEW_SOURCE_TYPES but still running on monitors created before.
+test("isRotatingListSource covers every review source in the enum", () => {
+  const reviewSources = SOURCE_TYPES.filter((s) => s.endsWith("_reviews"));
+  expect(reviewSources.length).toBeGreaterThan(1);
+  for (const s of reviewSources) expect(isRotatingListSource(s)).toBe(true);
+  // The narrower set names what a user may enable today; it is NOT the set whose
+  // captures rotate, and keying the suppression on it would leave the g2 and
+  // capterra monitors prod still runs producing the same false signals.
+  expect(REVIEW_SOURCE_TYPES.length).toBeLessThan(reviewSources.length);
+});
+
+test("isRotatingListSource leaves document sources alone", () => {
+  for (const s of ["homepage", "pricing", "blog", "changelog", "jobs", "docs"] as const) {
+    expect(isRotatingListSource(s)).toBe(false);
+  }
+  // A score-and-count surface with no verbatim list does not rotate.
+  expect(isRotatingListSource("trustpilot_public")).toBe(false);
 });

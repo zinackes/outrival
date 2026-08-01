@@ -1,5 +1,5 @@
 import { extractBrand } from "./url";
-import type { SourceType } from "./constants/sources";
+import { SOURCE_TYPES, type SourceType } from "./constants/sources";
 
 // Reviews v2 (2026-07-15): the ONLY user-selectable review source read directly is
 // App Store, via Apple's public RSS feed (competitor data, keyless, no scraping).
@@ -12,6 +12,32 @@ export type ReviewSourceType = (typeof REVIEW_SOURCE_TYPES)[number];
 
 export function isReviewSource(source: SourceType): source is ReviewSourceType {
   return (REVIEW_SOURCE_TYPES as readonly string[]).includes(source);
+}
+
+/**
+ * Sources whose capture is a ROTATING WINDOW rather than a document.
+ *
+ * A review page publishes its most RECENT reviews, so every scrape rewrites the
+ * whole list and a lexical diff of two captures says the competitor deleted their
+ * reviews and posted different ones. In prod that is the only thing this path ever
+ * said — "removed the entire block of App Store reviews", "now includes a large
+ * list of user reviews" — and one such change, classified off a blob no model could
+ * read, came back announcing a 14-day free trial that did not exist. What actually
+ * moves in reviews is read from the NUMBERS instead: extract-reviews writes
+ * review_scores, and detect-review-theme-shifts turns a rising complaint theme or a
+ * sustained score drop into the signal.
+ *
+ * Derived from the enum, NOT from REVIEW_SOURCE_TYPES: that set names the one
+ * source a user may still enable, while prod keeps scraping g2 and capterra
+ * monitors created before the aggregators were retired. Derived rather than listed
+ * so a review source added later is covered the day it exists.
+ */
+const ROTATING_LIST_SOURCE_TYPES = new Set<string>(
+  SOURCE_TYPES.filter((s) => s.endsWith("_reviews")),
+);
+
+export function isRotatingListSource(source: SourceType): boolean {
+  return ROTATING_LIST_SOURCE_TYPES.has(source);
 }
 
 /**

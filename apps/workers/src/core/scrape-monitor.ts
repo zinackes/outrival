@@ -44,6 +44,7 @@ import {
   supportsConditionalFetch,
   detectPricingRepositioning,
   isReviewSource,
+  isRotatingListSource,
   extractBrand,
   type PricingStatus,
   type PricingRepositioning,
@@ -1900,7 +1901,33 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
               },
               { sourceType: monitor.sourceType },
             );
-            if (monitor.sourceType === "pricing" && graded.complete) {
+            if (isRotatingListSource(monitor.sourceType)) {
+              // A review page publishes the most RECENT N reviews, so its capture
+              // is a rotating window: every scrape rewrites the whole list and the
+              // lexical diff says the competitor deleted their reviews and posted
+              // different ones. Every signal this path has ever produced in prod
+              // said exactly that — "removed the entire block of App Store
+              // reviews", "now includes a large list of user reviews" — and one of
+              // them, classified off an unreadable blob, invented a 14-day free
+              // trial (signal fdd882b1). None of it is a competitor move; it is the
+              // shape of our own snapshot.
+              //
+              // Reviews already have a signal path that reads the numbers instead
+              // of the prose: extract-reviews writes review_scores and fires
+              // detect-review-theme-shifts, which is where the rising complaint
+              // theme and the sustained score drop come from. The change row stays
+              // for freshness, rescheduling and the activity timeline, with the
+              // reason recorded so a silent suppression stays countable.
+              await db
+                .update(changes)
+                .set({ suppressionReason: "rotating_list" })
+                .where(eq(changes.id, changeId));
+              logger.log("Review capture — rotating list, no lexical classification", {
+                monitorId: monitor.id,
+                changeId,
+                sourceType: monitor.sourceType,
+              });
+            } else if (monitor.sourceType === "pricing" && graded.complete) {
               // Pricing Intelligence P1: signal routing for a pricing change is
               // DEFERRED to extract-pricing (enqueued below), which owns the
               // decision race-free — a non-empty deterministic batch diff emits

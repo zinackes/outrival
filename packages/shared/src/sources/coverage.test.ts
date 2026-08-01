@@ -8,6 +8,7 @@ import {
   fallbackSources,
   ATTENTION_OF,
   RIBBON_ATTENTIONS,
+  isHomepageCapture,
   type MonitorCoverageFields,
 } from "./coverage";
 import type { SourceType } from "../constants/sources";
@@ -486,5 +487,36 @@ describe("attention grouping: a refusal is not a task", () => {
     for (const attention of Object.values(ATTENTION_OF)) {
       if (attention !== "unavailable") expect(covered.has(attention)).toBe(true);
     }
+  });
+});
+
+// The predicate that stops an empty tab from blaming the competitor for a page we
+// never opened. Every case below is a real prod shape (2026-08-01).
+describe("isHomepageCapture", () => {
+  test("the capture never left their homepage", () => {
+    expect(isHomepageCapture("https://www.decktopus.com/", "https://decktopus.com/")).toBe(true);
+    expect(isHomepageCapture("https://orcaworks.ai/", "https://orcaworks.ai")).toBe(true);
+  });
+
+  test("a localised homepage counts too", () => {
+    // qonto.com/fr IS the homepage; root-path alone would have missed it.
+    expect(isHomepageCapture("https://qonto.com/fr", "https://qonto.com/fr")).toBe(true);
+  });
+
+  test("a careers or docs SUBDOMAIN is a real surface, not the homepage", () => {
+    // Root-path, and exactly the page we wanted — host equality is what tells them apart.
+    expect(isHomepageCapture("https://careers.cloudsmith.com/", "https://cloudsmith.com")).toBe(false);
+    expect(isHomepageCapture("https://join.jfrog.com/", "https://jfrog.com")).toBe(false);
+  });
+
+  test("a dedicated page on their own domain is not the homepage", () => {
+    expect(isHomepageCapture("https://zapier.com/jobs", "https://zapier.com")).toBe(false);
+    expect(isHomepageCapture("https://www.citusdata.com/jobs/", "https://citusdata.com/")).toBe(false);
+  });
+
+  test("nothing captured, or no competitor URL, asserts nothing", () => {
+    expect(isHomepageCapture(null, "https://acme.com")).toBe(false);
+    expect(isHomepageCapture("https://acme.com", null)).toBe(false);
+    expect(isHomepageCapture("not a url", "https://acme.com")).toBe(false);
   });
 });

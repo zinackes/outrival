@@ -240,6 +240,7 @@ export function SourceRow({
     fallbacks,
     minPlanLabel: PLAN_LABELS[minPlanForSource(sourceType)],
     freshness: monitor ? lastScanLabel(monitor, status) : undefined,
+    homepageOnly: monitor?.pageIsHomepage === true,
   });
   const currentUrl = monitor?.config?.url ?? "";
   // Sources that live on a fixed third-party host can't be derived from the

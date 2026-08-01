@@ -143,3 +143,33 @@ describe("the remaining states", () => {
     expect(isConcerning("pending")).toBe(false);
   });
 });
+
+// A jobs / pricing capture that never left the homepage. The scrape SUCCEEDED, so
+// the state stays "tracking" — what changes is that the row stops claiming coverage
+// we don't have, and the tab one click away stops blaming the competitor for it.
+describe("tracking: the homepage fallback", () => {
+  const copy = sourceCopy({
+    state: "tracking",
+    sourceType: "jobs",
+    freshness: "Scanned 2 days ago",
+    homepageOnly: true,
+  });
+
+  test("names the homepage instead of stamping a scan time", () => {
+    expect(copy.message).toContain("Only reaching their homepage");
+    expect(copy.message).not.toContain("Scanned");
+  });
+
+  test("offers the page, and does not read as a failure", () => {
+    expect(copy.action).toBe("point_at_url");
+    // Nothing is broken here, so it must not be styled with the red actionable tone.
+    expect(copy.tone).toBe("limited");
+    expect(isConcerning("tracking")).toBe(false);
+  });
+
+  test("a capture on a real page keeps the plain freshness stamp", () => {
+    const ok = sourceCopy({ state: "tracking", sourceType: "jobs", freshness: "Scanned 2 days ago" });
+    expect(ok.message).toBe("Scanned 2 days ago");
+    expect(ok.action).toBeNull();
+  });
+});

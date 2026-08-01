@@ -1923,6 +1923,30 @@ AI_INTERACTIVE_RESERVE_FRACTION=0.2 # part de chaque plafond par minute réserv�
                                    # scope withAiContext et les scopes imbriqués en HÉRITENT, donc
                                    # un job que l'user regarde s'enveloppe une fois et tous ses
                                    # loggedAi sont interactifs. 0 désactive la réserve
+AI_DEFER_BASE_SEC=75               # délai avant qu'un JOB refusé par le pool soit REJOUÉ. La
+                                   # politique de retry de la queue est 1s avec backoff plafonné
+                                   # à 10s : juste pour une panne transitoire, faux pour un rate
+                                   # limit, puisque les tiers gratuits répondent au 429 en
+                                   # demandant 18 à 60 s. Les 3 tentatives tombaient donc DANS la
+                                   # fenêtre encore throttlée et le job échouait après 2 rondes
+                                   # d'appels providers pour rien (mesuré sur 7 j : 333 appels
+                                   # extract_pricing pour 184 pages pricing réellement changées).
+                                   # Seul AIUnavailableError défère, et PAS quand le pool est
+                                   # mal configuré ni quand la requête est trop grosse : ni l'un
+                                   # ni l'autre ne guérit en attendant, donc les deux gardent le
+                                   # retry normal et finissent en DLQ où quelqu'un les voit
+AI_DEFER_JITTER_FRACTION=0.4       # étalement UNILATÉRAL de ce délai (jamais plus tôt que la
+                                   # base). Sans lui, tous les jobs déférés par la même panne
+                                   # reviennent au même instant et reconstruisent le burst qui a
+                                   # causé la panne, une fenêtre plus tard
+QUEUE_MAX_DEFERRALS=3              # nombre de reports qu'un job peut accumuler avant de retomber
+                                   # sur le retry normal (puis la DLQ). Une BORNE, pas un réglage :
+                                   # un pool durablement indisponible ne doit pas reprogrammer un
+                                   # job indéfiniment, un job qui n'échoue jamais est un job dont
+                                   # personne n'est prévenu. Compteur porté dans le PAYLOAD (clé
+                                   # réservée `__deferrals`, retirée par `jobData`) : un report
+                                   # RE-SEND le job, donc le compteur de retry pg-boss repart à
+                                   # zéro et ne peut pas borner la boucle
 AI_CIRCUIT_BREAKER_THRESHOLD=5     # échecs consécutifs (tous providers) avant coupure globale
 AI_CIRCUIT_BREAKER_RESET_MIN=10    # minutes avant retry (breaker provider ET global)
 AI_INTENSIVE_RATE_LIMIT=           # OVERRIDE d'urgence ops UNIQUEMENT. Le plafond horaire

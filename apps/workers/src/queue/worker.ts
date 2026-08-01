@@ -9,6 +9,7 @@ import { checkProviderModels } from "@outrival/ai";
 import { startQueue, stopQueue, registerQueues, syncSchedules } from "@outrival/queue";
 import { validateWorkerEnv } from "../env";
 import { registerHandlers, type WorkerRole } from "./handlers";
+import { resolveAiDeferral } from "./ai-deferral";
 
 const role = process.env.WORKER_ROLE as WorkerRole | undefined;
 if (role !== "browser" && role !== "light") {
@@ -31,6 +32,9 @@ async function main() {
     supervise: ownsScheduling,
     reportError: (err, ctx) =>
       Sentry.captureException(err, { tags: { job: ctx.job, jobId: ctx.id } }),
+    // Reschedule past a throttled AI pool instead of burning the job's retries
+    // inside the window that is still throttled. See ./ai-deferral.
+    deferralResolver: resolveAiDeferral,
   });
   await registerQueues();
 

@@ -407,6 +407,11 @@ export interface Monitor {
   // The exact page this source last scraped (resolved_url ?? config.url). Null when
   // nothing was captured yet or the source has no single page (HN, subdomains).
   pageUrl?: string | null;
+  // Whether that page is the competitor's own homepage rather than the dedicated
+  // page this source watches. True means discovery found nothing and the scraper
+  // fell back (jobs, pricing), so an empty tab must say we never opened a careers /
+  // pricing page instead of implying the competitor doesn't publish one.
+  pageIsHomepage?: boolean;
   lastRunAt: string | null;
   // When the scheduler will next check this source. Null (or past) = due on the
   // next hourly cron tick, not a stale timestamp — never render it as a past date.

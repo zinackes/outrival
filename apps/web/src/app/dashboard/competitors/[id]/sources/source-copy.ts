@@ -64,11 +64,33 @@ export function sourceCopy(args: {
   fallbacks?: string[];
   minPlanLabel?: string;
   freshness?: string;
+  /** The capture never left the competitor's homepage (see `isHomepageCapture`). */
+  homepageOnly?: boolean;
 }): SourceCopy {
-  const { state, sourceType, failureCategory, fallbacks = [], minPlanLabel, freshness } = args;
+  const {
+    state,
+    sourceType,
+    failureCategory,
+    fallbacks = [],
+    minPlanLabel,
+    freshness,
+    homepageOnly = false,
+  } = args;
 
   switch (state) {
     case "tracking":
+      // A homepage fallback IS collecting something, so the state is right. But
+      // "Scanned 2 days ago" over a jobs source that has never opened a careers page
+      // claims coverage we don't have, and the tab one click away then blames the
+      // competitor for it. Limited, not actionable-red: nothing is broken, there is
+      // simply a page we could be reading and aren't.
+      if (homepageOnly) {
+        return {
+          tone: "limited",
+          message: "Only reaching their homepage. No dedicated page found on this site.",
+          action: "point_at_url",
+        };
+      }
       return { tone: "ok", message: freshness ?? "Collecting.", action: null };
     case "pending":
       return { tone: "ok", message: "First scan in progress.", action: null };

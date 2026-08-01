@@ -53,7 +53,13 @@ function looksLikeCareers(res: ScrapeOutcome): boolean {
 // patch-31 — synthesise a jobs snapshot straight from the ATS API result, no
 // browser scrape. Deterministic (appendAtsJobsToHtml sorts) so the content hash is
 // stable, and the JSON island feeds extract-jobs exactly like the appended path.
-function atsOnlyOutcome(url: string, board: AtsBoard, jobs: AtsJob[]): ScrapeOutcome {
+//
+// The recorded url is the BOARD, not the monitor's url. This capture's content came
+// from the board API, and `snapshots.resolved_url` is defined as where the content
+// came from — naming the monitor url made a competitor whose roles are read straight
+// off Ashby report "Captured from acme.com" (8 of them on prod, 2026-08-01), and
+// left the read side unable to tell that board apart from a homepage fallback.
+function atsOnlyOutcome(board: AtsBoard, jobs: AtsJob[]): ScrapeOutcome {
   const base = "<!doctype html><html><head><title>Open roles</title></head><body></body></html>";
   const jobsText = jobs
     .map((j) => [j.title, j.department, j.location].filter(Boolean).join(" — "))
@@ -62,7 +68,12 @@ function atsOnlyOutcome(url: string, board: AtsBoard, jobs: AtsJob[]): ScrapeOut
     html: appendAtsJobsToHtml(base, board, jobs),
     text: jobsText,
     screenshotBuffer: Buffer.alloc(0),
-    metadata: { url, scrapedWith: "ats-api", atsDetected: board.provider, atsJobs: jobs.length },
+    metadata: {
+      url: board.boardUrl,
+      scrapedWith: "ats-api",
+      atsDetected: board.provider,
+      atsJobs: jobs.length,
+    },
     statusCode: 200,
     level: 0,
     attempts: 1,
@@ -179,7 +190,7 @@ export async function scrape(
     const board = atsBoardFromKey(atsKey);
     if (board) {
       const { jobs } = await fetchAtsJobs(board);
-      if (jobs) return atsOnlyOutcome(url, board, jobs);
+      if (jobs) return atsOnlyOutcome(board, jobs);
     }
   }
 

@@ -88,12 +88,69 @@ const NO_TARGET_MARKERS: Partial<Record<SourceType, readonly string[]>> = {
   roadmap: ["no_roadmap_portal", "portal_private", "portal_empty"],
 };
 
-function hasNoTargetError(source: SourceType, lastError: string | null | undefined): boolean {
+/**
+ * Whether this source's last run recorded "this competitor has no such surface".
+ *
+ * Exported because the surface a user actually reads that verdict on is not only the
+ * Sources page: a tab's empty state was saying "no data was extracted, the page may
+ * not expose this" for a competitor whose domain simply has no Trustpilot profile —
+ * a guess where a recorded fact existed.
+ */
+export function hasNoTargetError(
+  source: SourceType,
+  lastError: string | null | undefined,
+): boolean {
   if (!lastError) return false;
   const markers = NO_TARGET_MARKERS[source];
   if (!markers) return false;
   const err = lastError.toLowerCase();
   return markers.some((m) => err.includes(m));
+}
+
+function host(u: string): string | null {
+  try {
+    return new URL(u).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+function path(u: string): string | null {
+  try {
+    return new URL(u).pathname.replace(/\/+$/, "") || "/";
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a capture is the competitor's OWN homepage rather than the dedicated page
+ * the source exists to watch.
+ *
+ * Two scrapers fall back to the homepage BY DESIGN when discovery finds nothing:
+ * `jobs` (no conventional careers path, no ATS anywhere in the HTML, no followable
+ * careers link) and `pricing` (no /pricing page — the harvest floor can still
+ * recover an embedded pricing section, which is why neither of them fails). The
+ * capture therefore succeeds, nothing downstream reads as broken, and an empty tab
+ * says "no data was extracted — the source page may not expose this data": a claim
+ * about the COMPETITOR, built on a page we never opened. Measured on prod
+ * 2026-08-01: 49 of 81 jobs monitors and 42 of 165 pricing monitors last landed on
+ * the competitor's own homepage, and 38 of those jobs monitors hold zero roles.
+ *
+ * HOST equality is what separates this from a real dedicated surface: a careers or
+ * docs SUBDOMAIN (careers.cloudsmith.com, join.jfrog.com) is root-path too, and is
+ * precisely the page we wanted. The competitor's own path is accepted as well as
+ * the root, since a homepage is often localised (qonto.com/fr).
+ */
+export function isHomepageCapture(
+  pageUrl: string | null | undefined,
+  competitorUrl: string | null | undefined,
+): boolean {
+  if (!pageUrl || !competitorUrl) return false;
+  const pageHost = host(pageUrl);
+  if (pageHost === null || pageHost !== host(competitorUrl)) return false;
+  const p = path(pageUrl);
+  return p === "/" || p === path(competitorUrl);
 }
 
 function toMs(v: string | Date | null | undefined): number {

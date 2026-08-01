@@ -101,6 +101,7 @@ import {
   isConfigurableSource,
   planAllowsMonitorSource,
   isRefused,
+  isHomepageCapture,
   blockedReach,
   buildCoverage,
   type SourceState,
@@ -1665,10 +1666,16 @@ competitorsRouter.get("/:id", async (c) => {
       .groupBy(snapshots.monitorId);
     for (const r of urlRows) resolvedByMonitor.set(r.monitorId, r.resolvedUrl);
   }
-  const withPageUrl = <T extends { id: string; config: unknown }>(m: T) => ({
-    ...m,
-    pageUrl: resolvedByMonitor.get(m.id) ?? (m.config as { url?: string } | null)?.url ?? null,
-  });
+  // `pageIsHomepage` rides along because the URL alone doesn't tell the UI what it
+  // means: the jobs and pricing scrapers fall back to the homepage when discovery
+  // finds nothing, and that capture succeeds, so an empty tab was blaming the
+  // competitor ("they may not expose this data") for a page we never opened. The
+  // comparison needs the competitor's own URL, which only the server holds here.
+  const withPageUrl = <T extends { id: string; config: unknown }>(m: T) => {
+    const pageUrl =
+      resolvedByMonitor.get(m.id) ?? (m.config as { url?: string } | null)?.url ?? null;
+    return { ...m, pageUrl, pageIsHomepage: isHomepageCapture(pageUrl, competitor.url) };
+  };
 
   const monitorList = allMonitors
     .filter((m) => !isHiddenSource(m.sourceType) && !isAutomaticSource(m.sourceType))

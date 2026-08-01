@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import {
   SpinnerIcon,
@@ -9,12 +10,14 @@ import {
   PlayIcon,
   SparkleIcon,
   CaretDownIcon,
+  LinkIcon,
   LockIcon,
 } from "@/components/icons";
 import {
   ANALYSIS_SCRAPE_TIMEOUT_MS,
   ANALYSIS_QUEUE_TIMEOUT_MS,
   deriveScrapeActivity,
+  hasNoTargetError,
   isRefused,
   type ScrapeActivity,
   PLAN_LABELS,
@@ -26,7 +29,7 @@ import {
 } from "@outrival/shared";
 import type { Monitor } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { friendlyScrapeError } from "@/lib/scrape-errors";
+import { friendlyScrapeError, sourcePageLabel } from "@/lib/scrape-errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -148,40 +151,83 @@ export function MonitorEmptyState({
   // reads as a chore the user forgot. The button stays: a block can be lifted, and
   // trying is the user's call — only the SCRAPE stops at a refusal, in the worker.
   const refused = isRefused(monitor);
+  // A recorded "this competitor has no such surface" (no Trustpilot profile, no
+  // public docs). It was being overwritten by the generic "no data was extracted",
+  // which turns a fact we hold into a shrug about the competitor.
+  const noSurface = !refused && hasNoTargetError(monitor.sourceType, monitor.lastError);
+  // The capture never left the homepage: the jobs / pricing scrapers fall back there
+  // when discovery finds nothing, and that fallback SUCCEEDS, so the old copy read
+  // "the source page may not expose this data" about a page we never opened. On prod
+  // that was 49 of 81 jobs monitors. Naming the page is the whole point of this
+  // state: the user's next move depends on WHICH page came back empty.
+  const homepageOnly = !refused && !noSurface && monitor.pageIsHomepage === true;
+  const page = sourcePageLabel(monitor.sourceType);
+  const pretty = monitor.pageUrl?.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const canRetarget = homepageOnly || noSurface;
   return (
     <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
       <p className="text-sm font-semibold text-foreground">
-        No {label} data{refused ? "" : " yet"}
+        No {label} data{refused || noSurface ? "" : " yet"}
       </p>
       <p className="text-sm text-muted-foreground max-w-md">
         {refused
           ? `${friendlyScrapeError(monitor.lastError, monitor.sourceType)} You can still try again if you think that has changed.`
-          : activity === "queued"
-          ? `This source is waiting in the scan queue. It runs as soon as a scanner is free, and ${label} data lands here on its own.`
-          : monitor.lastRunAt
-            ? `Monitor was scraped ${formatDistanceToNow(new Date(monitor.lastRunAt), { addSuffix: true })}, but no ${label} data was extracted. The source page may not expose this data.`
-            : `This monitor has never been scraped. Run it now to extract ${label} data.`}
+          : noSurface
+            ? `${friendlyScrapeError(monitor.lastError, monitor.sourceType)}`
+            : activity === "queued"
+              ? `This source is waiting in the scan queue. It runs as soon as a scanner is free, and ${label} data lands here on its own.`
+              : homepageOnly
+                ? `We've only reached their homepage so far. No ${page} turned up on this site, so there is nothing to read yet.`
+                : monitor.lastRunAt
+                  ? `We last read this page ${formatDistanceToNow(new Date(monitor.lastRunAt), { addSuffix: true })} and it showed no ${label} data.`
+                  : `This monitor has never been scraped. Run it now to extract ${label} data.`}
       </p>
-      <Button
-        size="sm"
-        variant={busy ? "secondary" : "default"}
-        onClick={() => onRun(monitor.id)}
-        disabled={busy}
-      >
-        {activity === "scraping" ? (
-          <>
-            <SpinnerIcon size={16} className="animate-spin" /> Scraping…
-          </>
-        ) : activity === "queued" ? (
-          <>
-            <ClockIcon size={16} /> Queued
-          </>
-        ) : (
-          <>
-            <PlayIcon size={16} /> Scrape now
-          </>
+      {/* Which page that verdict is about. Without it the sentence above is a claim
+          about the competitor that the user cannot check. */}
+      {pretty && monitor.pageUrl && (
+        <p className="text-sm text-muted-foreground">
+          {homepageOnly ? "Scanned" : "Read from"}{" "}
+          <a
+            href={monitor.pageUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-link hover:underline"
+          >
+            {pretty}
+          </a>
+        </p>
+      )}
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <Button
+          size="sm"
+          variant={busy ? "secondary" : canRetarget ? "outline" : "default"}
+          onClick={() => onRun(monitor.id)}
+          disabled={busy}
+        >
+          {activity === "scraping" ? (
+            <>
+              <SpinnerIcon size={16} className="animate-spin" /> Scraping…
+            </>
+          ) : activity === "queued" ? (
+            <>
+              <ClockIcon size={16} /> Queued
+            </>
+          ) : (
+            <>
+              <PlayIcon size={16} /> Scrape now
+            </>
+          )}
+        </Button>
+        {/* Re-scanning the same homepage finds the same nothing, so the primary move
+            here is naming the page instead. The URL lives on the Sources tab. */}
+        {canRetarget && (
+          <Button size="sm" asChild>
+            <Link href={`/dashboard/competitors/${monitor.competitorId}/sources`}>
+              <LinkIcon size={16} /> Point us at the {page}
+            </Link>
+          </Button>
         )}
-      </Button>
+      </div>
     </Card>
   );
 }

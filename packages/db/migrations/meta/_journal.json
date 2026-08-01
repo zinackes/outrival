@@ -470,6 +470,13 @@
       "when": 1785614303239,
       "tag": "0066_careless_kabuki",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1785581887784,
+      "tag": "0067_flawless_maximus",
+      "breakpoints": true
     }
   ]
 }

@@ -27,6 +27,8 @@ export * from "./candidates";
 export * from "./pricing";
 export * from "./pricing-diff";
 export * from "./entitlement-catalog";
+export * from "./industry-catalog";
+export * from "./customer-name";
 export * from "./entitlement-diff";
 export * from "./price-tier-diff";
 export * from "./credit-burn-diff";

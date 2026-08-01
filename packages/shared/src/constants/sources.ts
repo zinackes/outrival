@@ -134,6 +134,13 @@ export const SOURCE_TYPES = [
   // `changelog` monitor so velocity snapshots never enter the chain its content-hash
   // dedup diffs against. Kept in sync with the DB source_type enum.
   "shipping_velocity",
+  // Customer-proof anchor (Content Intelligence v2 P3). INTERNAL, never seeded /
+  // scraped / user-selectable — it anchors the snapshot → change → signal chain for
+  // the two customer signals: a case study a competitor just published, and a
+  // customer name we have never seen them claim before. Kept off the `sitemap` and
+  // `blog` monitors, whose snapshot chains carry their own dedup. Kept in sync with
+  // the DB source_type enum.
+  "customer_proof",
   // Developer documentation — the competitor's technical roadmap surface. USER-
   // SELECTABLE (pro+), enabled through the standard enable route with an optional
   // URL override. Structured-first, two modes: (1) an OpenAPI/Swagger spec is found

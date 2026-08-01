@@ -12,6 +12,7 @@ import {
   extractReviews,
   ingestContentItems,
   ingestBlogPosts,
+  ingestCaseStudies,
   backfillHistory,
 } from "@outrival/queue";
 import { z } from "zod";
@@ -82,6 +83,9 @@ import {
   isComparisonUrl,
   classifyComparisonUrl,
 } from "@outrival/scrapers/sitemap";
+// Pure subpath — Content Intelligence v2 P3: which of the sitemap's new URLs are
+// customer proof (a customers index, or one customer's story).
+import { isCustomerPageUrl } from "@outrival/scrapers/content";
 // Pure subpath — no deps. Wellknown v2: /.well-known + llms.txt fingerprint diff.
 import { parseWellKnownDoc, wellKnownDelta } from "@outrival/scrapers/wellknown";
 // Pure subpath — sharp only. Perceptual hash for visual-redesign detection (patch-17).
@@ -157,6 +161,10 @@ const COMPLETENESS_ENABLED = process.env.SNAPSHOT_COMPLETENESS_ENABLED !== "fals
 const COMPLETENESS_MIN_RATIO = Number(process.env.SNAPSHOT_COMPLETENESS_MIN_RATIO ?? 0.5);
 const COMPLETENESS_MIN_PRIORS = 3;
 const SIZE_VARIABLE_SOURCES = new Set(["blog", "changelog", "news", "sitemap", "subdomains", "youtube", "hackernews", "wellknown", "docs", "roadmap"]);
+// Content Intelligence v2 P3 — customer-proof URLs handed to one ingest run. A
+// sitemap that publishes forty case studies at once is a site migration or a first
+// full index, not forty wins; the rest are read by the runs that follow.
+const SITEMAP_CUSTOMER_URL_CAP = 10;
 // Sources whose capture is ALWAYS a scraper-synthesized document (built from parsed
 // structured data — no HTML fetch path at all), so the deny-page copy heuristic is
 // meaningless on them: deny-shaped strings in a sitemap/feed listing are content, not
@@ -1577,7 +1585,14 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         const added = currentUrls.filter((u) => !prevUrls.has(u));
         const removed = [...prevUrls].filter((u) => !currentSet.has(u));
         const comparisonAdded = added.filter(isComparisonUrl);
-        const otherAdded = added.filter((u) => !isComparisonUrl(u));
+        // Content Intelligence v2 P3 — customer proof gets its own deterministic
+        // path, so those URLs leave the lump exactly as comparison pages do. A page
+        // routed to both would be signalled twice: once as "the sitemap grew" and
+        // once as the case study it actually is.
+        const customerAdded = added
+          .filter((u) => !isComparisonUrl(u) && isCustomerPageUrl(u))
+          .slice(0, SITEMAP_CUSTOMER_URL_CAP);
+        const otherAdded = added.filter((u) => !isComparisonUrl(u) && !isCustomerPageUrl(u));
 
         if (comparisonAdded.length > 0) {
           // Resolve the user's own org brand(s) for the CRITICAL escalation. Fetched
@@ -1644,6 +1659,20 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
               });
             }
           }
+        }
+
+        // Content Intelligence v2 P3 — read the customer proof this sitemap now
+        // lists. Enqueued on EVERY sitemap capture, not only when a customer URL
+        // appeared: the job also re-reads the /customers index, and a logo added to
+        // an existing page moves no URL at all, so waiting for one would miss the
+        // most common way a win becomes public. It costs nothing when there is
+        // nothing to read — a competitor with no customers page has that cached.
+        if (competitor.type !== "self") {
+          await ingestCaseStudies.enqueue({
+            snapshotId: newSnapshot.id,
+            competitorId: competitor.id,
+            urls: customerAdded,
+          });
         }
 
         // General expansion (non-comparison adds + removes) → one lumped change → the

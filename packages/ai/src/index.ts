@@ -152,6 +152,19 @@ export type {
   EnrichedBlogPost,
   BlogPostForEnrichment,
 } from "./tasks/enrich-blog-posts";
+// Content Intelligence v2 P3 — batched case-study reading. The customer name and
+// every claimed metric are re-checked against the page text in code before either
+// can reach the registry or a signal.
+export {
+  extractCaseStudies,
+  ExtractedCaseStudiesSchema,
+  ExtractedCaseStudySchema,
+} from "./tasks/extract-case-studies";
+export type {
+  ExtractedCaseStudies,
+  ExtractedCaseStudy,
+  CaseStudyForExtraction,
+} from "./tasks/extract-case-studies";
 export { extractReviews, ReviewsSchema } from "./tasks/extract-reviews";
 export {
   extractAiVisibility,

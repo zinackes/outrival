@@ -16,8 +16,8 @@ export default async function GeneralSettingsPage() {
       <header>
         <h2 className="font-semibold text-base tracking-tight">General</h2>
         <p className="text-muted-foreground text-sm mt-1">
-          Workspace name, product URL, and the profile used for competitor
-          discovery.
+          Workspace name, product URL, and the profiles competitor discovery
+          compares against.
         </p>
       </header>
       <div data-ph-mask>

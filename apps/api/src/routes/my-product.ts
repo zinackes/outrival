@@ -32,6 +32,7 @@ import {
   DEFAULT_PRODUCT_NAME,
   ensurePrimaryProductForSelf,
   liveProductId,
+  primarySelfCompetitorId,
 } from "../lib/products";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
 
@@ -42,19 +43,31 @@ export const myProductRouter = new Hono<{ Variables: Variables }>();
 myProductRouter.use("*", authMiddleware);
 
 /** The org's self-competitor (its own product), or null if not created yet. With
- * multi-product (patch-28) an org can have several self-competitors; this returns the
- * oldest (the original / primary product's anchor) so the behaviour stays stable for
- * mono-product orgs. Phase 2 scopes My Product by the selected product. */
+ * multi-product (patch-28) an org can have several self-competitors; unscoped means
+ * the PRIMARY product's anchor, the same thing it means for battle cards, discovery
+ * and signal insights.
+ *
+ * It used to mean the oldest anchor, on the assumption that the oldest product is the
+ * primary one. Promoting another product breaks that assumption while leaving every
+ * unscoped caller pointing at the old one — so Settings' "Change URL" would move the
+ * monitored site of a product the user no longer leads with. */
 async function getSelf(orgId: string) {
+  const anchorId = await primarySelfCompetitorId(orgId);
   return db.query.competitors.findFirst({
     // Soft-deleted selfs excluded: archiving a product retires its anchor that way, and
     // the archived one is usually the OLDEST — so without this filter the unscoped My
     // Product view returned the product the user had just removed.
-    where: and(
-      eq(competitors.orgId, orgId),
-      eq(competitors.type, "self"),
-      isNull(competitors.deletedAt),
-    ),
+    where: anchorId
+      ? and(
+          eq(competitors.id, anchorId),
+          eq(competitors.orgId, orgId),
+          isNull(competitors.deletedAt),
+        )
+      : and(
+          eq(competitors.orgId, orgId),
+          eq(competitors.type, "self"),
+          isNull(competitors.deletedAt),
+        ),
     orderBy: (t, { asc }) => asc(t.createdAt),
   });
 }
@@ -338,8 +351,50 @@ myProductRouter.patch("/", async (c) => {
   }
 
   await db.update(competitors).set(update).where(eq(competitors.id, self.id));
+  await mirrorPrimaryProfileToOrg(orgId, self.id, profile);
   return c.json({ ok: true, profile });
 });
+
+/**
+ * Carry a primary-product profile edit up to `organizations.product_profile`.
+ *
+ * That column is org-wide and has no product scope, yet the weekly digest and the
+ * sectoral trends speak from it, and discovery falls back to it for the primary. Now
+ * that Settings sends the user to the product itself to edit a profile, nothing else
+ * writes it: without this mirror it would freeze at whatever onboarding extracted and
+ * slowly describe a product that no longer exists.
+ *
+ * Only the primary's edits propagate. A secondary SKU's positioning is a different
+ * product's, and copying it up would make the digest speak as the wrong one.
+ */
+async function mirrorPrimaryProfileToOrg(orgId: string, selfId: string, profile: SelfProfile) {
+  const anchorId = await primarySelfCompetitorId(orgId);
+  // No product row yet (legacy org): its single self is the primary by definition.
+  if (anchorId && anchorId !== selfId) return;
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { productProfile: true },
+  });
+  // Spread rather than rebuild: pricingModel (and any field the org profile carries
+  // that the self profile has no counterpart for) must survive the mirror.
+  const next = {
+    ...(org?.productProfile ?? { category: "", audience: "", valueProp: "", pricingModel: "" }),
+  };
+  let changed = false;
+  for (const key of ["category", "audience", "valueProp"] as const) {
+    const value = profile[key]?.value?.trim();
+    if (!value || value === next[key]) continue;
+    next[key] = value;
+    changed = true;
+  }
+  if (!changed) return;
+
+  await db
+    .update(organizations)
+    .set({ productProfile: next, updatedAt: new Date() })
+    .where(eq(organizations.id, orgId));
+}
 
 // POST /api/my-product/site — go live: attach a product URL to the self-competitor
 // and seed its site monitors. Used when an idea/document/developing product ships and

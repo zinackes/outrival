@@ -129,6 +129,26 @@ export async function productSelfCompetitorId(
 }
 
 /**
+ * The self-competitor anchoring the org's PRIMARY product, or null when the org has
+ * no product row yet (legacy / mid-onboarding).
+ *
+ * Same ordering as primaryProductId, so "the primary product" means one thing across
+ * the codebase. Anything that writes the org-wide `organizations.product_profile`
+ * needs this: in a multi-SKU org a bare `findFirst(type = "self")` returns an
+ * ARBITRARY product's anchor, and since it carries no deleted_at filter it can land
+ * on the anchor of a product the user removed.
+ */
+export async function primarySelfCompetitorId(orgId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ selfCompetitorId: products.selfCompetitorId })
+    .from(products)
+    .where(and(eq(products.orgId, orgId), ne(products.status, "archived")))
+    .orderBy(desc(products.isPrimary), asc(products.position), asc(products.createdAt))
+    .limit(1);
+  return row?.selfCompetitorId ?? null;
+}
+
+/**
  * Placeholder name for a product created without a URL (idea/document onboarding).
  * The go-live rename (POST /my-product/site) only fires while the product still
  * carries it, so a user-chosen name is never overwritten.

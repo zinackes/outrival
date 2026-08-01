@@ -269,6 +269,10 @@ export function OnboardingForm({
   // Downstream state
   const [profile, setProfile] = useState<ProductProfile | null>(initialProfile);
   const [committedUrl, setCommittedUrl] = useState<string | null>(null);
+  // What to call the product. Only asked for (and only sent) when the run produced no
+  // URL — idea / document / developing — since those are the stages where the product
+  // otherwise lands as the "My product" placeholder with no way to say otherwise.
+  const [productName, setProductName] = useState("");
   // Primary market for discovery geo-biasing. Defaults from the product URL's
   // ccTLD (editable on the discover step); `regionTouched` freezes the auto-default
   // once the user picks explicitly. null = global (no bias).
@@ -733,6 +737,7 @@ export function OnboardingForm({
         monitoringPrefs: { frequency, sources },
         discoveryRegion: region,
         onboardingSessionId: sessionId ?? undefined,
+        productName: committedUrl ? undefined : productName.trim() || undefined,
       });
       trackOnboarding(ONBOARDING_EVENTS.COMPETITORS_FINALIZED, sessionId, {
         competitorCount: selected.length,
@@ -819,6 +824,9 @@ export function OnboardingForm({
               busy={busy === "discover"}
               prefetchStatus={discoveryStatus}
               mode={mode}
+              productName={productName}
+              setProductName={setProductName}
+              askName={committedUrl === null}
             />
           )}
 
@@ -1312,6 +1320,9 @@ function ProfileForm({
   busy,
   prefetchStatus,
   mode,
+  productName,
+  setProductName,
+  askName,
 }: {
   profile: ProductProfile;
   setProfile: (p: ProductProfile) => void;
@@ -1320,6 +1331,10 @@ function ProfileForm({
   busy: boolean;
   prefetchStatus: "idle" | "running" | "completed";
   mode: OnboardingMode;
+  productName: string;
+  setProductName: (v: string) => void;
+  // A description / document / repo run has no hostname to name the product after.
+  askName: boolean;
 }) {
   return (
     <div>
@@ -1329,6 +1344,27 @@ function ProfileForm({
       <p className="text-sm text-muted-foreground mt-3">
         Fix anything that's off. It directly improves competitor relevance.
       </p>
+
+      {/* Above the "Extracted by AI" marker on purpose: the name is the one thing on
+          this screen we did not read anywhere, so it must not sit under that claim. */}
+      {askName && (
+        <Card className="p-5 sm:p-6 mt-6 flex flex-col gap-1.5">
+          <Label htmlFor="product-name" className="text-sm">
+            Product name
+          </Label>
+          <Input
+            id="product-name"
+            value={productName}
+            onChange={(e) => setProductName(e.target.value)}
+            placeholder="My product"
+            maxLength={80}
+            disabled={busy}
+          />
+          <p className="text-xs text-muted-foreground">
+            We have no site to take a name from. You can change it later.
+          </p>
+        </Card>
+      )}
 
       <div className="flex items-center gap-1.5 mt-6 mb-3 text-xs text-muted-foreground">
         <SparkleIcon size={14} className="text-primary" /> Extracted by AI

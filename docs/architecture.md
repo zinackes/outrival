@@ -1987,15 +1987,37 @@ VISUAL_DIFF_ENABLED=true               # false → endpoints screenshot 404, sec
 # → carte day-0 sur le landscape. Gemini free, ≤3 prompts, best-effort (ligne terminale
 # ready|unavailable). Cache réponses cross-org différé (coût déjà ≈0 via free tier).
 AI_VISIBILITY_ENABLED=true             # false → scheduler + job no-op (kill-switch)
-AI_VISIBILITY_INTERVAL_DAYS=7          # cadence par org (jours entre 2 runs)
-AI_VISIBILITY_MAX_PROMPTS=10           # cap prompts/org/run (garde-fou coût)
+AI_VISIBILITY_INTERVAL_DAYS=7          # âge à partir duquel un PRODUIT est dû. Le scheduler tourne
+                                       # DÉSORMAIS TOUS LES JOURS et drip ce que le budget du jour
+                                       # couvre, produit le plus ancien d'abord ; ce seuil est le
+                                       # plancher qui empêche un budget en rab de re-poser une
+                                       # question dont on a déjà la réponse
+AI_VISIBILITY_MAX_PROMPTS=10           # cap prompts/produit/run (garde-fou coût)
 AI_VISIBILITY_MIN_PROMPTS_FOR_SIGNAL=4 # min prompts répondus (par moteur, sur les DEUX runs) avant qu'un shift SoV soit signalé — sinon skip (1-2 prompts = quota gratuit épuisé, bruit 100%/50%, pas un vrai mouvement)
-AI_VISIBILITY_MIN_REQUEST_GAP_MS=13000 # espacement min entre 2 appels au MÊME moteur. Le free tier
-                                       # plafonne aussi PAR MINUTE : un jeu de prompts tiré en rafale
-                                       # 429 en cours de run, ce que le garde quota lit comme une
-                                       # enveloppe épuisée et qui tue le moteur pour tout le run.
-                                       # Le défaut vise le plafond MESURÉ (5 RPM), pas l'annoncé.
-                                       # Ne baisser que sur un tier payant (plafonds plus hauts)
+AI_VISIBILITY_MIN_REQUEST_GAP_MS=13000 # espacement min entre 2 appels au MÊME MODÈLE, tenu dans une
+                                       # LIGNE Postgres (ai_visibility_engine_budget), plus en
+                                       # mémoire de process : l'ancien pacer ne tenait pas face aux
+                                       # runs que pg-boss prend en parallèle (mesuré 2026-08-01 :
+                                       # 6 runs simultanés répondent 21 prompts sur 110, les mêmes
+                                       # orgs seules en répondent 10 à 14 chacune). Le défaut vise
+                                       # le plafond MESURÉ (5 RPM), pas l'annoncé
+AI_VISIBILITY_GEMINI_MODELS=           # liste séparée par virgules qui REMPLACE le modèle unique.
+                                       # Le cap de requêtes est PAR MODÈLE, donc chaque modèle
+                                       # épinglé est une allocation gratuite de plus sur LA MÊME clé
+                                       # et le même projet (mesuré 2026-08-01 : 2.5-flash,
+                                       # 2.5-flash-lite et 3.6-flash affichent chacun /20 RPD). Un
+                                       # prompt reçoit UN modèle par hash stable et le garde : deux
+                                       # modèles ne nomment pas les mêmes marques, donc un prompt
+                                       # qui change de rédacteur se lit comme un mouvement de SoV.
+                                       # CONFIRMER que le grounding marche sur un modèle avant de
+                                       # l'ajouter (un 429 peut n'être que le bucket du jour vidé)
+AI_VISIBILITY_MODEL_DAILY_BUDGET=15    # plafond DUR côté code, par modèle et par jour UTC, appliqué
+                                       # par une réservation dans ai_visibility_engine_budget avant
+                                       # qu'un appel ne parte. Sous les 20 mesurés du free tier : le
+                                       # projet est partagé avec l'outillage perso du propriétaire,
+                                       # et un 429 consomme une réservation lui aussi
+AI_VISIBILITY_TEASER_RESERVE=3         # appels/jour que le drip refuse de planifier, pour qu'une
+                                       # rafale d'inscriptions trouve encore de quoi payer son teaser
 AI_VISIBILITY_TEASER_ENABLED=true      # L7 — teaser onboarding gratuit 1×/org (false → "unavailable")
 AI_VISIBILITY_TEASER_MAX_PROMPTS=3     # requêtes groundées free dépensées par teaser
 GEMINI_API_KEY=                        # moteur Gemini + grounding (GRATUIT, défaut) ; vide → skip

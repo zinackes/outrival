@@ -1,12 +1,13 @@
 import { logger } from "../lib/job-logger";
 import { NonRetriable as AbortTaskRunError, generateSignal } from "@outrival/queue";
 import { z } from "zod";
-import { and, desc, eq, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import {
   db,
   competitors,
   organizations,
   aiVisibilityPrompts,
+  aiVisibilityResults,
   products,
   productCompetitors,
   monitors,
@@ -42,9 +43,14 @@ import { notifyJobComplete } from "../lib/job-complete";
 
 const InputSchema = z.object({
   orgId: z.string(),
+  // The daily drip enqueues ONE product at a time, because it only schedules what the
+  // day's free-tier budget can pay for and a product's share-of-voice is meaningless
+  // over half its prompt set. Absent on the on-demand "Run now" route, which still
+  // sweeps every active product of the org.
+  productId: z.string().optional(),
   // Set by the on-demand "Run now" route → drop a durable "run complete" notification
-  // when the run lands (it resolves ~a minute later, off the page). The weekly
-  // scheduler omits it, so an automated run stays silent.
+  // when the run lands (it resolves ~a minute later, off the page). The scheduler
+  // omits it, so an automated run stays silent.
   notifyOnComplete: z.boolean().optional(),
 });
 
@@ -60,7 +66,7 @@ const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 // cutover). The body is byte-identical to the pre-migration job — only the
 // header and the signature change, so the two runtimes cannot drift.
 export async function runScrapeAiVisibility(payload: z.input<typeof InputSchema>) {
-    const { orgId, notifyOnComplete } = InputSchema.parse(payload);
+    const { orgId, productId, notifyOnComplete } = InputSchema.parse(payload);
 
     // Kill-switch: explicit "false" disables; missing key disables (no cost incurred).
     if (process.env.AI_VISIBILITY_ENABLED === "false") {
@@ -82,7 +88,11 @@ export async function runScrapeAiVisibility(payload: z.input<typeof InputSchema>
     // its own SoV baseline. One shared runId groups the whole sweep; rows are tagged
     // with product_id so reads + the diff scope to a single product.
     const productList = await db.query.products.findMany({
-      where: and(eq(products.orgId, orgId), ne(products.status, "archived")),
+      where: and(
+        eq(products.orgId, orgId),
+        ne(products.status, "archived"),
+        ...(productId ? [eq(products.id, productId)] : []),
+      ),
       columns: { id: true, name: true, selfCompetitorId: true },
       orderBy: (p, { asc, desc }) => [desc(p.isPrimary), asc(p.position), asc(p.createdAt)],
     });
@@ -155,7 +165,10 @@ export async function runScrapeAiVisibility(payload: z.input<typeof InputSchema>
         });
         logger.log("Seeded default prompts", { orgId, productId: product.id, count: seeds.length });
       }
-      prompts = prompts.slice(0, maxPrompts);
+      // Least-recently-answered first. It costs one query and it removes a starvation
+      // mode: if a run is ever cut short, it is cut short on the prompts that were
+      // just refreshed, never on the same tail every time.
+      prompts = (await orderByOldestCheck(prompts)).slice(0, maxPrompts);
 
       const subjectNames = roster.map((c) => c.name);
       const productRows: AiVisibilityResultRow[] = [];
@@ -165,7 +178,10 @@ export async function runScrapeAiVisibility(payload: z.input<typeof InputSchema>
           if (exhausted.has(engine)) continue;
           let res;
           try {
-            res = await queryEngine(engine, prompt.prompt);
+            // The prompt's row id is the model key: which of the engine's models
+            // answers must not change from one run to the next, or the trend line
+            // silently changes writer and reads as a share-of-voice move.
+            res = await queryEngine(engine, prompt.prompt, prompt.id);
           } catch (err) {
             if (!(err instanceof EngineQuotaError)) throw err;
             // Quota is per project, so the remaining prompts of this run would all
@@ -294,6 +310,30 @@ export async function runScrapeAiVisibility(payload: z.input<typeof InputSchema>
       degraded: !engineReached,
       runId,
     };
+}
+
+/**
+ * Sort a product's prompts by when each was last answered, oldest first (never
+ * answered sorts to the front). Best-effort: on a read error the caller's original
+ * order stands, which is exactly today's behaviour.
+ */
+async function orderByOldestCheck<T extends { id: string }>(prompts: T[]): Promise<T[]> {
+  if (prompts.length < 2) return prompts;
+  try {
+    const rows = await db
+      .select({
+        promptId: aiVisibilityResults.promptId,
+        lastAt: sql<string>`max(${aiVisibilityResults.recordedAt})`,
+      })
+      .from(aiVisibilityResults)
+      .where(inArray(aiVisibilityResults.promptId, prompts.map((p) => p.id)))
+      .groupBy(aiVisibilityResults.promptId);
+    const lastAt = new Map(rows.map((r) => [r.promptId, new Date(r.lastAt).getTime()]));
+    return [...prompts].sort((a, b) => (lastAt.get(a.id) ?? 0) - (lastAt.get(b.id) ?? 0));
+  } catch (err) {
+    logger.warn("ai-visibility: could not order prompts by last check", { err: String(err) });
+    return prompts;
+  }
 }
 
 const ENGINE_LABEL: Record<string, string> = { perplexity: "Perplexity", gemini: "Gemini" };

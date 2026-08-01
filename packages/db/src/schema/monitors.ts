@@ -145,6 +145,18 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // classifier's own signal on it (signals.changeId is unique — one of the two
   // would silently lose). Always isActive=false.
   "editorial_shift",
+  // Roadmap-shift anchor (Content Intelligence v2 P5). Infra-only: never seeded,
+  // never scraped, never user-selectable. It anchors the snapshot → change → signal
+  // chain for `top_request_planned` when the roadmap capture itself produced no
+  // change row to hang it off (a status move that the significance gate filtered).
+  // A dedicated source_type rather than `roadmap`: that monitor's snapshot chain is
+  // what content-hash dedup diffs the next capture against. Always isActive=false.
+  "roadmap_shift",
+  // Integration-catalog anchor (Content Intelligence v2 P5). Infra-only, same shape
+  // as customer_proof: it anchors the change → signal chain when a competitor lists
+  // integrations we have never seen them claim. Kept off `sitemap`, whose snapshot
+  // chain carries its own dedup. Always isActive=false.
+  "integration_catalog",
   // Developer documentation (user-selectable, pro+). Structured-first: an OpenAPI /
   // Swagger spec becomes a canonical sorted operation+schema listing (so the generic
   // lexical diff reads as a structural diff), else the docs sitemap's page list plus

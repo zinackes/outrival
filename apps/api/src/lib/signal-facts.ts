@@ -5,6 +5,7 @@ import {
   contentItems,
   jobPostings,
   knownCustomers,
+  knownIntegrations,
   postingFacts,
 } from "@outrival/db";
 import {
@@ -134,6 +135,28 @@ export interface CustomerFact {
   evidenceUrl: string | null;
 }
 
+/** One roadmap request that moved, as the portal published it (P5). */
+export interface RoadmapRequestFact {
+  title: string;
+  url: string | null;
+  /** Exact count the portal published, at the capture that saw the move. */
+  votes: number;
+  /** 1-based, among that portal's open requests. */
+  rank: number;
+  /** The portal's OWN status words, both sides. Null before = it was not listed. */
+  fromRaw: string | null;
+  toRaw: string;
+}
+
+/** One integration a competitor lists that we had never seen it claim (P5). */
+export interface IntegrationFact {
+  /** As the catalog wrote it, or its own listing slug title-cased. */
+  name: string;
+  /** "YYYY-MM-DD" — when WE first saw it, the only date a catalog gives us. */
+  firstSeenAt: string | null;
+  evidenceUrl: string | null;
+}
+
 /** One subject a competitor's blog covered in a window, and how much of it. */
 export interface TopicFact {
   topic: string;
@@ -243,6 +266,22 @@ export type SignalFacts =
       evidenceUrl: string | null;
     }
   | {
+      /** The roadmap move this signal is about (Content Intelligence v2 P5). */
+      kind: "roadmap_request";
+      request: RoadmapRequestFact;
+      /** Other top requests committed in the SAME capture, named beside it. */
+      alsoMoved: RoadmapRequestFact[];
+    }
+  | {
+      /** Integrations newly listed in a catalog (Content Intelligence v2 P5). */
+      kind: "integrations";
+      integrations: IntegrationFact[];
+      /** Names before the cap, so a truncated list can say what it is hiding. */
+      integrationsTotal: number;
+      /** The catalog page they were read off. */
+      evidenceUrl: string | null;
+    }
+  | {
       /** The two windows an `editorial_pivot` compared (Content Intelligence v2 P4). */
       kind: "editorial";
       /** Jensen-Shannon, base 2, so it reads on a real 0-to-1 scale. */
@@ -277,6 +316,9 @@ const MAX_CONTENT_ENTRIES = 12;
 // A wall refresh can add a dozen logos at once; the block names the win, it does
 // not reproduce the customers page.
 const MAX_CUSTOMER_FACTS = 12;
+// A catalog release can list a batch of connectors; the block names them, it does
+// not reproduce the catalog.
+const MAX_INTEGRATION_FACTS = 12;
 
 // How long after a change its extraction may still land. The extractor is
 // enqueued in the same scrape run, but it is the WORKER that stamps the row, and
@@ -673,6 +715,103 @@ async function customerFacts(
   return null;
 }
 
+/**
+ * The roadmap move behind a `top_request_planned` signal (Content Intelligence v2
+ * P5).
+ *
+ * Read off the change's OWN rawDiff, never recomputed. The rank and the vote count
+ * are what the portal published AT THE CAPTURE THAT SAW THE MOVE; by the time this
+ * is read the portal has moved on, and a recomputed "#1, 142 votes" that contradicts
+ * the sentence above it is worse than no block at all.
+ */
+async function roadmapFacts(monitorId: string, detectedAt: Date): Promise<SignalFacts> {
+  const [change] = await db
+    .select({ rawDiff: changes.rawDiff })
+    .from(changes)
+    .where(and(eq(changes.monitorId, monitorId), eq(changes.detectedAt, detectedAt)))
+    .limit(1);
+
+  const raw = change?.rawDiff as Record<string, unknown> | null | undefined;
+  if (!raw || raw.kind !== "top_request_planned") return null;
+  const request = readRequest(raw);
+  if (!request) return null;
+
+  const alsoMoved = Array.isArray(raw.alsoMoved)
+    ? raw.alsoMoved
+        .map((entry) => readRequest(entry as Record<string, unknown>))
+        .filter((r): r is RoadmapRequestFact => r !== null)
+    : [];
+  return { kind: "roadmap_request", request, alsoMoved };
+}
+
+/** One request out of a rawDiff, or null when the shape is not what we wrote. */
+function readRequest(raw: Record<string, unknown>): RoadmapRequestFact | null {
+  const title = typeof raw.title === "string" ? raw.title : null;
+  const votes = typeof raw.votes === "number" ? raw.votes : null;
+  const rank = typeof raw.rank === "number" ? raw.rank : null;
+  const toRaw = typeof raw.toRaw === "string" ? raw.toRaw : null;
+  if (!title || votes == null || rank == null || !toRaw) return null;
+  return {
+    title,
+    url: typeof raw.url === "string" ? raw.url : null,
+    votes,
+    rank,
+    fromRaw: typeof raw.fromRaw === "string" ? raw.fromRaw : null,
+    toRaw,
+  };
+}
+
+/**
+ * The integrations behind an `integration_published` signal (Content Intelligence v2
+ * P5).
+ *
+ * The names come off the change's rawDiff — the set the emitter decided — and the
+ * registry supplies the date and the page each was seen on. A window over
+ * `known_integrations` would sweep in whatever else the same run recorded, so a
+ * one-name signal would render as five.
+ */
+async function integrationFacts(
+  competitorId: string,
+  monitorId: string,
+  detectedAt: Date,
+): Promise<SignalFacts> {
+  const [change] = await db
+    .select({ rawDiff: changes.rawDiff })
+    .from(changes)
+    .where(and(eq(changes.monitorId, monitorId), eq(changes.detectedAt, detectedAt)))
+    .limit(1);
+
+  const raw = change?.rawDiff as Record<string, unknown> | null | undefined;
+  if (!raw || raw.kind !== "integration_published") return null;
+  const names = Array.isArray(raw.names)
+    ? raw.names.filter((n): n is string => typeof n === "string")
+    : [];
+  if (names.length === 0) return null;
+
+  const rows = await db
+    .select({
+      name: knownIntegrations.displayName,
+      firstSeenAt: dsql<string | null>`to_char(${knownIntegrations.firstSeenAt}, 'YYYY-MM-DD')`,
+      evidenceUrl: knownIntegrations.evidenceUrl,
+    })
+    .from(knownIntegrations)
+    .where(
+      and(
+        eq(knownIntegrations.competitorId, competitorId),
+        inArray(knownIntegrations.displayName, names),
+      ),
+    )
+    .orderBy(knownIntegrations.firstSeenAt);
+  if (rows.length === 0) return null;
+
+  return {
+    kind: "integrations",
+    integrations: rows.slice(0, MAX_INTEGRATION_FACTS),
+    integrationsTotal: rows.length,
+    evidenceUrl: typeof raw.evidenceUrl === "string" ? raw.evidenceUrl : null,
+  };
+}
+
 /** This competitor's changelog entries matching `predicate`, newest first. */
 async function contentEntriesIn(
   competitorId: string,
@@ -1059,7 +1198,10 @@ export async function buildSignalFacts(args: {
     sourceType !== "shipping_velocity" &&
     sourceType !== "comparison_page" &&
     sourceType !== "customer_proof" &&
-    sourceType !== "editorial_shift"
+    sourceType !== "editorial_shift" &&
+    sourceType !== "roadmap" &&
+    sourceType !== "roadmap_shift" &&
+    sourceType !== "integration_catalog"
   ) {
     return null;
   }
@@ -1083,6 +1225,16 @@ export async function buildSignalFacts(args: {
     }
     if (sourceType === "editorial_shift") {
       return await editorialFacts(monitorId, new Date(detectedAt));
+    }
+    // A roadmap move rides EITHER the portal's own change row or the synthetic
+    // anchor, depending on whether the capture produced one — both carry the same
+    // rawDiff, and a roadmap change without it is a plain lexical signal with no
+    // block, which is what the `null` return says.
+    if (sourceType === "roadmap" || sourceType === "roadmap_shift") {
+      return await roadmapFacts(monitorId, new Date(detectedAt));
+    }
+    if (sourceType === "integration_catalog") {
+      return await integrationFacts(competitorId, monitorId, new Date(detectedAt));
     }
     const window = await attributionWindow(monitorId, new Date(detectedAt));
     if (sourceType === "jobs") return await hiringFacts(competitorId, window);

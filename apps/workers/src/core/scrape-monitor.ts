@@ -13,6 +13,7 @@ import {
   ingestContentItems,
   ingestBlogPosts,
   ingestCaseStudies,
+  ingestIntegrations,
   backfillHistory,
 } from "@outrival/queue";
 import { z } from "zod";
@@ -85,7 +86,7 @@ import {
 } from "@outrival/scrapers/sitemap";
 // Pure subpath — Content Intelligence v2 P3: which of the sitemap's new URLs are
 // customer proof (a customers index, or one customer's story).
-import { isCustomerPageUrl } from "@outrival/scrapers/content";
+import { isCustomerPageUrl, integrationFromUrl } from "@outrival/scrapers/content";
 // Pure subpath — no deps. Wellknown v2: /.well-known + llms.txt fingerprint diff.
 import { parseWellKnownDoc, wellKnownDelta } from "@outrival/scrapers/wellknown";
 // Pure subpath — sharp only. Perceptual hash for visual-redesign detection (patch-17).
@@ -1592,7 +1593,16 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         const customerAdded = added
           .filter((u) => !isComparisonUrl(u) && isCustomerPageUrl(u))
           .slice(0, SITEMAP_CUSTOMER_URL_CAP);
-        const otherAdded = added.filter((u) => !isComparisonUrl(u) && !isCustomerPageUrl(u));
+        // Content Intelligence v2 P5 — an /integrations/<slug> URL NAMES an
+        // integration, so it leaves the lump for the same reason a case study does:
+        // routed to both, it would be signalled once as "the sitemap grew" and once
+        // as the partnership it actually is.
+        const integrationAdded = added
+          .filter((u) => !isComparisonUrl(u) && integrationFromUrl(u) !== null)
+          .slice(0, SITEMAP_CUSTOMER_URL_CAP);
+        const otherAdded = added.filter(
+          (u) => !isComparisonUrl(u) && !isCustomerPageUrl(u) && integrationFromUrl(u) === null,
+        );
 
         if (comparisonAdded.length > 0) {
           // Resolve the user's own org brand(s) for the CRITICAL escalation. Fetched
@@ -1674,6 +1684,20 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
             urls: customerAdded,
           });
         }
+
+        // Content Intelligence v2 P5 — read what they plug into. Enqueued on EVERY
+        // sitemap capture, like its customer sibling and for the same reason: the
+        // job also re-reads the catalog page, and a tile added to an existing page
+        // moves no URL at all. It costs nothing when there is nothing to read — a
+        // competitor with no catalog has that miss cached.
+        //
+        // The self product is included: the rows are how "you integrate with X and
+        // they do not" can ever be said. Only the SIGNAL is skipped, inside the job.
+        await ingestIntegrations.enqueue({
+          snapshotId: newSnapshot.id,
+          competitorId: competitor.id,
+          urls: integrationAdded,
+        });
 
         // General expansion (non-comparison adds + removes) → one lumped change → the
         // normal AI classifier, exactly as the generic sitemap diff did before.
@@ -1885,6 +1909,20 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
               // changeId (signals.changeId is unique — one would silently lose).
               deferredPricingChange = { id: changeId, lexicalWorth: significance.worth };
               logger.log("Pricing change deferred to extract-pricing", {
+                monitorId: monitor.id,
+                changeId,
+                lexicalWorth: significance.worth,
+              });
+            } else if (monitor.sourceType === "roadmap" && graded.complete) {
+              // Content Intelligence v2 P5: same deferral, for the same reason. A
+              // roadmap capture's change row is what `top_request_planned` hangs
+              // off when one of the portal's most-voted requests moves into
+              // planned work, and signals.changeId is unique — enqueueing the
+              // lexical classifier here in parallel would race it and one of the
+              // two would silently lose. When no request moved, the job hands the
+              // change straight back to the classifier.
+              deferredContentChange = { id: changeId, lexicalWorth: significance.worth };
+              logger.log("Roadmap change deferred to ingest-content-items", {
                 monitorId: monitor.id,
                 changeId,
                 lexicalWorth: significance.worth,

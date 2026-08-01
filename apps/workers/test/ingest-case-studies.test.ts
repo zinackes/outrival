@@ -72,6 +72,7 @@ function storyPage(title: string, body: string): string {
 beforeAll(async () => {
   const realQueue = await import("@outrival/queue");
   const realAi = await import("@outrival/ai");
+  const realAnalytics = await import("../src/lib/analytics");
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
@@ -108,7 +109,10 @@ beforeAll(async () => {
       return html ? { ok: true, html, bytes: html.length } : { ok: false, reason: "http_404" };
     },
   }));
+  // Spread the REAL module — see the note in ingest-roadmap.test.ts: a partial
+  // mock here breaks whichever sibling file bun happens to run next.
   mock.module("../src/lib/analytics", () => ({
+    ...realAnalytics,
     loggedAi: async <T>(_task: string, _cfg: unknown, fn: () => Promise<T>) => fn(),
   }));
 

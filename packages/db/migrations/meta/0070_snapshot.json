@@ -1,6 +1,6 @@
 {
-  "id": "9ec4bbed-ba86-43ae-afce-9baa6133ac23",
-  "prevId": "a2d84cbe-56a1-4978-8dac-840aaf7c04aa",
+  "id": "9344ece0-3b69-4098-8f33-299e9949470d",
+  "prevId": "9ec4bbed-ba86-43ae-afce-9baa6133ac23",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2759,6 +2759,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "status_normalized": {
+          "name": "status_normalized",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "votes": {
+          "name": "votes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "topics": {
           "name": "topics",
           "type": "text[]",
@@ -3172,6 +3184,258 @@
         "known_customers_competitor_id_competitors_id_fk": {
           "name": "known_customers_competitor_id_competitors_id_fk",
           "tableFrom": "known_customers",
+          "tableTo": "competitors",
+          "columnsFrom": [
+            "competitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.roadmap_status_events": {
+      "name": "roadmap_status_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "content_item_id": {
+          "name": "content_item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "competitor_id": {
+          "name": "competitor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_status": {
+          "name": "from_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "to_status": {
+          "name": "to_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_raw": {
+          "name": "from_raw",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "to_raw": {
+          "name": "to_raw",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "is_baseline": {
+          "name": "is_baseline",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "signalled_at": {
+          "name": "signalled_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "roadmap_status_events_competitor_occurred_idx": {
+          "name": "roadmap_status_events_competitor_occurred_idx",
+          "columns": [
+            {
+              "expression": "competitor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "roadmap_status_events_item_occurred_idx": {
+          "name": "roadmap_status_events_item_occurred_idx",
+          "columns": [
+            {
+              "expression": "content_item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "roadmap_status_events_content_item_id_content_items_id_fk": {
+          "name": "roadmap_status_events_content_item_id_content_items_id_fk",
+          "tableFrom": "roadmap_status_events",
+          "tableTo": "content_items",
+          "columnsFrom": [
+            "content_item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "roadmap_status_events_competitor_id_competitors_id_fk": {
+          "name": "roadmap_status_events_competitor_id_competitors_id_fk",
+          "tableFrom": "roadmap_status_events",
+          "tableTo": "competitors",
+          "columnsFrom": [
+            "competitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.known_integrations": {
+      "name": "known_integrations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "competitor_id": {
+          "name": "competitor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name_normalized": {
+          "name": "name_normalized",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evidence_url": {
+          "name": "evidence_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "first_seen_at": {
+          "name": "first_seen_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "known_integrations_competitor_name_uk": {
+          "name": "known_integrations_competitor_name_uk",
+          "columns": [
+            {
+              "expression": "competitor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name_normalized",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "known_integrations_competitor_seen_idx": {
+          "name": "known_integrations_competitor_seen_idx",
+          "columns": [
+            {
+              "expression": "competitor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "first_seen_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "known_integrations_competitor_id_competitors_id_fk": {
+          "name": "known_integrations_competitor_id_competitors_id_fk",
+          "tableFrom": "known_integrations",
           "tableTo": "competitors",
           "columnsFrom": [
             "competitor_id"
@@ -9499,6 +9763,8 @@
         "shipping_velocity",
         "customer_proof",
         "editorial_shift",
+        "roadmap_shift",
+        "integration_catalog",
         "docs",
         "custom",
         "roadmap"

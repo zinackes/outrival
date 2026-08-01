@@ -148,6 +148,19 @@ export const SOURCE_TYPES = [
   // own dedup and whose changes already belong to the lexical classifier. Kept in
   // sync with the DB source_type enum.
   "editorial_shift",
+  // Roadmap-shift anchor (Content Intelligence v2 P5). INTERNAL, never seeded /
+  // scraped / user-selectable — it anchors the snapshot → change → signal chain for
+  // `top_request_planned` (one of the portal's most-voted requests moved into
+  // planned / in progress) when the roadmap capture produced no change row of its
+  // own to carry it. Kept off the `roadmap` monitor, whose snapshot chain carries
+  // its own dedup. Kept in sync with the DB source_type enum.
+  "roadmap_shift",
+  // Integration-catalog anchor (Content Intelligence v2 P5). INTERNAL, never seeded
+  // / scraped / user-selectable — it anchors the change → signal chain for
+  // `integration_published`, the names a competitor's /integrations catalog lists
+  // that we had never seen it claim. Kept off the `sitemap` monitor, whose snapshot
+  // chain carries its own dedup. Kept in sync with the DB source_type enum.
+  "integration_catalog",
   // Developer documentation — the competitor's technical roadmap surface. USER-
   // SELECTABLE (pro+), enabled through the standard enable route with an optional
   // URL override. Structured-first, two modes: (1) an OpenAPI/Swagger spec is found

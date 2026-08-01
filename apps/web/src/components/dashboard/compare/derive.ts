@@ -390,6 +390,52 @@ export function hiringScale(cols: CompareColumn[]): HiringScale {
   };
 }
 
+/** Releases per month, or null when this competitor has no honest reading yet. */
+export function releasesPerMonth(c: CompareColumn): number | null {
+  return c.shipping?.perMonth ?? null;
+}
+
+/**
+ * How the rate moved against the window before it: "up" | "down" | null.
+ *
+ * Null covers two different things on purpose — no previous window to compare
+ * against, and a move too small to call. A 5% wobble in a monthly count is arithmetic,
+ * not a change of pace, and an arrow drawn on it would read as news every month.
+ */
+export function releaseTrend(c: CompareColumn): "up" | "down" | null {
+  const s = c.shipping;
+  if (!s || s.previousPerMonth == null) return null;
+  const before = s.previousPerMonth;
+  const after = s.perMonth;
+  // A competitor that shipped nothing and now ships something IS a direction.
+  if (before === 0) return after > 0 ? "up" : null;
+  const ratio = (after - before) / before;
+  if (Math.abs(ratio) < RELEASE_TREND_MIN_MOVE) return null;
+  return ratio > 0 ? "up" : "down";
+}
+
+/** Relative move below which the cadence is called flat. */
+const RELEASE_TREND_MIN_MOVE = 0.15;
+
+export interface ShippingScale {
+  max: number;
+  hasData: boolean;
+  /** The tallest single MONTH across the set — the scale the mini bars share, so a
+   *  competitor's spike reads as a spike next to the others rather than against
+   *  itself. */
+  monthMax: number;
+}
+
+export function shippingScale(cols: CompareColumn[]): ShippingScale {
+  const rates = cols.map(releasesPerMonth).filter((v): v is number => v != null);
+  const monthCounts = cols.flatMap((c) => (c.shipping?.months ?? []).map((m) => m.count));
+  return {
+    max: rates.length ? Math.max(...rates) : 1,
+    hasData: rates.length > 0,
+    monthMax: monthCounts.length ? Math.max(...monthCounts, 1) : 1,
+  };
+}
+
 export interface RatingScale {
   median: number | null;
   hasData: boolean;

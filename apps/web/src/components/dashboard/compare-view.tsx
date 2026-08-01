@@ -30,6 +30,7 @@ import {
   PositioningLens,
   PriceLens,
   RatingLens,
+  ShippingLens,
   StackLens,
   lensHasContent,
   type MeasureLensId,
@@ -434,6 +435,7 @@ export function CompareView() {
     if (id === "price") return <PriceLens key={id} {...lensProps("price")} />;
     if (id === "rating") return <RatingLens key={id} {...lensProps("rating")} />;
     if (id === "hiring") return <HiringLens key={id} {...lensProps("hiring")} />;
+    if (id === "shipping") return <ShippingLens key={id} {...lensProps("shipping")} />;
     return <StackLens key={id} entities={rows} />;
   };
 

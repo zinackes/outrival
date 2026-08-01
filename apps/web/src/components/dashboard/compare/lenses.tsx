@@ -40,6 +40,9 @@ import {
   engineeringRoles,
   hiringScale,
   money,
+  releasesPerMonth,
+  releaseTrend,
+  shippingScale,
   openRoles,
   priceReading,
   priceScale,
@@ -79,7 +82,7 @@ const loaded = (entities: CompareEntity[]): CompareColumn[] =>
 const anyPending = (entities: CompareEntity[]): boolean => entities.some((e) => e.pending);
 
 /** The measure lenses, in reading order. The prose lenses below run full width. */
-export const MEASURE_LENSES = ["price", "rating", "hiring", "stack"] as const;
+export const MEASURE_LENSES = ["price", "rating", "hiring", "shipping", "stack"] as const;
 export type MeasureLensId = (typeof MEASURE_LENSES)[number];
 
 /**
@@ -95,6 +98,10 @@ export const lensHasContent: Record<
   price: (e) => loaded(e).some((c) => c.pricing != null) || anyPending(e),
   rating: (e) => ratingScale(loaded(e)).hasData || anyPending(e),
   hiring: (e) => loaded(e).some((c) => c.hiring != null) || anyPending(e),
+  // Not `anyPending`: a competitor with no changelog never gains one by waiting, and
+  // the whole lens is gated on holding two complete months, so a pending row would
+  // hold open a lane that may never fill.
+  shipping: (e) => loaded(e).some((c) => c.shipping != null),
   stack: (e) => {
     const cols = loaded(e);
     const diff = techDiff(cols);
@@ -692,6 +699,123 @@ export function HiringLens({ entities, expanded, onToggle }: LensProps) {
       })}
     </Lens>
   );
+}
+
+// ── Shipping velocity ───────────────────────────────────────────────────────
+
+/**
+ * How fast each of them ships (Content Intelligence v2 P5).
+ *
+ * Counted off the entries their own release feeds published, over months that have
+ * ENDED — the running month is never averaged in, or every competitor would look
+ * frozen on the 3rd. A competitor with fewer than two complete months of history is
+ * ABSENT from the lens rather than shown a rate extrapolated from a week: the API
+ * decides that, so a row here always means a real reading.
+ *
+ * The self product is included, like everywhere else on this page, and that is
+ * mostly the point — "they ship 14 a month, you ship 6" is the comparison this lens
+ * exists to make.
+ */
+export function ShippingLens({ entities, expanded, onToggle }: LensProps) {
+  const cols = loaded(entities);
+  const scale = shippingScale(cols);
+  if (!lensHasContent.shipping(entities)) return null;
+
+  return (
+    <Lens
+      id="shipping"
+      title="Shipping"
+      sub="Published releases per month, over months that have ended"
+      meta="per month"
+      footer={
+        <LensFooter
+          ticks={
+            scale.hasData
+              ? [0, scale.max / 2, scale.max].map((t, i) =>
+                  i === 2 ? `${round1(t)} / mo` : round1(t),
+                )
+              : undefined
+          }
+        />
+      }
+    >
+      {entities.map((e) => {
+        if (!e.data) return <PendingRow key={e.id} entity={e} />;
+        const rate = releasesPerMonth(e.data);
+        const months = e.data.shipping?.months ?? [];
+        if (rate == null) {
+          return (
+            <MeasureRow key={e.id} entity={e}>
+              {/* Two different absences, said plainly: nothing to read yet, rather
+                  than a zero that would claim they stopped shipping. */}
+              <NoReading>Not enough release history yet</NoReading>
+            </MeasureRow>
+          );
+        }
+        const trend = releaseTrend(e.data);
+        const previous = e.data.shipping?.previousPerMonth ?? null;
+        return (
+          <MeasureRow
+            key={e.id}
+            entity={e}
+            open={expanded.has(e.id)}
+            onToggle={months.length ? () => onToggle(e.id) : undefined}
+            value={
+              <>
+                {round1(rate)}
+                {trend && (
+                  <span
+                    className="text-muted-foreground ml-1.5"
+                    title={
+                      previous != null
+                        ? `Against ${round1(previous)} / month over the three months before`
+                        : undefined
+                    }
+                    aria-label={trend === "up" ? "up on the previous window" : "down on the previous window"}
+                  >
+                    {trend === "up" ? "↑" : "↓"}
+                  </span>
+                )}
+              </>
+            }
+            detail={
+              months.length ? (
+                <Detail
+                  wide
+                  source={`${months.length} complete month${months.length > 1 ? "s" : ""} · from their own release feed`}
+                >
+                  {months.map((m) => (
+                    <DetailBar
+                      key={m.month}
+                      entity={e}
+                      label={m.month}
+                      value={m.count}
+                      ratio={m.count / scale.monthMax}
+                    />
+                  ))}
+                  {previous != null && (
+                    <DetailPair
+                      label="Previous three months"
+                      value={`${round1(previous)} / mo`}
+                    />
+                  )}
+                </Detail>
+              ) : undefined
+            }
+          >
+            <Track>
+              <Bar entity={e} left={0} width={pct(rate, scale.max)} />
+            </Track>
+          </MeasureRow>
+        );
+      })}
+    </Lens>
+  );
+}
+
+/** One decimal, and no trailing ".0" — "6 a month" reads better than "6.0". */
+function round1(value: number): string {
+  return (Math.round(value * 10) / 10).toString();
 }
 
 // ── Stack ───────────────────────────────────────────────────────────────────

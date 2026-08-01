@@ -42,6 +42,8 @@ export function SignalFacts({ facts }: { facts: Facts }) {
   if (facts.kind === "content") return <ContentFacts facts={facts} />;
   if (facts.kind === "case_study") return <CaseStudyFacts facts={facts} />;
   if (facts.kind === "customer_win") return <CustomerWinFacts facts={facts} />;
+  if (facts.kind === "roadmap_request") return <RoadmapRequestFacts facts={facts} />;
+  if (facts.kind === "integrations") return <IntegrationFacts facts={facts} />;
   if (facts.kind === "editorial") return <EditorialFacts facts={facts} />;
   return <PricingFacts facts={facts} />;
 }
@@ -336,6 +338,136 @@ function CustomerWinFacts({ facts }: { facts: Extract<Facts, { kind: "customer_w
           className="mt-2 inline-flex items-baseline gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           Their customers page
+          <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
+        </a>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The roadmap request that moved into committed work.
+ *
+ * Both status labels are the PORTAL'S OWN words ("Under review" → "Up next"), never
+ * our normalised vocabulary: those are the words the competitor's customers read,
+ * and translating them would put language in their mouth. The vote count and the
+ * rank are as published at the capture that saw the move, which is why they are
+ * shown together — a rank without its count cannot be judged.
+ */
+function RoadmapRequestFacts({ facts }: { facts: Extract<Facts, { kind: "roadmap_request" }> }) {
+  const line = (r: (typeof facts)["request"], lead: boolean) => (
+    <li key={`${r.title}-${r.rank}`} className="flex flex-col gap-0.5">
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        {r.url ? (
+          <a
+            href={r.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              "inline-flex items-baseline gap-1 rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50",
+              lead ? "text-sm text-foreground" : "text-sm text-muted-foreground",
+            )}
+          >
+            {r.title}
+            <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
+          </a>
+        ) : (
+          <span className={lead ? "text-sm text-foreground" : "text-sm text-muted-foreground"}>
+            {r.title}
+          </span>
+        )}
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {r.votes} votes · #{r.rank}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {r.fromRaw ?? "Not listed"} <span aria-hidden>→</span>{" "}
+        <span className="text-foreground">{r.toRaw}</span>
+      </p>
+    </li>
+  );
+
+  return (
+    <div>
+      <p className="text-dense text-muted-foreground">
+        Their own portal, their own vote counts
+      </p>
+      <ul className="mt-2 space-y-2">{line(facts.request, true)}</ul>
+      {facts.alsoMoved.length > 0 && (
+        <>
+          <p className="mt-3 text-xs text-muted-foreground">Committed in the same capture</p>
+          <ul className="mt-1.5 space-y-2">{facts.alsoMoved.map((r) => line(r, false))}</ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Integrations a competitor now lists that we had never seen it claim.
+ *
+ * The date is when WE first saw it — a catalog carries none — and names are only
+ * ever added: catalogs paginate and get reorganised, so a tile disappearing says
+ * nothing about the partnership.
+ */
+function IntegrationFacts({ facts }: { facts: Extract<Facts, { kind: "integrations" }> }) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? facts.integrations : facts.integrations.slice(0, CUSTOMERS_COLLAPSED);
+  const hidden = facts.integrationsTotal - shown.length;
+
+  return (
+    <div>
+      <p className="text-dense text-muted-foreground">
+        <span className="font-medium text-foreground tabular-nums">
+          {facts.integrationsTotal}
+        </span>{" "}
+        {facts.integrationsTotal === 1 ? "integration" : "integrations"} we had not seen before
+      </p>
+
+      <ul className="mt-2 space-y-1.5">
+        {shown.map((i) => (
+          <li key={i.name} className="flex flex-wrap items-baseline gap-x-2">
+            {i.evidenceUrl ? (
+              <a
+                href={i.evidenceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+              >
+                {i.name}
+                <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
+              </a>
+            ) : (
+              <span className="text-sm text-foreground">{i.name}</span>
+            )}
+            {i.firstSeenAt && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                first seen {i.firstSeenAt}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      {hidden > 0 && !expanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <CaretDownIcon size={14} aria-hidden />
+          <span className="tabular-nums">{hidden}</span> more
+        </button>
+      )}
+
+      {facts.evidenceUrl && (
+        <a
+          href={facts.evidenceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-flex items-baseline gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          Their integrations catalog
           <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
         </a>
       )}

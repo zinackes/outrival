@@ -37,6 +37,7 @@ import {
   caseStudies,
   knownCustomers,
   contentItems,
+  roadmapStatusEvents,
 } from "@outrival/db";
 import { db } from "../lib/db";
 import { scoreCompetitorOverlap, scoreCompetitorsOverlap } from "../lib/overlap";
@@ -2618,6 +2619,101 @@ competitorsRouter.get("/:id/customers", async (c) => {
 
 /** How recent a first sighting has to be to still read as a win. */
 const CUSTOMER_WIN_WINDOW_DAYS = 90;
+
+/** Requests carried by the battle-card section. Five is a talking point; ten is a
+ *  backlog nobody reads out loud. */
+const TOP_REQUESTED_SHOWN = 5;
+/** The window "how much have they actually shipped" is asked over. */
+const ROADMAP_DELIVERED_WINDOW_DAYS = 90;
+
+/**
+ * What a competitor's own customers are asking them for, and how much of it they
+ * have shipped (Content Intelligence v2 P5).
+ *
+ * 100% deterministic — vote counts and status labels are the portal's own published
+ * numbers and its own column names, so nothing here can be AI-written. Two readings:
+ *
+ *  - TOP REQUESTED, NOT DELIVERED: their loudest open requests, in vote order. This
+ *    is the one piece of competitive intelligence a rival publishes about its own
+ *    gaps, and it is the ammunition a sales call actually uses.
+ *  - DELIVERED IN THE WINDOW: transitions INTO a delivered status, counted off
+ *    `roadmap_status_events`. Baseline rows are excluded — the first read of a
+ *    portal hands us years of history at once, and counting it would report a
+ *    quarter's delivery for work that shipped in 2024.
+ *
+ * `asOf` is the portal's last capture, and it travels with every list: a vote count
+ * is a number that moves, and stating it without saying when it was read would let
+ * a stale figure be quoted as today's.
+ */
+competitorsRouter.get("/:id/roadmap", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const [requested, delivered, portal] = await Promise.all([
+    db
+      .select({
+        title: contentItems.title,
+        url: contentItems.url,
+        votes: contentItems.votes,
+        status: contentItems.status,
+        statusNormalized: contentItems.statusNormalized,
+      })
+      .from(contentItems)
+      .where(
+        and(
+          eq(contentItems.competitorId, competitor.id),
+          eq(contentItems.sourceType, "roadmap"),
+          isNotNull(contentItems.votes),
+          // `other` stays in: an unrecognised column is one we cannot claim is
+          // finished, and dropping it would quietly shrink the list to the portals
+          // whose vocabulary we happen to know.
+          notInArray(sql`coalesce(${contentItems.statusNormalized}, 'other')`, [
+            "delivered",
+            "closed",
+          ]),
+        ),
+      )
+      .orderBy(desc(contentItems.votes))
+      .limit(TOP_REQUESTED_SHOWN),
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(roadmapStatusEvents)
+      .where(
+        and(
+          eq(roadmapStatusEvents.competitorId, competitor.id),
+          eq(roadmapStatusEvents.toStatus, "delivered"),
+          eq(roadmapStatusEvents.isBaseline, 0),
+          gte(
+            roadmapStatusEvents.occurredAt,
+            sql`now() - make_interval(days => ${ROADMAP_DELIVERED_WINDOW_DAYS})`,
+          ),
+        ),
+      ),
+    db
+      .select({ lastRunAt: monitors.lastRunAt })
+      .from(monitors)
+      .where(and(eq(monitors.competitorId, competitor.id), eq(monitors.sourceType, "roadmap")))
+      .limit(1),
+  ]);
+
+  return c.json({
+    topRequested: requested.map((r) => ({
+      title: r.title,
+      url: r.url,
+      votes: r.votes ?? 0,
+      // The portal's own words first: "Up next" is what their customers read, and
+      // paraphrasing it into our vocabulary would put words in their mouth.
+      status: r.status ?? r.statusNormalized ?? null,
+    })),
+    deliveredLast90d: Number(delivered[0]?.n ?? 0),
+    windowDays: ROADMAP_DELIVERED_WINDOW_DAYS,
+    /** When the portal was last read. Null when it has never been scraped. */
+    asOf: portal[0]?.lastRunAt ? new Date(portal[0].lastRunAt).toISOString() : null,
+  });
+});
 
 /** Timeline page size. The tab asks for one page and then for more. */
 const CONTENT_PAGE_DEFAULT = 20;

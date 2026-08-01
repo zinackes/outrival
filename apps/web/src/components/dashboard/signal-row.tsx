@@ -8,6 +8,7 @@ import { shortAge } from "@/lib/format-date";
 import { sourceLabel } from "@/lib/source-labels";
 import { competitorNameColor } from "@/lib/competitor-color";
 import { SeverityGauge } from "@/components/outrival/severity-scale";
+import { CompAvatar } from "./comp-avatar";
 import { CatText } from "./cat-pill";
 
 type Sev = Signal["severity"];
@@ -46,8 +47,8 @@ export function SignalRow({
   // the rest are -1 (still programmatically focusable by the arrow/j-k handler).
   tabStop?: boolean;
   onFocus?: () => void;
-  // The selection checkbox occupies this row's severity slot (row hover, or a live
-  // selection). Fade the gauge out underneath so the two never overlap — the slot
+  // The selection checkbox occupies this row's avatar slot (row hover, or a live
+  // selection). Fade the avatar out underneath so the two never overlap — the slot
   // is reused instead of reserving a permanent empty gutter left of the list.
   selecting?: boolean;
 }) {
@@ -71,16 +72,34 @@ export function SignalRow({
         selected ? "bg-accent" : "hover:bg-accent/50 focus-visible:bg-accent/50",
       )}
     >
-      <SeverityGauge
-        severity={sev}
-        className={cn(
-          // Fade out only on hover-capable devices — paired with the checkbox
-          // reveal, which is gated the same way (see signals-view renderRow). On
-          // touch the gauge must stay, since no checkbox slides in to replace it.
-          "mt-0.5 shrink-0 transition-opacity [@media(hover:hover)]:group-hover/row:opacity-0",
-          selecting && "opacity-0",
-        )}
-      />
+      {/* Gutter: the band, then whose move it is. The insight opens with the
+          competitor's name, but that is prose — it starts at a different word on
+          every row, so it never forms a column you can scan. The mark does, and
+          it is the same one the roster, the compare view and the battle card use,
+          so identity is learned once.
+          The checkbox now takes the AVATAR's slot, not the gauge's (see
+          signals-view renderRow): severity is the reason a row is worth reading,
+          and it used to blank out on plain hover — the one moment the reader is
+          aiming at that row. Identity is what yields instead, which is also the
+          swap every mail client makes when a list enters selection. */}
+      <span className="flex shrink-0 items-start gap-1.5">
+        <SeverityGauge severity={sev} className="mt-0.5 shrink-0" />
+        <span
+          className={cn(
+            // Fade only on hover-capable devices — paired with the checkbox
+            // reveal, which is gated the same way. On touch the avatar must stay,
+            // since no checkbox slides in to replace it.
+            "transition-opacity [@media(hover:hover)]:group-hover/row:opacity-0",
+            selecting && "opacity-0",
+          )}
+        >
+          <CompAvatar
+            name={signal.competitorName}
+            url={signal.competitorUrl}
+            size={18}
+          />
+        </span>
+      </span>
 
       <span className="min-w-0">
         {/* The finding leads: it's what the reader is scanning for. */}
@@ -103,8 +122,12 @@ export function SignalRow({
           <CatText category={signal.category} />
           {/* L2 provenance marker — this row was reconstructed from the web archive. */}
           {signal.filteredReason === "backfill" && (
+            // Below the 14px floor on purpose: everywhere else the marker sits
+            // NEXT TO the words "From archive" and 14 matches their weight. Here
+            // it is bare on an 11px line, so at 14 the glyph stands ~2x the
+            // x-height and gets read before the source it annotates.
             <ArchiveIcon
-              size={14}
+              size={12}
               className="shrink-0"
               aria-label="From archive"
             />

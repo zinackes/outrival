@@ -127,6 +127,13 @@ export const SOURCE_TYPES = [
   // fixed volume moves between two probes. Kept off the real `pricing` monitor so
   // probe snapshots never enter the chain its content-hash dedup diffs against.
   "pricing_probe",
+  // Shipping-velocity anchor (Content Intelligence v2 P1). INTERNAL, never seeded /
+  // scraped / user-selectable — it anchors the snapshot → change → signal chain when
+  // a competitor's release cadence, counted off the content_items rows their
+  // changelog feed writes, moves against its own trailing months. Kept off the real
+  // `changelog` monitor so velocity snapshots never enter the chain its content-hash
+  // dedup diffs against. Kept in sync with the DB source_type enum.
+  "shipping_velocity",
   // Developer documentation — the competitor's technical roadmap surface. USER-
   // SELECTABLE (pro+), enabled through the standard enable route with an optional
   // URL override. Structured-first, two modes: (1) an OpenAPI/Swagger spec is found

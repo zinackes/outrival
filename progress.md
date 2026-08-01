@@ -1451,3 +1451,71 @@ une fixture poussée à la main dans dev.
 **Prochaine session** : P4 — couverture (parseur JSON-LD JobPosting générique
 structured-first + compteur de détections-sans-adapter + 2-3 adapters EU).
 NE PAS commencer sans /clear.
+
+---
+
+### 2026-08-01 : Content Intelligence v2, P1 (`content_items`, changelog typé, vélocité de shipping), L
+
+**Objectif** : donner une MÉMOIRE aux sources éditoriales. Blog/changelog/docs/roadmap
+produisaient un snapshot, un diff et un paragraphe, et rien ne s'accumulait : aucune
+table pour demander « combien de releases le mois dernier », aucun moyen de distinguer
+un breaking change d'une retouche de copy, et le `product_hint` du bloc Hiring promettait
+une corroboration « changelog/docs récents » qui n'avait aucune table à interroger.
+
+**Réalisé** :
+- **`content_items` (migration 0064)** : une ligne par item publié, clé sur l'id du
+  PUBLIEUR (guid de feed, id d'entrée de portail), jamais dérivée du titre ni de la date
+  qu'un éditeur peut changer sans rien publier. Écriture EN PLUS : le chemin
+  snapshot → diff → classify reste le plancher, aucune capture ne produit un change
+  différent d'avant. Pas de table `case_studies` (P3).
+- **Ingestion zéro IA** : les deux scrapers synthétisaient DÉJÀ leur snapshot depuis de la
+  donnée structurée, donc chacun écrit cette structure dans un îlot JSON et le job la
+  re-lit, au lieu de re-parser de la prose depuis le listing rendu. L'îlot est un
+  `<script>`, retiré par `extractContent` AVANT le hash : il ne peut pas déplacer un
+  content hash ni fabriquer un change (test dédié). Constructeur et lecteur du format
+  vivent dans le même module. Séparés, un champ renommé dériverait en silence et
+  l'ingestion deviendrait muette.
+- **Typage** : mots-clés EN+FR+DE d'abord, avec précédence (une note qui « corrige un
+  breaking change sur un endpoint déprécié » est d'abord une rupture), puis batches de 10
+  vers le modèle, cap 40/run, loggé `type_content_items`. **Le modèle ne peut pas
+  répondre breaking/deprecation/security** : son énumération est feature|improvement|fix.
+  Aucune alerte de cette feature ne dépend donc de son jugement.
+- **`breaking_change` / `deprecation`** : prend le change du changelog LUI-MÊME.
+  `signals.changeId` est unique, donc enqueuer classify en parallèle du chemin
+  déterministe en perdrait un en silence : scrape-monitor DÉFÈRE le classify, comme pour
+  pricing, et tout chemin qui n'émet pas rend le change au classifieur lexical.
+  high si le workspace surveille des docs quelque part, sinon medium.
+- **`shipping_velocity_shift`** : ancre dédiée. Trois gardes non réglables, chacune étant
+  la différence entre une lecture et une fausse alerte mensuelle : mois TERMINÉS
+  seulement (un mois vieux de 3 jours contre trois mois pleins annonce un gel produit
+  chez tout le monde le 3 du mois) · aucun mois antérieur à l'entrée la plus ancienne
+  détenue (un feed sert ses N dernières entrées, donc les mois d'avant se lisent zéro
+  alors qu'ils sont NON OBSERVÉS) · une seule émission par épisode. Medium, jamais
+  critical.
+- **Fact blocks** : le signal nomme les entrées exactes (titre + date + lien + type).
+  `shipping_velocity` lit le rawDiff du change plutôt que de recalculer : sinon les
+  nombres affichés contrediraient la phrase au-dessus d'eux dès que le feed publie.
+
+**Fichiers** : `packages/db/src/schema/content-items.ts` + migration 0064 ·
+`packages/scrapers/src/content/{types,parse,changelog-type,velocity,index}.ts` (+ test) ·
+`packages/ai/src/tasks/type-content-items.ts` ·
+`apps/workers/src/core/ingest-content-items.ts` + job + handler + hooks scrape-monitor ·
+`apps/api/src/lib/signal-facts.ts` · `apps/web/src/components/outrival/signal-facts.tsx`.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · `pnpm test` ✓ (12/12, 883 scrapers dont 24 neufs,
+261 api). Les cas qui comptent sont ceux qui NE tirent PAS : sous le plancher de 8 items,
+sans historique, sur des mois non observés, et sur une rampe soutenue.
+
+**Landmine journal drizzle (encore)** : l'horloge de cette machine est ~13,7 h DERRIÈRE
+les `when` de 0060-0063, donc `db:generate` a stampé 0064 sous le dernier appliqué. La
+migration aurait été SAUTÉE en silence en annonçant « Migrations applied ». `when` bumpé
+à la main à 1785614302239 (1 ms après 0063).
+
+**Reste côté humain** :
+- Migration 0064 **PAS appliquée** (ni dev ni prod). Pré-vol `PENDING` avant tout
+  `db:migrate` sur un env partagé.
+- Env vars optionnelles `SHIPPING_VELOCITY_THRESHOLD` / `_MIN_ITEMS` (défauts 0.5 / 8).
+- Aucun signal vu tourner en dev : la chaîne n'a pas encore de capture réelle derrière.
+
+**Prochaine session** : P2, blog feed-first + fetch des nouveaux posts + enrichissement
+batché + `competitor_named_you`. NE PAS commencer sans /clear.

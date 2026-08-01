@@ -600,7 +600,33 @@ export type SignalFacts =
       roles: BandRoleFact[];
       rolesTotal: number;
     }
+  | {
+      /** What they published, named (Content Intelligence v2 P1). `velocity` is
+       * set on a shipping-cadence signal and null on a changelog one. */
+      kind: "content";
+      entries: ContentEntryFact[];
+      entriesTotal: number;
+      velocity: VelocityFact | null;
+    }
   | null;
+
+export interface ContentEntryFact {
+  title: string;
+  url: string | null;
+  /** "YYYY-MM-DD" as the publisher dated it, or null when the feed dated nothing. */
+  publishedAt: string | null;
+  /** feature | improvement | fix | breaking | deprecation | security */
+  itemType: string | null;
+}
+
+export interface VelocityFact {
+  /** "YYYY-MM" — the complete month that crossed. */
+  month: string;
+  count: number;
+  baselineAvg: number;
+  direction: "accelerating" | "slowing";
+  baseline: Array<{ month: string; count: number }>;
+}
 
 export interface BandRoleFact {
   title: string;

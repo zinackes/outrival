@@ -11,7 +11,72 @@
 // a prose judgement that drifts with the provider. See materiality.ts for the
 // mapping table.
 
-export const MATERIALITY_RUBRIC = `<materiality-rubric>
+// Human-readable page type, shared by the `<context>` line ("this change was
+// detected on: …") and by the corroboration labels below, so one surface is named
+// the same way wherever the prompt mentions it.
+export const SOURCE_LABELS: Record<string, string> = {
+  homepage: "homepage / landing page",
+  pricing: "pricing page",
+  blog: "blog or changelog index",
+  changelog: "changelog",
+  jobs: "careers / jobs page",
+  g2_reviews: "G2 reviews page",
+  capterra_reviews: "Capterra reviews page",
+  appstore_reviews: "App Store reviews page",
+  github_repo: "GitHub repository",
+  linkedin: "LinkedIn page",
+  twitter: "X / Twitter profile",
+  subdomains: "list of the competitor's live subdomains (Certificate Transparency)",
+  youtube: "the competitor's YouTube channel — a new video it published (marketing / content)",
+  custom: "a specific page on the competitor's site",
+};
+
+/** One already-recorded move, as the corroboration axis needs to see it. */
+export interface CorroborationSurface {
+  category: string;
+  severity: string;
+  /** The monitor source the earlier signal came from — what makes it INDEPENDENT. */
+  sourceType: string | null;
+  ageDays: number;
+}
+
+/**
+ * A recorded move rendered as a LABEL, never as prose.
+ *
+ * These lines used to carry the earlier signal's insight sentence, and that is how
+ * a classification about App Store reviews came back describing a competitor's
+ * 14-day free trial: the diff was an unreadable 50 KB JSON blob, so the fast model
+ * answered with the most quotable sentence in its context, which happened to be a
+ * neighbouring signal (prod signal fdd882b1, 2026-07-30). The axis only ever needed
+ * to COUNT independent surfaces and see whether they sit on the same topic, so the
+ * line carries a category, a surface and an age, and nothing a model could
+ * paraphrase into an answer.
+ */
+export function formatCorroborationSurface(s: CorroborationSurface): string {
+  const surface = s.sourceType ? (SOURCE_LABELS[s.sourceType] ?? s.sourceType) : "unknown surface";
+  return `${s.category} | ${surface} | ${s.ageDays}d ago | ${s.severity}`;
+}
+
+/**
+ * The `<recent-signals>` block, built the same way for both classifiers. Returns
+ * "" when nothing is recorded, so the caller drops the block instead of showing an
+ * empty one.
+ */
+export function buildRecentSignalsBlock(labels: string[]): string {
+  const recent = labels.slice(0, 5).map((s) => `- ${s.slice(0, 160)}`);
+  if (recent.length === 0) return "";
+  return `<recent-signals>
+Moves already recorded for this competitor recently, one per line, as
+"category | surface | age | severity". These are LABELS, not content: use them ONLY
+to count the other independent surfaces for the corroboration score. They describe
+OTHER changes, never the one below, so never quote them, paraphrase them, or answer
+from them.
+${recent.join("\n")}
+</recent-signals>
+`;
+}
+
+export const MATERIALITY_RUBRIC =`<materiality-rubric>
 Do NOT assign a severity, a priority, or an alert level. You score three axes and
 nothing else; the severity is computed from your scores downstream.
 

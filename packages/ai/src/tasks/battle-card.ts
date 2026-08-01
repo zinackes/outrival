@@ -72,6 +72,19 @@ export interface BattleCardInput {
     } | null;
     complaintThemes?: Array<{ theme: string; prevalence: string }> | null;
   } | null;
+  /**
+   * Who the competitor publishes as its customers (Content Intelligence v2 P3):
+   * the markets its case studies are set in, and the names it lists in public.
+   * Read from their own pages, so a claim built on it is traceable to something
+   * they wrote. null when we hold no customer proof for them.
+   */
+  competitorCustomers?: {
+    verticals: Array<{ label: string; count: number }>;
+    /** Names as they wrote them, most recently first seen first. */
+    names: string[];
+    storiesTotal: number;
+    customersTotal: number;
+  } | null;
   reviewComplaints: string[];
   reviewPraises: string[];
   recentSignals: Array<{ category: string; severity: string; insight: string }>;
@@ -103,6 +116,7 @@ interface EvidenceBlocks {
   trialBlock: string | null;
   competitorTechBlock: string | null;
   reviewScoreBlock: string | null;
+  customersBlock: string | null;
   myHomepage: string | null;
   competitorHomepage: string | null;
   focusNote: string;
@@ -174,6 +188,30 @@ export function computeBlocks(input: BattleCardInput): EvidenceBlocks {
     return parts.length ? parts.join("\n") : null;
   })();
 
+  // Their published customer proof. Counts travel with the lists: a vertical
+  // distribution over three stories is a fact about three stories, and a block that
+  // hid its n would let the model write "they dominate fintech" off one case study.
+  const customersBlock = (() => {
+    const c = input.competitorCustomers;
+    if (!c || (c.customersTotal === 0 && c.storiesTotal === 0)) return null;
+    const parts: string[] = [];
+    if (c.verticals.length > 0) {
+      parts.push(
+        `Markets their ${c.storiesTotal} published case ${
+          c.storiesTotal === 1 ? "study is" : "studies are"
+        } set in: ${c.verticals.map((v) => `${v.label} (${v.count})`).join(", ")}`,
+      );
+    }
+    if (c.names.length > 0) {
+      parts.push(
+        `Customers they name in public (${c.customersTotal} in total): ${c.names
+          .slice(0, 12)
+          .join(", ")}`,
+      );
+    }
+    return parts.length ? parts.join("\n") : null;
+  })();
+
   const myHomepage = input.myProduct.homepageExcerpt?.trim()
     ? input.myProduct.homepageExcerpt.trim().slice(0, 3500)
     : null;
@@ -198,6 +236,7 @@ export function computeBlocks(input: BattleCardInput): EvidenceBlocks {
     trialBlock,
     competitorTechBlock,
     reviewScoreBlock,
+    customersBlock,
     myHomepage,
     competitorHomepage,
     focusNote,
@@ -233,6 +272,7 @@ export function evidenceBlock(input: BattleCardInput, b: EvidenceBlocks): string
     competitorPricing ? `Pricing:\n${competitorPricing}` : null,
     b.competitorTechBlock ? `Tech stack (detected on their site):\n${b.competitorTechBlock}` : null,
     b.reviewScoreBlock ? `Reviews:\n${b.reviewScoreBlock}` : null,
+    b.customersBlock ? `Published customer proof:\n${b.customersBlock}` : null,
     b.competitorHomepage ? `Homepage excerpt:\n${b.competitorHomepage}` : null,
   ].filter(Boolean);
 
@@ -280,6 +320,7 @@ export function evidenceSourceText(input: BattleCardInput, b: EvidenceBlocks): s
     competitorPricing ? `Competitor pricing:\n${competitorPricing}` : "",
     b.competitorTechBlock ? `Competitor tech stack:\n${b.competitorTechBlock}` : "",
     b.reviewScoreBlock ? `Competitor reviews:\n${b.reviewScoreBlock}` : "",
+    b.customersBlock ? `Competitor published customer proof:\n${b.customersBlock}` : "",
     b.competitorHomepage ? `Competitor homepage:\n${b.competitorHomepage}` : "",
     b.praisesBlock ? `What their customers love:\n${b.praisesBlock}` : "",
     b.complaintsBlock ? `What their customers complain about:\n${b.complaintsBlock}` : "",

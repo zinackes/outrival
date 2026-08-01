@@ -1809,3 +1809,69 @@ cherry-pick du commit P2, migration régénérée en `0066_careless_kabuki`.
 **Prochaine session** : P3, case studies & customers (`case_studies`,
 `case_study_published`, `customer_win`, section battle card « Their customers »).
 NE PAS commencer sans /clear.
+
+---
+
+### 2026-08-01 — Content Intelligence v2 P3 : case studies & customers — ~4 h
+
+**Objectif** : lire ce qu'un concurrent publie sur ses CLIENTS. Les logos homepage
+(patch-17) disaient combien ; ils ne disaient ni qui, ni dans quel marché, ni pour
+quel résultat — c'est-à-dire l'intégralité de ce qu'une équipe sales demande quand un
+rival sort une histoire client.
+
+**Réalisé** :
+- `case_studies` + `known_customers` (migration 0067) + valeur d'enum `customer_proof`.
+- `@outrival/shared/industry-catalog` : ~32 slugs canoniques + alias EN/FR/DE, patron
+  `entitlement-catalog` (données + résolveur pur + tests). `resolveUserIndustry` lit
+  `audience` AVANT `category` — la question est à qui le workspace VEND.
+- `@outrival/shared/customer-name` : la clé du registre. Normalisation délibérément
+  CONSERVATRICE (suffixe légal retiré en fin de nom seulement).
+- `@outrival/scrapers/content/customers.ts` (pur) : patterns d'URL EN/FR/DE/ES, mur de
+  logos par `<img alt>`, liens de stories même-host, `looksLikeCustomersIndex`,
+  `planCustomersRun`, `applyCaseStudyGuards`.
+- `packages/ai/tasks/extract-case-studies.ts` (batches de 5) + job worker
+  `ingest-case-studies` + job queue + handler + les deux points d'entrée (branche
+  sitemap de scrape-monitor, ingest-blog-posts sur un post typé `case_study`).
+- Signaux `case_study_published` (content, high seulement sur double slug canonique
+  égal) et `customer_win` (partnerships, medium, UN groupé par run).
+- Read side : `buildSignalFacts` kinds `case_study` / `customer_win` + leurs deux
+  rendus web, `GET /api/competitors/:id/customers`, section battle card « Their
+  customers » (patron Packaging, zéro modèle) et les mêmes faits injectés dans
+  l'évidence groundée de `battle-card.ts`.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · `pnpm test` ✓ (12/12 ; +14 shared, +13 scrapers,
++8 workers sur PGlite, +5 api). Ce qui compte est ce qui NE tire PAS : la baseline d'un
+concurrent à 15 case studies (0 signal, registre peuplé), le logo retiré, le client déjà
+au registre, l'histoire anonymisée, et le high rendu impossible quand le marché du user
+est inconnu.
+
+**Deux vrais défauts trouvés PAR les tests, pas avant** :
+1. `classifyLogoName` ne rejette pas un alt qui est une URL — il fallait la garde
+   `looksLikeAsset` que le mur homepage applique déjà en amont.
+2. Le match du nom client insensible à la casse acceptait « European Bank » sur une
+   page qui écrit « a leading European bank ». Le match est désormais SENSIBLE À LA
+   CASSE : un nom de client est un nom propre, la description dont il a été tiré ne
+   l'est pas. Coût assumé : un nom que la page n'écrit qu'en bas de casse ou en
+   capitales est droppé — le sens sûr, et le mur de logos le rattrape en général.
+
+**Un troisième s'est révélé en écrivant le test de sévérité** : la baseline comptait le
+seul registre, donc un concurrent dont toutes les histoires sont anonymisées serait
+resté en baseline à VIE et n'aurait jamais signalé. Le compteur porte sur les deux tables.
+
+**Landmine journal drizzle (4e fois)** : `db:generate` a de nouveau stampé 0067 SOUS
+0066 (`when` 1785581887784 < 1785614303239). `db:realign-journal` ne l'attrape pas — il
+compare au ledger DB, et une migration non encore appliquée n'y est pas. Corrigé à la
+main à 1785614303240. À vérifier à CHAQUE `db:generate` sur ce poste.
+
+**Migration 0067 APPLIQUÉE EN PROD** (2026-08-01). Pré-vol lu avant : 67 lignes au
+ledger, 68 au journal, UNE seule PENDING, zéro hash orphelin. Après : 68/68, drift 0,
+les deux tables + les 6 index + la valeur d'enum `customer_proof` vérifiés
+structurellement. La DB de DEV ne l'a PAS — à appliquer avant de relancer `pnpm dev`.
+
+**Reste côté humain** :
+- `db:migrate` sur la branche Neon de dev, puis déployer workers + api + web.
+- P3 dépend de P2 : la voie blog n'alimente rien tant que #393 n'est pas déployée
+  (mergée sur main le 01/08, pas encore en prod côté workers).
+
+**Prochaine session** : P4, éditorial & Content tab (`editorial_pivot` + maquette
+artifact OBLIGATOIRE avant câblage, décision 3 de la card). NE PAS commencer sans /clear.

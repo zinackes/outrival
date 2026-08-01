@@ -608,7 +608,46 @@ export type SignalFacts =
       entriesTotal: number;
       velocity: VelocityFact | null;
     }
+  | {
+      /** The customer story a competitor published (Content Intelligence v2 P3). */
+      kind: "case_study";
+      title: string | null;
+      url: string;
+      /** Null on an anonymised story — a fact about the story, not a gap. */
+      customerName: string | null;
+      industry: string | null;
+      /** Their customer is in the reader's own market (both canonical slugs). */
+      sameMarket: boolean;
+      /** Result claims VERBATIM from the page. */
+      metrics: string[];
+    }
+  | {
+      /** Customers named for the first time (Content Intelligence v2 P3). */
+      kind: "customer_win";
+      customers: CustomerFact[];
+      customersTotal: number;
+      evidenceUrl: string | null;
+    }
   | null;
+
+export interface CompetitorCustomers {
+  /** Canonical markets only, most-published first. */
+  verticals: Array<{ slug: string; label: string; count: number }>;
+  /** Customers first seen inside the window, newest first. */
+  wins: Array<{ name: string; firstSeenAt: string; evidenceUrl: string | null }>;
+  /** The oldest names we hold — references they have had the longest. */
+  marquee: Array<{ name: string; firstSeenAt: string }>;
+  storiesTotal: number;
+  customersTotal: number;
+  windowDays: number;
+}
+
+export interface CustomerFact {
+  name: string;
+  /** "YYYY-MM-DD" — when WE first saw them, the only date we have. */
+  firstSeenAt: string | null;
+  evidenceUrl: string | null;
+}
 
 export interface ContentEntryFact {
   title: string;
@@ -2892,6 +2931,11 @@ export const api = {
     `${BASE}/api/competitors/${id}/calculator-evidence?unit=${encodeURIComponent(unit)}&qty=${qty}`,
   // Features × plans matrix (P2): the two most recent entitlement batches, so
   // the Packaging fold can render the matrix and highlight what moved.
+  // Content Intelligence v2 P3 — who this competitor publishes as its customers:
+  // the markets its stories are set in, the names first seen recently, and the
+  // ones that were already on the wall. Every list travels with its own n.
+  getCompetitorCustomers: (id: string) =>
+    request<CompetitorCustomers>(`/api/competitors/${id}/customers`),
   getCompetitorEntitlements: (id: string) =>
     request<{
       current: EntitlementCell[];

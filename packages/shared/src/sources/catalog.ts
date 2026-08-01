@@ -143,6 +143,19 @@ export const RETIRED_SOURCES: readonly SourceType[] = [
  */
 export const UNIMPLEMENTED_SOURCES: readonly SourceType[] = ["linkedin", "twitter"];
 
+const NO_SCRAPER_SET = new Set<SourceType>([...RETIRED_SOURCES, ...UNIMPLEMENTED_SOURCES]);
+
+/**
+ * Whether a monitor on this source can never run, because nothing is bound to it in
+ * the scraper registry. A retired source leaves live monitor rows behind, and those
+ * rows fail with `No scraper for source type: …`, exhaust the 3 strikes and pause —
+ * at which point the unscrapable re-arm wakes them every 7 days to fail again, for
+ * good. The re-arm exists for a source that was merely DOWN; this one is gone.
+ */
+export function hasNoScraper(source: SourceType): boolean {
+  return NO_SCRAPER_SET.has(source);
+}
+
 /** Flat list of every source that gets a configurable row, in display order. */
 export const ALL_CONFIGURABLE_SOURCES: readonly SourceType[] = SOURCE_GROUPS.flatMap(
   (g) => CONFIGURABLE_SOURCES[g],

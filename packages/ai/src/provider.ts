@@ -3,8 +3,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { AITaskConfig } from "./config";
 import { aiEnv } from "./env";
 import {
+  estimateRequestTokens,
   loadProviders,
   pickProvider,
+  providersAcceptingSize,
   trackUsage,
   tripBreaker,
   type Provider,
@@ -246,7 +248,31 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
   const breaker = await checkGlobalBreaker();
   if (breaker.open) throw new AIUnavailableError(breaker.reason ?? "ai_unavailable");
 
-  const maxAttempts = Math.max(1, loadProviders().length);
+  // Size the request BEFORE choosing anyone. A provider that publishes a per-request
+  // ceiling below it will answer 413 every single time, so attempting it is not a
+  // failover, it is a round trip spent to be told what we already knew — and it
+  // burned the pool's last slot, which is how one oversized prompt came back as
+  // "all_providers_failed" (measured: 430 such calls in a week, 198 of them
+  // generate_extractor against Groq's 8000-token free ceiling with a ~12k prompt).
+  const maxTokens = options.maxTokens ?? 1024;
+  const requestTokens = estimateRequestTokens(
+    (options.system ?? "") + options.prompt,
+    maxTokens,
+  );
+  const eligible = providersAcceptingSize(loadProviders(), requestTokens);
+  if (eligible.length === 0) {
+    // Nothing is down: the prompt is simply bigger than anything the pool serves.
+    // Say so without spending a call, and without recordFailure — an oversized task
+    // must never look like an outage.
+    const ceilings = loadProviders()
+      .map((p) => `${p.id}:${p.maxRequestTokens ?? "unbounded"}`)
+      .join(", ");
+    throw new AIUnavailableError(
+      `ai_request_too_large: ~${requestTokens} tokens exceeds every provider's per-request ceiling (${ceilings || "pool empty"})`,
+    );
+  }
+
+  const maxAttempts = Math.max(1, eligible.length);
   let lastErr: unknown;
   // Track WHY the pool was exhausted: a config-only wipe (every provider 401/403/404)
   // is an env mistake to surface loudly, not the transient infra distress the generic
@@ -265,8 +291,8 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
   // regardless of Redis: each picked provider is excluded from the next pick.
   const tried = new Set<string>();
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const provider = await pickProvider(tried);
-    if (!provider) break; // every provider exhausted, in breaker, or already tried
+    const provider = await pickProvider(tried, requestTokens);
+    if (!provider) break; // every eligible provider exhausted, in breaker, or already tried
     tried.add(provider.id);
     markProvider(provider.id);
     // A "fast"-tier task (classify-change, overlap scoring) routes to the
@@ -291,7 +317,7 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
             : []),
           { role: "user" as const, content: options.prompt },
         ],
-        max_tokens: options.maxTokens ?? 1024,
+        max_tokens: maxTokens,
         ...(options.json && { response_format: { type: "json_object" as const } }),
         // Only sent for reasoning models (gpt-oss) — never for Llama (undefined).
         ...(reasoningEffort && { reasoning_effort: reasoningEffort }),

@@ -20,6 +20,16 @@ export interface Provider {
   fastModel?: string; // optional cheap small (8B-class) model on the same endpoint
   tier: "free" | "paid";
   dailyTokenQuota: number;
+  /**
+   * Biggest SINGLE request this provider will accept, in tokens — distinct from the
+   * daily quota, which is a budget. Groq's free tier caps one request at its 8000
+   * tokens-per-minute allowance and answers 413 above it, so a task whose prompt is
+   * structurally bigger can NEVER succeed there however many times it is retried:
+   * `generate_extractor` sends ~12k tokens of pruned HTML and failed 198 times on
+   * Groq in a week while succeeding 206 times on Cerebras. Unset = no ceiling known,
+   * which is today's behaviour (attempt it and let the provider answer).
+   */
+  maxRequestTokens?: number;
   priority: number; // lower = tried first (free before paid)
   // Optional override for reasoning models (gpt-oss). Unset → callLLM auto-picks
   // "low" for gpt-oss (cheapest, validated equal quality) and sends nothing for
@@ -60,6 +70,7 @@ export function loadProviders(): Provider[] {
     const baseUrl = process.env[`AI_PROVIDER_${i}_BASE_URL`]?.trim();
     if (!id || !apiKey || !baseUrl) continue;
     const re = process.env[`AI_PROVIDER_${i}_REASONING_EFFORT`]?.trim();
+    const maxReq = Number(process.env[`AI_PROVIDER_${i}_MAX_REQUEST_TOKENS`] ?? 0);
     providers.push({
       id,
       baseUrl,
@@ -68,6 +79,7 @@ export function loadProviders(): Provider[] {
       fastModel: process.env[`AI_PROVIDER_${i}_FAST_MODEL`]?.trim() || undefined,
       tier: process.env[`AI_PROVIDER_${i}_TIER`] === "paid" ? "paid" : "free",
       dailyTokenQuota: Number(process.env[`AI_PROVIDER_${i}_DAILY_TOKEN_QUOTA`] ?? 500000),
+      maxRequestTokens: Number.isFinite(maxReq) && maxReq > 0 ? maxReq : undefined,
       priority: Number(process.env[`AI_PROVIDER_${i}_PRIORITY`] ?? 99),
       reasoningEffort: re === "low" || re === "medium" || re === "high" ? re : undefined,
     });
@@ -163,14 +175,40 @@ function todayKey(): string {
 }
 
 /**
- * Pick the next available provider by priority (free before paid). Skips providers
- * exhausted today (>= 95% of their token quota), in circuit breaker, or in `exclude`
- * (providers the current callLLM loop has already tried — Redis-independent failover,
- * see callLLM). Round-robins only between providers sharing the best available
- * priority. Returns null when none are usable (→ caller trips the global breaker).
+ * Rough token count for a request, from characters. ~4 chars/token is the standard
+ * English approximation and it UNDER-estimates markup-heavy payloads, which is the
+ * safe direction here: the number only ever decides whether to SKIP a provider, so
+ * erring low means we still attempt a borderline call and let the provider answer.
+ * The reply budget counts too — the free tiers bill a request's `max_tokens` against
+ * the same allowance they refuse it with. Pure.
  */
-export async function pickProvider(exclude?: ReadonlySet<string>): Promise<Provider | null> {
-  const providers = loadProviders();
+export function estimateRequestTokens(text: string, maxTokens: number): number {
+  return Math.ceil(text.length / 4) + maxTokens;
+}
+
+/**
+ * The providers that could accept a request of this size at all. A provider whose
+ * published per-request ceiling is below it is not "unavailable", it is structurally
+ * wrong for this task — attempting it buys a guaranteed 413 and, worse, a wasted
+ * failover slot that makes an oversized prompt look like an outage. Pure.
+ */
+export function providersAcceptingSize(providers: Provider[], requestTokens: number): Provider[] {
+  return providers.filter((p) => !p.maxRequestTokens || requestTokens <= p.maxRequestTokens);
+}
+
+/**
+ * Pick the next available provider by priority (free before paid). Skips providers
+ * exhausted today (>= 95% of their token quota), in circuit breaker, in `exclude`
+ * (providers the current callLLM loop has already tried — Redis-independent failover,
+ * see callLLM), or too small for `requestTokens`. Round-robins only between providers
+ * sharing the best available priority. Returns null when none are usable (→ caller
+ * trips the global breaker).
+ */
+export async function pickProvider(
+  exclude?: ReadonlySet<string>,
+  requestTokens = 0,
+): Promise<Provider | null> {
+  const providers = providersAcceptingSize(loadProviders(), requestTokens);
   if (providers.length === 0) return null;
   const today = todayKey();
 

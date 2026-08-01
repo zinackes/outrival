@@ -25,6 +25,23 @@ function str(x: unknown): string {
   return typeof x === "string" ? x.trim() : "";
 }
 
+/**
+ * Whether a bare host is plausibly a status page rather than the company's own site.
+ * The vendor domains are proof; a `status.`/`statuspage.` label is the convention
+ * every self-hosted one follows. Pure.
+ */
+function looksLikeStatusHost(host: string): boolean {
+  const h = host.toLowerCase();
+  return (
+    h.endsWith(".statuspage.io") ||
+    h.endsWith(".instatus.com") ||
+    h.endsWith(".statuspal.io") ||
+    h.endsWith(".betteruptime.com") ||
+    h.endsWith(".status.io") ||
+    /^(status|statuspage|health|uptime)\./.test(h)
+  );
+}
+
 /** Resolve the status host from the profile value ("statuspage:<host>" /
  *  "instatus:<slug>") or the monitor URL. Null when nothing usable. Exported for tests. */
 export function resolveHost(url: string, profileValue: string | undefined): { host: string; instatus: boolean } | null {
@@ -39,7 +56,16 @@ export function resolveHost(url: string, profileValue: string | undefined): { ho
   }
   try {
     const host = new URL(url.includes("://") ? url : `https://${url}`).host;
-    return host ? { host, instatus: host.endsWith(".instatus.com") } : null;
+    // The fallback URL is `monitor.config.url ?? competitor.url`, so when detection
+    // never resolved a status page it is the competitor's MARKETING host — and every
+    // host parses, so this branch always returned something and the source could
+    // never reach its own "no resolvable status host" verdict. What it did instead
+    // was ask sendible.com and buffer.com for /api/v2/summary.json forever (406, 404)
+    // until three strikes paused them. Requiring the host to look like a status
+    // surface turns that into the neutral absence the coverage layer already knows
+    // how to render (NO_TARGET_MARKERS).
+    if (!host || !looksLikeStatusHost(host)) return null;
+    return { host, instatus: host.endsWith(".instatus.com") };
   } catch {
     return null;
   }

@@ -8,6 +8,8 @@
 // per interval: the next scrape either succeeds (the success path clears
 // markedUnscrapable + consecutiveFailures) or fails again and re-pauses it.
 
+import { hasNoScraper, type SourceType } from "@outrival/shared";
+
 const DAY_MS = 86_400_000;
 
 export const REARM_INTERVAL_DAYS = Number(process.env.UNSCRAPABLE_REARM_DAYS ?? 7);
@@ -17,6 +19,7 @@ export interface RearmCandidate {
   isActive: boolean;
   markedUnscrapable: boolean;
   lastFailedAt: Date | null;
+  sourceType: SourceType;
 }
 
 /**
@@ -36,6 +39,12 @@ export function rearmableMonitorIds(
       (m) =>
         m.markedUnscrapable &&
         !m.isActive &&
+        // A monitor on a retired source has nothing to be re-probed BY: the scraper
+        // registry has no binding, so it fails `No scraper for source type: …` the
+        // instant it wakes and pauses again. Re-arming it every 7 days is a loop with
+        // no exit (prod: two trustpilot_reviews monitors at 5 and 6 consecutive
+        // failures on a source retired in July).
+        !hasNoScraper(m.sourceType) &&
         m.lastFailedAt != null &&
         m.lastFailedAt.getTime() <= cutoff,
     )

@@ -59,3 +59,20 @@ test("renders a stable doc independent of component/incident order", () => {
   expect(a.text).toContain("- API: operational");
   expect(a.text).toContain("Active incidents:");
 });
+
+test("a marketing host is not a status page, it is the absence of one", () => {
+  // The fallback is `monitor.config.url ?? competitor.url`, so with no detected
+  // status page it is the competitor's own site — and every host parses, so this
+  // used to return one and the source asked sendible.com and buffer.com for
+  // /api/v2/summary.json until three strikes paused them (406, 404 on prod).
+  expect(resolveHost("https://sendible.com", undefined)).toBeNull();
+  expect(resolveHost("https://www.buffer.com/", undefined)).toBeNull();
+
+  // Conventions and vendor domains still resolve without a detected profile.
+  expect(resolveHost("https://health.acme.com", undefined)?.host).toBe("health.acme.com");
+  expect(resolveHost("https://acme.statuspage.io", undefined)?.host).toBe("acme.statuspage.io");
+  expect(resolveHost("https://acme.instatus.com", undefined)).toEqual({
+    host: "acme.instatus.com",
+    instatus: true,
+  });
+});

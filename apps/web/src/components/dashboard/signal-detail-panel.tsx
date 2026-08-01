@@ -52,7 +52,7 @@ import { SeverityScale } from "@/components/outrival/severity-scale";
 import { AiOutputWarning } from "@/components/outrival/ai-output-warning";
 import { VisualDiff } from "@/components/outrival/visual-diff";
 import { ChangeBreakdown } from "@/components/outrival/change-breakdown";
-import { DiffPreview } from "@/components/outrival/diff-preview";
+import { DiffPreview, countDiffLines } from "@/components/outrival/diff-preview";
 import { SignalFacts } from "@/components/outrival/signal-facts";
 
 /**
@@ -265,10 +265,10 @@ export function SignalDetailPanel({
   // breakdown, which is most of them, this is what makes the Evidence section
   // exist at all: without it a jobs or pricing signal showed the reader no fact.
   const diffText = detail?.diffText ?? null;
-  // Exact: the API sends one marked line per line, already capped per side.
-  const diffLineCount = diffText
-    ? diffText.split("\n").filter((l) => l.trim().length > 0).length
-    : 0;
+  // What the render will actually produce, not what the payload contains: the
+  // control promises a number the reader then counts, so it has to be the
+  // parser's count with the same denoising applied.
+  const diffLineCount = diffText ? countDiffLines(diffText, true) : 0;
   // Hacker News only: the numbers that say whether the post landed, plus the
   // thread. Stored on the change since the source shipped, read here for the
   // first time.
@@ -748,6 +748,7 @@ export function SignalDetailPanel({
                     diffText={diffText}
                     maxLines={showAllLines ? DIFF_LINES_EXPANDED : DIFF_LINES_COLLAPSED}
                     hideTruncationNote={diffLineCount > DIFF_LINES_COLLAPSED}
+                    denoise
                   />
                   {diffLineCount > DIFF_LINES_COLLAPSED && (
                     <button

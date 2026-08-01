@@ -4,8 +4,9 @@ import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { splitDiffText } from "@outrival/shared";
 import { eyebrowClass } from "@/components/outrival/eyebrow";
+import { denoiseDiffLines, type DiffLine } from "@/lib/diff-denoise";
 
-export type DiffLine = { kind: "add" | "remove"; text: string };
+export type { DiffLine };
 
 /**
  * Render a persisted diff as sided lines.
@@ -25,17 +26,31 @@ export type DiffLine = { kind: "add" | "remove"; text: string };
  * prevent. Reserving half the budget per side keeps a long removal run from
  * starving the additions even under the cap, and either side may spend the other's
  * unused slack, so a one-sided change still fills the space.
+ *
+ * `denoise` drops the page chrome (see `denoiseDiffLines`). It runs BEFORE the
+ * budget is split, or the cap would be spent on the cookie notice and the news
+ * would sit behind the fold.
  */
 export function parseDiff(
   diffText: string,
   maxLines = 18,
+  denoise = false,
 ): { lines: DiffLine[]; truncated: boolean } {
   const { removed, added } = splitDiffText(diffText);
 
   const clean = (block: string[]) =>
     block.map((raw) => stripHtml(raw).trim()).filter((text) => text.length > 0);
-  const addedLines = clean(added);
-  const removedLines = clean(removed);
+  let addedLines = clean(added);
+  let removedLines = clean(removed);
+
+  if (denoise) {
+    const kept = denoiseDiffLines([
+      ...addedLines.map((text) => ({ kind: "add" as const, text })),
+      ...removedLines.map((text) => ({ kind: "remove" as const, text })),
+    ]);
+    addedLines = kept.filter((l) => l.kind === "add").map((l) => l.text);
+    removedLines = kept.filter((l) => l.kind === "remove").map((l) => l.text);
+  }
 
   // Half each, then hand the unused half to the other side.
   const half = Math.ceil(maxLines / 2);
@@ -51,6 +66,17 @@ export function parseDiff(
     lines,
     truncated: addedLines.length > addedBudget || removedLines.length > removedBudget,
   };
+}
+
+/**
+ * How many lines a caller's own "Show all N lines" control should promise.
+ *
+ * The panel used to count the newlines of the raw text, which over-promised by
+ * everything the render drops: markup-only lines then, page chrome now. Asking
+ * the parser is the only count that can't drift from what appears.
+ */
+export function countDiffLines(diffText: string, denoise = false): number {
+  return parseDiff(diffText, Number.MAX_SAFE_INTEGER, denoise).lines.length;
 }
 
 export function stripHtml(input: string): string {
@@ -85,14 +111,22 @@ export function DiffPreview({
    * line above it.
    */
   hideTruncationNote = false,
+  /**
+   * Drop the page's navigation, legal and language chrome. Opt-in, because the
+   * Activity tab's control says "Show raw diff" and a filtered diff would make
+   * that label a lie. The signal surfaces, which are reading FOR the change
+   * rather than auditing the capture, pass it.
+   */
+  denoise = false,
 }: {
   diffText: string;
   maxLines?: number;
   hideTruncationNote?: boolean;
+  denoise?: boolean;
 }) {
   const { lines, truncated } = useMemo(
-    () => parseDiff(diffText, maxLines),
-    [diffText, maxLines],
+    () => parseDiff(diffText, maxLines, denoise),
+    [diffText, maxLines, denoise],
   );
   if (lines.length === 0) {
     return (

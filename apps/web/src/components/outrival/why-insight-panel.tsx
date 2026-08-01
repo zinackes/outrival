@@ -283,7 +283,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                 // removed answer the same question without pretending the change
                 // had two sides.
                 <div className="mt-2.5">
-                  <DiffPreview diffText={detail.diffText} maxLines={12} />
+                  <DiffPreview diffText={detail.diffText} maxLines={12} denoise />
                 </div>
               ) : (
                 <p className="mt-2.5 text-sm text-muted-foreground">

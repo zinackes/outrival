@@ -16,6 +16,7 @@ const BASE = (process.argv[2] ?? "https://outrival.app").replace(/\/$/, "");
 // so a new article can never silently skip the check.
 const ROUTES = [
   "/",
+  "/pricing",
   "/sample",
   "/about",
   "/demo",

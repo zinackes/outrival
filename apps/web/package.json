@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test test/",
     "start": "next start",
-    "capture:shots": "node scripts/capture-product-shots.mjs"
+    "capture:shots": "node scripts/capture-product-shots.mjs",
+    "indexnow": "node scripts/indexnow.mjs"
   },
   "dependencies": {
     "@better-auth/passkey": "^1.6.22",

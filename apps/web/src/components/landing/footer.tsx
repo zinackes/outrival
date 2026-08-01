@@ -56,7 +56,7 @@ export function Footer() {
                 { label: "Product", href: "/#product" },
                 { label: "Signals", href: "/#signals" },
                 { label: "Compare", href: "/#compare" },
-                { label: "Pricing", href: "/#pricing" },
+                { label: "Pricing", href: "/pricing" },
               ]}
             />
             <FooterCol

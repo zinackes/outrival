@@ -1,3 +1,4 @@
+import { buildRoadmapIsland } from "../content/parse";
 import type { RoadmapEntry, RoadmapPortal } from "./types";
 
 /**
@@ -101,11 +102,16 @@ export function buildRoadmapDoc(portal: RoadmapPortal): RoadmapDocument {
 
   const lines = entries.map(entryLine);
   const text = [intro, header, ...lines].join("\n");
+  // The entries again, structured, for the ingestion that turns them into
+  // content_items rows. A <script> is stripped by extractContent before hashing,
+  // so this rides along without touching the diff or the content hash — the same
+  // trick the changelog feed snapshot uses.
+  const island = buildRoadmapIsland(portal.url, portal.vendor, entries);
   const html =
     `<!doctype html><html><body><section data-outrival-roadmap="${escapeHtml(portal.vendor)}">` +
     `<p>${escapeHtml(intro)}</p><h2>${escapeHtml(header)}</h2>` +
     `<ul>${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>` +
-    `</section></body></html>`;
+    `</section>${island}</body></html>`;
 
   return { html, text };
 }

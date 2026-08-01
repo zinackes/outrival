@@ -131,6 +131,10 @@
       "types": "./src/platform/index.ts",
       "default": "./src/platform/index.ts"
     },
+    "./content": {
+      "types": "./src/content/index.ts",
+      "default": "./src/content/index.ts"
+    },
     "./feeds": {
       "types": "./src/feeds/index.ts",
       "default": "./src/feeds/index.ts"

@@ -1,5 +1,5 @@
-import { and, eq, gte, lte, sql as dsql } from "drizzle-orm";
-import { changes, jobPostings, postingFacts } from "@outrival/db";
+import { and, eq, gt, gte, lte, sql as dsql, type SQL } from "drizzle-orm";
+import { changes, contentItems, jobPostings, postingFacts } from "@outrival/db";
 import {
   diffEntitlements,
   diffPriceTiers,
@@ -99,6 +99,26 @@ export interface JobFact {
   postingUrl: string | null;
 }
 
+/** One item a competitor published, as their own feed stated it. */
+export interface ContentEntryFact {
+  title: string;
+  /** The permalink the feed carried, when it carried one. */
+  url: string | null;
+  /** "YYYY-MM-DD" as the publisher dated it, or null when the feed dated nothing. */
+  publishedAt: string | null;
+  /** feature | improvement | fix | breaking | deprecation | security */
+  itemType: string | null;
+}
+
+/** The cadence a shipping_velocity signal is about, and the months behind it. */
+export interface VelocityFact {
+  month: string;
+  count: number;
+  baselineAvg: number;
+  direction: "accelerating" | "slowing";
+  baseline: Array<{ month: string; count: number }>;
+}
+
 /** One open role behind a salary band, with the range its own posting states. */
 export interface BandRoleFact {
   title: string;
@@ -150,6 +170,16 @@ export type SignalFacts =
       kind: "job_facts";
       facts: JobFact[];
     }
+  | {
+      /** The entries a competitor published (Content Intelligence v2 P1). A
+       * changelog signal names them; a cadence signal names them AND the months
+       * the count moved against. */
+      kind: "content";
+      entries: ContentEntryFact[];
+      /** Entries before the cap, so a truncated list can say what it is hiding. */
+      entriesTotal: number;
+      velocity: VelocityFact | null;
+    }
   | null;
 
 // A board can open fifty roles at once and a catalog can carry thirty plans. The
@@ -165,6 +195,9 @@ const MAX_JOB_FACTS = 12;
 // A band can be computed over thirty roles; the block shows enough to check the
 // number against the source, not the whole board.
 const MAX_BAND_ROLES = 8;
+// A release month can hold forty entries; the block names the release, it does
+// not reproduce the changelog.
+const MAX_CONTENT_ENTRIES = 12;
 
 // How long after a change its extraction may still land. The extractor is
 // enqueued in the same scrape run, but it is the WORKER that stamps the row, and
@@ -193,7 +226,11 @@ async function attributionWindow(
   const [next] = await db
     .select({ detectedAt: changes.detectedAt })
     .from(changes)
-    .where(and(eq(changes.monitorId, monitorId), dsql`${changes.detectedAt} > ${detectedAt}`))
+    // A typed comparison, not a `sql` fragment: a Date interpolated into a raw
+    // template carries no encoder, and the driver rejects it outright. Every
+    // caller here is wrapped in a try/catch that returns null, so the throw did
+    // not surface as an error — it silently emptied EVERY fact block.
+    .where(and(eq(changes.monitorId, monitorId), gt(changes.detectedAt, detectedAt)))
     .orderBy(changes.detectedAt)
     .limit(1);
 
@@ -306,6 +343,108 @@ async function jobFactsFacts(
 
   if (rows.length === 0) return null;
   return { kind: "job_facts", facts: rows };
+}
+
+/**
+ * The entries a changelog signal is about: the ones first seen inside the same
+ * attribution window every other block here uses.
+ *
+ * `first_seen_at` and not `published_at`: a feed can carry a two-year archive, and
+ * what this signal is about is what appeared between two captures. The date shown
+ * is still the publisher's own — a day-precision string read straight out of the
+ * column, so no timezone can move it by one.
+ */
+async function changelogFacts(
+  competitorId: string,
+  window: { lower: Date; upper: Date },
+): Promise<SignalFacts> {
+  // Typed helpers, not a raw fragment: a Date bound into a `sql` template has no
+  // encoder attached, and the driver rejects it. Here that would surface as the
+  // block silently never rendering, since buildSignalFacts swallows read errors.
+  const rows = await contentEntriesIn(
+    competitorId,
+    and(gte(contentItems.firstSeenAt, window.lower), lte(contentItems.firstSeenAt, window.upper))!,
+  );
+  if (rows.length === 0) return null;
+  return {
+    kind: "content",
+    entries: rows.slice(0, MAX_CONTENT_ENTRIES),
+    entriesTotal: rows.length,
+    velocity: null,
+  };
+}
+
+/**
+ * The cadence a `shipping_velocity_shift` was about, and the entries of the month
+ * that moved.
+ *
+ * The numbers come off the change's OWN rawDiff rather than being recomputed: the
+ * detector already decided which month crossed and against which trailing months,
+ * and re-deriving them from a feed that has published more since would print a
+ * reader numbers that contradict the sentence above them. The entries are then
+ * fetched for that exact month, which is what makes the count checkable.
+ */
+async function velocityFacts(
+  competitorId: string,
+  monitorId: string,
+  detectedAt: Date,
+): Promise<SignalFacts> {
+  const [change] = await db
+    .select({ rawDiff: changes.rawDiff })
+    .from(changes)
+    .where(and(eq(changes.monitorId, monitorId), eq(changes.detectedAt, detectedAt)))
+    .limit(1);
+
+  const raw = change?.rawDiff as Record<string, unknown> | null | undefined;
+  if (!raw || raw.kind !== "shipping_velocity_shift") return null;
+  const month = typeof raw.month === "string" ? raw.month : null;
+  const direction = raw.direction === "slowing" ? "slowing" : "accelerating";
+  if (!month) return null;
+
+  const rows = await contentEntriesIn(
+    competitorId,
+    dsql`to_char(${contentItems.publishedAt}, 'YYYY-MM') = ${month}`,
+  );
+  return {
+    kind: "content",
+    entries: rows.slice(0, MAX_CONTENT_ENTRIES),
+    entriesTotal: rows.length,
+    velocity: {
+      month,
+      count: Number(raw.count ?? rows.length),
+      baselineAvg: Number(raw.baselineAvg ?? 0),
+      direction,
+      baseline: Array.isArray(raw.baseline)
+        ? (raw.baseline as Array<{ month: string; count: number }>)
+        : [],
+    },
+  };
+}
+
+/** This competitor's changelog entries matching `predicate`, newest first. */
+async function contentEntriesIn(
+  competitorId: string,
+  predicate: SQL,
+): Promise<ContentEntryFact[]> {
+  return db
+    .select({
+      title: contentItems.title,
+      url: contentItems.url,
+      // Day precision, straight out of the column: the publisher dated it, and a
+      // Date round-trip through the API would let a timezone shift it by one.
+      publishedAt: dsql<string | null>`to_char(${contentItems.publishedAt}, 'YYYY-MM-DD')`,
+      itemType: contentItems.itemType,
+    })
+    .from(contentItems)
+    .where(
+      and(
+        eq(contentItems.competitorId, competitorId),
+        eq(contentItems.sourceType, "changelog"),
+        predicate,
+      ),
+    )
+    .orderBy(dsql`${contentItems.publishedAt} desc nulls last`)
+    .limit(MAX_CONTENT_ENTRIES + 1);
 }
 
 interface PlanRow {
@@ -645,11 +784,11 @@ async function salaryFacts(
  * The structured facts behind one signal, or null when its source has none.
  *
  * Best-effort by construction: a signal must still render if these reads fail,
- * so every caller treats null as "nothing to add" rather than an error. Only
- * jobs, pricing and the JD-mined job_facts anchor are wired up. Reviews and tech
- * stack already carry a
- * before/after pair from their deterministic detectors, so they are the smaller
- * gap; see docs/signal-evidence-audit.md wave 2.
+ * so every caller treats null as "nothing to add" rather than an error. Jobs,
+ * pricing, the JD-mined job_facts anchor, salary bands and the published content
+ * items (changelog + the shipping-cadence anchor) are wired up. Reviews and tech
+ * stack already carry a before/after pair from their deterministic detectors, so
+ * they are the smaller gap; see docs/signal-evidence-audit.md wave 2.
  */
 export async function buildSignalFacts(args: {
   monitorId: string | null;
@@ -663,20 +802,28 @@ export async function buildSignalFacts(args: {
     sourceType !== "jobs" &&
     sourceType !== "pricing" &&
     sourceType !== "job_facts" &&
-    sourceType !== "hiring_salary"
+    sourceType !== "hiring_salary" &&
+    sourceType !== "changelog" &&
+    sourceType !== "shipping_velocity"
   ) {
     return null;
   }
 
   try {
-    // The salary block reads the change's own rawDiff, not an extraction window:
-    // the detector already recorded which band moved and against what.
+    // The salary and cadence blocks read the change's own rawDiff, not an
+    // extraction window: their detectors already recorded what moved and against
+    // what, and recomputing it from data that has since moved on would print
+    // numbers that contradict the sentence above them.
     if (sourceType === "hiring_salary") {
       return await salaryFacts(competitorId, monitorId, new Date(detectedAt));
+    }
+    if (sourceType === "shipping_velocity") {
+      return await velocityFacts(competitorId, monitorId, new Date(detectedAt));
     }
     const window = await attributionWindow(monitorId, new Date(detectedAt));
     if (sourceType === "jobs") return await hiringFacts(competitorId, window);
     if (sourceType === "job_facts") return await jobFactsFacts(competitorId, window);
+    if (sourceType === "changelog") return await changelogFacts(competitorId, window);
     return await pricingFacts(competitorId, window);
   } catch {
     return null;

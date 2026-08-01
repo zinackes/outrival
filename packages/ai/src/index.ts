@@ -124,6 +124,20 @@ export type {
   MinedFactRaw,
   JobDescriptionInput,
 } from "./tasks/mine-job-facts";
+// Changelog entry typing (Content Intelligence v2 P1). The model only ever
+// separates feature / improvement / fix — the alerting types are decided by the
+// keyword pass in @outrival/scrapers/content before this is ever called.
+export {
+  typeContentItems,
+  TypedContentItemsSchema,
+  TypedContentItemSchema,
+  TYPEABLE_ITEM_TYPES,
+} from "./tasks/type-content-items";
+export type {
+  TypedContentItems,
+  TypedContentItem,
+  ContentItemForTyping,
+} from "./tasks/type-content-items";
 export { extractReviews, ReviewsSchema } from "./tasks/extract-reviews";
 export {
   extractAiVisibility,

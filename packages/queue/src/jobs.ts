@@ -61,6 +61,19 @@ export type ProbePricingCalculatorPayload = {
   url: string;
 };
 export type ExtractJobsPayload = { snapshotId: string; competitorId: string };
+export type IngestContentItemsPayload = {
+  snapshotId: string;
+  competitorId: string;
+  sourceType: "changelog" | "roadmap";
+  /** Content Intelligence v2 P1 — the change row of the SAME capture, whose signal
+   * routing scrape-monitor DEFERRED to this job: a deterministic breaking /
+   * deprecation type owns the signal, otherwise the lexical classifier is the
+   * fallback. Absent on roadmap captures and on captures with no change row. */
+  changeId?: string;
+  /** Whether the deferred change passed evaluateSignificance — i.e. worth a
+   * lexical classify when no deterministic type turns up. */
+  lexicalWorth?: boolean;
+};
 export type ExtractReviewsPayload = { snapshotId: string; competitorId: string; source: string };
 export type ScrapeAiVisibilityPayload = { orgId: string; notifyOnComplete?: boolean };
 export type RefreshCompetitorSummaryPayload = {
@@ -242,6 +255,13 @@ export const detectHiringVelocityShifts = defineJob<CompetitorRefPayload>(
 // competitor off extract-jobs. Up to four batched model calls per run, so it gets
 // a longer window than its two sibling detectors, which do no AI at all.
 export const mineJobFacts = defineJob<CompetitorRefPayload>("mine-job-facts", {
+  expireInSeconds: 300,
+});
+// Content-item ingestion (Content Intelligence v2 P1), event-triggered per capture
+// off scrape-monitor for changelog / roadmap. Up to four batched model calls per
+// run, so it gets the same window mine-job-facts has rather than the 60s its
+// zero-AI siblings use.
+export const ingestContentItems = defineJob<IngestContentItemsPayload>("ingest-content-items", {
   expireInSeconds: 300,
 });
 // Hiring footprint detectors (Hiring Intelligence v2 P2), event-triggered per

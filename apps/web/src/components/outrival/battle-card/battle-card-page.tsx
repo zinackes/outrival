@@ -48,6 +48,7 @@ import { BattleCardHead, MetaDot } from "./head";
 import { ConfidenceBadge } from "./evidence";
 import { BattleCardSections } from "./sections";
 import { PackagingSection } from "./packaging";
+import { MomentumSection } from "./momentum";
 
 const EMPTY_CONTENT: BattleCardContent = {
   their_strengths: [],
@@ -766,6 +767,11 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
               productId={resolvedProductId ?? undefined}
             />
           )}
+
+          {/* Momentum (P5): the same deterministic contract as Packaging, over the
+              hiring tables instead of the entitlement matrix. Takes no product —
+              a competitor's board is the same board whichever SKU you sell. */}
+          {!editing && <MomentumSection competitorId={competitorId} />}
 
           <div className="flex items-center justify-between gap-3 px-5 py-3.5">
             <p className="text-dense text-muted-foreground">

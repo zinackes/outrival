@@ -9,6 +9,7 @@ import {
   api,
   type CompetitorSignal,
   type HiringGeoData,
+  type HiringMomentumData,
   type HiringSalaryData,
 } from "@/lib/api";
 import { HIRING_GEO_RESERVED_LABELS } from "@outrival/shared";
@@ -79,6 +80,12 @@ export function HiringTab({
   const salaryQuery = useQuery({
     queryKey: ["competitor", competitorId, "hiringSalary"],
     queryFn: () => api.getCompetitorHiringSalary(competitorId),
+    placeholderData: keepPreviousData,
+  });
+  // How they work, and how long their roles stay open (P5). Same contract again.
+  const momentumQuery = useQuery({
+    queryKey: ["competitor", competitorId, "hiringMomentum"],
+    queryFn: () => api.getCompetitorHiringMomentum(competitorId),
     placeholderData: keepPreviousData,
   });
 
@@ -153,6 +160,13 @@ export function HiringTab({
   // and simply renders without a sparkline when we don't.
   const velocityByLabel = new Map(
     allVelocity.map((v) => [v.label.toLowerCase(), v] as const),
+  );
+
+  // Same matching for the time-to-fill medians: they are keyed by canonical bucket
+  // and the department rows carry the ATS label, so a department gets its median
+  // when we have one and simply renders without one when we don't.
+  const fillByLabel = new Map(
+    (momentumQuery.data?.timeToFill ?? []).map((t) => [t.label.toLowerCase(), t] as const),
   );
 
   // Buckets we track that currently hold nothing. Absence is a read in competitive
@@ -287,6 +301,8 @@ export function HiringTab({
         </TabSection>
       )}
 
+      <HowTheyWork remote={momentumQuery.data?.remote ?? null} />
+
       <WhereTheyHire geo={geoQuery.data ?? null} />
 
       <Salaries salary={salaryQuery.data ?? null} />
@@ -302,6 +318,7 @@ export function HiringTab({
             const last = series[series.length - 1]?.count ?? d.count;
             const delta = last - first;
             const spark = velocityByLabel.get(d.department.toLowerCase());
+            const fill = fillByLabel.get(d.department.toLowerCase());
             return (
             <details
               key={d.department}
@@ -323,7 +340,25 @@ export function HiringTab({
                   aria-hidden
                   className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
                 />
-                <span className="min-w-0 truncate text-sm font-medium">{d.department}</span>
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="truncate text-sm font-medium">{d.department}</span>
+                  {/* How long their roles in this department stay open. Display
+                      only: the "~" means the clock started when WE first saw the
+                      role rather than when it went up, so the number is a floor. */}
+                  {fill && (
+                    <span
+                      className="shrink-0 text-meta tabular-nums text-muted-foreground"
+                      title={
+                        fill.approx
+                          ? `Median time to fill. Approximate: some of these roles carry no publication date, so their clock starts the day we first saw them and the real median is longer. Computed over ${fill.n} closed roles.`
+                          : `Median time to fill, computed over ${fill.n} closed roles from the dates their board published.`
+                      }
+                    >
+                      {fill.approx ? "~" : ""}
+                      {fill.medianDays}d to fill (n={fill.n})
+                    </span>
+                  )}
+                </span>
                 <span className="text-right text-dense text-muted-foreground">
                   <span className="font-semibold tabular-nums text-foreground">
                     {d.count}
@@ -483,6 +518,69 @@ export function HiringTab({
         )}
       </div>
     </TabCard>
+  );
+}
+
+/**
+ * Where the work happens, for the roles that say (P5).
+ *
+ * The state leads, the share is under it, and the share of their board that states
+ * no location at all is on the same line. That last number is the reason to trust
+ * or distrust the first two, and a posture card that drops it is claiming a
+ * precision it does not have, exactly like the footprint card below.
+ */
+function HowTheyWork({ remote }: { remote: HiringMomentumData["remote"] }) {
+  if (!remote || remote.known === 0) return null;
+  const pct = (share: number) => Math.round(share * 100);
+  const parts = [
+    { key: "remote", label: "Remote", count: remote.remote, className: "bg-link" },
+    { key: "hybrid", label: "Hybrid", count: remote.hybrid, className: "bg-link/55" },
+    { key: "onsite", label: "On-site", count: remote.onsite, className: "bg-muted-foreground" },
+  ].filter((p) => p.count > 0);
+
+  return (
+    <TabSection
+      title="How they work"
+      action={
+        remote.label ? (
+          <span className="shrink-0 rounded-sm bg-surface-2 px-1.5 py-0.5 text-meta font-medium">
+            {remote.label}
+          </span>
+        ) : undefined
+      }
+    >
+      <div className="flex h-1.5 overflow-hidden rounded-full bg-surface-2" aria-hidden>
+        {parts.map((p) => (
+          <span
+            key={p.key}
+            className={cn("h-full", p.className)}
+            style={{ width: `${(p.count / remote.known) * 100}%` }}
+          />
+        ))}
+      </div>
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 pt-2 text-xs text-muted-foreground">
+        {parts.map((p) => (
+          <li key={p.key} className="inline-flex items-center gap-1.5">
+            <span className={cn("size-2 rounded-full", p.className)} aria-hidden />
+            {p.label} <span className="tabular-nums text-foreground">{p.count}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="pt-2 text-xs text-muted-foreground">
+        <span className="tabular-nums">{pct(remote.share)}%</span> remote, counting a hybrid
+        role as half a remote one, over the{" "}
+        <span className="tabular-nums">{remote.known}</span> open{" "}
+        {remote.known === 1 ? "role that states" : "roles that state"} where the work happens.
+        {remote.unknown > 0 && (
+          <>
+            {" "}
+            A further <span className="tabular-nums">{remote.unknown}</span> (
+            <span className="tabular-nums">{pct(remote.unknownShare)}%</span> of their board)
+            state no location we can read, and are in none of these numbers.
+          </>
+        )}
+      </p>
+    </TabSection>
   );
 }
 

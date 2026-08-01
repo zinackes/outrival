@@ -72,6 +72,13 @@ export interface BattleCardInput {
     } | null;
     complaintThemes?: Array<{ theme: string; prevalence: string }> | null;
   } | null;
+  // Hiring Intelligence v2 P5 — the deterministic Momentum lines, already rendered
+  // by `momentumLines` in @outrival/shared. They are handed over as evidence rather
+  // than as raw numbers on purpose: the card RENDERS these exact sentences in its
+  // own Momentum section, so anything the model says about their hiring elsewhere
+  // has to trace to text the reader can see a few lines below it. Absent when the
+  // competitor's board yields nothing, like every other dimension here.
+  competitorMomentum?: string[];
   reviewComplaints: string[];
   reviewPraises: string[];
   recentSignals: Array<{ category: string; severity: string; insight: string }>;
@@ -97,6 +104,7 @@ function pricingBlock(tiers: BattleCardPricingTier[] | undefined): string | null
 }
 
 interface EvidenceBlocks {
+  momentumBlock: string | null;
   signalsBlock: string | null;
   praisesBlock: string | null;
   complaintsBlock: string | null;
@@ -119,6 +127,7 @@ export function computeBlocks(input: BattleCardInput): EvidenceBlocks {
         .join("\n")
     : null;
 
+  const momentumBlock = bullets(input.competitorMomentum);
   const praisesBlock = bullets(input.reviewPraises?.slice(0, 8));
   const complaintsBlock = bullets(input.reviewComplaints?.slice(0, 8));
 
@@ -192,6 +201,7 @@ export function computeBlocks(input: BattleCardInput): EvidenceBlocks {
       : "";
 
   return {
+    momentumBlock,
     signalsBlock,
     praisesBlock,
     complaintsBlock,
@@ -233,6 +243,7 @@ export function evidenceBlock(input: BattleCardInput, b: EvidenceBlocks): string
     competitorPricing ? `Pricing:\n${competitorPricing}` : null,
     b.competitorTechBlock ? `Tech stack (detected on their site):\n${b.competitorTechBlock}` : null,
     b.reviewScoreBlock ? `Reviews:\n${b.reviewScoreBlock}` : null,
+    b.momentumBlock ? `Hiring momentum (counted from their job board):\n${b.momentumBlock}` : null,
     b.competitorHomepage ? `Homepage excerpt:\n${b.competitorHomepage}` : null,
   ].filter(Boolean);
 
@@ -280,6 +291,7 @@ export function evidenceSourceText(input: BattleCardInput, b: EvidenceBlocks): s
     competitorPricing ? `Competitor pricing:\n${competitorPricing}` : "",
     b.competitorTechBlock ? `Competitor tech stack:\n${b.competitorTechBlock}` : "",
     b.reviewScoreBlock ? `Competitor reviews:\n${b.reviewScoreBlock}` : "",
+    b.momentumBlock ? `Competitor hiring momentum:\n${b.momentumBlock}` : "",
     b.competitorHomepage ? `Competitor homepage:\n${b.competitorHomepage}` : "",
     b.praisesBlock ? `What their customers love:\n${b.praisesBlock}` : "",
     b.complaintsBlock ? `What their customers complain about:\n${b.complaintsBlock}` : "",

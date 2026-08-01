@@ -1,4 +1,4 @@
-import { isComparablePricePeriod, type CostMethod } from "@outrival/shared";
+import { DEPARTMENT_BUCKETS, isComparablePricePeriod, type CostMethod } from "@outrival/shared";
 import type { CompareColumn } from "@/lib/api";
 import { competitorStroke } from "@/lib/competitor-color";
 import type { CompareEntity } from "./lens";
@@ -47,6 +47,45 @@ export function engineeringMedianSalary(
   c: CompareColumn,
 ): { p50: number; currency: string; n: number } | null {
   return c.hiring?.engineeringMedianSalary ?? null;
+}
+
+export type HiringMix = NonNullable<CompareColumn["hiring"]>["buckets"];
+
+/**
+ * The canonical bucket mix of a column's latest ATS week (P5), in a FIXED order.
+ *
+ * Fixed, not widest-first: the mix is drawn as one bar per row and the point of
+ * the lens is reading those rows against each other, which only works if the same
+ * department occupies the same relative position on every one of them.
+ *
+ * Empty for a competitor read off a careers page rather than an ATS: the raw
+ * labels of `departments` are what that path produces, and "Platform Engineering"
+ * against another column's "R&D" is not a comparison. A column with no mix keeps
+ * every other reading on the row rather than dropping off the lens.
+ */
+export function hiringMix(c: CompareColumn): HiringMix {
+  const order = new Map(DEPARTMENT_BUCKETS.map((b, i) => [b as string, i]));
+  return [...(c.hiring?.buckets ?? [])].sort(
+    (a, b) => (order.get(a.bucket) ?? 99) - (order.get(b.bucket) ?? 99),
+  );
+}
+
+export type RemoteReading = NonNullable<NonNullable<CompareColumn["hiring"]>["remote"]>;
+
+/** How a column works, or null when no open role of theirs states where (P5). */
+export function remoteReading(c: CompareColumn): RemoteReading | null {
+  return c.hiring?.remote ?? null;
+}
+
+/**
+ * The two countries a column has most roles open in (P5).
+ *
+ * Two, not five: the lens has one line per column, and the question it answers is
+ * "where are they hiring", which the first two answer and the tail does not. The
+ * whole footprint, unplaced roles included, is on the competitor's Hiring tab.
+ */
+export function topCountries(c: CompareColumn, limit = 2): Array<{ code: string; count: number }> {
+  return (c.hiring?.topCountries ?? []).slice(0, limit);
 }
 
 export function median(values: number[]): number | null {

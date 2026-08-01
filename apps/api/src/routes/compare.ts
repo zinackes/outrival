@@ -1,9 +1,17 @@
 import { Hono } from "hono";
 import { and, eq, ne, isNull, inArray, desc } from "drizzle-orm";
-import { competitors, signals, techStackEntries } from "@outrival/db";
+import { competitors, jobPostings, signals, techStackEntries } from "@outrival/db";
 import {
   type PlatformProfile,
   platformLabel,
+  DEPARTMENT_BUCKET_LABELS,
+  isCountryKey,
+  isDepartmentBucket,
+  remoteShare,
+  remoteState,
+  REMOTE_STATE_LABELS,
+  type DepartmentBucket,
+  type RemoteState,
   resolveCurrentPricing,
   isComparablePricePeriod,
   type PricingTier,
@@ -208,6 +216,24 @@ interface HiringDetail {
   // (Hiring Intelligence v2 P3). Never converted and never placed on a shared
   // scale: `n` travels with it so a median over three roles reads as one.
   engineeringMedianSalary: { p50: number; currency: string; n: number } | null;
+  // The canonical bucket mix of the latest ATS week (P5). `departments` above is
+  // the raw ATS label of the last capture ("Platform Engineering", "R&D"), which
+  // is unusable as a comparison across columns; these are the eight buckets every
+  // competitor is counted into. Empty when no authoritative run ever bucketed them.
+  buckets: Array<{ bucket: DepartmentBucket; label: string; count: number }>;
+  // How they work (P5), as a state plus the share behind it and the share of the
+  // board that stated no location. Null when no open role resolved either way.
+  remote: {
+    share: number;
+    state: RemoteState | null;
+    label: string | null;
+    known: number;
+    unknownShare: number;
+  } | null;
+  // Where the open roles are, widest first (P5). Countries only: the reserved
+  // "remote" / "region" / "unresolved" keys answer a different question and have
+  // their own card on the competitor's Hiring tab.
+  topCountries: Array<{ code: string; count: number }>;
   capturedAt: string | null;
 }
 interface ReviewDetail {
@@ -427,21 +453,82 @@ compareRouter.get("/", async (c) => {
     ORDER BY competitor_id, source, recorded_at DESC
   `);
 
-  // Engineering share of the open roles, from the canonical buckets the ATS path
-  // writes weekly. Deliberately a separate read from job_counts: that table holds
-  // the raw ATS labels ("Platform Engineering", "R&D"). Missing here (LLM/careers
+  // The canonical bucket mix of the latest ATS week. Deliberately a separate read
+  // from job_counts: that table holds the raw ATS labels ("Platform Engineering",
+  // "R&D"), which cannot be compared across columns. Missing here (LLM/careers
   // fallback, no ATS run) → the labels are bucketed below instead.
-  const engineeringRows = await analyticsQuery<{ competitorId: string; openCount: number }>(sql`
+  const bucketRows = await analyticsQuery<{
+    competitorId: string;
+    bucket: string;
+    openCount: number;
+  }>(sql`
     WITH latest AS (
       SELECT competitor_id, max(week_start) AS w
       FROM hiring_metrics WHERE competitor_id IN (${idList}) GROUP BY competitor_id
     )
-    SELECT h.competitor_id AS "competitorId", h.open_count::int AS "openCount"
+    SELECT h.competitor_id AS "competitorId", h.department_bucket AS bucket,
+           h.open_count::int AS "openCount"
     FROM hiring_metrics h
     JOIN latest l ON l.competitor_id = h.competitor_id AND h.week_start = l.w
-    WHERE h.department_bucket = 'engineering'
+    WHERE h.open_count > 0
+    ORDER BY h.open_count DESC
   `);
-  const engineeringById = new Map(engineeringRows.map((r) => [r.competitorId, r.openCount]));
+  const bucketsById = new Map<string, HiringDetail["buckets"]>();
+  const engineeringById = new Map<string, number>();
+  for (const r of bucketRows) {
+    // `unknown` is a data-quality bucket, not a department: it would draw a segment
+    // the reader cannot act on and would make two columns' mixes incomparable.
+    if (!isDepartmentBucket(r.bucket) || r.bucket === "unknown") continue;
+    const list = bucketsById.get(r.competitorId) ?? [];
+    list.push({
+      bucket: r.bucket,
+      label: DEPARTMENT_BUCKET_LABELS[r.bucket],
+      count: r.openCount,
+    });
+    bucketsById.set(r.competitorId, list);
+    if (r.bucket === "engineering") engineeringById.set(r.competitorId, r.openCount);
+  }
+
+  // Where those roles are, latest captured week (P5).
+  const geoRows = await analyticsQuery<{
+    competitorId: string;
+    code: string;
+    openCount: number;
+  }>(sql`
+    WITH latest AS (
+      SELECT competitor_id, max(week_start) AS w
+      FROM hiring_geo WHERE competitor_id IN (${idList}) GROUP BY competitor_id
+    )
+    SELECT g.competitor_id AS "competitorId", g.country_code AS code,
+           g.open_count::int AS "openCount"
+    FROM hiring_geo g
+    JOIN latest l ON l.competitor_id = g.competitor_id AND g.week_start = l.w
+    WHERE g.open_count > 0
+    ORDER BY g.open_count DESC
+  `);
+  const countriesById = new Map<string, HiringDetail["topCountries"]>();
+  for (const r of geoRows) {
+    if (!isCountryKey(r.code)) continue;
+    const list = countriesById.get(r.competitorId) ?? [];
+    list.push({ code: r.code, count: r.openCount });
+    countriesById.set(r.competitorId, list);
+  }
+
+  // How they work (P5). Relational, not analytics: `remote_mode` is stamped on the
+  // posting itself, so this is the live board rather than a weekly aggregate.
+  const remoteRows = await db
+    .select({
+      competitorId: jobPostings.competitorId,
+      remoteMode: jobPostings.remoteMode,
+    })
+    .from(jobPostings)
+    .where(and(inArray(jobPostings.competitorId, ids), eq(jobPostings.isActive, true)));
+  const remoteByComp = new Map<string, Array<{ remoteMode: string | null }>>();
+  for (const r of remoteRows) {
+    const list = remoteByComp.get(r.competitorId) ?? [];
+    list.push({ remoteMode: r.remoteMode });
+    remoteByComp.set(r.competitorId, list);
+  }
 
   // What each competitor pays its engineers, in THEIR currency (Hiring Intelligence
   // v2 P3). Deliberately not put on a shared bar: €72k and $95k are two facts, and
@@ -643,6 +730,9 @@ compareRouter.get("/", async (c) => {
         departments: [{ department: h.department, count: h.count }],
         engineeringOpen: null,
         engineeringMedianSalary: null,
+        buckets: [],
+        remote: null,
+        topCountries: [],
         capturedAt: h.recordedAt,
       });
     } else {
@@ -654,6 +744,19 @@ compareRouter.get("/", async (c) => {
     detail.engineeringOpen =
       engineeringById.get(competitorId) ?? engineeringFromLabels(detail.departments);
     detail.engineeringMedianSalary = engSalaryById.get(competitorId) ?? null;
+    detail.buckets = bucketsById.get(competitorId) ?? [];
+    detail.topCountries = countriesById.get(competitorId) ?? [];
+    const share = remoteShare(remoteByComp.get(competitorId) ?? []);
+    if (share.share != null) {
+      const state = remoteState(share.share, share.known);
+      detail.remote = {
+        share: share.share,
+        state,
+        label: state ? REMOTE_STATE_LABELS[state] : null,
+        known: share.known,
+        unknownShare: share.unknownShare,
+      };
+    }
   }
 
   const reviewsById = new Map<string, ReviewDetail[]>();

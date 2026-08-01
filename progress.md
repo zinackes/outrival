@@ -1685,3 +1685,148 @@ renuméroter à la main un snapshot dont le parent a bougé.
 
 **Prochaine session** : P5 — compare lens v2 + Momentum (remote %, top pays, median
 salary, `remote_policy_changed`, `leadership_hire`). NE PAS commencer sans /clear.
+
+---
+
+## Hiring Intelligence v2 — P5 : Momentum, lens v2, deux derniers signaux (2026-08-01)
+
+**La card Hiring Intelligence v2 est COMPLÈTE** (P1 mining → P2 géo → P3 salaires →
+P4 couverture → P5 restitution).
+
+**Le problème** : quatre phases avaient rempli `job_postings.remote_mode`,
+`hiring_geo`, `hiring_salary_bands` et `hiring_metrics`, et presque rien ne les
+lisait. La lens compare montrait deux nombres (total + eng), la battle card ne
+savait rien du board, et personne ne pouvait voir combien de temps un poste reste
+ouvert. P5 ne collecte rien de neuf : elle restitue.
+
+### `packages/shared/src/hiring-momentum.ts` — tout le calcul, pur
+
+Dans `shared` et pas à côté des autres détecteurs hiring parce que les QUATRE
+consommateurs doivent obtenir la même réponse des mêmes nombres : le worker qui
+émet le signal, l'API qui sert le tab et le payload compare, le web qui dessine le
+chip, et la battle card dont la section Momentum est RENDUE depuis ces facts.
+
+**`remoteShare` — un rôle hybride compte pour un demi rôle remote.** L'alternative
+(hybride au dénominateur seulement) échoue sur le cas qui justifie la lecture : un
+board 100% hybride scorerait 0% et serait étiqueté office-first, l'exact inverse de
+ce qu'il est. À poids 0,5 ce même board tombe à 50%, le milieu de la bande hybride,
+et c'est l'ancre contre laquelle les seuils sont calés. Le dénominateur est le stock
+dont le mode a RÉSOLU ; la part non résolue revient à part et s'affiche partout où
+la part remote s'affiche, parce que c'est elle qui dit combien croire les deux
+autres nombres.
+
+**`timeToFillByBucket` — AFFICHAGE SEULEMENT, jamais un signal.** L'horloge démarre
+à `postedAt` quand le board en publie une, à `detectedAt` sinon — et `detectedAt`
+est le jour où NOUS avons vu le rôle, pas celui où il est parti. Une médiane bâtie
+sur ce mélange est un plancher, donc chaque bucket dont ≥30% des points retombent
+sur le fallback est marqué `approx` et l'UI écrit « ~ » avec le tooltip qui
+l'explique. n≥3 par bucket, `unknown` exclu, durées ≤ 0 jetées (dérive d'horloge,
+pas un recrutement instantané).
+
+**`classifyLeadershipRole` — délibérément étroit.** `Director` est dehors : sur la
+plupart des boards c'est une bande d'IC senior et il noierait le signal. Les titres
+FR évidents sont dehors pour une raison plus dure : « directeur général » est un
+rôle légal qui ne nomme aucune fonction, et « responsable » va du team lead au chef
+d'équipe de nuit. Restent `chief … officer`, `\bc[a-z]o\b`, VP / vice-président,
+`head of X`, plus `seniority='executive'` qui promeut un titre raté par les regex
+mais JAMAIS jusqu'à C-level (seul le titre décide high vs medium).
+
+27 tests : bords 30/70, n<5 → null, hystérésis, médiane avec fallbacks, facts null
+→ lignes absentes.
+
+### Signal `remote_policy_changed` (medium)
+
+Une MACHINE À ÉTATS, pas un pourcentage qui gigote : la part remote d'un board vivant
+bouge chaque semaine au rythme des ouvertures et des fermetures, et un signal posé
+dessus tirerait sur ce mouvement. Ce qui est émis est une TRANSITION, et seulement
+quand le nouvel état a tenu 2 semaines consécutives contre un état précédent qui a
+tenu 2 semaines à lui. Cooldown 8 semaines : sans lui, à mesure que le nouvel état
+vieillit, le run derrière finit par re-satisfaire la baseline depuis l'autre côté.
+
+Le passé est reconstruit comme le backfill des bandes P3 le reconstruit :
+`detected_at` / `closed_at` sur chaque posting jamais vue est le seul historique du
+board qu'on détient, et il est exact. **Zéro stockage, zéro nouveau système** — les
+états sont dérivés à chaque run (`wasActiveInWeek` / `weeksBack`, réutilisés).
+
+### Signal `leadership_hire` (high si C-level, medium si VP/Head of, catégorie `leadership`)
+
+Un seul signal groupé par run. Le mode d'échec contre lequel il est construit :
+annoncer trois VP le jour où on branche l'ATS d'un concurrent. Tout est neuf à la
+première capture, et tout est neuf à nouveau le jour d'une migration d'ATS où chaque
+posting est re-clé.
+
+**Une seule règle couvre les deux** : le plancher est la SECONDE plus ancienne
+capture du board qu'on regarde EN CE MOMENT. Sur un concurrent qu'on vient de
+brancher elle exclut tout le premier ingest ; après une migration l'hôte change, le
+run redémarre sur le nouveau board, et elle exclut le lot re-clé de la même façon.
+Pas de seconde capture → silence. Une capture sans URL résolue ne casse pas le run
+(c'est une capture dont on ignore l'hôte, pas un autre board).
+
+### Ancre : `hiring_footprint`, et pourquoi (décision assumée)
+
+La règle maison est une ancre par famille de signaux, parce que la chaîne de
+snapshots d'une ancre EST son registre de dédup. Mais `hiring_footprint` est
+précisément celle qui a été bâtie pour être partagée : elle dédupe par content-hash
+contre TOUS ses snapshots et pas contre le dernier, ce qui laisse plusieurs kinds
+s'entrelacer sans se dédupliquer l'un l'autre. Les mettre sur `hiring_shift` aurait
+cassé le détecteur de vélocité, qui compare le DERNIER snapshot seul. Une ancre
+`source_type` dédiée aurait été une migration, et **P5 n'en livre aucune**
+(garde-fou de la session). Les cinq kinds de l'ancre sont donc :
+`first_role_in_country`, `new_department_opened`, `hiring_freeze`,
+`remote_policy_changed`, `leadership_hire` — chaque lecture est filtrée par kind.
+
+### Compare — lens Hiring v2
+
+Le bar mesure toujours le total sur l'échelle partagée ; il est maintenant DIVISÉ
+par les buckets canoniques de la dernière semaine ATS, dans un ordre FIXE (pas par
+taille) — le lens existe pour lire les lignes les unes contre les autres, ce qui
+n'a de sens que si le même département occupe la même position relative sur chaque
+ligne. Une teinte descendante en opacité, pas huit couleurs : la ligne dépense déjà
+sa couleur à dire QUI elle est.
+
+**Self-hide PAR MÉTRIQUE** : un concurrent sans géo garde son mix, un concurrent
+sans mix garde sa posture remote, un concurrent lu depuis une page careers (pas
+d'ATS) garde exactement le bar total+eng qu'il avait. La lens entière ne se cache
+que si personne n'a de `hiring`, comme avant.
+
+Trois chips sous le bar : posture remote (+ icône d'état), top 2 pays, et le chip
+« eng median » de P3 sorti de la colonne de valeur où il était à l'étroit.
+
+**Pas de snapshot tests sur la lens** : il n'en existe aucun dans le repo (vérifié).
+La couverture compare est `apps/web/test/compare-derive.test.ts`, sur les fonctions
+pures — étendue de 4 cas ici, dont un qui verrouille la non-régression (une colonne
+sans donnée P5 lit exactement comme avant).
+
+### Hiring tab + battle card
+
+Tab : carte « How they work » (barre remote/hybrid/onsite, part remote, et le nombre
+de rôles qui ne disent pas où) + médiane time-to-fill sur chaque ligne de
+département, préfixée « ~ » quand elle est un plancher.
+
+Battle card : section **Momentum**, même contrat déterministe que Packaging (P2
+pricing). Elle est RENDUE depuis `momentumLines`, aucun modèle n'y écrit. Les mêmes
+chaînes sont passées à la génération comme évidence (`competitorMomentum` dans
+`BattleCardInput`, présent dans `evidenceBlock` ET `evidenceSourceText`), donc si
+le modèle parle de leur recrutement ailleurs sur la carte, il parle des phrases que
+le lecteur voit quelques lignes plus bas. Fact null → ligne absente, section vide →
+section masquée.
+
+### Vérification
+
+`pnpm typecheck` 8/8 · `pnpm test` 12/12 (workers 251, api 261) · 27 tests purs
+`hiring-momentum` · 8 tests worker bout-en-bout sur PGlite
+(`detect-hiring-footprint-p5.test.ts`) qui verrouillent les gardes, chacune ne se
+voyant que comme un signal qui NE tire PAS : semaine isolée, cooldown, première
+capture, migration d'ATS.
+
+**Zéro migration, zéro appel IA ajouté** (`ai_runs` ne bouge pas).
+
+### Reste à faire
+
+- **Pas de dev DB dans ce checkout** (inchangé depuis P4) : les signaux sont
+  démontrés sur fixture PGlite, pas sur un concurrent dev réel.
+- **`remote_policy_changed` ne peut rien émettre avant 4 semaines** d'historique de
+  postings par concurrent — la reconstitution est exacte mais ne peut pas inventer
+  des semaines antérieures au premier scrape jobs.
+- La lens v2 est **typecheckée et testée sur ses fonctions pures, pas regardée dans
+  un navigateur** (contrainte RAM WSL2 : `pnpm dev` OOM).

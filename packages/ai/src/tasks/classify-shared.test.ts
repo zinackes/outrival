@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { MATERIALITY_RUBRIC, CATEGORY_RULES } from "./classify-shared";
-import { CLASSIFY_SYSTEM } from "./classify";
+import {
+  MATERIALITY_RUBRIC,
+  CATEGORY_RULES,
+  buildRecentSignalsBlock,
+  formatCorroborationSurface,
+} from "./classify-shared";
+import { CLASSIFY_SYSTEM, buildClassifyContextBlock } from "./classify";
 import { buildStructuredClassifyPrompt } from "./classify-structured";
 
 // Anti-divergence lock: both classifiers must judge by the SAME rubric. The
@@ -57,5 +62,62 @@ describe("shared classification blocks", () => {
     // api_developer is deterministic-only — it must stay OUT of the prompt so the
     // model never picks it (see materiality.ts / sources.ts).
     expect(CATEGORY_RULES).not.toContain("api_developer");
+  });
+});
+
+// The corroboration block is the ONLY place another change's story enters a
+// classify prompt. It used to carry the earlier signal's insight sentence, and a
+// change the model could not read came back classified with a neighbour's story
+// word for word (prod signal fdd882b1: an App Store reviews diff reported as a
+// "14-day free trial for social-set packages"). These lock the block to labels.
+describe("recent-signals corroboration block", () => {
+  const surface = {
+    category: "pricing",
+    severity: "medium",
+    sourceType: "pricing",
+    ageDays: 4,
+  };
+
+  test("a surface renders as a label: category, surface, age, severity", () => {
+    expect(formatCorroborationSurface(surface)).toBe("pricing | pricing page | 4d ago | medium");
+  });
+
+  test("an unmapped source is named rather than dropped", () => {
+    expect(formatCorroborationSurface({ ...surface, sourceType: "roadmap" })).toContain("roadmap");
+    expect(formatCorroborationSurface({ ...surface, sourceType: null })).toContain(
+      "unknown surface",
+    );
+  });
+
+  test("the block tells the model these lines are not the change to describe", () => {
+    const block = buildRecentSignalsBlock([formatCorroborationSurface(surface)]);
+    expect(block).toContain("LABELS, not content");
+    expect(block).toContain("never quote them");
+    expect(block).toContain("- pricing | pricing page | 4d ago | medium");
+  });
+
+  test("no recorded moves → no block at all", () => {
+    expect(buildRecentSignalsBlock([])).toBe("");
+  });
+
+  test("caps at five lines so the variable prompt tail stays bounded", () => {
+    const block = buildRecentSignalsBlock(
+      Array.from({ length: 9 }, (_, i) => formatCorroborationSurface({ ...surface, ageDays: i })),
+    );
+    expect(block.match(/^- /gm)).toHaveLength(5);
+  });
+
+  test("BOTH classifiers render the block the same way", () => {
+    const labels = [formatCorroborationSurface(surface)];
+    const block = buildRecentSignalsBlock(labels);
+    expect(buildClassifyContextBlock({ sourceType: "homepage", recentSignals: labels })).toContain(
+      block,
+    );
+    expect(
+      buildStructuredClassifyPrompt(
+        [{ kind: "hero_headline_changed", field: "hero", before: "a", after: "b" }],
+        { sourceType: "homepage", recentSignals: labels },
+      ),
+    ).toContain(block);
   });
 });

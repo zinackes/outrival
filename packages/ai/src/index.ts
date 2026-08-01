@@ -37,6 +37,10 @@ export {
   toMaterialityScores,
 } from "./tasks/classify";
 export type { Classification } from "./tasks/classify";
+// Corroboration surfaces: built by the worker, read by both classifiers, so the
+// shape and the prompt sentence that describes it live in one module.
+export { formatCorroborationSurface, buildRecentSignalsBlock } from "./tasks/classify-shared";
+export type { CorroborationSurface } from "./tasks/classify-shared";
 // Materiality → severity: the deterministic table that replaced the model's own
 // severity judgement.
 export {

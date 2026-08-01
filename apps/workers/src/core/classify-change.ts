@@ -1,7 +1,7 @@
 import { logger } from "../lib/job-logger";
 import { NonRetriable as AbortTaskRunError, generateSignal } from "@outrival/queue";
 import { z } from "zod";
-import { and, desc, eq, gte, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import {
   db,
   changes,
@@ -17,6 +17,7 @@ import {
   isSubstantiveChange,
   gateAppliesTo,
   suppressesAsCosmetic,
+  formatCorroborationSurface,
   AI_CONFIG,
   type Classification,
   type PerChangeAssessment,
@@ -109,20 +110,43 @@ export async function runClassifyChange(payload: z.input<typeof InputSchema>) {
     // corroboration axis scores against. Without them the model cannot tell a
     // pricing change it already saw on the pricing page this week from a fresh
     // one, so it would score every change as a single uncorroborated surface.
+    //
+    // Sent as LABELS, never as the earlier signals' prose. When these lines
+    // carried the insight sentence, a change the model could not read (a 50 KB
+    // single-line JSON blob of App Store reviews) came back classified with a
+    // NEIGHBOURING signal's story, verbatim down to "social-set packages" — prod
+    // signal fdd882b1, whose "what changed" announced a free trial it had no
+    // evidence for. The source type is joined in because "independent SURFACE" is
+    // what the axis actually counts, and it was the one field these lines never
+    // carried.
+    const now = Date.now();
     const recentSignals = competitor
       ? (
-          await db.query.signals.findMany({
-            where: and(
-              eq(signals.competitorId, competitor.id),
-              gte(signals.createdAt, new Date(Date.now() - 14 * 86400_000)),
-              isNotNull(signals.insight),
-            ),
-            orderBy: [desc(signals.createdAt)],
-            limit: 5,
-            columns: { category: true, severity: true, humanChangeAfter: true, insight: true },
-          })
-        ).map(
-          (s) => `[${s.severity}] ${s.category} — ${s.humanChangeAfter ?? s.insight}`,
+          await db
+            .select({
+              category: signals.category,
+              severity: signals.severity,
+              createdAt: signals.createdAt,
+              sourceType: monitors.sourceType,
+            })
+            .from(signals)
+            .innerJoin(changes, eq(changes.id, signals.changeId))
+            .innerJoin(monitors, eq(monitors.id, changes.monitorId))
+            .where(
+              and(
+                eq(signals.competitorId, competitor.id),
+                gte(signals.createdAt, new Date(now - 14 * 86400_000)),
+              ),
+            )
+            .orderBy(desc(signals.createdAt))
+            .limit(5)
+        ).map((s) =>
+          formatCorroborationSurface({
+            category: s.category,
+            severity: s.severity,
+            sourceType: s.sourceType,
+            ageDays: Math.max(0, Math.floor((now - s.createdAt.getTime()) / 86400_000)),
+          }),
         )
       : [];
 

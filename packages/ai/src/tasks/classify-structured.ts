@@ -3,7 +3,7 @@ import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
 import { attachQuality, type WithQuality } from "../grounding/types";
 import { ModelClassificationSchema, resolveClassification, type Classification } from "./classify";
-import { MATERIALITY_RUBRIC, CATEGORY_RULES } from "./classify-shared";
+import { MATERIALITY_RUBRIC, CATEGORY_RULES, buildRecentSignalsBlock } from "./classify-shared";
 
 const CACHE_TTL_SECONDS = Number(process.env.AI_CACHE_TTL_CLASSIFY_DAYS ?? 7) * 86400;
 
@@ -41,7 +41,10 @@ export const StructuredOutputSchema = ModelClassificationSchema.extend({
 export interface ClassifyStructuredContext {
   sourceType?: string;
   competitorName?: string;
-  /** Other surfaces for the corroboration axis — see ClassifyContext.recentSignals. */
+  /**
+   * Other surfaces for the corroboration axis, as `formatCorroborationSurface`
+   * labels — see ClassifyContext.recentSignals.
+   */
   recentSignals?: string[];
 }
 
@@ -70,14 +73,8 @@ export function buildStructuredClassifyPrompt(
   const where = [context.competitorName, context.sourceType === "homepage" ? "homepage" : context.sourceType]
     .filter(Boolean)
     .join(" — ");
-  const recent = (context.recentSignals ?? []).slice(0, 5).map((s) => `- ${s.slice(0, 160)}`);
-  const recentBlock = recent.length
-    ? `\n<recent-signals>
-These moves were already recorded for this competitor recently — use them, and
-only them, as the other independent surfaces for the corroboration score:
-${recent.join("\n")}
-</recent-signals>\n`
-    : "";
+  const block = buildRecentSignalsBlock(context.recentSignals ?? []);
+  const recentBlock = block ? `\n${block}` : "";
   const contextBlock =
     (where ? `\nThese changes were detected on: ${where}.\n` : "") + recentBlock;
 

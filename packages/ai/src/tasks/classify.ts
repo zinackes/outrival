@@ -3,7 +3,12 @@ import { formatDiffForPrompt } from "@outrival/shared";
 import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
 import { attachQuality, type WithQuality } from "../grounding/types";
-import { MATERIALITY_RUBRIC, CATEGORY_RULES } from "./classify-shared";
+import {
+  MATERIALITY_RUBRIC,
+  CATEGORY_RULES,
+  SOURCE_LABELS,
+  buildRecentSignalsBlock,
+} from "./classify-shared";
 import {
   MaterialitySchema,
   isSignificantFromMateriality,
@@ -100,34 +105,15 @@ export interface ClassifyContext {
    */
   hint?: string;
   /**
-   * Recent signals already recorded for THIS competitor, newest first, as short
-   * one-line summaries. They are the other "independent surfaces" the
-   * corroboration axis scores against: without them the model has no way to know
-   * whether a pricing move on the homepage was already seen on the pricing page
-   * this week. Omitted → the model has one surface and scores corroboration 1.
+   * Recent signals already recorded for THIS competitor, newest first, each a
+   * LABEL built by `formatCorroborationSurface` (never an insight sentence). They
+   * are the other "independent surfaces" the corroboration axis scores against:
+   * without them the model has no way to know whether a pricing move on the
+   * homepage was already seen on the pricing page this week. Omitted → the model
+   * has one surface and scores corroboration 1.
    */
   recentSignals?: string[];
 }
-
-// Human-readable page type for the prompt. Lets the model weigh significance by
-// where the change happened (a homepage testimonial rotating vs a pricing tier
-// moving) instead of judging a context-free blob of diff lines.
-const SOURCE_LABELS: Record<string, string> = {
-  homepage: "homepage / landing page",
-  pricing: "pricing page",
-  blog: "blog or changelog index",
-  changelog: "changelog",
-  jobs: "careers / jobs page",
-  g2_reviews: "G2 reviews page",
-  capterra_reviews: "Capterra reviews page",
-  appstore_reviews: "App Store reviews page",
-  github_repo: "GitHub repository",
-  linkedin: "LinkedIn page",
-  twitter: "X / Twitter profile",
-  subdomains: "list of the competitor's live subdomains (Certificate Transparency)",
-  youtube: "the competitor's YouTube channel — a new video it published (marketing / content)",
-  custom: "a specific page on the competitor's site",
-};
 
 /**
  * Build the `<context>` block prepended to the diff. Pure + exported so the hint
@@ -147,15 +133,7 @@ export function buildClassifyContextBlock(context: ClassifyContext): string {
   // every classify call (it is not in the cached system prefix), so it is paid for
   // on each change. Five recent moves are enough to tell "already seen on another
   // surface" from "brand new".
-  const recent = (context.recentSignals ?? []).slice(0, 5).map((s) => `- ${s.slice(0, 160)}`);
-  const recentBlock = recent.length
-    ? `<recent-signals>
-These moves were already recorded for this competitor recently — use them, and
-only them, as the other independent surfaces for the corroboration score:
-${recent.join("\n")}
-</recent-signals>
-`
-    : "";
+  const recentBlock = buildRecentSignalsBlock(context.recentSignals ?? []);
 
   if (lines.length === 0) return recentBlock;
   return `<context>

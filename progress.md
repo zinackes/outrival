@@ -1552,3 +1552,136 @@ capture : le bloc qui renvoyait null rend 12 entrées sur 13.
 
 **Prochaine session** : P2, blog feed-first + fetch des nouveaux posts + enrichissement
 batché + `competitor_named_you`. NE PAS commencer sans /clear.
+
+---
+
+## Hiring Intelligence v2 — P4 : couverture (2026-08-01)
+
+**Le problème** : 9 ATS ont un adapter écrit à la main. Tout le reste — Teamtailor,
+JOIN, Softgarden, Taleez, Jobylon, et la longue traîne des career sites maison —
+tombait direct sur le LLM, qui lit une listing et ne peut donc rendre que ce qu'une
+listing imprime : un titre, parfois une ville. Les corps de JD, les dates, les
+salaires et les pays n'étaient pas sur cette page. P1/P2/P3 restaient éteints pour
+ces concurrents, non par manque de code mais par manque de données.
+
+Ils sont pourtant dans le markup : Google indexe les offres via le JSON-LD
+`JobPosting`, donc à peu près tout ATS qui veut ses clients dans Google Jobs l'émet.
+
+**L'échelle est EXCLUSIVE** (adapter API connu → parseur JSON-LD générique →
+plancher AI). Un board Greenhouse n'atteint jamais le rung générique : test dédié
+(`jobs-scraper.test.ts`), aucune page détail ouverte, zéro double ingestion.
+
+### Ce qui a été livré
+
+- **`packages/scrapers/src/jobs/jsonld.ts`** — `JobPosting` (objet, array, `@graph`,
+  `ItemList`) → `AtsJob`, via le même `mkJob` que les adapters. `addressCountry` ISO
+  poussé dans la string de location (le résolveur offline P2 la lit exactement au lieu
+  de désambiguïser un nom de ville), `baseSalary.value.unitText` → `salaryPeriod` par
+  le `normalizeSalaryPeriod` existant, `description` → `htmlToPlainJd`, `validThrough`
+  passé = annonce DROPPÉE. Champ absent = null, jamais complété.
+- **Stratégie 2 niveaux** dans `jobs.scraper.ts`, après échec d'un adapter API et
+  avant le plancher AI : (a) la page porte ses annonces → terminé, zéro fetch en plus ;
+  (b) elle liste des pages job du même host → seules les NOUVELLES sont ouvertes, une à
+  une, **via `scrapePage`** donc robots.txt + `Crawl-delay` + gap par domaine honorés,
+  cap 30/run (le reste au run suivant : elles sont neuves, rien ne lit leur absence
+  comme une fermeture).
+- **Cycle de vie** : sur ce rung, ce qui rend un rôle OUVERT c'est d'être SUR LA
+  LISTING, pas d'avoir eu sa page ouverte. Donc une listing non terminée (pagination
+  au-delà du cap, page en échec) rend `null` et non un préfixe — même doctrine que le
+  `truncated` de `fetchAtsJobs`, parce qu'un préfixe de board ferme tout ce qui dépasse.
+  Pagination suivie **uniquement** via les liens que la page rend elle-même
+  (`rel=next`, `?page=`) : deviner `?page=2` serait une requête que le site n'a jamais
+  annoncée, et sur un board qui ignore le paramètre ça relit la page 1 à l'infini.
+- **`ScrapeOptions.knownJobs`** (`scrape-monitor` → scraper) : une annonce déjà connue
+  est reportée avec son titre et son département **VERBATIM**. `computeJobsDelta` clé
+  sur ce couple, donc rederiver depuis la carte de listing fermerait la moitié du board
+  et le rouvrirait chaque semaine. C'est le point le plus fragile de la feature.
+- **`ats_coverage_gaps`** (migration `0065`) — upsert par (plateforme, concurrent) à
+  CHAQUE run jobs : plateforme, host, résolution (`api_adapter|json_ld|ai_fallback|
+  none`), nb d'annonces, occurrences. Détection PASSIVE étendue (`detectAtsPlatform`) à
+  teamtailor, join, softgarden, taleez, talentsoft, jobylon, factorial, breezy,
+  bamboohr, pinpoint, homerun — nommer sans fetcher, pour que « quel adapter écrire
+  ensuite » soit une requête et plus une intuition. Lecture : `pnpm ats:coverage`
+  (classement par occurrences × annonces).
+- **Teamtailor** = entrée `PROVIDERS` SANS `api` (leur JSON est token-gated) : le board
+  se résout en sautant sur la listing hébergée et en lisant le markup. Les 10 autres
+  plateformes restent en détection passive seule — aucune URL de board devinée, le
+  compteur dira lesquelles promouvoir.
+
+### Vérifié contre le réel (pas contre une approximation)
+
+Fixtures figées depuis de vraies captures du 2026-08-01 (`jobs.lunar.app` page job,
+`jobs.tibber.com` listing). Trois choses que le réel a contredit dans le plan :
+
+1. **Teamtailor n'émet AUCUN `url`** sur son `JobPosting` : l'annonce EST la page. D'où
+   le repli sur l'URL de la page — mais uniquement quand la page ne porte QU'UNE
+   annonce, sinon une listing inlinée donnerait la même identité à tout le board.
+   Bug attrapé par le test, puis un second dessous : `new URL("", base)` RÉSOUT vers la
+   base, donc l'absence d'URL se déguisait en URL de page. `canonicalJobUrl` refuse
+   maintenant une entrée vide.
+2. **La description est doublement échappée** (`&lt;p&gt;`). `htmlToPlainJd` dépouille
+   les tags AVANT de décoder les entités — l'ordre correct pour du vrai HTML — donc les
+   tags réapparaissaient APRÈS le nettoyage. Un décodage préalable, déclenché seulement
+   si un tag échappé est présent.
+3. **La listing ne porte pas de JSON-LD** (il vit sur les pages job) et ne nomme aucun
+   ATS : `looksLikeCareers` l'aurait jetée juste avant le rung capable de la lire. Une
+   page qui pointe ≥3 pages job de son propre host est désormais une listing, par
+   structure et non par vocabulaire.
+
+Run live de bout en bout sur `jobs.tibber.com` (vrai réseau, robots honorés) :
+**11 annonces, provider `teamtailor`, pays DE/SE/NL/NO, dates réelles, corps de JD de
+3 500 à 4 400 caractères** — donc P1 (mining), P2 (géo) et P3 (salaires) s'allument
+pour ces boards sans une ligne de code de plus. `resolveLocation` re-vérifié sur les
+strings produites : `København, DK` → `{DK, country}`, `Berlin, DE / Stockholm, SE` →
+`{DE+SE, country}`. Détail réel corrigé : Teamtailor répète la ville en `addressRegion`
+(« Berlin, Berlin, DE »).
+
+**Limite honnête** : `Remote (DE)` est classé `remote` par le résolveur et ne compte
+dans AUCUN pays. C'est la décision de P2 (un rôle remote n'est pas une empreinte
+géographique), pas un accident, et ce rung ne la contourne pas.
+
+### Coût AI
+
+Un board résolu `json_ld` ne passe plus par `stagedExtract` : **l'appel `ai_runs`
+`extract_jobs` disparaît** pour ce concurrent. L'appel `source_summary` en fin de job
+est inchangé — la baisse porte sur `extract_jobs`, pas sur le total.
+
+### Migration : `0065` APPLIQUÉE SUR PROD (2026-08-01), pas sur dev
+
+Deux pièges franchis, tous deux invisibles sans pré-vol lecture seule :
+
+1. **Le `when` généré sortait SOUS le dernier appliqué** (1785565802379 contre
+   1785614302239). Le migrator runtime sélectionne par `when > created_at du dernier
+   appliqué` : il aurait affiché « Migrations applied » en n'écrivant RIEN. Réordonné
+   avant application.
+2. **Le numéro 0064 était déjà pris EN PROD** — par `0064_last_anita_blake`
+   (`content_items` + valeur d'enum `shipping_velocity`) de la branche
+   `feat/content-items, **qui n'est pas mergée**. `origin/main` s'arrête à 0063 :
+   **la prod est en avance d'une migration sur `main`**. La nôtre est donc renumérotée
+   **`0065_light_centennial`**. (La note « 0064 appliquée nulle part » qui traînait
+   était fausse — vérifié : la table et la valeur d'enum existent en prod.)
+
+Vérifié APRÈS application, pas déduit du message de succès : ledger 66 lignes,
+0 pending, `ats_coverage_gaps` présente avec ses 8 colonnes, sa PK, l'unique
+(platform, competitor) et l'index (resolution, last_seen_at).
+
+**Conséquence pour le merge** : les deux `0064` partaient du même parent (snapshot
+0063), donc les chaînes `prevId` divergent. Celui qui merge en SECOND doit supprimer
+son `.sql` + son snapshot + son entrée de journal et refaire `db:generate` — jamais
+renuméroter à la main un snapshot dont le parent a bougé.
+
+### Reste à faire
+
+- **Pas de dev** : aucune `DATABASE_URL` dev dans ce checkout, donc `0065` n'est PAS
+  sur la branche dev et aucun concurrent Teamtailor n'y a été peuplé.
+- **`ats_coverage_gaps` est vide en prod** : la table existe, mais elle ne se remplit
+  qu'au prochain run jobs de chaque concurrent (upsert dans `extract-jobs`), et ce code
+  n'est pas déployé. Rien à lire avec `pnpm ats:coverage` avant déploiement des workers.
+- La baisse d'`ai_runs` `extract_jobs` reste **démontrée par le code et les tests, pas
+  mesurée** — à confirmer sur prod après déploiement (le socle : 1 452 postings actives,
+  1 093 avec URL, donc le report par URL canonique a de la matière).
+- Promouvoir 2-3 plateformes en adapters selon ce que dit `ats:coverage` — mini-sessions,
+  hors périmètre ici.
+
+**Prochaine session** : P5 — compare lens v2 + Momentum (remote %, top pays, median
+salary, `remote_policy_changed`, `leadership_hire`). NE PAS commencer sans /clear.

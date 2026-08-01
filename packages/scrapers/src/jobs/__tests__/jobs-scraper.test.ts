@@ -250,3 +250,149 @@ describe("jobs scraper — careers discovery routing", () => {
     expect(res.text).toContain("Founding Engineer - Auth");
   });
 });
+
+// ── Generic JSON-LD rung (Hiring Intelligence v2 P4) ─────────────────────────
+
+const TT_LISTING_URL = "https://jobs.acme.com/jobs";
+
+/** A hosted career site: names no ATS, links its postings, carries no markup itself. */
+function teamtailorListing(count: number): string {
+  const rows = Array.from(
+    { length: count },
+    (_i, n) => `<li><a href="/jobs/${1000 + n}-role-${n}">Role ${n} · Engineering · Berlin</a></li>`,
+  ).join("");
+  return `<html><head>
+    <script src="https://teamtailor-cdn.com/assets/packs/js/career-site.js"></script>
+    </head><body><h1>Open positions</h1><ul>${rows}</ul>
+    <a href="/departments/engineering">Engineering</a></body></html>`;
+}
+
+/** A job page the way Teamtailor ships one: a JobPosting block, no `url` field. */
+function jobPage(title: string, country = "DE"): string {
+  return `<html><head><script type="application/ld+json">${JSON.stringify({
+    "@context": "http://schema.org/",
+    "@type": "JobPosting",
+    title,
+    description: "&lt;p&gt;We are hiring an engineer.&lt;/p&gt;",
+    datePosted: "2026-07-01T09:00:00+02:00",
+    employmentType: "FULL_TIME",
+    jobLocation: [{ "@type": "Place", address: { addressLocality: "Berlin", addressCountry: country } }],
+  })}</script></head><body><h1>${title}</h1></body></html>`;
+}
+
+const detailCalls = (): string[] =>
+  scrapePage.mock.calls.map(([u]) => String(u)).filter((u) => /\/jobs\/\d+/.test(u));
+
+describe("jobs scraper — generic JSON-LD rung", () => {
+  it("resolves a hosted career site by reading its job pages", async () => {
+    scrapePage.mockImplementation(async (u: string) => {
+      if (/\/jobs\/(\d+)/.test(u)) {
+        return outcome(jobPage(`Role ${/\/jobs\/(\d+)/.exec(u)?.[1]}`), u);
+      }
+      return outcome(teamtailorListing(3), u);
+    });
+    scrapePage.mockClear();
+    const res = await scrape("comp-tt", TT_LISTING_URL);
+    expect(res.metadata.atsJobs).toBe(3);
+    // Named for the coverage counter off its asset host: a Teamtailor career site on
+    // a vanity domain states its slug nowhere else.
+    expect(res.metadata.atsDetected).toBe("teamtailor");
+    expect(res.text).toContain("Role 1000");
+    // The country the markup states, carried into the location the geo resolver reads.
+    expect(res.text).toContain("Berlin, DE");
+    expect(detailCalls()).toHaveLength(3);
+  });
+
+  it("opens at most 30 unseen job pages in one run, and keeps the rest for the next", async () => {
+    scrapePage.mockImplementation(async (u: string) => {
+      if (/\/jobs\/(\d+)/.test(u)) {
+        return outcome(jobPage(`Role ${/\/jobs\/(\d+)/.exec(u)?.[1]}`), u);
+      }
+      return outcome(teamtailorListing(40), u);
+    });
+    scrapePage.mockClear();
+    const res = await scrape("comp-tt-cap", TT_LISTING_URL);
+    expect(detailCalls()).toHaveLength(30);
+    expect(res.metadata.atsJobs).toBe(30);
+  });
+
+  it("carries a posting we already hold forward instead of re-opening its page", async () => {
+    // Title and department come back exactly as stored: the jobs delta keys on that
+    // pair, so re-deriving them from a listing card would close the role and open a
+    // near-identical one every week.
+    scrapePage.mockImplementation(async (u: string) => {
+      if (/\/jobs\/(\d+)/.test(u)) {
+        return outcome(jobPage(`Role ${/\/jobs\/(\d+)/.exec(u)?.[1]}`), u);
+      }
+      return outcome(teamtailorListing(3), u);
+    });
+    scrapePage.mockClear();
+    const res = await scrape("comp-tt-known", TT_LISTING_URL, {
+      knownJobs: [
+        {
+          // Stated with tracking noise on purpose: identity is the canonical URL.
+          url: "https://jobs.acme.com/jobs/1000-role-0?utm_source=weekly",
+          title: "Stored Title",
+          department: "Stored Dept",
+        },
+      ],
+    });
+    expect(res.metadata.atsJobs).toBe(3);
+    expect(detailCalls()).toHaveLength(2);
+    expect(res.text).toContain("Stored Title");
+    expect(res.text).toContain("Stored Dept");
+  });
+
+  it("hands back NOTHING when the listing paginates past the walk cap", async () => {
+    // A prefix of a board is read downstream as the whole board, so every posting
+    // past the cap would be diffed as closed. Falling to the AI floor reports fewer
+    // roles; it never invents a wave of closures.
+    scrapePage.mockImplementation(async (u: string) => {
+      if (/\/jobs\/(\d+)/.test(u)) return outcome(jobPage("Role"), u);
+      const page = Number(/[?&]page=(\d+)/.exec(u)?.[1] ?? 1);
+      return outcome(
+        teamtailorListing(3).replace("</body>", `<a href="/jobs?page=${page + 1}">Next</a></body>`),
+        u,
+      );
+    });
+    scrapePage.mockClear();
+    const res = await scrape("comp-tt-paged", TT_LISTING_URL);
+    expect(res.metadata.atsJobs).toBeUndefined();
+    expect(detailCalls()).toHaveLength(0);
+  });
+
+  it("never lets an API-resolved board reach the generic rung", async () => {
+    // The ladder is exclusive. A Greenhouse board answers from its API, so no job
+    // page is ever opened and the board is never ingested twice.
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          jobs: [
+            {
+              title: "Backend Engineer",
+              departments: [{ name: "Engineering" }],
+              absolute_url: "https://boards.greenhouse.io/acme/jobs/4001",
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as unknown as typeof fetch;
+    scrapePage.mockImplementation(async (u: string) =>
+      outcome(
+        `<html><body><h1>Open positions</h1>
+         <a href="https://boards.greenhouse.io/acme">See our openings</a></body></html>`,
+        u,
+      ),
+    );
+    scrapePage.mockClear();
+    try {
+      const res = await scrape("comp-gh", "https://acme.com/careers");
+      expect(res.metadata.atsDetected).toBe("greenhouse");
+      expect(res.metadata.atsJobs).toBe(1);
+      expect(detailCalls()).toHaveLength(0);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});

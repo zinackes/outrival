@@ -22,6 +22,7 @@ import {
   techStackHistory,
   platformDetectionRuns,
   aiVisibilityResults,
+  atsCoverageGaps,
 } from "@outrival/db";
 import { and, desc, eq, gt, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import type { CreditBurnRow } from "@outrival/shared";
@@ -38,6 +39,51 @@ async function bestEffort(op: string, fn: () => Promise<unknown>): Promise<void>
   } catch (err) {
     logger.error(`analytics ${op} failed`, { err: String(err) });
   }
+}
+
+/** How a jobs run resolved its board — the axis the coverage counter ranks on. */
+export type JobsResolution = "api_adapter" | "json_ld" | "ai_fallback" | "none";
+
+/**
+ * Record how one competitor's jobs board was read (Hiring Intelligence v2 P4).
+ *
+ * Upserted per (platform, competitor): the row is the CURRENT state of that board
+ * plus a count of how many times we have met it. `occurrences` accumulates so a
+ * platform's weight is how much of the fleet actually sits on it, not how recently
+ * someone looked; `resolution` and `job_count` are overwritten, so a board that
+ * starts resolving through markup leaves the gap list the same day.
+ */
+export async function upsertAtsCoverageGap(row: {
+  platform: string;
+  host: string;
+  competitor_id: string;
+  resolution: JobsResolution;
+  job_count: number;
+  recorded_at: Date;
+}): Promise<void> {
+  await bestEffort("ats_coverage_gaps upsert", () =>
+    db
+      .insert(atsCoverageGaps)
+      .values({
+        platform: row.platform,
+        host: row.host,
+        competitorId: row.competitor_id,
+        resolution: row.resolution,
+        jobCount: row.job_count,
+        occurrences: 1,
+        lastSeenAt: row.recorded_at,
+      })
+      .onConflictDoUpdate({
+        target: [atsCoverageGaps.platform, atsCoverageGaps.competitorId],
+        set: {
+          host: sql`excluded.host`,
+          resolution: sql`excluded.resolution`,
+          jobCount: sql`excluded.job_count`,
+          occurrences: sql`${atsCoverageGaps.occurrences} + 1`,
+          lastSeenAt: sql`excluded.last_seen_at`,
+        },
+      }),
+  );
 }
 
 async function bestEffortRead<T>(op: string, fn: () => Promise<T[]>): Promise<T[] | null> {

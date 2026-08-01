@@ -643,7 +643,43 @@ export const platformDetectionRuns = pgTable(
   (t) => [index("platform_detection_runs_recorded_idx").on(t.recordedAt)],
 );
 
+// How each competitor's jobs board actually gets read (Hiring Intelligence v2 P4)
+// — the learning loop that decides which ATS adapter is worth writing next.
+//
+// Coverage was previously a guess. Nine providers have an adapter; everything else
+// fell through to the LLM, and nothing recorded WHAT it fell through from, so
+// "which platform should we support next" had no answer beyond intuition. This
+// table turns it into a query: platform, how many competitors sit on it, how many
+// postings they carry, and how they are being read today.
+//
+// One row per (platform, competitor), UPSERTED on every jobs run rather than
+// appended: the question is the CURRENT state of a board plus how often we have
+// met it, not a scroll of every scrape. `occurrences` is therefore incremented in
+// place, and `resolution` always reflects the latest run — a board that graduates
+// from ai_fallback to json_ld stops counting as a gap the moment it does.
+export const atsCoverageGaps = pgTable(
+  "ats_coverage_gaps",
+  {
+    id: uuid(),
+    /** Detected platform ("teamtailor", "greenhouse", …) or "unknown" when nothing named it. */
+    platform: text("platform").notNull(),
+    /** Host the board was read from — what makes a row actionable to go look at. */
+    host: text("host").notNull(),
+    competitorId: text("competitor_id").notNull(),
+    /** api_adapter | json_ld | ai_fallback | none */
+    resolution: text("resolution").notNull(),
+    jobCount: integer("job_count").notNull(),
+    occurrences: integer("occurrences").notNull().default(1),
+    lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("ats_coverage_gaps_platform_competitor_uk").on(t.platform, t.competitorId),
+    index("ats_coverage_gaps_resolution_idx").on(t.resolution, t.lastSeenAt),
+  ],
+);
+
 export type PricingHistory = InferSelectModel<typeof pricingHistory>;
+export type AtsCoverageGap = InferSelectModel<typeof atsCoverageGaps>;
 export type PriceTier = InferSelectModel<typeof priceTiers>;
 export type PricePoint = InferSelectModel<typeof pricePoints>;
 export type CreditBurnRate = InferSelectModel<typeof creditBurnRates>;

@@ -1,7 +1,7 @@
 import { logger } from "../lib/job-logger";
 import { NonRetriable as AbortTaskRunError, classifyChange, generateSignal } from "@outrival/queue";
 import { z } from "zod";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, competitors, contentItems, monitors, snapshots, changes } from "@outrival/db";
 import { computeHash, getFromR2, uploadToR2 } from "@outrival/shared";
 import { typeContentItems, AI_CONFIG } from "@outrival/ai";
@@ -340,7 +340,7 @@ async function emitBreakingOrDeprecation(
         inArray(contentItems.id, newIds),
         inArray(contentItems.itemType, ["breaking", "deprecation"]),
         // An undated entry is one the feed never dated, not an old one.
-        sql`(${contentItems.publishedAt} is null or ${contentItems.publishedAt} >= ${cutoff})`,
+        or(isNull(contentItems.publishedAt), gte(contentItems.publishedAt, cutoff)),
       ),
     )
     .orderBy(desc(contentItems.publishedAt))

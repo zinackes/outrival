@@ -1,4 +1,4 @@
-import { and, eq, gte, lte, sql as dsql, type SQL } from "drizzle-orm";
+import { and, eq, gt, gte, lte, sql as dsql, type SQL } from "drizzle-orm";
 import { changes, contentItems, jobPostings, postingFacts } from "@outrival/db";
 import {
   diffEntitlements,
@@ -226,7 +226,11 @@ async function attributionWindow(
   const [next] = await db
     .select({ detectedAt: changes.detectedAt })
     .from(changes)
-    .where(and(eq(changes.monitorId, monitorId), dsql`${changes.detectedAt} > ${detectedAt}`))
+    // A typed comparison, not a `sql` fragment: a Date interpolated into a raw
+    // template carries no encoder, and the driver rejects it outright. Every
+    // caller here is wrapped in a try/catch that returns null, so the throw did
+    // not surface as an error — it silently emptied EVERY fact block.
+    .where(and(eq(changes.monitorId, monitorId), gt(changes.detectedAt, detectedAt)))
     .orderBy(changes.detectedAt)
     .limit(1);
 
@@ -354,10 +358,13 @@ async function changelogFacts(
   competitorId: string,
   window: { lower: Date; upper: Date },
 ): Promise<SignalFacts> {
-  const rows = await contentEntriesIn(competitorId, dsql`
-    ${contentItems.firstSeenAt} >= ${window.lower}
-    and ${contentItems.firstSeenAt} <= ${window.upper}
-  `);
+  // Typed helpers, not a raw fragment: a Date bound into a `sql` template has no
+  // encoder attached, and the driver rejects it. Here that would surface as the
+  // block silently never rendering, since buildSignalFacts swallows read errors.
+  const rows = await contentEntriesIn(
+    competitorId,
+    and(gte(contentItems.firstSeenAt, window.lower), lte(contentItems.firstSeenAt, window.upper))!,
+  );
   if (rows.length === 0) return null;
   return {
     kind: "content",

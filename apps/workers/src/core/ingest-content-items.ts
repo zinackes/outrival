@@ -2,8 +2,22 @@ import { logger } from "../lib/job-logger";
 import { NonRetriable as AbortTaskRunError, classifyChange, generateSignal } from "@outrival/queue";
 import { z } from "zod";
 import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
-import { db, competitors, contentItems, monitors, snapshots, changes } from "@outrival/db";
-import { computeHash, getFromR2, uploadToR2 } from "@outrival/shared";
+import {
+  db,
+  competitors,
+  contentItems,
+  monitors,
+  snapshots,
+  changes,
+  roadmapStatusEvents,
+} from "@outrival/db";
+import {
+  computeHash,
+  getFromR2,
+  uploadToR2,
+  resolveRoadmapStatus,
+  type RoadmapStatus,
+} from "@outrival/shared";
 import { typeContentItems, AI_CONFIG } from "@outrival/ai";
 import {
   parseChangelogItems,
@@ -13,7 +27,11 @@ import {
   detectShippingVelocityShift,
   previousMonthKey,
   isChangelogItemType,
+  planTopRequestSignal,
+  TOP_REQUEST_COOLDOWN_DAYS,
   type ContentItemInput,
+  type RoadmapEntryState,
+  type RoadmapMove,
 } from "@outrival/scrapers/content";
 import { isVerbatim } from "@outrival/scrapers/jobs-jd-facts";
 import { loggedAi } from "../lib/analytics";
@@ -33,9 +51,13 @@ import { loggedAi } from "../lib/analytics";
  *    reader gets one signal about the release rather than two.
  *  - shipping_velocity_shift — how their release cadence moved against its own
  *    trailing months, on the dedicated `shipping_velocity` anchor.
+ *  - top_request_planned (P5) — one of the portal's most-voted open requests moved
+ *    into committed work. Deterministic too: the rank and the floors are arithmetic
+ *    over vote counts the portal itself publishes.
  *
  * The AI half is one batched call per ~10 untyped entries and separates feature
- * from improvement. Nothing it returns can raise an alert.
+ * from improvement. Nothing it returns can raise an alert, and the roadmap half
+ * spends none of it: a portal serves structured entries with their own statuses.
  */
 
 const InputSchema = z.object({
@@ -116,6 +138,27 @@ export async function runIngestContentItems(payload: z.input<typeof InputSchema>
     return { parsed: 0, inserted: 0, typed: 0, emitted: 0 };
   }
 
+  if (input.sourceType === "roadmap") {
+    const roadmap = await ingestRoadmap(competitor, parsed, input.changeId ?? null);
+    // Nothing deterministic came out of the portal move, so the change goes back to
+    // the lexical classifier exactly as it did before P5 deferred it.
+    if (!roadmap.emitted) await enqueueLexicalFallback();
+    logger.log("Completed ingest-content-items (roadmap)", {
+      competitorId: input.competitorId,
+      parsed: parsed.length,
+      moves: roadmap.moves,
+      baseline: roadmap.baseline,
+      emitted: roadmap.emitted,
+    });
+    return {
+      parsed: parsed.length,
+      inserted: roadmap.inserted,
+      typed: 0,
+      emitted: roadmap.emitted ? 1 : 0,
+      baseline: roadmap.baseline,
+    };
+  }
+
   const newIds = await upsertItems(input.competitorId, input.sourceType, parsed);
   logger.log("Ingested content items", {
     competitorId: input.competitorId,
@@ -123,13 +166,6 @@ export async function runIngestContentItems(payload: z.input<typeof InputSchema>
     parsed: parsed.length,
     inserted: newIds.length,
   });
-
-  if (input.sourceType === "roadmap") {
-    // Roadmap entries arrive typed and carry their own status; the signals built
-    // on them are P5. Nothing defers a change here, so the lexical classifier ran
-    // as usual and there is nothing to hand back.
-    return { parsed: parsed.length, inserted: newIds.length, typed: 0, emitted: 0 };
-  }
 
   const typed = await typeNewEntries(input.competitorId);
 
@@ -174,13 +210,13 @@ type CompetitorRow = typeof competitors.$inferSelect;
  * That set is what gets typed and what a signal may be about — an entry already in
  * the table was already news once.
  *
- * A roadmap entry is the exception: its STATUS is the fact, and planned → shipped
- * is the reason to watch a portal at all, so it updates in place. Its "new" set is
- * not computed because P1 emits no roadmap signal (that is P5).
+ * Roadmap entries take the other path (`ingestRoadmap`): their STATUS is the fact,
+ * so they update in place and the write has to report what MOVED rather than what
+ * was new.
  */
 async function upsertItems(
   competitorId: string,
-  sourceType: "changelog" | "roadmap",
+  sourceType: "changelog",
   items: ContentItemInput[],
 ): Promise<string[]> {
   const values = items.map((it) => ({
@@ -194,27 +230,289 @@ async function upsertItems(
     itemType: it.itemType,
   }));
 
-  if (sourceType === "roadmap") {
-    await db
-      .insert(contentItems)
-      .values(values)
-      .onConflictDoUpdate({
-        target: [contentItems.competitorId, contentItems.sourceType, contentItems.externalId],
-        set: {
-          title: sql`excluded.title`,
-          url: sql`excluded.url`,
-          status: sql`excluded.status`,
-        },
-      });
-    return [];
-  }
-
   const rows = await db
     .insert(contentItems)
     .values(values)
     .onConflictDoNothing()
     .returning({ id: contentItems.id });
   return rows.map((r) => r.id);
+}
+
+/**
+ * The roadmap half of the ingestion (Content Intelligence v2 P5).
+ *
+ * A portal entry updates IN PLACE — its status is the fact, and planned → shipped
+ * is the reason to watch a portal at all — so unlike a feed entry there is no "new
+ * rows" set to work from. What matters is what MOVED, which is why every transition
+ * is appended to `roadmap_status_events` as it is seen.
+ *
+ * THE FIRST READ OF A PORTAL IS A BASELINE, the same rule the customers registry
+ * follows. A portal we have never read hands us thirty entries, some of which have
+ * been "Planned" since 2024; writing those as transitions would announce thirty
+ * roadmap moves the day a competitor is added. They are recorded — that memory is
+ * the point — with `isBaseline = 1`, and nothing signals.
+ */
+async function ingestRoadmap(
+  competitor: CompetitorRow,
+  items: ContentItemInput[],
+  changeId: string | null,
+): Promise<{ inserted: number; moves: number; baseline: boolean; emitted: boolean }> {
+  const held = await db
+    .select({
+      id: contentItems.id,
+      externalId: contentItems.externalId,
+      status: contentItems.status,
+      statusNormalized: contentItems.statusNormalized,
+    })
+    .from(contentItems)
+    .where(
+      and(eq(contentItems.competitorId, competitor.id), eq(contentItems.sourceType, "roadmap")),
+    );
+  const baseline = held.length === 0;
+  const previous = new Map(held.map((r) => [r.externalId, r]));
+
+  const rows = await db
+    .insert(contentItems)
+    .values(
+      items.map((it) => ({
+        competitorId: competitor.id,
+        sourceType: "roadmap" as const,
+        externalId: it.externalId,
+        title: it.title,
+        url: it.url,
+        publishedAt: null,
+        status: it.status,
+        statusNormalized: resolveRoadmapStatus(it.status),
+        votes: it.votes ?? null,
+        itemType: it.itemType,
+      })),
+    )
+    .onConflictDoUpdate({
+      target: [contentItems.competitorId, contentItems.sourceType, contentItems.externalId],
+      set: {
+        title: sql`excluded.title`,
+        url: sql`excluded.url`,
+        status: sql`excluded.status`,
+        statusNormalized: sql`excluded.status_normalized`,
+        // The weekly capture refreshes the count of every entry it still lists. An
+        // entry the portal dropped keeps the last count we saw, which is the last
+        // thing that was true about it — we have no evidence it went to zero.
+        votes: sql`excluded.votes`,
+      },
+    })
+    .returning({ id: contentItems.id, externalId: contentItems.externalId });
+
+  const idByExternal = new Map(rows.map((r) => [r.externalId, r.id]));
+
+  // ── What moved ──────────────────────────────────────────────────────────────
+  const moves: RoadmapMove[] = [];
+  const eventValues: Array<typeof roadmapStatusEvents.$inferInsert> = [];
+  for (const item of items) {
+    const itemId = idByExternal.get(item.externalId);
+    if (!itemId) continue;
+    const before = previous.get(item.externalId);
+    const toStatus = resolveRoadmapStatus(item.status);
+    const fromStatus = (before?.statusNormalized ?? null) as RoadmapStatus | null;
+    // Nothing moved. An entry whose LABEL was reworded but whose meaning did not
+    // change ("Planned" → "Planned (Q3)") is not a roadmap move, and recording it
+    // would put a competitor's copy edit in front of the reader as a commitment.
+    if (before && fromStatus === toStatus) continue;
+
+    eventValues.push({
+      contentItemId: itemId,
+      competitorId: competitor.id,
+      fromStatus,
+      toStatus,
+      fromRaw: before?.status ?? null,
+      toRaw: item.status ?? toStatus,
+      isBaseline: baseline ? 1 : 0,
+    });
+    if (!baseline) {
+      moves.push({
+        itemId,
+        fromStatus,
+        toStatus,
+        fromRaw: before?.status ?? null,
+        toRaw: item.status ?? toStatus,
+      });
+    }
+  }
+
+  const events =
+    eventValues.length > 0
+      ? await db
+          .insert(roadmapStatusEvents)
+          .values(eventValues)
+          .returning({ id: roadmapStatusEvents.id, contentItemId: roadmapStatusEvents.contentItemId })
+      : [];
+
+  logger.log("Ingested roadmap entries", {
+    competitorId: competitor.id,
+    entries: items.length,
+    events: events.length,
+    baseline,
+  });
+
+  // A baseline never signals, and neither does our own product: "your most
+  // requested feature is now planned" is news the user wrote themselves.
+  if (baseline || competitor.type === "self" || moves.length === 0) {
+    return { inserted: rows.length, moves: moves.length, baseline, emitted: false };
+  }
+
+  const emitted = await emitTopRequestPlanned({
+    competitor,
+    changeId,
+    moves,
+    entries: items.flatMap((it) => {
+      const itemId = idByExternal.get(it.externalId);
+      if (!itemId) return [];
+      return [
+        {
+          itemId,
+          title: it.title,
+          url: it.url,
+          votes: it.votes ?? null,
+          status: resolveRoadmapStatus(it.status),
+        },
+      ];
+    }),
+    eventIdByItem: new Map(events.map((e) => [e.contentItemId, e.id])),
+  });
+
+  return { inserted: rows.length, moves: moves.length, baseline, emitted };
+}
+
+/**
+ * `top_request_planned`: one of the portal's most-voted open requests just became
+ * committed work.
+ *
+ * Deterministic end to end — the rank and the floors are arithmetic over counts the
+ * portal itself publishes, and the text quotes the portal's own status labels rather
+ * than our normalised vocabulary, because those are the words their customers read.
+ *
+ * It rides the roadmap capture's OWN change row when there is one (scrape-monitor
+ * defers the classify for exactly this), so the reader gets one signal about the
+ * portal rather than two. When the capture produced no change row — a status move
+ * the significance gate filtered — it falls back to the synthetic `roadmap_shift`
+ * anchor, the same shape the cadence signal uses.
+ */
+async function emitTopRequestPlanned(args: {
+  competitor: CompetitorRow;
+  changeId: string | null;
+  moves: RoadmapMove[];
+  entries: RoadmapEntryState[];
+  eventIdByItem: Map<string, string>;
+}): Promise<boolean> {
+  const { competitor } = args;
+
+  const cutoff = new Date(Date.now() - TOP_REQUEST_COOLDOWN_DAYS * 86_400_000);
+  const recent = await db
+    .select({ contentItemId: roadmapStatusEvents.contentItemId })
+    .from(roadmapStatusEvents)
+    .where(
+      and(
+        eq(roadmapStatusEvents.competitorId, competitor.id),
+        gte(roadmapStatusEvents.signalledAt, cutoff),
+      ),
+    );
+
+  const plan = planTopRequestSignal({
+    moves: args.moves,
+    entries: args.entries,
+    cooledDown: new Set(recent.map((r) => r.contentItemId)),
+  });
+  if (!plan) return false;
+
+  const { primary, alsoMoved } = plan;
+  const statusPhrase = primary.toRaw.toLowerCase();
+  const headline = `Top request moves to ${statusPhrase} — "${primary.title}" (${primary.votes} votes, #${primary.rank})`;
+  const alsoLines = alsoMoved.map(
+    (m) => `- "${m.title}" (${m.votes} votes, #${m.rank}) — ${m.fromRaw ?? "new"} → ${m.toRaw}`,
+  );
+  const diffText =
+    `${competitor.name} moved one of the most requested items on its public roadmap into ` +
+    `committed work: "${primary.title}" — ${primary.votes} votes, ranked #${primary.rank} among ` +
+    `their open requests — went from ${primary.fromRaw ?? "not listed"} to ${primary.toRaw}.\n` +
+    (primary.url ? `${primary.url}\n` : "") +
+    (alsoLines.length > 0 ? `\nAlso committed in the same capture:\n${alsoLines.join("\n")}\n` : "") +
+    `\nVotes and statuses are the portal's own published numbers and its own column ` +
+    `names. A request their customers have been asking for out loud, now taken on, is ` +
+    `a gap they are about to close.`;
+
+  let changeId = args.changeId;
+  if (!changeId) {
+    changeId = await writeAnchoredChange(
+      competitor,
+      "roadmap_shift",
+      `top_request:${primary.itemId}:${primary.toRaw}`,
+      diffText,
+      {
+        kind: "top_request_planned",
+        itemId: primary.itemId,
+        title: primary.title,
+        url: primary.url,
+        votes: primary.votes,
+        rank: primary.rank,
+        fromRaw: primary.fromRaw,
+        toRaw: primary.toRaw,
+        alsoMoved,
+      },
+    );
+    if (!changeId) return false;
+  } else {
+    // The roadmap change already exists; its rawDiff is the portal's line diff, so
+    // the fact block reads the same shape off a column of its own.
+    await db
+      .update(changes)
+      .set({
+        rawDiff: sql`coalesce(${changes.rawDiff}, '{}'::jsonb) || ${JSON.stringify({
+          kind: "top_request_planned",
+          itemId: primary.itemId,
+          title: primary.title,
+          url: primary.url,
+          votes: primary.votes,
+          rank: primary.rank,
+          fromRaw: primary.fromRaw,
+          toRaw: primary.toRaw,
+          alsoMoved,
+        })}::jsonb`,
+      })
+      .where(eq(changes.id, changeId));
+  }
+
+  await generateSignal.enqueue({
+    changeId,
+    classification: {
+      category: "product" as const,
+      severity: primary.severity,
+      is_significant: true,
+      reason: headline,
+      humanChangeBefore: primary.fromRaw ?? "Not on the roadmap",
+      humanChangeAfter: `${primary.toRaw} — ${primary.votes} votes (#${primary.rank})`,
+    },
+  });
+
+  // Stamp every move the signal spoke for, so none of them can fire again inside
+  // the cooldown — including the ones named in the body rather than the headline.
+  const stamped = [primary, ...alsoMoved]
+    .map((m) => args.eventIdByItem.get(m.itemId))
+    .filter((id): id is string => Boolean(id));
+  if (stamped.length > 0) {
+    await db
+      .update(roadmapStatusEvents)
+      .set({ signalledAt: new Date() })
+      .where(inArray(roadmapStatusEvents.id, stamped));
+  }
+
+  logger.log("Emitted top_request_planned", {
+    competitorId: competitor.id,
+    itemId: primary.itemId,
+    votes: primary.votes,
+    rank: primary.rank,
+    severity: primary.severity,
+    alsoMoved: alsoMoved.length,
+  });
+  return true;
 }
 
 /**
@@ -453,6 +751,7 @@ async function emitVelocityShift(competitor: CompetitorRow): Promise<boolean> {
 
   const changeId = await writeAnchoredChange(
     competitor,
+    "shipping_velocity",
     `velocity:${shift.month}:${shift.direction}`,
     diffText,
     {
@@ -485,39 +784,42 @@ async function emitVelocityShift(competitor: CompetitorRow): Promise<boolean> {
 }
 
 /**
- * Write the synthetic anchor → snapshot → change chain the cadence signal hangs
+ * Write the synthetic anchor → snapshot → change chain a deterministic signal hangs
  * off, the same shape detect-hiring-velocity-shifts and mine-job-facts use.
- * Returns the change id, or null when this exact shift was already emitted (a
+ * Returns the change id, or null when this exact event was already emitted (a
  * retried run must not double-signal).
+ *
+ * The anchor source is a PARAMETER because the two signals in this file must not
+ * share a chain: the dedup below counts snapshots on the anchor, so a roadmap move
+ * landing between two cadence readings would let a cadence shift re-emit — the same
+ * rule the hiring anchors were split under.
  *
  * R2 before DB: `snapshots.r2Key` is NOT NULL, and the body IS the diffText the
  * insight will be grounded on.
  */
 async function writeAnchoredChange(
   competitor: CompetitorRow,
+  anchorSource: "shipping_velocity" | "roadmap_shift",
   hashKey: string,
   diffText: string,
   rawDiff: Record<string, unknown>,
 ): Promise<string | null> {
   let monitor = await db.query.monitors.findFirst({
-    where: and(
-      eq(monitors.competitorId, competitor.id),
-      eq(monitors.sourceType, "shipping_velocity"),
-    ),
+    where: and(eq(monitors.competitorId, competitor.id), eq(monitors.sourceType, anchorSource)),
   });
   if (!monitor) {
     [monitor] = await db
       .insert(monitors)
       .values({
         competitorId: competitor.id,
-        sourceType: "shipping_velocity",
+        sourceType: anchorSource,
         frequency: "weekly", // unused — this monitor is never scheduled
         isActive: false,
         config: {},
       })
       .returning();
   }
-  if (!monitor) throw new Error("Failed to ensure shipping_velocity monitor");
+  if (!monitor) throw new Error(`Failed to ensure ${anchorSource} monitor`);
 
   const prevSnapshot = await db.query.snapshots.findFirst({
     where: eq(snapshots.monitorId, monitor.id),
@@ -535,7 +837,7 @@ async function writeAnchoredChange(
   if ((seen?.n ?? 0) > 0) return null;
 
   const now = new Date();
-  const r2Key = `snapshots/${competitor.id}/shipping_velocity/${now.toISOString()}`;
+  const r2Key = `snapshots/${competitor.id}/${anchorSource}/${now.toISOString()}`;
   await uploadToR2(`${r2Key}.txt`, diffText, "text/plain; charset=utf-8", { compress: true });
 
   const [snapshot] = await db
@@ -549,7 +851,7 @@ async function writeAnchoredChange(
       resolvedUrl: competitor.url ?? null,
     })
     .returning();
-  if (!snapshot) throw new Error("Failed to insert shipping_velocity snapshot");
+  if (!snapshot) throw new Error(`Failed to insert ${anchorSource} snapshot`);
 
   const [change] = await db
     .insert(changes)
@@ -563,6 +865,6 @@ async function writeAnchoredChange(
       detectedAt: now,
     })
     .returning();
-  if (!change) throw new Error("Failed to insert shipping_velocity change");
+  if (!change) throw new Error(`Failed to insert ${anchorSource} change`);
   return change.id;
 }

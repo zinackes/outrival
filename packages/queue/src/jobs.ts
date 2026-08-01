@@ -97,6 +97,16 @@ export type IngestCaseStudiesPayload = {
   urls?: string[];
   contentItemIds?: string[];
 };
+/**
+ * Integration-catalog reading (Content Intelligence v2 P5), enqueued off the sitemap
+ * branch. `urls` are the URLs that capture just added — the free half of the read,
+ * since /integrations/<slug> names an integration without any fetch at all.
+ */
+export type IngestIntegrationsPayload = {
+  snapshotId: string;
+  competitorId: string;
+  urls?: string[];
+};
 export type ExtractReviewsPayload = { snapshotId: string; competitorId: string; source: string };
 export type ScrapeAiVisibilityPayload = {
   orgId: string;
@@ -315,6 +325,13 @@ export const ingestBlogPosts = defineJob<IngestBlogPostsPayload>("ingest-blog-po
 // per-domain gap, before any model call happens.
 export const ingestCaseStudies = defineJob<IngestCaseStudiesPayload>("ingest-case-studies", {
   expireInSeconds: 900,
+});
+// Integration-catalog reading (Content Intelligence v2 P5), event-triggered off the
+// sitemap branch. Zero AI and at most a handful of GETs — the probe that finds the
+// catalog runs once per competitor and caches its answer, hit or miss — so it gets
+// the shorter window its deterministic siblings use rather than the blog reader's.
+export const ingestIntegrations = defineJob<IngestIntegrationsPayload>("ingest-integrations", {
+  expireInSeconds: 300,
 });
 // Hiring footprint detectors (Hiring Intelligence v2 P2), event-triggered per
 // competitor off extract-jobs. Pure SQL + pure functions, zero AI — same window as

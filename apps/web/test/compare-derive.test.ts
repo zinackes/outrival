@@ -19,6 +19,9 @@ import {
   techDiff,
   techOf,
   availableMeters,
+  releasesPerMonth,
+  releaseTrend,
+  shippingScale,
 } from "../src/components/dashboard/compare/derive";
 
 // The compare page states its verdict as fact, so the arithmetic behind it is locked
@@ -33,6 +36,7 @@ function col(over: Partial<CompareColumn> & { id: string; name: string }): Compa
     positioning: { category: null, summary: null },
     pricing: null,
     hiring: null,
+    shipping: null,
     reviews: [],
     tech: [],
     platform: null,
@@ -622,5 +626,66 @@ describe("availableMeters", () => {
 
   test("a set that meters nothing offers no volumes", () => {
     expect(availableMeters([priced("a", "Alpha", 29, 99)])).toEqual([]);
+  });
+});
+
+// ── Shipping velocity (Content Intelligence v2 P5) ──────────────────────────
+
+function shipping(
+  id: string,
+  perMonth: number,
+  previousPerMonth: number | null,
+  months: Array<{ month: string; count: number }> = [],
+): CompareColumn {
+  return col({
+    id,
+    name: id,
+    shipping: { perMonth, previousPerMonth, months, monthsObserved: Math.max(2, months.length) },
+  });
+}
+
+describe("shipping velocity", () => {
+  test("a competitor with no reading is absent from the lens, not a zero", () => {
+    // The API returns null under two complete months; the lens must not draw that
+    // as "0 releases a month", which would claim they stopped shipping.
+    const cols = [col({ id: "a", name: "a" }), shipping("b", 6, null)];
+    expect(releasesPerMonth(cols[0]!)).toBeNull();
+    expect(releasesPerMonth(cols[1]!)).toBe(6);
+  });
+
+  test("the lens hides entirely when nobody has a reading", () => {
+    const scale = shippingScale([col({ id: "a", name: "a" }), col({ id: "b", name: "b" })]);
+    expect(scale.hasData).toBe(false);
+  });
+
+  test("the bar scale is the fastest shipper, the month scale the biggest month", () => {
+    const scale = shippingScale([
+      shipping("a", 4, null, [
+        { month: "2026-05", count: 2 },
+        { month: "2026-06", count: 6 },
+      ]),
+      shipping("b", 9, null, [{ month: "2026-06", count: 11 }]),
+    ]);
+    expect(scale.max).toBe(9);
+    expect(scale.monthMax).toBe(11);
+  });
+
+  test("no previous window means no arrow", () => {
+    expect(releaseTrend(shipping("a", 6, null))).toBeNull();
+  });
+
+  test("a move under 15% is arithmetic, not a change of pace", () => {
+    expect(releaseTrend(shipping("a", 6.4, 6))).toBeNull();
+    expect(releaseTrend(shipping("a", 5.6, 6))).toBeNull();
+  });
+
+  test("a real move points", () => {
+    expect(releaseTrend(shipping("a", 12, 6))).toBe("up");
+    expect(releaseTrend(shipping("a", 2, 6))).toBe("down");
+  });
+
+  test("shipping again after a silent window is a direction; still silent is not", () => {
+    expect(releaseTrend(shipping("a", 3, 0))).toBe("up");
+    expect(releaseTrend(shipping("a", 0, 0))).toBeNull();
   });
 });

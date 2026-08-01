@@ -85,6 +85,18 @@ export interface BattleCardInput {
     storiesTotal: number;
     customersTotal: number;
   } | null;
+  /**
+   * What their own customers are still asking them for (Content Intelligence v2 P5):
+   * the most-voted OPEN requests on their public roadmap portal, and how many
+   * transitions into a delivered status we have WATCHED since. Their published
+   * numbers and their own status words, so a claim built on it is traceable to a
+   * page they wrote. null when they publish no portal, or we have not read one.
+   */
+  competitorRoadmap?: {
+    topRequested: Array<{ title: string; votes: number; status: string | null }>;
+    deliveredInWindow: number;
+    windowDays: number;
+  } | null;
   reviewComplaints: string[];
   reviewPraises: string[];
   recentSignals: Array<{ category: string; severity: string; insight: string }>;
@@ -117,6 +129,7 @@ interface EvidenceBlocks {
   competitorTechBlock: string | null;
   reviewScoreBlock: string | null;
   customersBlock: string | null;
+  roadmapBlock: string | null;
   myHomepage: string | null;
   competitorHomepage: string | null;
   focusNote: string;
@@ -212,6 +225,30 @@ export function computeBlocks(input: BattleCardInput): EvidenceBlocks {
     return parts.length ? parts.join("\n") : null;
   })();
 
+  // What their customers are still asking for. The single most useful line on a
+  // competitive call, and the one the competitor publishes themselves — so it is
+  // given verbatim, with the vote counts, and never summarised into "users want
+  // more integrations".
+  const roadmapBlock = (() => {
+    const r = input.competitorRoadmap;
+    if (!r) return null;
+    const parts: string[] = [];
+    if (r.topRequested.length > 0) {
+      parts.push(
+        `Most requested items still OPEN on their public roadmap: ${r.topRequested
+          .slice(0, 5)
+          .map((t) => `${t.title} (${t.votes} votes${t.status ? `, ${t.status}` : ""})`)
+          .join("; ")}`,
+      );
+    }
+    if (r.deliveredInWindow > 0) {
+      parts.push(
+        `Roadmap items they moved to delivered in the last ${r.windowDays} days: ${r.deliveredInWindow}`,
+      );
+    }
+    return parts.length ? parts.join("\n") : null;
+  })();
+
   const myHomepage = input.myProduct.homepageExcerpt?.trim()
     ? input.myProduct.homepageExcerpt.trim().slice(0, 3500)
     : null;
@@ -237,6 +274,7 @@ export function computeBlocks(input: BattleCardInput): EvidenceBlocks {
     competitorTechBlock,
     reviewScoreBlock,
     customersBlock,
+    roadmapBlock,
     myHomepage,
     competitorHomepage,
     focusNote,
@@ -273,6 +311,7 @@ export function evidenceBlock(input: BattleCardInput, b: EvidenceBlocks): string
     b.competitorTechBlock ? `Tech stack (detected on their site):\n${b.competitorTechBlock}` : null,
     b.reviewScoreBlock ? `Reviews:\n${b.reviewScoreBlock}` : null,
     b.customersBlock ? `Published customer proof:\n${b.customersBlock}` : null,
+    b.roadmapBlock ? `Their public roadmap:\n${b.roadmapBlock}` : null,
     b.competitorHomepage ? `Homepage excerpt:\n${b.competitorHomepage}` : null,
   ].filter(Boolean);
 
@@ -321,6 +360,7 @@ export function evidenceSourceText(input: BattleCardInput, b: EvidenceBlocks): s
     b.competitorTechBlock ? `Competitor tech stack:\n${b.competitorTechBlock}` : "",
     b.reviewScoreBlock ? `Competitor reviews:\n${b.reviewScoreBlock}` : "",
     b.customersBlock ? `Competitor published customer proof:\n${b.customersBlock}` : "",
+    b.roadmapBlock ? `Competitor public roadmap:\n${b.roadmapBlock}` : "",
     b.competitorHomepage ? `Competitor homepage:\n${b.competitorHomepage}` : "",
     b.praisesBlock ? `What their customers love:\n${b.praisesBlock}` : "",
     b.complaintsBlock ? `What their customers complain about:\n${b.complaintsBlock}` : "",

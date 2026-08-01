@@ -75,8 +75,13 @@ export function buildChangelogIsland(feedUrl: string, items: ReadonlyArray<FeedI
 /**
  * The island a roadmap capture carries.
  *
- * Exact vote counts stay out of it for the reason they stay out of the diff-bearing
- * body: they move on every capture, and nothing downstream reads them as a fact.
+ * Exact vote counts DO travel here (P5), unlike in the diff-bearing body, which
+ * carries a band. The reason the body bands them is that raw counts drift on every
+ * row every week and would diff the whole listing on every capture — a property of
+ * the DIFF, not of the number. The island is stripped before hashing, so nothing
+ * here can move a content hash or fake a change, and a count is the only thing that
+ * can rank one request against another: "their most requested feature just became
+ * planned work" is a statement about an ordering, and a band cannot order.
  */
 export function buildRoadmapIsland(
   url: string,
@@ -86,7 +91,13 @@ export function buildRoadmapIsland(
   return island(ROADMAP_ISLAND_ID, {
     url,
     vendor,
-    entries: entries.map((e) => ({ id: e.id, title: e.title, status: e.status, url: e.url })),
+    entries: entries.map((e) => ({
+      id: e.id,
+      title: e.title,
+      status: e.status,
+      url: e.url,
+      votes: e.votes,
+    })),
   });
 }
 
@@ -244,6 +255,9 @@ export function parseRoadmapItems(html: string): ContentItemInput[] {
         body: null,
         status: str(e.status)?.toLowerCase() ?? null,
         itemType: "roadmap_entry",
+        // A capture written before P5 carries no votes at all, which is null —
+        // distinct from a portal that publishes an entry sitting at zero.
+        votes: typeof e.votes === "number" && Number.isFinite(e.votes) ? Math.max(0, Math.floor(e.votes)) : null,
       };
     }),
   );

@@ -49,6 +49,7 @@ import { ConfidenceBadge } from "./evidence";
 import { BattleCardSections } from "./sections";
 import { PackagingSection } from "./packaging";
 import { TheirCustomersSection } from "./their-customers";
+import { TopRequestedSection } from "./top-requested";
 
 const EMPTY_CONTENT: BattleCardContent = {
   their_strengths: [],
@@ -779,6 +780,13 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
               competitorName={competitor.name}
             />
           )}
+
+          {/* Top requested, not delivered (P5): their own customers voting in
+              public on what the product still does not do, plus how much of the
+              roadmap we have WATCHED them ship. Deterministic like the section
+              above, hidden while editing, and absent entirely when they publish no
+              portal — an empty frame would state nothing. */}
+          {!editing && competitor && <TopRequestedSection competitorId={competitorId} />}
 
           <div className="flex items-center justify-between gap-3 px-5 py-3.5">
             <p className="text-dense text-muted-foreground">

@@ -15,6 +15,8 @@ import {
   techStackEntries,
   caseStudies,
   knownCustomers,
+  contentItems,
+  roadmapStatusEvents,
   selfProfileLastEditedAt,
   insertAiQualityCheck,
   type SelfProfile,
@@ -112,6 +114,69 @@ async function loadCustomerProof(competitorId: string) {
     customersTotal: Number(total?.n ?? registry.length),
   };
 }
+
+/**
+ * What a competitor's own customers are still asking them for (Content Intelligence
+ * v2 P5).
+ *
+ * The most-voted requests their portal still lists as OPEN, plus how many moves into
+ * a delivered status we have actually WATCHED — baseline rows excluded, since the
+ * first read of a portal hands us years of history at once and counting it would
+ * report a quarter's delivery for work that shipped in 2024.
+ *
+ * Best-effort like every other evidence read here: null when they publish no portal
+ * or we have never read one, which the evidence blocks omit rather than render as a
+ * gap the model can cite.
+ */
+async function loadRoadmapProof(competitorId: string) {
+  const [requested, delivered] = await Promise.all([
+    db
+      .select({
+        title: contentItems.title,
+        votes: contentItems.votes,
+        status: contentItems.status,
+      })
+      .from(contentItems)
+      .where(
+        and(
+          eq(contentItems.competitorId, competitorId),
+          eq(contentItems.sourceType, "roadmap"),
+          sql`${contentItems.votes} is not null`,
+          sql`coalesce(${contentItems.statusNormalized}, 'other') not in ('delivered', 'closed')`,
+        ),
+      )
+      .orderBy(desc(contentItems.votes))
+      .limit(5),
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(roadmapStatusEvents)
+      .where(
+        and(
+          eq(roadmapStatusEvents.competitorId, competitorId),
+          eq(roadmapStatusEvents.toStatus, "delivered"),
+          eq(roadmapStatusEvents.isBaseline, 0),
+          sql`${roadmapStatusEvents.occurredAt} >= now() - make_interval(days => ${ROADMAP_WINDOW_DAYS})`,
+        ),
+      ),
+  ]);
+
+  const deliveredInWindow = Number(delivered[0]?.n ?? 0);
+  if (requested.length === 0 && deliveredInWindow === 0) return null;
+  return {
+    topRequested: requested.map((r) => ({
+      title: r.title,
+      votes: r.votes ?? 0,
+      // Their own column name — "Up next" is what their customers read.
+      status: r.status,
+    })),
+    deliveredInWindow,
+    windowDays: ROADMAP_WINDOW_DAYS,
+  };
+}
+
+/** The window "how much have they actually shipped" is asked over. Matches the
+ *  battle-card section's own window so the card and the page cannot disagree. */
+const ROADMAP_WINDOW_DAYS = 90;
 
 // Pull the latest homepage capture as clean text so the card grounds feature
 // claims on what a product ACTUALLY says about itself — the biggest lever against
@@ -348,6 +413,11 @@ async function generate(payload: z.input<typeof InputSchema>) {
     // the generated sections can reason over who they actually win — the "Their
     // customers" section itself renders from the same rows without a model.
     const competitorCustomers = await loadCustomerProof(competitor.id);
+    // What their own customers are still asking them for (Content Intelligence v2
+    // P5). Same shape as the customer proof above: read here so the generated
+    // sections can use it, while the "Top requested, not delivered" section renders
+    // from the same rows without a model touching them.
+    const competitorRoadmap = await loadRoadmapProof(competitor.id);
 
     // Our own product's evidence — features / tech / pricing come from the self
     // profile (extract-self-profile keeps them current), homepage from its snapshot.
@@ -391,6 +461,7 @@ async function generate(payload: z.input<typeof InputSchema>) {
       })),
       competitorReviews,
       competitorCustomers,
+      competitorRoadmap,
       reviewPraises: praisesRows.map((r) => r.content ?? "").filter(Boolean),
       reviewComplaints: complaintsRows.map((r) => r.content ?? "").filter(Boolean),
       recentSignals: recentSignals.map((s) => ({

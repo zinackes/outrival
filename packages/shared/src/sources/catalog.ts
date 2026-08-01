@@ -120,6 +120,8 @@ export const ANCHOR_SOURCES: readonly SourceType[] = [
   "shipping_velocity",
   "customer_proof",
   "editorial_shift",
+  "roadmap_shift",
+  "integration_catalog",
 ];
 
 /**

@@ -629,6 +629,21 @@ export type SignalFacts =
       evidenceUrl: string | null;
     }
   | {
+      /** A top request moving into committed work (Content Intelligence v2 P5).
+       *  Votes and rank are as the portal published them at the capture that saw
+       *  the move — never recomputed, or the block could contradict its own signal. */
+      kind: "roadmap_request";
+      request: RoadmapRequestFact;
+      alsoMoved: RoadmapRequestFact[];
+    }
+  | {
+      /** Integrations newly listed in a catalog (Content Intelligence v2 P5). */
+      kind: "integrations";
+      integrations: IntegrationFact[];
+      integrationsTotal: number;
+      evidenceUrl: string | null;
+    }
+  | {
       /** The two windows an editorial pivot compared (Content Intelligence v2 P4). */
       kind: "editorial";
       /** Jensen-Shannon, base 2 — a real 0-to-1 scale. */
@@ -643,6 +658,24 @@ export type SignalFacts =
       declining: TopicMoveFact[];
     }
   | null;
+
+export interface RoadmapRequestFact {
+  title: string;
+  url: string | null;
+  votes: number;
+  /** 1-based, among that portal's open requests. */
+  rank: number;
+  /** The portal's OWN status words, both sides. Null before = it was not listed. */
+  fromRaw: string | null;
+  toRaw: string;
+}
+
+export interface IntegrationFact {
+  name: string;
+  /** "YYYY-MM-DD" — when WE first saw it; a catalog carries no date. */
+  firstSeenAt: string | null;
+  evidenceUrl: string | null;
+}
 
 export interface TopicFact {
   topic: string;
@@ -721,6 +754,18 @@ export interface CompetitorCustomers {
   storiesTotal: number;
   customersTotal: number;
   windowDays: number;
+}
+
+/** Content Intelligence v2 P5 — the roadmap read behind the battle-card section. */
+export interface CompetitorRoadmap {
+  /** Their loudest OPEN requests, vote order. Status is the portal's own label. */
+  topRequested: Array<{ title: string; url: string | null; votes: number; status: string | null }>;
+  /** Transitions INTO delivered inside the window. Baseline rows are excluded, so
+   *  a portal read for the first time reports 0 rather than years of history. */
+  deliveredLast90d: number;
+  windowDays: number;
+  /** When the portal was last read. Null when it never has been. */
+  asOf: string | null;
 }
 
 export interface CustomerFact {
@@ -1438,6 +1483,21 @@ export interface CompareColumn {
     // axis would need an FX rate we do not capture.
     engineeringMedianSalary: { p50: number; currency: string; n: number } | null;
     capturedAt: string | null;
+  } | null;
+  /**
+   * Release cadence (Content Intelligence v2 P5), counted off their changelog rows
+   * over months that have ENDED. Null when we hold fewer than two complete months —
+   * the competitor is then absent from the lens rather than shown a rate
+   * extrapolated from a week of tracking.
+   */
+  shipping: {
+    /** Mean entries per complete month, over up to three. */
+    perMonth: number;
+    /** The same mean over the three months before, or null when unobserved. */
+    previousPerMonth: number | null;
+    /** Up to six complete months, oldest first. Unobserved months are ABSENT. */
+    months: Array<{ month: string; count: number }>;
+    monthsObserved: number;
   } | null;
   reviews: Array<{
     source: string;
@@ -3017,6 +3077,11 @@ export const api = {
   // ones that were already on the wall. Every list travels with its own n.
   getCompetitorCustomers: (id: string) =>
     request<CompetitorCustomers>(`/api/competitors/${id}/customers`),
+  // Content Intelligence v2 P5 — what their own customers are still asking them
+  // for, and how much of the roadmap they have actually shipped. Deterministic:
+  // vote counts and status labels are the portal's own published values.
+  getCompetitorRoadmap: (id: string) =>
+    request<CompetitorRoadmap>(`/api/competitors/${id}/roadmap`),
   // Content Intelligence v2 P4 — what they published, filtered and paged SERVER
   // side: an established competitor's blog + changelog + docs is thousands of rows.
   getCompetitorContent: (

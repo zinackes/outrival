@@ -69,6 +69,31 @@ export const contentItems = pgTable(
     itemType: text("item_type"),
     /** Roadmap only: the portal's own status label, lowercased. */
     status: text("status"),
+    /**
+     * Roadmap only (P5): `status` resolved onto our own vocabulary —
+     * under_review | planned | in_progress | delivered | closed | other.
+     *
+     * The raw label stays in `status` and is what the reader is shown, because a
+     * portal's columns are named by its own team ("Up next", "Shipping soon",
+     * "En cours") and those words are the ones their customers read. This column
+     * is what a QUERY can group on: without it "how many did they deliver last
+     * quarter" would mean matching free text, and every portal spells delivery
+     * differently. `other` is the honest answer for a label we do not recognise —
+     * never a guess, since a wrong read of "declined" as "planned" would announce
+     * a shipping commitment that was actually a refusal.
+     */
+    statusNormalized: text("status_normalized"),
+    /**
+     * Roadmap only (P5): the EXACT vote count the portal published.
+     *
+     * The diff-bearing snapshot body carries a BAND (see roadmap/snapshot.ts) and
+     * that stays true — raw counts drift on every row every week, so a raw listing
+     * would diff end to end on every capture. But a band cannot rank, and "their
+     * single most requested feature just moved to planned" is a fact about a
+     * ranking. So the exact number lives here, off the diff path, where it is read
+     * for ordering and display and can never fabricate a change.
+     */
+    votes: integer("votes"),
     topics: text("topics").array(),
     products: text("products").array(),
     personas: text("personas").array(),

@@ -37,6 +37,12 @@ export interface ContentItemInput {
   status: string | null;
   /** Set at parse time when the source itself determines the type (roadmap, docs). */
   itemType: string | null;
+  /**
+   * Roadmap only (P5): the exact vote count the portal published. Null on every
+   * other source, and on a roadmap capture taken before P5 — which is a fact about
+   * the capture, not an entry nobody voted for.
+   */
+  votes?: number | null;
 }
 
 export function isChangelogItemType(value: string): value is ChangelogItemType {

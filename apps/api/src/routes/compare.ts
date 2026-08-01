@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { and, eq, ne, isNull, inArray, desc } from "drizzle-orm";
-import { competitors, signals, techStackEntries } from "@outrival/db";
+import { and, eq, ne, isNull, inArray, desc, sql as dsql } from "drizzle-orm";
+import { competitors, contentItems, signals, techStackEntries } from "@outrival/db";
 import {
   type PlatformProfile,
   platformLabel,
@@ -20,6 +20,7 @@ import {
   type TierBandRow,
   type MeasuredCost,
   type CostMethod,
+  summarizeShipping,
 } from "@outrival/shared";
 import { organizations } from "@outrival/db";
 import { db } from "../lib/db";
@@ -224,6 +225,59 @@ interface PlatformDetail {
   hosting: string | null;
 }
 
+/**
+ * How often a competitor ships (Content Intelligence v2 P5).
+ *
+ * Counted off `content_items` changelog rows — the entries their own release feed
+ * published — over months that have ENDED. Never the running month: a month three
+ * days old compared against full ones reports a freeze at every competitor on the
+ * 3rd, which is the same rule the cadence detector applies.
+ *
+ * Null when we hold fewer than two complete months for them. A competitor tracked
+ * for a week has not published "12 releases a month", it has published three
+ * entries, and the lens would be reporting our onboarding date as their velocity.
+ */
+interface ShippingDetail {
+  /** Mean entries per month over the last complete months, up to three. */
+  perMonth: number;
+  /** The same mean over the three months before those, or null when unobserved —
+   *  which is what removes the arrow rather than drawing a rise out of nothing. */
+  previousPerMonth: number | null;
+  /** Up to six complete months, oldest first. Months before the earliest entry we
+   *  hold are ABSENT, not zero: unobserved and empty are different facts. */
+  months: Array<{ month: string; count: number }>;
+  /** Complete months we could have observed. The gate the lens reads. */
+  monthsObserved: number;
+}
+
+/**
+ * Months of changelog history read for the cadence. Wider than the six months drawn
+ * so the previous window has something to be a baseline against, and bounded so an
+ * eight-year-old feed does not travel across the wire to be discarded.
+ */
+const SHIPPING_LOOKBACK_MONTHS = 12;
+
+/** Group the month rows per competitor and summarise each with the shared reader. */
+function buildShippingDetails(
+  rows: ReadonlyArray<{ competitorId: string; month: string; count: number }>,
+): Map<string, ShippingDetail> {
+  const byCompetitor = new Map<string, Array<{ month: string; count: number }>>();
+  for (const row of rows) {
+    const list = byCompetitor.get(row.competitorId) ?? [];
+    list.push({ month: row.month, count: Number(row.count) });
+    byCompetitor.set(row.competitorId, list);
+  }
+  const out = new Map<string, ShippingDetail>();
+  const now = new Date();
+  for (const [competitorId, months] of byCompetitor) {
+    const summary = summarizeShipping(months, now);
+    // null = fewer than two complete months. The competitor is simply absent from
+    // the lens rather than shown a rate extrapolated from a week of tracking.
+    if (summary) out.set(competitorId, summary);
+  }
+  return out;
+}
+
 interface CompareColumn {
   id: string;
   name: string;
@@ -231,6 +285,7 @@ interface CompareColumn {
   positioning: { category: string | null; summary: string | null };
   pricing: PricingDetail | null;
   hiring: HiringDetail | null;
+  shipping: ShippingDetail | null;
   reviews: ReviewDetail[];
   tech: string[];
   platform: PlatformDetail | null;
@@ -311,6 +366,30 @@ compareRouter.get("/", async (c) => {
       .where(and(eq(signals.orgId, orgId), inArray(signals.competitorId, ids)))
       .orderBy(signals.competitorId, desc(signals.createdAt)),
   ]);
+
+  // Release cadence (Content Intelligence v2 P5): changelog entries per month, from
+  // the rows their own feed wrote. Dated by `published_at ?? first_seen_at` — the
+  // publisher's date when the feed carried one, ours when it did not, which is the
+  // same date the Content tab places an item on. Relational, not analytics: this is
+  // `content_items`, and a missing row means they published nothing that month.
+  const releaseMonths = await db
+    .select({
+      competitorId: contentItems.competitorId,
+      month: dsql<string>`to_char(coalesce(${contentItems.publishedAt}, ${contentItems.firstSeenAt}), 'YYYY-MM')`,
+      count: dsql<number>`count(*)::int`,
+    })
+    .from(contentItems)
+    .where(
+      and(
+        inArray(contentItems.competitorId, ids),
+        eq(contentItems.sourceType, "changelog"),
+        dsql`coalesce(${contentItems.publishedAt}, ${contentItems.firstSeenAt}) >= now() - make_interval(months => ${SHIPPING_LOOKBACK_MONTHS})`,
+      ),
+    )
+    .groupBy(
+      contentItems.competitorId,
+      dsql`to_char(coalesce(${contentItems.publishedAt}, ${contentItems.firstSeenAt}), 'YYYY-MM')`,
+    );
 
   // Analytics (best-effort): the latest batch per competitor, kept row-level (one
   // row per plan / department / review source) so the client can render either a
@@ -678,6 +757,7 @@ compareRouter.get("/", async (c) => {
     reviewsById.set(r.competitorId, list);
   }
   const signalById = new Map(latestSignals.map((s) => [s.competitorId, s]));
+  const shippingById = buildShippingDetails(releaseMonths);
 
   // Top notable active tech per competitor (by importance, deduped, capped).
   const techById = new Map<string, string[]>();
@@ -721,6 +801,7 @@ compareRouter.get("/", async (c) => {
         positioning: { category: o.category, summary: o.aiSummary ?? o.description },
         pricing: pricingById.get(id) ?? null,
         hiring: hiringById.get(id) ?? null,
+        shipping: shippingById.get(id) ?? null,
         reviews: reviewsById.get(id) ?? [],
         tech,
         platform,

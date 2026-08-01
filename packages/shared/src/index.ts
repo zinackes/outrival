@@ -28,6 +28,8 @@ export * from "./pricing";
 export * from "./pricing-diff";
 export * from "./entitlement-catalog";
 export * from "./industry-catalog";
+export * from "./roadmap-status";
+export * from "./shipping-velocity";
 export * from "./customer-name";
 export * from "./editorial-metrics";
 export * from "./entitlement-diff";

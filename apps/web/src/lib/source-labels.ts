@@ -62,6 +62,10 @@ const SOURCE_LABELS: Record<string, string> = {
   customer_proof: "Customer proof",
   // Internal anchor for a blog whose mix of subjects moved against its own quarter.
   editorial_shift: "Editorial shift",
+  // Internal anchor for a top-voted roadmap request moving into planned work.
+  roadmap_shift: "Roadmap move",
+  // Internal anchor for integrations a competitor newly lists in its catalog.
+  integration_catalog: "Integrations",
   // Developer documentation (pro+): OpenAPI spec diff, else docs page list.
   docs: "Developer docs",
   // User-watched arbitrary page on the competitor's domain ("Watch a custom page").
@@ -114,6 +118,8 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   shipping_velocity: "Shipping velocity",
   customer_proof: "Customer proof",
   editorial_shift: "Editorial shift",
+  roadmap_shift: "Roadmap move",
+  integration_catalog: "Integrations",
   docs: "Developer docs",
   custom: "Custom page",
   roadmap: "Roadmap portal",

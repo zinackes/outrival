@@ -1685,3 +1685,127 @@ renuméroter à la main un snapshot dont le parent a bougé.
 
 **Prochaine session** : P5 — compare lens v2 + Momentum (remote %, top pays, median
 salary, `remote_policy_changed`, `leadership_hire`). NE PAS commencer sans /clear.
+
+---
+
+### 2026-08-01 : Content Intelligence v2, P2 (blog feed-first, posts lus, `competitor_named_you`), M
+
+**Objectif** : le blog cesse d'être une ligne de diff. C'était la source la plus
+fréquente et la moins lue : un lancement, un teardown du produit de l'user et une page
+SEO arrivaient tous dans le pipeline sous la forme des mêmes trois lignes ajoutées sur
+une page d'index. P2 va CHERCHER les nouveaux posts, les fait lire, et émet l'alerte
+qu'un diff ne pourra jamais formuler — « ce concurrent parle de toi, nommément ».
+
+**Réalisé** :
+- **Feed-first blog** : `discoverFeedUrl` + 11 chemins sondés, snapshot déterministe
+  trié par id + îlot JSON — le patron changelog de patch-32, appliqué à la source que
+  `feeds/rss.ts` annonçait déjà dans son propre commentaire (« changelog **or blog** »).
+  Les chemins `/blog/feed*` passent AVANT `/feed` : sur un site dont le `/blog` n'a pas
+  de feed mais dont la racine en a un, celui de la racine est en général le changelog,
+  et y lire des « posts » mettrait des release notes dans la timeline éditoriale.
+- **Blogs SANS feed : plancher intact.** L'index rendu reste le corps diffé et l'îlot
+  n'est qu'un `<script>` ajouté à la fin. `extractContent` retire les `<script>` AVANT
+  le hash, et le hash est pris sur sa sortie : un blog sans feed produit le même
+  content hash, le même diff et les mêmes signaux qu'avant ce commit — test dédié.
+- **TRANSITION de forme, re-baseline silencieuse** : rien n'existait côté changelog
+  pour ça (patch-32 n'a pas traité le cas). La première capture après le passage au
+  feed-first compare un listing de feed à la page d'index rendue qu'il remplace : tout
+  diffère, donc le diff dit « ils ont réécrit tout leur blog » et le classifieur le dit
+  fidèlement. Rien n'a bougé chez eux — c'est NOTRE représentation qui a changé. La
+  capture est donc stockée, aucun change n'est émis, et le scrape suivant diffe feed
+  contre feed. Détecté par la FORME déclarée dans l'îlot (`blogIslandShape`), pas par
+  une heuristique sur le texte ; une capture antérieure à P2 n'a pas d'îlot du tout,
+  ce qui est exactement le cas visé.
+- **Baseline = la règle qui porte la feature.** Un index de blog montre tout ce que la
+  boîte a jamais publié. La première capture écrirait donc 30 lignes « nouvelles pour
+  nous » dont aucune n'est nouvelle pour le monde — et, pire, un `critical` disant
+  qu'un concurrent vient de nommer l'user dans un article de 2023. Premier run =
+  lignes écrites (les 30 plus récentes), ZÉRO fetch, ZÉRO enrichissement, ZÉRO signal.
+  La décision vit dans `planBlogRun` (`@outrival/scrapers/content`), donc elle est
+  testée comme une règle et pas comme une forme de control-flow.
+- **Fetch borné des trois côtés** : uniquement les posts NON LUS (`enriched_at` null),
+  20 par run, séquentiels, chacun attendant le gap poli par domaine (2 s ou le
+  `Crawl-delay` du site). robots.txt consulté avant la première requête, UA OutrivalBot,
+  timeout 8 s, >500 KB sauté sans être lu. Le cap compte les TENTATIVES et pas les
+  succès : vingt refus restent vingt requêtes chez quelqu'un d'autre.
+  `content_items.enrich_attempts` (migration 0066) borne les échecs à 2 essais — sans
+  compteur, un post payant ou JS-only est indistinguable d'un post pas encore atteint
+  et repartirait au fetch chaque semaine, pour toujours.
+- **Extraction du corps** : `extractArticleText` SCOPE d'abord (`<article>` le plus
+  long, puis `[role=main]`/`<main>`) puis délègue à `extractContent` — le helper
+  existant sait déjà retirer le chrome, mais il a été écrit pour differ une PAGE
+  ENTIÈRE, donc sur un post le rail « articles liés » entre dans le texte et un
+  concurrent nommé dans une carte de sidebar devient un concurrent nommé dans le post.
+- **Enrichissement batché** (10 posts/appel, `AI_CONFIG.classification`, loggé
+  `ai_runs` sous `enrich_blog_posts`) : item_type, topics, products, personas,
+  competitors_named, summary. Le modèle PROPOSE, `applyBlogGuards` DÉCIDE : une
+  mention n'est retenue que si le post ÉCRIT le nom (frontières de mot, donc
+  « Slackline » n'est pas Slack) ET si la phrase citée est une sous-chaîne exacte du
+  texte. Un modèle qui résume « ils se comparent aux suspects habituels » en quatre
+  vendeurs n'en fait passer aucun.
+- **`competitor_named_you` (critical)** : ancré sur le monitor `comparison_page` du
+  concurrent, PAS sur le change blog — et ce n'est pas un détail de plomberie.
+  `applySeverityGuard` tourne sur les classifications synthétisées aussi, et
+  content/critical ne survit QUE depuis cette source ; ancrée sur le blog, l'alerte
+  serait démotée en `high` en silence et la feature aurait l'air de marcher. Deuxième
+  raison : le classifieur lexical continue d'émettre SON signal `content` sur ce même
+  change (point 6 du cadrage), et `signals.changeId` est unique — l'un des deux
+  perdrait sans bruit. Dédup par URL sur tout l'ancrage, donc une page que le sitemap
+  a déjà attrapée en `/vs/` ne rapporte pas une seconde alerte quand le blog l'atteint.
+- **Match self** : domaine (fort — personne n'écrit « outrival.io » par accident) OU
+  marque aux frontières de mot ; une marque qui est aussi un mot courant EN/FR
+  (stoplist ~95 entrées : linear, monday, notion, slack, ligne, marche…) EXIGE le
+  domaine. Sinon « our planning process is linear » réveille au téléphone un
+  workspace dont le produit s'appelle Linear.
+- **Fact block** : `ContentEntryFact` gagne un `snippet` optionnel, et le bloc du
+  signal montre titre + date + lien + la PHRASE verbatim. Le snippet stocké sur la
+  ligne est celui de la mention QUI PARLE DE L'USER, pas de la première mention du
+  post : un post qui nomme trois rivaux citerait sinon une phrase sur quelqu'un d'autre.
+
+**Fichiers** : `packages/scrapers/src/blog/blog.scraper.ts` ·
+`packages/scrapers/src/content/{parse,blog-links,blog-run,blog-enrich,article-text,named-you,fetch,index}.ts`
+(+ `blog.test.ts`) · `packages/scrapers/package.json` (subpath `./content-fetch`) ·
+`packages/ai/src/tasks/enrich-blog-posts.ts` · `packages/db/src/schema/content-items.ts`
++ migration 0066 · `packages/queue/src/jobs.ts` ·
+`apps/workers/src/core/ingest-blog-posts.ts` + job + handler + hooks scrape-monitor
+(enqueue + garde de transition) · `apps/workers/test/named-you-anchor.test.ts` ·
+`apps/api/src/lib/signal-facts.ts` · `apps/web/src/{lib/api.ts,components/outrival/signal-facts.tsx}`.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · `pnpm test` ✓ (12/12 ; 903 scrapers dont 20
+neufs, 245 workers dont 2 neufs, 261 api). Les cas qui comptent sont ceux qui NE
+tirent PAS : la baseline qui ne fetche rien, l'îlot qui ne bouge pas le hash d'un blog
+sans feed, la mention inventée qui est droppée, et la marque mot-courant sans domaine.
+
+**Le `content-fetch` est un subpath séparé** : `@outrival/scrapers/content` reste PUR
+(cheerio seulement) parce que scrape-monitor l'importe pour lire la forme de l'îlot.
+L'I/O (robots, rate-limit, safeFetch) vit dans `@outrival/scrapers/content-fetch`, que
+seul le worker importe.
+
+**Décision assumée — le corps des posts n'est pas persisté** (verrouillée au cadrage).
+Conséquence : quand un batch d'enrichissement rate son parse, le post est re-FETCHÉ au
+run suivant. C'est ce que le budget de 2 tentatives borne. Corollaire : le
+« conditional GET » de la card Notion est sans objet ici — on ne relit jamais un post,
+donc il n'y a rien à conditionner, et stocker un etag pour un document qu'on ne
+redemande pas serait du poids mort.
+
+**Landmine journal drizzle (3e fois)** : `db:generate` a de nouveau stampé la nouvelle
+migration SOUS la dernière appliquée (horloge machine ~12,6 h derrière). Corrigé à la
+main à 1785614303239. À vérifier à CHAQUE `db:generate` sur ce poste, sinon la
+migration est SAUTÉE en silence en annonçant « Migrations applied ».
+
+**Le pré-vol prod a attrapé exactement ça, et pas sur notre horloge.** La branche P2
+partait de `feat/content-items`, qui portait encore les commits pré-squash de P1 alors
+que main avait déjà mergé P1 (#390) ET la PR #391 (Hiring JSON-LD), dont la migration
+`0065_tearful_mandroid` était DÉJÀ appliquée en prod (`when=1785614303238`). Notre
+migration s'appelait donc aussi 0065, avec un `when` inférieur : le migrator l'aurait
+SAUTÉE en annonçant « Migrations applied », et la colonne serait restée absente pendant
+que le code déployé l'utilisait. Diagnostic par comparaison de HASH (le compte seul
+disait 66 = 66 et avait l'air sain). Refait proprement : branche neuve depuis `main`,
+cherry-pick du commit P2, migration régénérée en `0066_careless_kabuki`.
+
+**Reste côté humain** :
+- Déployer workers + api + web (la migration est appliquée, le code ne l'est pas).
+
+**Prochaine session** : P3, case studies & customers (`case_studies`,
+`case_study_published`, `customer_win`, section battle card « Their customers »).
+NE PAS commencer sans /clear.

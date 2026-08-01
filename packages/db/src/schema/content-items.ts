@@ -3,6 +3,7 @@ import {
   text,
   timestamp,
   doublePrecision,
+  integer,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -88,6 +89,20 @@ export const contentItems = pgTable(
      * model on every run — the same discipline `job_postings.facts_mined_at` uses.
      */
     enrichedAt: timestamp("enriched_at"),
+    /**
+     * Blog only (P2): how many times we have gone and tried to FETCH this post.
+     *
+     * Reading a blog post means requesting someone else's page, and some of those
+     * pages cannot be read — a paywall, a login, a body that only exists after
+     * JavaScript runs. Without a counter those posts are indistinguishable from
+     * ones we have not reached yet, so every run would re-request all of them,
+     * forever. Two attempts, then we stop asking: that a post is unreadable is a
+     * fact about the post, and continuing to knock is us not listening.
+     *
+     * Distinct from `enrichedAt`, which means "a model has seen this". A post can
+     * be out of the fetch queue on attempts and still have been read by nobody.
+     */
+    enrichAttempts: integer("enrich_attempts").notNull().default(0),
   },
   (t) => [
     // The identity of an item. Scoped by source as well as competitor: a blog and

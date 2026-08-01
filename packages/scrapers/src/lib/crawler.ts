@@ -74,6 +74,7 @@ export async function scrapePage(
     waitForStableContent: options.waitForStableContent,
     progressiveScroll: options.progressiveScroll,
     screenshot: options.screenshot,
+    screenshotIfRendered: options.screenshotIfRendered,
     blockResources: options.blockResources,
     captureBillingToggle: options.captureBillingToggle,
     expandLists: options.expandLists,

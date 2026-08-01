@@ -80,6 +80,11 @@ export interface CascadeOptions extends PatchrightOptions {
    * `screenshot` floor, but no PNG. See ScrapeOptions.render.
    */
   render?: boolean;
+  /**
+   * Capture a screenshot if — and only if — this run renders anyway. Never floors
+   * the cascade. See ScrapeOptions.screenshotIfRendered.
+   */
+  screenshotIfRendered?: boolean;
 }
 
 /**
@@ -162,7 +167,11 @@ export async function scrapePage(url: string, options: CascadeOptions = {}): Pro
     fullPage: options.fullPage,
     waitForSelector: options.waitForSelector,
     progressiveScroll: options.progressiveScroll,
-    screenshot: options.screenshot,
+    // A conditional screenshot is indistinguishable from a requested one ONCE we
+    // are in the browser — the difference is only whether it forced us in (the
+    // render floor above ignores it). Setting it here also keeps images unblocked
+    // (blockedResourceTypes reads this flag), so the capture renders faithfully.
+    screenshot: options.screenshot || options.screenshotIfRendered,
     blockResources: options.blockResources,
     captureBillingToggle: options.captureBillingToggle,
     waitForStableContent: options.waitForStableContent,

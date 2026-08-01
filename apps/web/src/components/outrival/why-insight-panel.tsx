@@ -232,6 +232,8 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                 <VisualDiff
                   signalId={signalId}
                   fill
+                  beforeCapturedAt={detail.screenshots?.beforeCapturedAt}
+                  afterCapturedAt={detail.screenshots?.afterCapturedAt}
                   onUnavailable={() => setVisualFailed(true)}
                 />
               </section>

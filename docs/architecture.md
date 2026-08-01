@@ -1858,8 +1858,14 @@ PLATFORM_DNS_ENABLED=true              # résolution CNAME (signal 6, node:dns) 
 PLATFORM_STEP_B_ENABLED=true           # autorise le fallback navigateur (api-capture) si step A maigre
 PLATFORM_REDETECT_DRIFT_COOLDOWN_HOURS=24  # min heures entre re-détections sur drift connecteur (self-heal)
 
-# Visual diff (Phase 8) — before/after homepage screenshots sur un signal (proxy
-# R2 org-scopé, no-IA). 📄 docs/visual-diff.md
+# Visual diff (Phase 8) — before/after screenshots sur un signal (proxy R2 org-scopé,
+# no-IA). La disponibilité est jugée sur le pHash du snapshot (= une PNG a été
+# capturée), PLUS sur `source_type === homepage` : la homepage floore son scrape au
+# navigateur donc capture toujours, et `pricing` capture désormais sur les runs qui
+# rendent DÉJÀ (screenshotIfRendered — jamais une passe navigateur en plus ; 368 des
+# 976 scrapes pricing mesurés sur 14j). Un snapshot `origin=archive` (backfill
+# Wayback) ne peut porter aucune PNG : ces changes restent sans diff visuel.
+# 📄 docs/visual-diff.md
 VISUAL_DIFF_ENABLED=true               # false → endpoints screenshot 404, section diff masquée
 
 # AI Visibility / "Share of Model" — présence self + concurrents dans les réponses des

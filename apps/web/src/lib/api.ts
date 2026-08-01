@@ -775,8 +775,15 @@ export interface SignalDetail {
   relevanceScore: number | null;
   sourceType: string | null;
   sourceUrl: string | null;
-  // Whether before/after homepage screenshots are available for the visual diff.
-  screenshots?: { before: boolean; after: boolean };
+  // Whether before/after screenshots are available for the visual diff, and when
+  // each side was captured. Any source that renders can carry one (homepage always,
+  // pricing on the runs that render) — never assume homepage-only.
+  screenshots?: {
+    before: boolean;
+    after: boolean;
+    beforeCapturedAt?: string | null;
+    afterCapturedAt?: string | null;
+  };
   competitor: { id: string; name: string };
 }
 

@@ -32,6 +32,21 @@ export interface ScrapeOptions {
    */
   screenshot?: boolean;
   /**
+   * Capture a screenshot ONLY IF this run ends up in a browser anyway — never a
+   * reason to render. Unlike `screenshot`, it does not floor the cascade, so a
+   * source that resolves at L0 stays a plain fetch and costs exactly what it costs
+   * today; a source that was already going to render (a `render` floor, a
+   * needs_render escalation, datacenter egress) pays only the PNG.
+   *
+   * That distinction is what lets the before/after visual diff reach beyond the
+   * homepage. Measured on prod (14 days): 368 of 976 pricing scrapes already render,
+   * so pricing gets captures on those for free — whereas flooring pricing at L1
+   * would add ~43 browser passes a day AND change the captured HTML of every
+   * currently-L0 pricing page at once, which the lexical diff would read as a
+   * change on every one of them.
+   */
+  screenshotIfRendered?: boolean;
+  /**
    * Abort heavy, never-parsed subresources (video/audio media + fonts) during the
    * browser scrape. Cuts datacenter proxy bandwidth and load time.
    * Conservative subset — images/CSS are kept (anti-bot canaries + needed for the

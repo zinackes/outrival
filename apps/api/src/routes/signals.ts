@@ -652,6 +652,11 @@ signalsRouter.get("/:id/detail", async (c) => {
       // for that snapshot — the cheap, reliable availability proxy (no R2 HEAD).
       afterPhash: snapshots.screenshotPhash,
       beforePhash: beforeSnap.screenshotPhash,
+      // When each side was captured. Without them the two panes are two pictures
+      // with no interval between them, and the reader can't tell a change that
+      // landed overnight from one that took a month.
+      afterCapturedAt: snapshots.scrapedAt,
+      beforeCapturedAt: beforeSnap.scrapedAt,
     })
     .from(signals)
     .innerJoin(competitors, eq(competitors.id, signals.competitorId))
@@ -748,21 +753,28 @@ signalsRouter.get("/:id/detail", async (c) => {
       relevanceScore,
       sourceType: row.sourceType,
       sourceUrl: row.sourceUrl,
-      // Whether a before/after homepage screenshot is available to render (visual diff).
+      // Whether a before/after screenshot is available to render (visual diff).
+      // Gated on the pHash alone, NOT on the source type: a pHash exists exactly
+      // when a PNG was captured, so the flag follows capture wherever it happens
+      // (pricing renders now carry one too) instead of hard-coding the one source
+      // that used to. A homepage test here would have kept lying about pricing.
       screenshots: {
-        before: visualDiffEnabled && row.sourceType === "homepage" && !!row.beforePhash,
-        after: visualDiffEnabled && row.sourceType === "homepage" && !!row.afterPhash,
+        before: visualDiffEnabled && !!row.beforePhash,
+        after: visualDiffEnabled && !!row.afterPhash,
+        beforeCapturedAt: row.beforeCapturedAt,
+        afterCapturedAt: row.afterCapturedAt,
       },
       competitor: { id: row.competitorId, name: row.competitorName },
     },
   });
 });
 
-// Visual diff (Phase 8): stream the before/after homepage screenshot for a signal's
-// change. Org-scoped (the signal must belong to the caller's org) — the R2 key never
-// leaves the server (proxy, like the admin feedback-screenshot route). Homepage-only;
-// 404 when the side/snapshot/PNG is absent (before is nullable; pre-patch snapshots
-// have no screenshot).
+// Visual diff (Phase 8): stream the before/after screenshot for a signal's change.
+// Org-scoped (the signal must belong to the caller's org) — the R2 key never leaves
+// the server (proxy, like the admin feedback-screenshot route). Any source that
+// captured a PNG qualifies; the pHash is the proof one exists. 404 when the side /
+// snapshot / PNG is absent (before is nullable; archive-origin and pre-patch
+// snapshots carry no screenshot).
 signalsRouter.get("/:id/screenshot/:side", async (c) => {
   if (process.env.VISUAL_DIFF_ENABLED === "false") return c.json(notFound("screenshot"), 404);
   const user = c.get("user");
@@ -774,12 +786,10 @@ signalsRouter.get("/:id/screenshot/:side", async (c) => {
   const [row] = await db
     .select({
       r2Key: snapshots.r2Key,
-      sourceType: monitors.sourceType,
       phash: snapshots.screenshotPhash,
     })
     .from(signals)
     .innerJoin(changes, eq(changes.id, signals.changeId))
-    .innerJoin(monitors, eq(monitors.id, changes.monitorId))
     .innerJoin(
       snapshots,
       eq(snapshots.id, side === "before" ? changes.snapshotBeforeId : changes.snapshotAfterId),
@@ -787,7 +797,7 @@ signalsRouter.get("/:id/screenshot/:side", async (c) => {
     .where(and(eq(signals.id, id), eq(signals.orgId, orgId)))
     .limit(1);
 
-  if (!row || row.sourceType !== "homepage" || !row.phash) {
+  if (!row || !row.phash) {
     return c.json(notFound("screenshot"), 404);
   }
 

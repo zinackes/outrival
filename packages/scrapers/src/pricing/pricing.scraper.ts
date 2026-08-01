@@ -42,6 +42,13 @@ export async function scrape(
   // (kill-switch PRICING_TOGGLE_CAPTURE_ENABLED, default on; browser levels only).
   const opts = {
     blockResources: true,
+    // A pricing page is the source where seeing the change beats reading it, and it
+    // was the largest source with no capture at all (100 of 343 prod signals over 30
+    // days, none of them renderable side by side). This never sends a scrape to the
+    // browser — it keeps the PNG from the runs that already go there (render retry,
+    // a learned requiresLevel, datacenter egress), which is 368 of 976 measured over
+    // 14 days. Images stay unblocked on those runs so the capture is faithful.
+    screenshotIfRendered: true,
     knownLevel,
     progressiveScroll: true,
     captureBillingToggle: process.env.PRICING_TOGGLE_CAPTURE_ENABLED !== "false",

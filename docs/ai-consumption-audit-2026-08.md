@@ -137,6 +137,20 @@ Ordered by measured impact per unit of effort. Each item names its verification.
 
 ## P0 — stop the bleeding (est. -45 % tokens, -90 % failures)
 
+> **Status 2026-08-01: P0.1, P0.3 and P0.4 are implemented.** P0.2 is not: prod
+> `ai_runs` has never recorded a provider other than cerebras and groq, on either the
+> worker or the API side, so whatever is in the Coolify env is not loading. The boot
+> log line `[ai] provider pool loaded (N): …` (printed once per process by
+> `logPoolOnce`) says which providers actually resolved and is the place to look.
+> `loadProviders` requires all three of `_ID`, `_API_KEY` and `_BASE_URL` to be
+> non-empty, so an unsubstituted Cloudflare account id in the base URL, or a service
+> that was never restarted after the vars were added, drops a provider silently.
+>
+> The three shipped changes are all inert until deployed, and two of them are inert
+> until their env vars are set: `AI_PROVIDER_1_TPM_LIMIT=30000` and
+> `AI_PROVIDER_2_TPM_LIMIT=8000`. Without them `tpmLimit` is 0, pacing is disabled per
+> provider, and behaviour is exactly what it was.
+
 ### P0.1 — arm the heal cooldown on every exit path
 
 `apps/workers/src/lib/staged-extract.ts`

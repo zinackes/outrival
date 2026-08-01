@@ -115,6 +115,109 @@ describe("collapsePositioningVersions", () => {
   });
 });
 
+// `classifySection` only calls a section `features` when its heading contains one of
+// a handful of words, and homepages name sections after the benefit instead. On prod
+// 2026-08-01 that left 87% of stored sections typed `other` and 95 of 158 competitors
+// with no highlight at all. The selection is inverted: trust the type only where the
+// parser decided it structurally, and treat the rest as candidates.
+describe("positioningCopyOf — highlights beyond the `features` keyword list", () => {
+  const propsOf = (sections: unknown[]) =>
+    collapsePositioningVersions([
+      { structure: { hero: { headline: "H" }, sections }, scrapedAt: at("2026-08-01T00:00:00Z") },
+    ])[0]!.valueProps;
+
+  test("a benefit-named section becomes a highlight", () => {
+    // Real prod copy the keyword list dropped.
+    expect(
+      propsOf([
+        { type: "other", heading: "Stop choosing between speed and control" },
+        { type: "other", heading: "PostgreSQL re-engineered for multi-tenant apps" },
+      ]),
+    ).toEqual([
+      "Stop choosing between speed and control",
+      "PostgreSQL re-engineered for multi-tenant apps",
+    ]);
+  });
+
+  test("a typed hit is never displaced by the ones now added", () => {
+    // The whole safety argument: this may only ADD. A features section sitting last
+    // in the document still survives a page with more candidates than the cap.
+    const props = propsOf([
+      ...Array.from({ length: 10 }, (_, i) => ({ type: "other", heading: `Benefit number ${i}` })),
+      { type: "features", heading: "The one the classifier caught" },
+    ]);
+
+    expect(props[0]).toBe("The one the classifier caught");
+    expect(props).toHaveLength(8);
+  });
+
+  test("structurally-decided sections are never highlights", () => {
+    // Each of these verdicts rests on a price pattern, a blockquote, an image wall or
+    // stacked <details>, so they are the ones worth trusting.
+    expect(
+      propsOf([
+        { type: "pricing", heading: "Simple pricing that scales" },
+        { type: "faq", heading: "Everything you wanted to ask" },
+        { type: "testimonials", heading: "What our users tell us" },
+        { type: "logos", heading: "Teams that switched" },
+        { type: "cta", heading: "Your data is waiting" },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("a customer wall, a closing CTA and a blog strip are not claims", () => {
+    // These reach `other` when the structural cues are missing (no <img> count, no
+    // button), and each would otherwise read as something the product does.
+    expect(
+      propsOf([
+        { type: "other", heading: "Trusted by industry leaders" },
+        { type: "other", heading: "Ready to extract valuable data?" },
+        { type: "other", heading: "Latest insights & expert articles" },
+        { type: "other", heading: "Track your portfolio in real time" },
+      ]),
+    ).toEqual(["Track your portfolio in real time"]);
+  });
+
+  test("the exclusions are anchored, so a real claim survives the same words", () => {
+    // "Start shipping on day one" opens with the same verb as "Start free". Matching
+    // it anywhere in the string would silently delete product claims.
+    expect(
+      propsOf([
+        { type: "other", heading: "Start shipping on day one" },
+        { type: "other", heading: "Start free, upgrade whenever" },
+      ]),
+    ).toEqual(["Start shipping on day one"]);
+  });
+
+  test("a one-word heading is a tab label, not a highlight", () => {
+    expect(
+      propsOf([
+        { type: "other", heading: "Solo" },
+        { type: "other", heading: "Teams" },
+        { type: "other", heading: "Scan to add" },
+      ]),
+    ).toEqual(["Scan to add"]);
+  });
+
+  test("a heading the section walk glued into a paragraph is dropped", () => {
+    const glued = `1 - MARQUE EMPLOYEUR ${"Boostez votre marque employeur en communiquant ".repeat(4)}`;
+    expect(propsOf([{ type: "other", heading: glued }, { type: "other", heading: "Sourcing de candidats" }])).toEqual([
+      "Sourcing de candidats",
+    ]);
+  });
+
+  test("the repeat filter counts per pool, so a typed hit is not dropped by its echoes", () => {
+    // Sharing one tally across both pools would remove a highlight that renders today.
+    expect(
+      propsOf([
+        { type: "features", heading: "Real-time pricing" },
+        { type: "other", heading: "Real-time pricing" },
+        { type: "other", heading: "Real-time pricing" },
+      ]),
+    ).toEqual(["Real-time pricing"]);
+  });
+});
+
 // The parser reads the hero off `$("h1").first()` alone, so a page that titles in an
 // <h2> or a styled <div> yields headline AND subheadline null together and the whole
 // "How they position" section vanishes. Measured on prod 2026-08-01: 9 of 158 stored

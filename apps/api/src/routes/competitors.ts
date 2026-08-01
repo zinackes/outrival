@@ -321,6 +321,33 @@ function usableHeadCopy(value: string | null | undefined): string | null {
   return v;
 }
 
+// Highlights shown at a glance. More than this stops being a glance.
+const MAX_VALUE_PROPS = 8;
+
+// The section types the parser decides STRUCTURALLY (a currency-and-period pattern,
+// a blockquote, an image wall, stacked <details>, a button under a closing line)
+// rather than by matching words in the heading. None of them is a product claim, and
+// because none rests on vocabulary, they are the verdicts worth trusting.
+const NEVER_A_VALUE_PROP = new Set(["pricing", "faq", "testimonials", "logos", "cta"]);
+
+// The three families of section heading that survive that filter and still are not a
+// claim about the product: a customer wall the logo detector missed, the closing
+// call to action, and the blog/press teaser strip near the footer. Anchored at the
+// start where the phrasing is a section opener, so a genuine claim that happens to
+// contain "start" ("Start shipping on day one") is untouched.
+const NOT_A_CLAIM_RE =
+  /\b(trusted by|used by|loved by|backed by|our (customers|clients|partners))\b|^(ready to|get started|start (free|now|your|building)|try |book a |contact (us|sales)|sign up|request a )|^(latest|recent|more from|from the blog|blog|news|press|resources|events|webinars|case stud|customer stor)/i;
+
+// A highlight is a PHRASE the competitor wrote about its product. One word is a tab
+// label ("Solo", "Teams", "Pricing"), and past ~120 chars the heading is a whole
+// paragraph the section walk glued together, not a heading anyone designed.
+function isClaimLike(heading: string | undefined): boolean {
+  const h = heading?.trim() ?? "";
+  if (!h || h.length > 120) return false;
+  if (h.split(/\s+/).filter(Boolean).length < 2) return false;
+  return !NOT_A_CLAIM_RE.test(h);
+}
+
 /**
  * The copy a competitor positions itself with, derived from one stored homepage
  * structure. Shared by the fact sheet and by the positioning history, so a "then"
@@ -333,30 +360,66 @@ function positioningCopyOf(s: StoredHomepage): {
   subheadline: string | null;
   valueProps: string[];
 } {
-  // Section headings carrying the value proposition (feature blocks and
-  // integration showcases), in document order, capped for the glance.
-  // Scroll-driven "stepped" layouts repeat a mockup label (e.g. an H3
-  // "Product Brief") across every panel, and it classifies as a feature
-  // heading — so dedupe case-insensitively and drop any heading recurring
-  // 3+ times (a template/UI label, never a distinct highlight).
-  const headings = (s.sections ?? [])
-    .filter((sec) => sec.type === "features" || sec.type === "integrations")
-    .map((sec) => sec.heading?.trim() ?? "")
-    .filter((h) => h.length > 0);
-  const counts = new Map<string, number>();
-  for (const h of headings) {
-    const k = h.toLowerCase();
-    counts.set(k, (counts.get(k) ?? 0) + 1);
-  }
-  const seen = new Set<string>();
-  const valueProps: string[] = [];
-  for (const h of headings) {
-    const k = h.toLowerCase();
-    if ((counts.get(k) ?? 0) >= 3) continue; // template/UI label, not a highlight
-    if (seen.has(k)) continue;
-    seen.add(k);
-    valueProps.push(h);
-  }
+  const headingsWhere = (pred: (sec: { heading?: string; type?: string }) => boolean) =>
+    (s.sections ?? [])
+      .filter(pred)
+      .map((sec) => sec.heading?.trim() ?? "")
+      .filter((h) => h.length > 0);
+
+  // Section headings carrying the value proposition, in document order, capped for
+  // the glance. Scroll-driven "stepped" layouts repeat a mockup label (e.g. an H3
+  // "Product Brief") across every panel, so dedupe case-insensitively and drop any
+  // heading recurring 3+ times (a template/UI label, never a distinct highlight).
+  //
+  // The count is per POOL, never across the two below. Sharing one tally would let a
+  // heading the page states once as a feature be dropped because it also appears
+  // twice elsewhere, which would REMOVE a highlight that renders today.
+  const distinct = (headings: string[]): string[] => {
+    const counts = new Map<string, number>();
+    for (const h of headings) {
+      const k = h.toLowerCase();
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const h of headings) {
+      const k = h.toLowerCase();
+      if ((counts.get(k) ?? 0) >= 3) continue; // template/UI label, not a highlight
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(h);
+    }
+    return out.slice(0, MAX_VALUE_PROPS);
+  };
+
+  // What the classifier is confident about, exactly as before.
+  const typed = distinct(
+    headingsWhere((sec) => sec.type === "features" || sec.type === "integrations"),
+  );
+
+  // Then everything it typed `other`, which is where the value props actually are.
+  // `classifySection` only calls a section `features` when its HEADING contains one
+  // of a handful of words (features, why, how it works, capabilities, product), and
+  // homepages name their sections after the benefit rather than after the word
+  // "features": measured on prod 2026-08-01, 2572 of 2943 stored sections (87%) fall
+  // through to `other`, and 95 of 158 competitors had no highlight to show at all.
+  // The ones it drops are the actual pitch, verbatim: "Stop choosing between speed
+  // and control", "PostgreSQL re-engineered for multi-tenant apps".
+  //
+  // So the selection is inverted. What the classifier is genuinely reliable at is
+  // recognising what ISN'T a claim, because each of those verdicts rests on
+  // structure rather than vocabulary: a price pattern, a blockquote, an image wall,
+  // stacked <details>. Everything it did not rule out that way is a candidate.
+  //
+  // Typed hits come FIRST and the cap is applied after, so this can only ever ADD:
+  // no competitor loses a highlight that renders today. Verified against all 158
+  // stored structures (0 lost, 80 empty sections filled, 62 one-liners completed);
+  // 34 of the 63 that "worked" were rendering a single bullet.
+  const rest = distinct(
+    headingsWhere((sec) => !NEVER_A_VALUE_PROP.has(sec.type ?? "") && isClaimLike(sec.heading)),
+  ).filter((h) => !typed.some((t) => t.toLowerCase() === h.toLowerCase()));
+
+  const valueProps = [...typed, ...rest].slice(0, MAX_VALUE_PROPS);
   let headline = s.hero?.headline ?? null;
   let subheadline = s.hero?.subheadline ?? null;
 
@@ -387,11 +450,7 @@ function positioningCopyOf(s: StoredHomepage): {
     subheadline = sub && sub.toLowerCase() !== headline?.toLowerCase() ? sub : null;
   }
 
-  return {
-    headline,
-    subheadline,
-    valueProps: valueProps.slice(0, 8),
-  };
+  return { headline, subheadline, valueProps };
 }
 
 async function buildHomepageFacts(

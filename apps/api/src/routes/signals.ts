@@ -437,6 +437,7 @@ ${lines.slice(0, 6000)}
 
   // withAiContext spans the call AND its log so the tokens/model complete()
   // marks reach the row (Bun drops the lazy child-frame enterWith).
+  // interactive: this brief renders inside a request the user is waiting on.
   return withAiContext(async () => {
     try {
       const raw = await complete(AI_CONFIG.insights, { prompt, maxTokens: 240 });
@@ -448,7 +449,7 @@ ${lines.slice(0, 6000)}
       await logApiAiRun("signals_brief", AI_CONFIG.insights.model, "error", { orgId });
       return c.json({ brief: null, count: rows.length });
     }
-  });
+  }, { interactive: true });
 });
 
 // Mark all read — full scope, server-side. Two paths on one endpoint:

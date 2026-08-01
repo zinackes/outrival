@@ -1893,6 +1893,36 @@ AI_PROVIDER_4_ID=mistral           # La Plateforme free : 1 Md tokens/mois, 1 re
 # Plus de plancher PAYANT : `AI_PROVIDER_3_ID=hyperbolic` était documenté depuis patch-22
 # mais n'a jamais eu de clé en prod et n'a jamais servi une requête (ai_runs ne connaît que
 # groq et cerebras du 05/06 au 31/07/2026). Quand les gratuits sont épuisés, l'IA s'arrête.
+AI_PROVIDER_N_TPM_LIMIT=           # plafond TOKENS PAR MINUTE du provider (cerebras 30000,
+                                   # groq 8000). C'est LE plafond qui mordait : le quota
+                                   # journalier n'a jamais été atteint. Mesuré en prod le
+                                   # 2026-07-31 — Cerebras sert 420k tokens sur l'heure de 05:00,
+                                   # tape son plafond par minute, puis DISPARAÎT le reste de la
+                                   # journée à 740k sur 1M, pendant que Groq répond à 169 appels
+                                   # dans la même heure et en rate 152. Le pool ignorait
+                                   # l'existence d'un plafond par minute, donc le fan-out horaire
+                                   # 429ait le seul provider sain, le parquait jusqu'à 2 min, et
+                                   # basculait tout sur celui qui pouvait le moins l'absorber.
+                                   # `pickProvider` DÉPRIORISE désormais un provider dont la
+                                   # fenêtre glissante ne peut pas financer la requête, sans
+                                   # jamais l'exclure : l'estimation est un ratio sur un nombre de
+                                   # caractères, pas un tokenizer, donc elle ne doit jamais être
+                                   # la raison d'un échec. Le plancher reste le comportement
+                                   # d'avant ; le gain est qu'un provider saturé est sauté AVANT
+                                   # son 429, pas après. Réservation avant l'appel (sinon N appels
+                                   # concurrents lisent tous une fenêtre vide et partent tous),
+                                   # réconciliée sur l'usage réel dans le MÊME bucket de minute.
+                                   # 0 = pas de pacing pour ce provider
+AI_INTERACTIVE_RESERVE_FRACTION=0.2 # part de chaque plafond par minute réservée à l'INTERACTIF
+                                   # (question Ask, brief signals, tout ce qu'un humain regarde).
+                                   # Le background est plafonné aux 80% restants. Sans ça la
+                                   # flotte et la personne devant l'écran tiraient sur le même
+                                   # pot, et la flotte passe toujours en premier : c'est
+                                   # exactement pourquoi un testeur SEUL voyait « AI insights are
+                                   # delayed » sans que rien ne soit cassé. Le flag vit dans le
+                                   # scope withAiContext et les scopes imbriqués en HÉRITENT, donc
+                                   # un job que l'user regarde s'enveloppe une fois et tous ses
+                                   # loggedAi sont interactifs. 0 désactive la réserve
 AI_CIRCUIT_BREAKER_THRESHOLD=5     # échecs consécutifs (tous providers) avant coupure globale
 AI_CIRCUIT_BREAKER_RESET_MIN=10    # minutes avant retry (breaker provider ET global)
 AI_INTENSIVE_RATE_LIMIT=           # OVERRIDE d'urgence ops UNIQUEMENT. Le plafond horaire

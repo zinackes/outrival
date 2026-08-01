@@ -1,4 +1,5 @@
 import { redis } from "@outrival/shared";
+import { slidingWindowTokens, hasHeadroom, WINDOW_MS } from "./tpm-window";
 
 /**
  * Provider pool (patch-22). The AI source is a pool of *legal* OpenAI-compatible
@@ -31,6 +32,13 @@ export interface Provider {
    */
   maxRequestTokens?: number;
   priority: number; // lower = tried first (free before paid)
+  /**
+   * Per-minute token ceiling at this provider (AI_PROVIDER_N_TPM_LIMIT). 0 =
+   * unknown, which disables pacing for it and restores the pre-pacing behaviour.
+   * Distinct from dailyTokenQuota: the daily one is the limit we never hit, the
+   * per-minute one is the limit the hourly fan-out walks into every day.
+   */
+  tpmLimit: number;
   // Optional override for reasoning models (gpt-oss). Unset → callLLM auto-picks
   // "low" for gpt-oss (cheapest, validated equal quality) and sends nothing for
   // non-reasoning models. Only set this to deviate (e.g. "medium").
@@ -80,6 +88,7 @@ export function loadProviders(): Provider[] {
       tier: process.env[`AI_PROVIDER_${i}_TIER`] === "paid" ? "paid" : "free",
       dailyTokenQuota: Number(process.env[`AI_PROVIDER_${i}_DAILY_TOKEN_QUOTA`] ?? 500000),
       maxRequestTokens: Number.isFinite(maxReq) && maxReq > 0 ? maxReq : undefined,
+      tpmLimit: Number(process.env[`AI_PROVIDER_${i}_TPM_LIMIT`] ?? 0),
       priority: Number(process.env[`AI_PROVIDER_${i}_PRIORITY`] ?? 99),
       reasoningEffort: re === "low" || re === "medium" || re === "high" ? re : undefined,
     });
@@ -99,6 +108,10 @@ export function loadProviders(): Provider[] {
         fastModel: "openai/gpt-oss-20b",
         tier: "free",
         dailyTokenQuota: 500000,
+        // Groq's published free ceiling for gpt-oss-120b. Hard-coded here because
+        // this branch synthesizes a provider from a bare GROQ_API_KEY, so there is
+        // no AI_PROVIDER_N_TPM_LIMIT to read.
+        tpmLimit: 8000,
         priority: 1,
       });
     }
@@ -174,6 +187,44 @@ function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Minute bucket key for a provider's per-minute token window. */
+function tpmKey(providerId: string, epochMs: number): string {
+  return `ai:tpm:${providerId}:${Math.floor(epochMs / WINDOW_MS)}`;
+}
+
+/** Tokens spent at this provider over the trailing minute. */
+async function observedTpm(providerId: string, now: number): Promise<number> {
+  const [previous, current] = await redis.mget(
+    tpmKey(providerId, now - WINDOW_MS),
+    tpmKey(providerId, now),
+  );
+  return slidingWindowTokens(Number(previous ?? 0), Number(current ?? 0), now % WINDOW_MS);
+}
+
+/**
+ * Book tokens against a provider's per-minute window and return the bucket key, so
+ * the caller can reconcile the estimate against the real usage in the SAME bucket
+ * once the call returns. Reconciling into whatever bucket is current at that point
+ * would credit a minute that never spent the tokens on a call spanning a boundary.
+ *
+ * Booked BEFORE the call, not after: N concurrent calls all reading an empty window
+ * and all firing is precisely the burst this exists to stop.
+ */
+export async function reserveTpm(providerId: string, tokens: number): Promise<string> {
+  const key = tpmKey(providerId, Date.now());
+  await redis.incrby(key, Math.round(tokens));
+  // Two windows plus slack: the bucket only has to outlive its own use as the
+  // "previous minute" of the next window.
+  await redis.expire(key, 180);
+  return key;
+}
+
+/** Correct a reservation once the real usage is known. `delta` may be negative. */
+export async function reconcileTpm(bucketKey: string, delta: number): Promise<void> {
+  if (Math.round(delta) === 0) return;
+  await redis.incrby(bucketKey, Math.round(delta));
+}
+
 /**
  * Rough token count for a request, from characters. ~4 chars/token is the standard
  * English approximation and it UNDER-estimates markup-heavy payloads, which is the
@@ -200,31 +251,60 @@ export function providersAcceptingSize(providers: Provider[], requestTokens: num
  * Pick the next available provider by priority (free before paid). Skips providers
  * exhausted today (>= 95% of their token quota), in circuit breaker, in `exclude`
  * (providers the current callLLM loop has already tried — Redis-independent failover,
- * see callLLM), or too small for `requestTokens`. Round-robins only between providers
- * sharing the best available priority. Returns null when none are usable (→ caller
- * trips the global breaker).
+ * see callLLM), or too small for `requestTokens`.
+ *
+ * Two ceilings, and they are different kinds of thing. `requestTokens` against
+ * `maxRequestTokens` is a WALL: a request bigger than it earns a guaranteed 413, so
+ * such a provider is REMOVED — attempting it spends a failover slot to be told what
+ * we already knew. The per-minute window is a RATE: a request that fits may still
+ * arrive in a minute already spent, so such a provider is only DEPRIORITISED. We
+ * prefer whoever has headroom and fall back to the best-priority usable provider
+ * when nobody does, because the estimate is a ratio on a character count rather than
+ * a tokenizer and must never be the sole reason a task fails. The floor stays exactly
+ * the pre-pacing behaviour; the win is that a saturated provider is skipped BEFORE it
+ * answers 429 and gets parked for two minutes, not after.
+ *
+ * `interactive` lets a call someone is watching draw on the share of each ceiling
+ * that background work is held back from (AI_INTERACTIVE_RESERVE_FRACTION).
  */
 export async function pickProvider(
   exclude?: ReadonlySet<string>,
   requestTokens = 0,
+  interactive = false,
 ): Promise<Provider | null> {
   const providers = providersAcceptingSize(loadProviders(), requestTokens);
   if (providers.length === 0) return null;
   const today = todayKey();
+  const now = Date.now();
+  const reserveFraction = Number(process.env.AI_INTERACTIVE_RESERVE_FRACTION ?? 0.2);
 
   const available: Provider[] = [];
+  const withHeadroom: Provider[] = [];
   for (const p of providers) {
     if (exclude?.has(p.id)) continue;
     const [breaker, used] = await redis.mget(`ai:breaker:${p.id}`, `ai:usage:${p.id}:${today}`);
     if (breaker) continue;
     if (Number(used ?? 0) >= p.dailyTokenQuota * 0.95) continue;
     available.push(p);
+    if (
+      requestTokens === 0 ||
+      hasHeadroom({
+        observed: await observedTpm(p.id, now),
+        limit: p.tpmLimit,
+        cost: requestTokens,
+        reserveFraction,
+        interactive,
+      })
+    ) {
+      withHeadroom.push(p);
+    }
   }
-  if (available.length === 0) return null;
+  const pool = withHeadroom.length > 0 ? withHeadroom : available;
+  if (pool.length === 0) return null;
 
   // Keep only the providers at the best available priority, then round-robin them.
-  const bestPriority = available[0]!.priority;
-  const topTier = available.filter((p) => p.priority === bestPriority);
+  const bestPriority = pool[0]!.priority;
+  const topTier = pool.filter((p) => p.priority === bestPriority);
   if (topTier.length === 1) return topTier[0]!;
 
   const idx = await redis.incr(`ai:roundrobin:${bestPriority}`);

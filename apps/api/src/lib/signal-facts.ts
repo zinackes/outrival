@@ -861,11 +861,16 @@ async function pricingFacts(
   // Both batches in one read: the latest inside the window, and the one strictly
   // before it whatever its age (the previous capture is the baseline even when it
   // predates the window).
+  // Bounds as ISO strings, not Dates: a `Date` interpolated into a raw `sql`
+  // template carries no encoder and the driver rejects the bind outright — the
+  // same trap `attributionWindow` documents. Here the throw is caught by
+  // `analyticsQuery`'s best-effort contract, so it returned [] and the pricing
+  // block silently rendered nothing on EVERY pricing signal.
   const rows = await analyticsQuery<PlanRow>(sql`
     WITH cur AS (
       SELECT max(recorded_at) AS ts FROM pricing_history
       WHERE competitor_id = ${competitorId} AND origin = 'live'
-        AND recorded_at >= ${window.lower} AND recorded_at <= ${window.upper}
+        AND recorded_at >= ${window.lower.toISOString()} AND recorded_at <= ${window.upper.toISOString()}
     ), prev AS (
       SELECT max(ph.recorded_at) AS ts FROM pricing_history ph, cur
       WHERE ph.competitor_id = ${competitorId} AND ph.origin = 'live'
@@ -996,7 +1001,7 @@ async function tierFacts(
     WITH cur AS (
       SELECT max(recorded_at) AS ts FROM price_tiers
       WHERE competitor_id = ${competitorId} AND origin = 'live'
-        AND recorded_at >= ${window.lower} AND recorded_at <= ${window.upper}
+        AND recorded_at >= ${window.lower.toISOString()} AND recorded_at <= ${window.upper.toISOString()}
     ), prev AS (
       SELECT max(pt.recorded_at) AS ts FROM price_tiers pt, cur
       WHERE pt.competitor_id = ${competitorId} AND pt.origin = 'live'
@@ -1046,7 +1051,7 @@ async function entitlementFacts(
     WITH cur AS (
       SELECT max(recorded_at) AS ts FROM plan_entitlements
       WHERE competitor_id = ${competitorId}
-        AND recorded_at >= ${window.lower} AND recorded_at <= ${window.upper}
+        AND recorded_at >= ${window.lower.toISOString()} AND recorded_at <= ${window.upper.toISOString()}
     ), prev AS (
       SELECT max(pe.recorded_at) AS ts FROM plan_entitlements pe, cur
       WHERE pe.competitor_id = ${competitorId} AND pe.recorded_at < cur.ts

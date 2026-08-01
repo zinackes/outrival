@@ -31,13 +31,123 @@ import { fmtPrice, PERIOD_SHORT } from "@/components/dashboard/activity/format";
 const ROLES_COLLAPSED = 6;
 const PLANS_COLLAPSED = 6;
 const FACTS_COLLAPSED = 4;
+const ENTRIES_COLLAPSED = 5;
 
 export function SignalFacts({ facts }: { facts: Facts }) {
   if (!facts) return null;
   if (facts.kind === "hiring") return <HiringFacts facts={facts} />;
   if (facts.kind === "job_facts") return <JobFacts facts={facts} />;
   if (facts.kind === "salary") return <SalaryFacts facts={facts} />;
+  if (facts.kind === "content") return <ContentFacts facts={facts} />;
   return <PricingFacts facts={facts} />;
+}
+
+const ITEM_TYPE_LABEL: Record<string, string> = {
+  breaking: "Breaking",
+  deprecation: "Deprecation",
+  security: "Security",
+  fix: "Fix",
+  feature: "Feature",
+  improvement: "Improvement",
+};
+
+/** The two types that carry an alert read louder than the rest of the list. */
+const LOUD_ITEM_TYPES = new Set(["breaking", "deprecation"]);
+
+/**
+ * What a competitor published, named.
+ *
+ * A changelog signal used to read "they shipped several updates" over a feed that
+ * held every entry's title, publication date and permalink. All three come from
+ * the feed itself, so nothing here is a model's account of a release — the entry
+ * type is the only derived field, and the loud ones are decided by keywords.
+ *
+ * On a cadence signal the months lead: the count is a claim about a set, so the
+ * set it was counted over is printed next to it.
+ */
+function ContentFacts({ facts }: { facts: Extract<Facts, { kind: "content" }> }) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? facts.entries : facts.entries.slice(0, ENTRIES_COLLAPSED);
+  const hidden = facts.entriesTotal - shown.length;
+  const { velocity } = facts;
+
+  return (
+    <div>
+      {velocity ? (
+        <p className="text-dense text-muted-foreground">
+          <span className="font-medium text-foreground tabular-nums">{velocity.count}</span>{" "}
+          {velocity.count === 1 ? "entry" : "entries"} in {velocity.month} ·{" "}
+          {velocity.direction === "accelerating" ? "up from" : "down from"}{" "}
+          <span className="tabular-nums">{velocity.baselineAvg.toFixed(1)}</span>/month
+        </p>
+      ) : (
+        <p className="text-dense text-muted-foreground">
+          <span className="font-medium text-foreground tabular-nums">{facts.entriesTotal}</span>{" "}
+          {facts.entriesTotal === 1 ? "entry" : "entries"} published
+        </p>
+      )}
+
+      {/* The months the average came from. Without them the baseline is a number
+          the reader has to take on trust. */}
+      {velocity && velocity.baseline.length > 0 && (
+        <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+          {velocity.baseline.map((b) => (
+            <li key={b.month} className="text-xs text-muted-foreground">
+              {b.month} <span className="text-foreground tabular-nums">{b.count}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <ul className="mt-2.5 space-y-2">
+        {shown.map((e) => (
+          <li key={`${e.title}-${e.publishedAt ?? ""}`}>
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              {e.url ? (
+                <a
+                  href={e.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                >
+                  {e.title}
+                  <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
+                </a>
+              ) : (
+                <span className="text-sm text-foreground">{e.title}</span>
+              )}
+              {e.itemType && (
+                <span
+                  className={cn(
+                    "text-xs",
+                    LOUD_ITEM_TYPES.has(e.itemType)
+                      ? "font-medium text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {ITEM_TYPE_LABEL[e.itemType] ?? e.itemType}
+                </span>
+              )}
+              {e.publishedAt && (
+                <span className="text-xs text-muted-foreground tabular-nums">{e.publishedAt}</span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {hidden > 0 && !expanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <CaretDownIcon size={14} aria-hidden />
+          <span className="tabular-nums">{hidden}</span> more
+        </button>
+      )}
+    </div>
+  );
 }
 
 /**

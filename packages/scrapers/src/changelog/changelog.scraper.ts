@@ -2,6 +2,7 @@ import { scrapeStatic, scrapeFirstSuccess } from "../lib/crawler";
 import { safeFetch } from "../lib/guarded-fetch";
 import type { ScrapeOutcome, ScrapeOptions } from "../types";
 import { discoverFeedUrl, parseFeed, type FeedItem } from "../feeds/rss";
+import { buildChangelogIsland } from "../content/parse";
 
 /**
  * Changelog scraper (patch-32, product-velocity signal). Feed-first: when the page
@@ -15,8 +16,6 @@ const CHANGELOG_PATHS = ["/changelog", "/releases", "/release-notes", "/whats-ne
 const CHANGELOG_KEYWORDS = ["changelog", "releases", "release-notes", "whats-new", "updates"];
 // Probed when the page advertises no <link rel="alternate"> feed.
 const FEED_PATHS = ["/changelog.rss", "/changelog/feed", "/changelog/feed.xml", "/feed", "/rss", "/atom.xml", "/feed.xml"];
-
-const MARKER = "outrival-changelog-feed";
 
 function escapeHtml(s: string): string {
   return s
@@ -68,10 +67,9 @@ function feedOutcome(page: ScrapeOutcome, feedUrl: string, items: FeedItem[]): S
       return `<li>${escapeHtml(it.title)}${meta ? ` — ${meta}` : ""}</li>`;
     })
     .join("");
-  const json = JSON.stringify({ feedUrl, items: sorted }).replace(/</g, "\\u003c");
   const html =
     `<!doctype html><html><body><section data-outrival-changelog><h2>Changelog</h2><ul>${lis}</ul></section>` +
-    `<script type="application/json" id="${MARKER}">${json}</script></body></html>`;
+    `${buildChangelogIsland(feedUrl, sorted)}</body></html>`;
   const text = sorted
     .map((it) => [it.publishedAt?.slice(0, 10), it.title].filter(Boolean).join(" "))
     .join("\n");

@@ -1,6 +1,6 @@
 {
-  "id": "df276118-2b76-4bb0-8ab2-a945ca2d7256",
-  "prevId": "6c0ca7d4-8452-4420-92b1-c8634dc7856a",
+  "id": "6c0ca7d4-8452-4420-92b1-c8634dc7856a",
+  "prevId": "59b22c78-325f-46be-b877-1c24d7226f29",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -7012,112 +7012,6 @@
             },
             {
               "expression": "recorded_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.ats_coverage_gaps": {
-      "name": "ats_coverage_gaps",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "platform": {
-          "name": "platform",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "host": {
-          "name": "host",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "competitor_id": {
-          "name": "competitor_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "resolution": {
-          "name": "resolution",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "job_count": {
-          "name": "job_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "occurrences": {
-          "name": "occurrences",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "last_seen_at": {
-          "name": "last_seen_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "ats_coverage_gaps_platform_competitor_uk": {
-          "name": "ats_coverage_gaps_platform_competitor_uk",
-          "columns": [
-            {
-              "expression": "platform",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "competitor_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "ats_coverage_gaps_resolution_idx": {
-          "name": "ats_coverage_gaps_resolution_idx",
-          "columns": [
-            {
-              "expression": "resolution",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "last_seen_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

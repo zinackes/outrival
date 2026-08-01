@@ -10,6 +10,7 @@ import {
   probePricingCalculator,
   extractJobs,
   extractReviews,
+  ingestContentItems,
   backfillHistory,
 } from "@outrival/queue";
 import { z } from "zod";
@@ -1167,6 +1168,12 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
     // Pricing Intelligence P1 — a pricing change whose classify/signal routing is
     // handed to extract-pricing instead of classify-change (see the lexical branch).
     let deferredPricingChange: { id: string; lexicalWorth: boolean } | null = null;
+    // Content Intelligence v2 P1 — a changelog change whose classify/signal routing
+    // is handed to ingest-content-items, which can type the entries the feed just
+    // published and say "this one breaks things" where the lexical classifier can
+    // only say "they posted". Set only on a feed-first capture: without a feed
+    // there are no entries to type and the pre-existing path is the only one.
+    let deferredContentChange: { id: string; lexicalWorth: boolean } | null = null;
 
     // Structured diff (patch-16) for homepage monitors when BOTH the current
     // capture and the prior snapshot carry a semantic structure. Replaces the
@@ -1831,6 +1838,25 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
                 changeId,
                 lexicalWorth: significance.worth,
               });
+            } else if (
+              monitor.sourceType === "changelog" &&
+              graded.complete &&
+              Boolean(result.metadata?.changelogFeed)
+            ) {
+              // Content Intelligence v2 P1: the signal routing for a feed-first
+              // changelog change is DEFERRED to ingest-content-items (enqueued
+              // below), which owns the decision race-free — a newly published
+              // entry the keyword pass types `breaking` or `deprecation` emits the
+              // typed signal; anything else falls back to the lexical classifier
+              // iff the diff was worth one. Enqueueing classify here in parallel
+              // would race the deterministic path on the same changeId
+              // (signals.changeId is unique — one would silently lose).
+              deferredContentChange = { id: changeId, lexicalWorth: significance.worth };
+              logger.log("Changelog change deferred to ingest-content-items", {
+                monitorId: monitor.id,
+                changeId,
+                lexicalWorth: significance.worth,
+              });
             } else if (significance.worth) {
               await classifyChange.enqueue({ changeId });
             } else {
@@ -1921,6 +1947,22 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         snapshotId: newSnapshot.id,
         competitorId: competitor.id,
         source: reviewSource,
+      });
+    } else if (
+      // Content Intelligence v2 P1 — turn the entries this capture published into
+      // content_items rows. Written IN ADDITION to the diff above, which is
+      // untouched: a changelog with no feed, or a roadmap portal, still produces
+      // exactly the change it produces today. On a feed-first changelog the job
+      // also owns the deferred change's signal routing (see the lexical branch).
+      extractionAllowed &&
+      (monitor.sourceType === "changelog" || monitor.sourceType === "roadmap")
+    ) {
+      await ingestContentItems.enqueue({
+        snapshotId: newSnapshot.id,
+        competitorId: competitor.id,
+        sourceType: monitor.sourceType,
+        changeId: deferredContentChange?.id,
+        lexicalWorth: deferredContentChange?.lexicalWorth,
       });
     } else if (
       // Trustpilot public surface (Reviews v2): a structured score/count snapshot, not

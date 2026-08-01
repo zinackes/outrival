@@ -1454,6 +1454,107 @@ NE PAS commencer sans /clear.
 
 ---
 
+### 2026-08-01 : Content Intelligence v2, P1 (`content_items`, changelog typé, vélocité de shipping), L
+
+**Objectif** : donner une MÉMOIRE aux sources éditoriales. Blog/changelog/docs/roadmap
+produisaient un snapshot, un diff et un paragraphe, et rien ne s'accumulait : aucune
+table pour demander « combien de releases le mois dernier », aucun moyen de distinguer
+un breaking change d'une retouche de copy, et le `product_hint` du bloc Hiring promettait
+une corroboration « changelog/docs récents » qui n'avait aucune table à interroger.
+
+**Réalisé** :
+- **`content_items` (migration 0064)** : une ligne par item publié, clé sur l'id du
+  PUBLIEUR (guid de feed, id d'entrée de portail), jamais dérivée du titre ni de la date
+  qu'un éditeur peut changer sans rien publier. Écriture EN PLUS : le chemin
+  snapshot → diff → classify reste le plancher, aucune capture ne produit un change
+  différent d'avant. Pas de table `case_studies` (P3).
+- **Ingestion zéro IA** : les deux scrapers synthétisaient DÉJÀ leur snapshot depuis de la
+  donnée structurée, donc chacun écrit cette structure dans un îlot JSON et le job la
+  re-lit, au lieu de re-parser de la prose depuis le listing rendu. L'îlot est un
+  `<script>`, retiré par `extractContent` AVANT le hash : il ne peut pas déplacer un
+  content hash ni fabriquer un change (test dédié). Constructeur et lecteur du format
+  vivent dans le même module. Séparés, un champ renommé dériverait en silence et
+  l'ingestion deviendrait muette.
+- **Typage** : mots-clés EN+FR+DE d'abord, avec précédence (une note qui « corrige un
+  breaking change sur un endpoint déprécié » est d'abord une rupture), puis batches de 10
+  vers le modèle, cap 40/run, loggé `type_content_items`. **Le modèle ne peut pas
+  répondre breaking/deprecation/security** : son énumération est feature|improvement|fix.
+  Aucune alerte de cette feature ne dépend donc de son jugement.
+- **`breaking_change` / `deprecation`** : prend le change du changelog LUI-MÊME.
+  `signals.changeId` est unique, donc enqueuer classify en parallèle du chemin
+  déterministe en perdrait un en silence : scrape-monitor DÉFÈRE le classify, comme pour
+  pricing, et tout chemin qui n'émet pas rend le change au classifieur lexical.
+  high si le workspace surveille des docs quelque part, sinon medium.
+- **`shipping_velocity_shift`** : ancre dédiée. Trois gardes non réglables, chacune étant
+  la différence entre une lecture et une fausse alerte mensuelle : mois TERMINÉS
+  seulement (un mois vieux de 3 jours contre trois mois pleins annonce un gel produit
+  chez tout le monde le 3 du mois) · aucun mois antérieur à l'entrée la plus ancienne
+  détenue (un feed sert ses N dernières entrées, donc les mois d'avant se lisent zéro
+  alors qu'ils sont NON OBSERVÉS) · une seule émission par épisode. Medium, jamais
+  critical.
+- **Fact blocks** : le signal nomme les entrées exactes (titre + date + lien + type).
+  `shipping_velocity` lit le rawDiff du change plutôt que de recalculer : sinon les
+  nombres affichés contrediraient la phrase au-dessus d'eux dès que le feed publie.
+
+**Fichiers** : `packages/db/src/schema/content-items.ts` + migration 0064 ·
+`packages/scrapers/src/content/{types,parse,changelog-type,velocity,index}.ts` (+ test) ·
+`packages/ai/src/tasks/type-content-items.ts` ·
+`apps/workers/src/core/ingest-content-items.ts` + job + handler + hooks scrape-monitor ·
+`apps/api/src/lib/signal-facts.ts` · `apps/web/src/components/outrival/signal-facts.tsx`.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · `pnpm test` ✓ (12/12, 883 scrapers dont 24 neufs,
+261 api). Les cas qui comptent sont ceux qui NE tirent PAS : sous le plancher de 8 items,
+sans historique, sur des mois non observés, et sur une rampe soutenue.
+
+**Landmine journal drizzle (encore)** : l'horloge de cette machine est ~13,7 h DERRIÈRE
+les `when` de 0060-0063, donc `db:generate` a stampé 0064 sous le dernier appliqué. La
+migration aurait été SAUTÉE en silence en annonçant « Migrations applied ». `when` bumpé
+à la main à 1785614302239 (1 ms après 0063).
+
+**Migration : APPLIQUÉE sur dev ET prod (2026-08-01)** : pré-vol read-only identique
+des deux côtés (64 appliquées, seule 0064 en attente, rien de bloqué), puis
+`src/migrate.ts` sur l'endpoint direct (sans `-pooler`). 65/65 des deux côtés, table et
+valeur d'enum vérifiées après coup.
+
+**Chaîne validée bout-en-bout sur dev** (harness contre le vrai feed Linear, enqueues
+interceptées : ce poste n'a pas de `QUEUE_DATABASE_URL`, et pousser un changeId de dev
+sur la queue partagée donnerait le job à des workers prod qui tournent du code plus
+ancien) :
+- 246 entrées réelles ingérées depuis `linear.app/rss/changelog.xml`, 40 typées au
+  premier run (le cap), 28 feature + 12 improvement en 4 appels sur le pool gratuit.
+- Vélocité évaluée et SILENCIEUSE, correctement : Linear publie 3 à 5 entrées par mois,
+  donc 2026-07 (4) contre une moyenne de 3,67 donne un ratio de 1,09. Le plancher de
+  8 items était franchi (11), c'est bien le seuil qui a tranché.
+- Repli lexical prouvé : capture sans entrée neuve, le change déféré repart en
+  `classify-change`, aucun signal déterministe.
+- Chemin déterministe prouvé avec une entrée « Breaking change » injectée : typée par
+  les mots-clés, `generate-signal` enqueué sur le change déféré en `api_developer` /
+  medium (medium parce que ce workspace n'a aucun monitor `docs` actif), et
+  `classify-change` PAS enqueué. Les 2 lignes synthétiques ont été supprimées de dev
+  après coup ; les 246 vraies restent.
+
+**Les 2 changelogs du compte n'ont pas de feed** (`zentrik.ai/releases`,
+`docs.laneapp.co/changelog`, vérifié en live) : l'ingestion y rend 0 item et le chemin
+lexical d'avant continue seul, ce qui est le comportement voulu. La feature reste sans
+effet sur ce compte tant qu'aucun concurrent à feed n'est ajouté.
+
+**Bug PRÉ-EXISTANT trouvé par ce run** (commit séparé) : `attributionWindow` bindait une
+`Date` dans un fragment `sql` brut, ce que le driver refuse. Chaque appelant étant dans
+un `try/catch` qui renvoie null, le throw ne remontait pas : il VIDAIT le bloc. Hiring,
+pricing et job_facts ne rendaient donc rien en prod depuis l'origine (seul le bloc
+salary y échappait, il compare avec un helper typé). Corrigé, et vérifié sur une vraie
+capture : le bloc qui renvoyait null rend 12 entrées sur 13.
+
+**Reste côté humain** :
+- Env vars optionnelles `SHIPPING_VELOCITY_THRESHOLD` / `_MIN_ITEMS` (défauts 0.5 / 8).
+- Déployer workers + api : la migration est en prod mais le code qui l'utilise n'y est
+  pas encore.
+
+**Prochaine session** : P2, blog feed-first + fetch des nouveaux posts + enrichissement
+batché + `competitor_named_you`. NE PAS commencer sans /clear.
+
+---
+
 ## Hiring Intelligence v2 — P4 : couverture (2026-08-01)
 
 **Le problème** : 9 ATS ont un adapter écrit à la main. Tout le reste — Teamtailor,

@@ -226,6 +226,40 @@ posting_facts          id, posting_id (cascade), competitor_id, kind
                        fact block du signal joint (même attribution read-time que
                        pricing/hiring, pas de change_id à backfiller)
 
+content_items          id, competitor_id (cascade), source_type
+                       ('blog'|'changelog'|'docs'|'roadmap'), external_id, url,
+                       title, published_at, first_seen_at, item_type, status,
+                       topics/products/personas/competitors_named (text[]),
+                       summary, evidence_snippet, confidence, enriched_at
+                       (Content Intelligence v2 P1, migration 0064). Ce qu'un
+                       concurrent A PUBLIÉ, en LIGNES et plus en diff : changelog
+                       et roadmap produisaient un snapshot, un diff et un
+                       paragraphe, et rien ne s'accumulait : aucune table pour
+                       demander « combien de releases le mois dernier », aucun
+                       moyen de distinguer un breaking change d'une retouche de
+                       copy, et le `product_hint` du bloc Hiring promettait une
+                       corroboration « changelog/docs récents » qui n'avait rien à
+                       interroger. Écriture EN PLUS : le chemin snapshot → diff →
+                       classify reste le plancher. `external_id` = l'id du
+                       PUBLIEUR (guid de feed, id d'entrée de portail), jamais
+                       dérivé du titre ni de la date, qu'un éditeur peut changer
+                       sans rien publier. Donc unique (competitor,
+                       source_type, external_id) et re-lire le même feed n'insère
+                       rien. `published_at` null quand la source ne date rien
+                       (un portail roadmap annonce un STATUT) : jamais remplacé
+                       par l'heure de capture, ce qui ferait de NOTRE calendrier de
+                       scrape LEUR cadence de shipping. `item_type` : les 4 types
+                       bruyants (breaking/deprecation/security/fix) sont décidés
+                       par le passage MOTS-CLÉS EN+FR+DE côté code, donc aucun
+                       signal de cette feature ne dépend du jugement d'un modèle ;
+                       l'IA ne sépare que feature/improvement, qui n'alertent
+                       personne. `enriched_at` = tampon « passé au typeur, quoi
+                       qu'il ait rendu » (même discipline que facts_mined_at).
+                       `evidence_snippet` substring-checké côté code comme
+                       posting_facts, null quand le feed n'a donné aucun corps à
+                       citer. topics/products/personas/competitors_named restent
+                       vides en P1 (remplis par l'enrichissement blog, P2)
+
 reviews                id, competitor_id, source (g2|capterra|appstore|playstore),
                        score, content, author (praise|complaint|<name>),
                        detected_at
@@ -383,7 +417,14 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     de plaintes, jamais scrapée), pricing_probe (ancre du signal de
                     mouvement du coût MESURÉ sur le calculateur d'un concurrent, P4 —
                     jamais scrapée : elle porte ses propres snapshots pour ne pas polluer
-                    la chaîne de dédup par content-hash du monitor pricing), hiring_shift (ancre du signal
+                    la chaîne de dédup par content-hash du monitor pricing),
+                    shipping_velocity (ancre du signal de cadence de release,
+                    Content Intelligence v2 P1, jamais semée ni scrapée. ANCRE
+                    DÉDIÉE et pas `changelog` : la chaîne de snapshots du monitor
+                    changelog EST ce contre quoi la capture suivante se diffe,
+                    donc y écrire un snapshot de vélocité ferait diffe le
+                    prochain scrape contre un document qui n'est pas le
+                    changelog), hiring_shift (ancre du signal
                     d'inflexion de vélocité de recrutement par département, jamais
                     scrapée), job_facts (ancre des deux signaux minés des JD —
                     tech_adoption et product_hint, cf. posting_facts ; jamais semée
@@ -649,7 +690,7 @@ scrape_runs         monitor_id, competitor_id, source_type, status (success|no_c
                     duration_ms, recorded_at  — ops (patch-02/20)
 ai_runs             task (classify|classify_structured|narrate_change|insight|digest|
                     battle_card|extract_pricing|extract_jobs|extract_reviews|
-                    extract_self_profile|generate_extractor|mine_job_facts|source_summary|
+                    extract_self_profile|generate_extractor|mine_job_facts|type_content_items|source_summary|
                     competitor_summary|batch_summary|ask|…), provider, model,
                     status (success|parse_failed|error), recorded_at      — ops (patch-02 ;
                     `ask` = Ask Outrival, 1er logger ai_runs côté API via lib/ai-runs.ts)
@@ -1249,6 +1290,48 @@ carte (état live uniquement).
        generate-signal, human_change_before/_after = les coûts mesurés exacts
   └─ chaque tentative est écrite dans calculator_probe_runs (mesurée ou refusée)
 
+[par capture changelog / roadmap] ingest-content-items
+  └─ Content Intelligence v2 P1. Event-driven off scrape-monitor (pas de cron),
+       skip self pour les SIGNAUX (les lignes sont écrites quand même : la cadence
+       compare le produit du user au roster), skip deleted, skip origin=archive
+       (aucun signal ne sort d'un backfill)
+  └─ INGESTION, ZÉRO IA : les deux sources synthétisent déjà leur snapshot depuis
+       de la donnée structurée (feed RSS/Atom, payload de portail), donc chaque
+       scraper écrit cette structure dans un ÎLOT JSON à côté du corps diffé et le
+       job re-lit ce que le scraper SAVAIT DÉJÀ, au lieu de re-parser de la prose
+       depuis le listing qu'il a rendu. L'îlot est un `<script>`, que
+       `extractContent` retire AVANT de hasher, donc il ne peut pas déplacer un
+       content hash ni fabriquer un change. Constructeur ET lecteur du format
+       vivent dans le MÊME module (`@outrival/scrapers/content`) : séparés, un
+       champ renommé dériverait en silence et l'ingestion deviendrait muette.
+       Changelog → onConflictDoNothing (`returning()` nomme exactement les entrées
+       jamais vues, et c'est ce set qui peut signaler) ; roadmap → upsert du
+       statut (planned → shipped EST la raison de surveiller un portail)
+  └─ TYPAGE (changelog) : mots-clés d'abord (EN+FR+DE, précédence
+       breaking > deprecation > security > fix, car une note qui « corrige un breaking
+       change sur un endpoint déprécié » est d'abord une rupture), puis batches de
+       10 vers le modèle, cap 40/run, loggé ai_runs `type_content_items`. Le modèle
+       ne PEUT PAS répondre breaking/deprecation/security : son énumération est
+       feature|improvement|fix. Donc aucune alerte de cette feature ne dépend de
+       son jugement, et un snippet non-substring est droppé (garde posting_facts)
+  └─ signal `breaking_change` / `deprecation`, DÉTERMINISTE. Prend le change du
+       changelog LUI-MÊME (scrape-monitor DÉFÈRE le classify pour ça : signals.
+       changeId est unique, enqueuer classify en parallèle ferait perdre l'un des
+       deux en silence) ; sans émission déterministe le change repart au
+       classifieur lexical, exactement le comportement d'avant. high si le
+       workspace surveille des docs développeur quelque part, sinon medium.
+       Entrées de plus de 90 j ignorées (un feed peut backfiller son archive) et
+       une capture SANS change row (la toute première, où toute l'archive arrive
+       d'un coup) n'émet rien
+  └─ signal `shipping_velocity_shift` : releases/mois vs les 3 mois glissants du
+       concurrent, ancre synthétique `shipping_velocity`. Mois TERMINÉS seulement,
+       jamais de mois antérieur à l'entrée la plus ancienne détenue, une seule
+       émission par épisode (mois qui CROISE). Medium, jamais critical
+  └─ fact blocks : le signal nomme les entrées exactes (titre + date + lien +
+       type) via `buildSignalFacts`. `changelog` joint la fenêtre d'attribution,
+       `shipping_velocity` lit le rawDiff du change (les nombres affichés sont ceux
+       que le détecteur a décidés, pas un recalcul sur un feed qui a bougé depuis)
+
 [par competitor dont un scrape jobs a inséré des postings AVEC corps] mine-job-facts
   └─ skip self / deleted (un « ils adoptent Kubernetes » sur son propre produit est du bruit)
   └─ sélectionne les postings NON MINÉES (facts_mined_at null) des buckets
@@ -1650,6 +1733,8 @@ HN_POINTS_THRESHOLD=50                  # hackernews source — a mention (non-S
 HN_WINDOW_DAYS=30                       # hackernews source — recency window (days) bounding the HN Algolia search_by_date fetch (created_at_i > now − window), so a heavily-mentioned competitor never hits the hard 1000-hit ceiling
 DOCS_PAGE_HASH_ENABLED=true             # docs source, mode 2 only (no OpenAPI spec found) — on top of the sitemap page list, fingerprint the top-K docs pages so a REWRITTEN page surfaces, not only a new one. The hash is taken over extractContent output (the exact text the pipeline diffs), so a build id / nonce can never churn it; a page that fails to fetch emits NO line (never a placeholder hash). false → page list only, K fewer L0 GETs per run
 DOCS_PAGE_HASH_MAX=20                   # docs source — how many pages get fingerprinted per run. Deterministic pick (shallowest path first, then lexicographic) so the selection can't drift and fake "changed" lines; a brand-new SHALLOW page can displace the Kth, which reads as one stray removed fingerprint line next to the genuine new-page line
+SHIPPING_VELOCITY_THRESHOLD=0.5         # Content Intelligence v2 P1, relative move of a competitor's monthly release count against its own trailing 3 months that emits a `shipping_velocity_shift` (medium, category product). Signed: a product freeze signals like an acceleration. THREE guards live in code and are not tunable, because each of them is the difference between a reading and a monthly false alarm. (a) Only months that have ENDED are evaluated: a month three days old compared against three full ones reports a freeze at every competitor on the 3rd, every month. (b) No month at or before the one the OLDEST held entry falls in is ever counted: a feed serves its most recent N entries, so earlier months read as zero when what they really are is unobserved, and counting them would report an acceleration at a competitor that has shipped at a flat rate for years. (c) Fire on the month that CROSSES, not on every month that stays across, the same crossing rule the hiring detector uses, so a sustained ramp is one piece of news and a dip that re-crosses months later is news again
+SHIPPING_VELOCITY_MIN_ITEMS=8           # entries the trailing 3-month window must TOTAL before it counts as a baseline. Under it a changelog of three entries would swing ±50% on a single release, which is arithmetic, not cadence
 
 # AI
 ANTHROPIC_API_KEY=           # provider abstrait — Claude fallback (provider="claude")

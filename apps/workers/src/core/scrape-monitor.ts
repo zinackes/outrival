@@ -38,6 +38,7 @@ import {
   computeHash,
   computeNextRun,
   computeTextDiff,
+  truncateDiffText,
   uploadToR2,
   getFromR2,
   supportsConditionalFetch,
@@ -1702,9 +1703,9 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         // General expansion (non-comparison adds + removes) → one lumped change → the
         // normal AI classifier, exactly as the generic sitemap diff did before.
         if (otherAdded.length > 0 || removed.length > 0) {
-          const diffText = [...otherAdded.map((u) => `+ ${u}`), ...removed.map((u) => `- ${u}`)]
-            .join("\n")
-            .slice(0, 50000);
+          const diffText = truncateDiffText(
+            [...otherAdded.map((u) => `+ ${u}`), ...removed.map((u) => `- ${u}`)].join("\n"),
+          );
           const [expansionChange] = await db
             .insert(changes)
             .values({
@@ -1842,7 +1843,7 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
             monitorId: monitor.id,
             snapshotBeforeId: lastSnapshot.id,
             snapshotAfterId: newSnapshot.id,
-            diffText: diff.diffText.slice(0, 50000),
+            diffText: truncateDiffText(diff.diffText),
             diffType: "text",
             rawDiff: { added: diff.added, removed: diff.removed },
             detectedAt: new Date(),

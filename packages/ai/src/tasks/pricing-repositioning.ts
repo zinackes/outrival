@@ -2,6 +2,7 @@ import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
 import { attachQuality, type WithQuality } from "../grounding/types";
 import { InsightSchema, type Insight } from "./insight";
+import { truncateDiffText } from "@outrival/shared";
 import type { PricingStatus, PricingRepositioningType } from "@outrival/shared";
 
 export interface RepositioningInput {
@@ -36,7 +37,7 @@ ${STATUS_MEANINGS}
 </context>
 
 <change>
-${input.diffText.slice(0, 4000)}
+${truncateDiffText(input.diffText, 4000)}
 </change>
 
 <task>
@@ -58,7 +59,7 @@ text. Write all text values in English.
     taskName: "detect_pricing_strategy",
     config: AI_CONFIG.insights,
     prompt,
-    sourceText: input.diffText.slice(0, 4000),
+    sourceText: truncateDiffText(input.diffText, 4000),
     schema: InsightSchema,
   });
   return result ? attachQuality(result.output, result.quality) : null;

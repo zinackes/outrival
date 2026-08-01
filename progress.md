@@ -1511,11 +1511,44 @@ les `when` de 0060-0063, donc `db:generate` a stampé 0064 sous le dernier appli
 migration aurait été SAUTÉE en silence en annonçant « Migrations applied ». `when` bumpé
 à la main à 1785614302239 (1 ms après 0063).
 
+**Migration : APPLIQUÉE sur dev ET prod (2026-08-01)** : pré-vol read-only identique
+des deux côtés (64 appliquées, seule 0064 en attente, rien de bloqué), puis
+`src/migrate.ts` sur l'endpoint direct (sans `-pooler`). 65/65 des deux côtés, table et
+valeur d'enum vérifiées après coup.
+
+**Chaîne validée bout-en-bout sur dev** (harness contre le vrai feed Linear, enqueues
+interceptées : ce poste n'a pas de `QUEUE_DATABASE_URL`, et pousser un changeId de dev
+sur la queue partagée donnerait le job à des workers prod qui tournent du code plus
+ancien) :
+- 246 entrées réelles ingérées depuis `linear.app/rss/changelog.xml`, 40 typées au
+  premier run (le cap), 28 feature + 12 improvement en 4 appels sur le pool gratuit.
+- Vélocité évaluée et SILENCIEUSE, correctement : Linear publie 3 à 5 entrées par mois,
+  donc 2026-07 (4) contre une moyenne de 3,67 donne un ratio de 1,09. Le plancher de
+  8 items était franchi (11), c'est bien le seuil qui a tranché.
+- Repli lexical prouvé : capture sans entrée neuve, le change déféré repart en
+  `classify-change`, aucun signal déterministe.
+- Chemin déterministe prouvé avec une entrée « Breaking change » injectée : typée par
+  les mots-clés, `generate-signal` enqueué sur le change déféré en `api_developer` /
+  medium (medium parce que ce workspace n'a aucun monitor `docs` actif), et
+  `classify-change` PAS enqueué. Les 2 lignes synthétiques ont été supprimées de dev
+  après coup ; les 246 vraies restent.
+
+**Les 2 changelogs du compte n'ont pas de feed** (`zentrik.ai/releases`,
+`docs.laneapp.co/changelog`, vérifié en live) : l'ingestion y rend 0 item et le chemin
+lexical d'avant continue seul, ce qui est le comportement voulu. La feature reste sans
+effet sur ce compte tant qu'aucun concurrent à feed n'est ajouté.
+
+**Bug PRÉ-EXISTANT trouvé par ce run** (commit séparé) : `attributionWindow` bindait une
+`Date` dans un fragment `sql` brut, ce que le driver refuse. Chaque appelant étant dans
+un `try/catch` qui renvoie null, le throw ne remontait pas : il VIDAIT le bloc. Hiring,
+pricing et job_facts ne rendaient donc rien en prod depuis l'origine (seul le bloc
+salary y échappait, il compare avec un helper typé). Corrigé, et vérifié sur une vraie
+capture : le bloc qui renvoyait null rend 12 entrées sur 13.
+
 **Reste côté humain** :
-- Migration 0064 **PAS appliquée** (ni dev ni prod). Pré-vol `PENDING` avant tout
-  `db:migrate` sur un env partagé.
 - Env vars optionnelles `SHIPPING_VELOCITY_THRESHOLD` / `_MIN_ITEMS` (défauts 0.5 / 8).
-- Aucun signal vu tourner en dev : la chaîne n'a pas encore de capture réelle derrière.
+- Déployer workers + api : la migration est en prod mais le code qui l'utilise n'y est
+  pas encore.
 
 **Prochaine session** : P2, blog feed-first + fetch des nouveaux posts + enrichissement
 batché + `competitor_named_you`. NE PAS commencer sans /clear.

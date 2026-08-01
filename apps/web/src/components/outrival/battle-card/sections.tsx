@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ChatIcon,
   CheckCircleIcon,
@@ -16,10 +16,11 @@ import {
 import type { BattleCardContent } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { useWriteIn, WriteCaret } from "./write-in";
+import { WriteCaret, type WriteReader } from "./write-in";
 
 import type { Icon as PhosphorIcon } from "@/components/icons";
 
@@ -73,28 +74,52 @@ export function SectionHeading({
   );
 }
 
-// How a line reads while the card is being written in: `read(globalIndex)` returns
-// the visible prefix, or null for a line that has not started. Absent (or a reader
-// that always returns the full text) when there is no animation to run.
-type WriteReader = (index: number) => string | null;
+/**
+ * The frame a section shows before its first sentence lands: ruled lines the size of
+ * the ones coming, and what they will be written from. It stands in for the section
+ * for as long as the run is live, so the card keeps its shape while it fills instead
+ * of jumping every time a heading finds something to say.
+ */
+function PendingLines({ lines, from }: { lines: number; from: string }) {
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-2">
+        {Array.from({ length: lines }).map((_, i) => (
+          <Skeleton key={i} className="h-3" style={{ width: `${92 - i * 11}%` }} />
+        ))}
+      </div>
+      <p className="text-meta text-muted-foreground">from {from}</p>
+    </div>
+  );
+}
 
 function BulletList({
   items,
   read,
   base,
+  pending,
+  pendingLines,
+  from,
 }: {
   items: string[];
   read?: WriteReader;
   base: number;
+  /** The run is still live — an empty section is waiting, not empty. */
+  pending?: boolean;
+  pendingLines: number;
+  from: string;
 }) {
-  if (items.length === 0) {
-    return <p className="text-sm text-muted-foreground">Not enough verified data yet.</p>;
-  }
   const lines = items.map((it, i) => ({ i, text: read ? read(base + i) : it }));
   const started = lines.filter((l) => l.text !== null);
-  // Nothing of this section written yet: render no list at all, so the card grows
-  // downward as it writes instead of showing six empty headed columns.
-  if (started.length === 0) return null;
+  if (started.length === 0) {
+    if (pending) return <PendingLines lines={pendingLines} from={from} />;
+    if (items.length === 0) {
+      return <p className="text-sm text-muted-foreground">Not enough verified data yet.</p>;
+    }
+    // Written text exists but the cursor has not reached it: render no list at all, so
+    // the card grows downward as it writes instead of showing empty headed columns.
+    return null;
+  }
   return (
     <ul className="flex flex-col gap-2.5">
       {started.map(({ i, text }) => (
@@ -175,6 +200,9 @@ function ListBlock({
   onChange,
   read,
   base,
+  pending,
+  pendingLines,
+  from,
 }: {
   title: string;
   icon: IconType;
@@ -185,16 +213,30 @@ function ListBlock({
   onChange: (items: string[]) => void;
   read?: WriteReader;
   base: number;
+  pending?: boolean;
+  pendingLines: number;
+  from: string;
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <SectionHeading icon={icon} color={color} count={editing ? undefined : items.length}>
+      <SectionHeading
+        icon={icon}
+        color={color}
+        count={editing || pending ? undefined : items.length}
+      >
         {title}
       </SectionHeading>
       {editing ? (
         <EditableList items={items} onChange={onChange} max={max} />
       ) : (
-        <BulletList items={items} read={read} base={base} />
+        <BulletList
+          items={items}
+          read={read}
+          base={base}
+          pending={pending}
+          pendingLines={pendingLines}
+          from={from}
+        />
       )}
     </div>
   );
@@ -239,23 +281,30 @@ function ObjectionsSection({
   onChange,
   read,
   base,
+  pending,
 }: {
   items: Array<{ objection: string; response: string }>;
   editing: boolean;
   onChange: (items: Array<{ objection: string; response: string }>) => void;
   read?: WriteReader;
   base: number;
+  pending?: boolean;
 }) {
   const [copiedAll, setCopiedAll] = useState(false);
   const asText = items
     .map((o) => `${o.objection}\n${o.response}`)
     .join("\n\n");
+  // Whether any pair has started writing decides between the frame and the list. The
+  // `items.length` half is not redundant: with no objections, `base` is already the
+  // offset of the NEXT section, so the reader would happily answer for a line that
+  // belongs to someone else and this would render an empty ruled container.
+  const started = items.length > 0 && (read ? read(base) !== null : true);
 
   return (
     <section className="flex flex-col gap-3 p-5">
       <SectionHeading
         icon={ChatIcon}
-        count={editing ? undefined : items.length}
+        count={editing || pending ? undefined : items.length}
         action={
           <div className="flex items-center gap-1">
             {!editing && items.length > 0 && (
@@ -337,8 +386,12 @@ function ObjectionsSection({
             </Button>
           )}
         </div>
-      ) : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Not enough verified data yet.</p>
+      ) : !started ? (
+        pending ? (
+          <PendingLines lines={4} from={SECTION_META[3]!.from} />
+        ) : items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Not enough verified data yet.</p>
+        ) : null
       ) : (
         <div className="flex flex-col divide-y divide-border">
           {items.map((o, i) => {
@@ -389,34 +442,20 @@ export function BattleCardSections({
   editing,
   draft,
   setDraft,
-  writeIn = false,
-  writeInFinish = false,
+  read,
+  pending = false,
 }: {
   content: BattleCardContent;
   editing: boolean;
   draft: BattleCardContent;
   setDraft: (next: BattleCardContent) => void;
-  /** Write the card in line by line — true only on the arrival of a fresh
-   *  generation, never when reopening a card that was already stored. */
-  writeIn?: boolean;
-  /** The generation is over (its PDF landed) — write out whatever is left quickly.
-   *  The steady pace is sized for the work that was still running behind it. */
-  writeInFinish?: boolean;
+  /** The write-in reader for `content`, owned by the page so one cursor spans the
+   *  streamed draft and the stored card. Absent = render every line in full. */
+  read?: WriteReader;
+  /** The run is still live: a section with nothing in it yet shows its frame rather
+   *  than "not enough verified data", which would be a verdict on a card mid-write. */
+  pending?: boolean;
 }) {
-  // Every written line, in the order the sections render, so one shared cursor can
-  // walk the whole card. Objections contribute two lines each (quote, then answer).
-  const lines = useMemo(
-    () => [
-      ...content.their_strengths,
-      ...content.our_strengths,
-      ...content.their_weaknesses,
-      ...content.common_objections.flatMap((o) => [o.objection, o.response]),
-      ...content.when_we_win,
-      ...content.when_we_lose,
-    ],
-    [content],
-  );
-  const read = useWriteIn(lines, writeIn && !editing, writeInFinish);
   // Where each section starts on that shared cursor. Editing renders inputs, which
   // are never animated, so the offsets are only ever read on the display path.
   const at = {
@@ -439,7 +478,8 @@ export function BattleCardSections({
       content.common_objections.length * 2 +
       content.when_we_win.length,
   };
-  const reader = writeIn && !editing ? read : undefined;
+  const reader = editing ? undefined : read;
+  const waiting = pending && !editing;
 
   return (
     <>
@@ -454,6 +494,9 @@ export function BattleCardSections({
           onChange={(items) => setDraft({ ...draft, their_strengths: items })}
           read={reader}
           base={at.their_strengths}
+          pending={waiting}
+          pendingLines={3}
+          from={SECTION_META[0]!.from}
         />
         <ListBlock
           title="Our strengths"
@@ -465,6 +508,9 @@ export function BattleCardSections({
           onChange={(items) => setDraft({ ...draft, our_strengths: items })}
           read={reader}
           base={at.our_strengths}
+          pending={waiting}
+          pendingLines={3}
+          from={SECTION_META[1]!.from}
         />
         <ListBlock
           title="Their weaknesses"
@@ -476,6 +522,9 @@ export function BattleCardSections({
           onChange={(items) => setDraft({ ...draft, their_weaknesses: items })}
           read={reader}
           base={at.their_weaknesses}
+          pending={waiting}
+          pendingLines={3}
+          from={SECTION_META[2]!.from}
         />
       </section>
 
@@ -485,6 +534,7 @@ export function BattleCardSections({
         onChange={(items) => setDraft({ ...draft, common_objections: items })}
         read={reader}
         base={at.common_objections}
+        pending={waiting}
       />
 
       <section className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2">
@@ -498,6 +548,9 @@ export function BattleCardSections({
           onChange={(items) => setDraft({ ...draft, when_we_win: items })}
           read={reader}
           base={at.when_we_win}
+          pending={waiting}
+          pendingLines={2}
+          from={SECTION_META[4]!.from}
         />
         <ListBlock
           title="When we lose"
@@ -509,10 +562,30 @@ export function BattleCardSections({
           onChange={(items) => setDraft({ ...draft, when_we_lose: items })}
           read={reader}
           base={at.when_we_lose}
+          pending={waiting}
+          pendingLines={2}
+          from={SECTION_META[5]!.from}
         />
       </section>
     </>
   );
+}
+
+/**
+ * Every written line of a card, in the order the sections render it, so ONE cursor can
+ * walk the whole card. Objections contribute two lines each (the quote, then the
+ * answer) — the same two rows they render as. The page calls this on whatever it holds
+ * at the moment: the draft the model is streaming, then the stored card.
+ */
+export function flattenCardLines(content: BattleCardContent): string[] {
+  return [
+    ...content.their_strengths,
+    ...content.our_strengths,
+    ...content.their_weaknesses,
+    ...content.common_objections.flatMap((o) => [o.objection, o.response]),
+    ...content.when_we_win,
+    ...content.when_we_lose,
+  ];
 }
 
 /** The six section labels, reused by the empty state and the build view. */

@@ -1,38 +1,42 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { planWriteIn, visibleAt, writeInRate } from "@/lib/write-in-cursor";
+import { drainRate, planWriteIn, visibleAt } from "@/lib/write-in-cursor";
 
-// Writes a freshly generated card in rather than popping it on screen whole. The
-// wait before this is 30-90s of a skeleton, so the arrival is the one moment the
-// page has to show that something was actually written — and a card that appears
-// line by line is also readable while it lands, which a full-page swap is not.
+// Writes a battle card in line by line — from the first sentence the model streams to
+// the last one on the stored card. ONE cursor, counting characters across the whole
+// card, advanced on a single timer: every line's visible slice is derived from it, so
+// the lines write in document order at one steady rate instead of N animations racing
+// each other.
 //
-// One cursor for the whole card, advanced on a single timer: every line's slice is
-// derived from it, so the lines write in document order at one steady rate instead
-// of 28 independent animations racing each other. It runs once, on the transition
-// from "generating" to "here it is" — reopening a stored card never replays it.
+// The cursor is deliberately BEHIND the text we already hold, and that is the point.
+// The stream reaches the page in bursts — the worker flushes every ~200ms, the page
+// polls every 750ms, and on a fast provider the entire card arrives in a single frame
+// — so rendering what has arrived shows the card appearing in slabs. Draining a
+// backlog turns any arrival pattern into writing.
 //
-// PACE: the writing is part of the generation, not a flourish after it. The page
-// reveals the card the moment its TEXT lands, while the worker is still rendering the
-// PDF, so the steady pass is sized to cover that tail instead of burning through the
-// card in a second and leaving the reader waiting again.
+// Because it is one cursor over "the text we hold right now", the handoff from the
+// streamed draft to the stored card is not an event: the target grows, the cursor
+// carries on from where it was. That is what removes the cut this used to have, where
+// the finished card wiped the screen and typed itself a second time from empty.
 //
-// The tail is MEASURED, not guessed (prod, 2026-07-30, 27 cards — battle_cards
-// updated_at minus generated_at, which is exactly the PDF step): p50 2.6s, and the
-// page only learns of either end on a 3s poll, so what the reader waits through after
-// the reveal is about one tick. The target tracks that median, NOT the p90 (59s — a
-// cold Chromium on a busy worker): a minute of typing would be a punishment, and the
-// text is complete and usable the moment it is on screen.
-//
-// It stays a target, never a promise: `finishNow` (the PDF landed, the work really is
-// done) rebases the cursor onto a short run-out, so the animation can't outlive the
-// thing it describes. At these numbers the run-out is a ~1.5x nudge on the last third,
-// not a dash — which is why the target is not set even lower.
-const TARGET_DURATION_MS = 5000;
-const MIN_CHARS_PER_SECOND = 60; // floor, so a short card doesn't crawl for 5s
-const FINISH_MS = 1200; // run-out once the PDF has landed
+// RATE: proportional to the backlog, so the pace is set by how much is waiting rather
+// than by when the bytes happened to land. Floored so a short card does not crawl,
+// capped so a whole-card burst still reads as writing.
+const DRAIN_SECONDS = 5;
+const MIN_CHARS_PER_SECOND = 55;
+const MAX_CHARS_PER_SECOND = 240;
+
+// The run is over (its PDF landed, or we stopped waiting for it). Whatever is left was
+// paced against work that is no longer running, so it runs out — accelerated, never
+// dumped on screen at once, because snapping to the full card is the cut being removed.
+const FINISH_SECONDS = 1.2;
+const FINISH_MIN_CHARS_PER_SECOND = 320;
+
 const TICK_MS = 33; // ~30fps: fast enough to read as typing, a third of the renders
+
+/** The visible prefix of line `index`, or null for a line that has not started. */
+export type WriteReader = (index: number) => string | null;
 
 /**
  * Returns a reader for the visible prefix of each text, in the order given:
@@ -41,16 +45,19 @@ const TICK_MS = 33; // ~30fps: fast enough to read as typing, a third of the ren
  * - a partial string while it is being written,
  * - the whole string once written, or immediately when the animation is off.
  *
- * `enabled` false — a stored card, or `prefers-reduced-motion` — yields full text
- * on the first render with no timer at all.
+ * `enabled` false — a stored card, or `prefers-reduced-motion` — yields full text on
+ * the first render with no timer at all.
  */
 export function useWriteIn(
   texts: string[],
   enabled: boolean,
-  /** The rest of the generation finished (the PDF landed) — run the remaining text
-   *  out quickly instead of holding the reader to a pace set for work that is over. */
+  /** The rest of the generation finished — run the remaining text out quickly instead
+   *  of holding the reader to a pace set for work that is over. */
   finishNow = false,
-): (index: number) => string | null {
+  /** Changes when a NEW generation starts, rewinding the cursor. Without it a second
+   *  card would open already written, the cursor still sitting past the first one. */
+  runToken: string | number | null = null,
+): WriteReader {
   const reducedMotion = usePrefersReducedMotion();
   const active = enabled && !reducedMotion;
 
@@ -58,44 +65,55 @@ export function useWriteIn(
   const plan = useMemo(() => planWriteIn(texts), [texts]);
   const total = plan.total;
 
-  // null = not animating (done, or never was) → everything renders in full.
-  const [cursor, setCursor] = useState<number | null>(active && total > 0 ? 0 : null);
-  // Where the steady pass got to, so the run-out continues from there rather than
-  // restarting the card. Only read when rebasing — never during render.
-  const writtenRef = useRef(0);
+  const [cursor, setCursor] = useState(0);
+  // The timer reads the moving parts through refs so it never has to be torn down and
+  // rebuilt as the text grows — a restart would drop the cursor back to zero, which is
+  // exactly the reset this hook exists to avoid.
+  const cursorRef = useRef(0);
+  const totalRef = useRef(total);
+  const finishRef = useRef(finishNow);
+  const tokenRef = useRef(runToken);
 
   useEffect(() => {
-    if (!active || total === 0) {
-      setCursor(null);
-      return;
-    }
-    // The steady pass always starts the card; only the run-out resumes mid-card.
-    const from = finishNow ? writtenRef.current : 0;
-    const remaining = total - from;
-    if (remaining <= 0) {
-      setCursor(null);
-      return;
-    }
-    writtenRef.current = from;
-    setCursor(from);
-    const rate = finishNow
-      ? remaining / (FINISH_MS / 1000)
-      : writeInRate(total, MIN_CHARS_PER_SECOND, TARGET_DURATION_MS);
-    const startedAt = Date.now();
+    totalRef.current = total;
+  }, [total]);
+  useEffect(() => {
+    finishRef.current = finishNow;
+  }, [finishNow]);
+  // Declared before the timer so a new run has already rewound when it restarts.
+  useEffect(() => {
+    if (tokenRef.current === runToken) return;
+    tokenRef.current = runToken;
+    cursorRef.current = 0;
+    setCursor(0);
+  }, [runToken]);
+
+  useEffect(() => {
+    if (!active) return;
     const timer = setInterval(() => {
-      const written = from + Math.floor(((Date.now() - startedAt) / 1000) * rate);
-      writtenRef.current = written;
-      if (written >= total) {
-        clearInterval(timer);
-        setCursor(null); // done — drop back to plain text, no more slicing
+      const backlog = totalRef.current - cursorRef.current;
+      if (backlog <= 0) {
+        // Nothing owed. While the run is live the timer idles, waiting for the next
+        // burst; once it is over there is no next burst, so stop ticking.
+        if (finishRef.current) clearInterval(timer);
         return;
       }
-      setCursor(written);
+      const rate = finishRef.current
+        ? drainRate(backlog, { seconds: FINISH_SECONDS, min: FINISH_MIN_CHARS_PER_SECOND })
+        : drainRate(backlog, {
+            seconds: DRAIN_SECONDS,
+            min: MIN_CHARS_PER_SECOND,
+            max: MAX_CHARS_PER_SECOND,
+          });
+      const next = Math.min(totalRef.current, cursorRef.current + (rate * TICK_MS) / 1000);
+      cursorRef.current = next;
+      setCursor(next);
     }, TICK_MS);
     return () => clearInterval(timer);
-  }, [active, total, finishNow]);
+  }, [active, runToken]);
 
-  return (index: number) => visibleAt(texts, plan, cursor, index);
+  return (index: number) =>
+    visibleAt(texts, plan, active ? Math.floor(cursor) : null, index);
 }
 
 /** The caret that sits at the end of the line currently being written. */

@@ -2,13 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { CheckIcon, ClockIcon, SpinnerIcon, MinusIcon } from "@/components/icons";
-import type { BattleCardContent, BattleCardEvidence, BattleCardPartial } from "@/lib/api";
+import type { BattleCardEvidence } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TabCard } from "@/components/outrival/tab-shell";
 import { cn } from "@/lib/utils";
 import { EVIDENCE_LABELS } from "./evidence";
-import { SECTION_META } from "./sections";
-import { WriteCaret } from "./write-in";
 
 // The four states a run can be observed in, in order. Each one is READ, never timed:
 // "queued" is the pg-boss job row still unclaimed, and the three working stages come
@@ -29,13 +26,18 @@ export type BuildStage = (typeof STAGES)[number]["key"];
 // response; staggering it makes the gather stage legible instead of instantaneous.
 const ROW_STEP_MS = 320;
 
-export function BattleCardBuild({
+/**
+ * Everything about the RUN — its stage, its clock, the evidence it is working from.
+ * It sits above the card and is the only thing that leaves when the run ends: the card
+ * itself is the same subtree throughout, written into as the text arrives, so the end
+ * of a generation collapses this block away instead of swapping one page for another.
+ */
+export function BattleCardProgress({
   startedAt,
   firstTime,
   evidence,
   competitorName,
   stage,
-  partial,
 }: {
   startedAt: number;
   firstTime: boolean;
@@ -44,9 +46,6 @@ export function BattleCardBuild({
   /** The observed stage. Null when the queue could not be read — we then say we are
    *  working and claim no stage at all, rather than inventing one. */
   stage: BuildStage | null;
-  /** The card as the model is writing it. Null until the verification pass starts
-   *  streaming, and the frames below stay skeletons until then. */
-  partial: BattleCardPartial | null;
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -76,7 +75,7 @@ export function BattleCardBuild({
   }, [sources.length]);
 
   return (
-    <TabCard>
+    <div className="flex flex-col divide-y divide-border">
       <div className="flex flex-col gap-3 px-5 py-3.5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           {/* A clock, not a spinner, while the job is only waiting: a spinner on a
@@ -170,27 +169,10 @@ export function BattleCardBuild({
         )}
       </section>
 
-      {/* The card's own frame, present from the first second: the wait happens inside
-          the artefact rather than in place of it. Once the model starts writing, each
-          frame fills with the real sentences as they arrive. */}
-      <section className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2 lg:grid-cols-3">
-        {SECTION_META.slice(0, 3).map((s) => (
-          <SectionFrame key={s.key} meta={s} lines={3} partial={partial} />
-        ))}
-      </section>
-
-      <section className="flex flex-col gap-3 p-5">
-        <SectionFrame meta={SECTION_META[3]!} lines={4} partial={partial} />
-      </section>
-
-      <section className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2">
-        {SECTION_META.slice(4).map((s) => (
-          <SectionFrame key={s.key} meta={s} lines={2} partial={partial} />
-        ))}
-      </section>
-
-      <p className="px-5 py-3.5 text-sm text-muted-foreground">{footer(queued, slow, firstTime)}</p>
-    </TabCard>
+      <p className="px-5 py-3.5 text-sm text-muted-foreground">
+        {footer(queued, slow, firstTime)}
+      </p>
+    </div>
   );
 }
 
@@ -213,80 +195,4 @@ function footer(queued: boolean, slow: boolean, firstTime: boolean): string {
 function formatElapsed(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
-}
-
-function SectionFrame({
-  meta,
-  lines,
-  partial,
-}: {
-  meta: (typeof SECTION_META)[number];
-  lines: number;
-  partial: BattleCardPartial | null;
-}) {
-  const Icon = meta.icon;
-  const written = writtenLines(partial, meta.key);
-  const typing = partial?.typingKey === meta.key ? partial.typing : null;
-  // Nothing written here YET is not the same as nothing coming: keep the skeleton
-  // until this section's first sentence lands, so the frame never reads as empty.
-  const waiting = written.length === 0 && !typing;
-
-  return (
-    <div className="flex flex-col gap-2.5">
-      <h3
-        className={cn(
-          "flex items-center gap-2 text-content font-semibold tracking-tight leading-tight",
-          meta.color,
-        )}
-      >
-        <Icon size={16} className={cn("shrink-0", !meta.color && "text-muted-foreground")} />
-        {meta.title}
-      </h3>
-      {waiting ? (
-        <div className="flex flex-col gap-2">
-          {Array.from({ length: lines }).map((_, i) => (
-            <Skeleton key={i} className="h-3" style={{ width: `${92 - i * 11}%` }} />
-          ))}
-        </div>
-      ) : (
-        <ul className="flex flex-col gap-2.5">
-          {written.map((text, i) => (
-            <li key={i} className="flex gap-2.5 text-content leading-relaxed">
-              <span className="mt-px shrink-0 text-muted-foreground" aria-hidden>
-                •
-              </span>
-              <span>{text}</span>
-            </li>
-          ))}
-          {typing && (
-            <li className="flex gap-2.5 text-content leading-relaxed">
-              <span className="mt-px shrink-0 text-muted-foreground" aria-hidden>
-                •
-              </span>
-              <span>
-                {typing}
-                <WriteCaret />
-              </span>
-            </li>
-          )}
-        </ul>
-      )}
-      <p className="text-meta text-muted-foreground">from {meta.from}</p>
-    </div>
-  );
-}
-
-/**
- * The sentences already written in a section. Objections are two lines each — the
- * objection then the answer — the same way the finished card renders them.
- */
-function writtenLines(
-  partial: BattleCardPartial | null,
-  key: keyof BattleCardContent,
-): string[] {
-  const value = partial?.content?.[key];
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((entry) =>
-    typeof entry === "string" ? [entry] : [entry.objection, entry.response],
-  );
 }

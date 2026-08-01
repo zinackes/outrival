@@ -2803,6 +2803,10 @@ export interface ProductSummary {
   // The GitHub repo watched while a product is still being built (monitor config),
   // which is also what the portfolio's avatar falls back to when there is no site.
   repoUrl?: string | null;
+  // What the product is and who it is for, as its own self-profile states it. Read
+  // by surfaces that list products (Settings); edited on the product's Positioning
+  // tab, which owns the full profile.
+  profile?: { category: string | null; audience: string | null };
   // What we can observe of the product, and therefore what its row can say.
   stage?: "live" | "developing" | "idea";
   lastScanAt?: string | null;

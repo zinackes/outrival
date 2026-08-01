@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { CheckIcon, SpinnerIcon, ArrowsClockwiseIcon, PencilIcon } from "@/components/icons";
-import { api, type ProductProfile, type ProjectStage, type WorkspaceSettings } from "@/lib/api";
-import { workspaceSettingsQuery } from "@/lib/queries";
+import { api, type ProjectStage, type WorkspaceSettings } from "@/lib/api";
+import { productsListQuery, workspaceSettingsQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
 import { FormSkeleton } from "@/components/dashboard/skeletons";
+import { ProductTile } from "@/components/dashboard/product-tile";
 import { ChangeProductUrlDialog } from "@/components/outrival/change-product-url-dialog";
 import { UpdateProfileDialog } from "@/components/outrival/update-profile-dialog";
 import { errorMessage } from "@/lib/error-helpers";
@@ -24,32 +27,14 @@ const STAGE_LABELS: Record<ProjectStage, string> = {
 interface Draft {
   name: string;
   productUrl: string;
-  category: string;
-  audience: string;
-  valueProp: string;
-  pricingModel: string;
 }
 
 function toDraft(s: WorkspaceSettings): Draft {
-  return {
-    name: s.name,
-    productUrl: s.productUrl ?? "",
-    category: s.productProfile?.category ?? "",
-    audience: s.productProfile?.audience ?? "",
-    valueProp: s.productProfile?.valueProp ?? "",
-    pricingModel: s.productProfile?.pricingModel ?? "",
-  };
+  return { name: s.name, productUrl: s.productUrl ?? "" };
 }
 
 function isEqual(a: Draft, b: Draft) {
-  return (
-    a.name === b.name &&
-    a.productUrl === b.productUrl &&
-    a.category === b.category &&
-    a.audience === b.audience &&
-    a.valueProp === b.valueProp &&
-    a.pricingModel === b.pricingModel
-  );
+  return a.name === b.name && a.productUrl === b.productUrl;
 }
 
 export function WorkspaceSettingsForm() {
@@ -113,28 +98,7 @@ export function WorkspaceSettingsForm() {
     setSaved(false);
     setError(null);
     try {
-      const body: { name: string; productProfile?: ProductProfile } = {
-        name: draft.name.trim(),
-      };
-      const anyProfile = [
-        draft.category,
-        draft.audience,
-        draft.valueProp,
-        draft.pricingModel,
-      ].some((v) => v.trim());
-      if (anyProfile) {
-        // Spread the loaded profile first so the fields this quick-edit form
-        // doesn't expose (whatItDoes, keywords) survive the save instead of being
-        // wiped — they're edited in the full UpdateProfileDialog.
-        body.productProfile = {
-          ...(settingsQ.data?.productProfile ?? {}),
-          category: draft.category.trim(),
-          audience: draft.audience.trim(),
-          valueProp: draft.valueProp.trim(),
-          pricingModel: draft.pricingModel.trim(),
-        };
-      }
-      await api.updateWorkspaceSettings(body);
+      await api.updateWorkspaceSettings({ name: draft.name.trim() });
       setPristine(draft);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -204,49 +168,15 @@ export function WorkspaceSettingsForm() {
         </p>
       </div>
 
-      <div className="flex flex-col gap-4 pt-1">
-        <h3 className="text-sm font-medium tracking-tight">Product profile</h3>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="ws-category">Category</Label>
-          <Input
-            id="ws-category"
-            value={draft.category}
-            onChange={(e) => set("category", e.target.value)}
-            placeholder="Competitive intelligence SaaS"
-          />
+      <div className="flex flex-col gap-3 pt-1">
+        <div>
+          <h3 className="text-sm font-medium tracking-tight">Product profiles</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Each product carries its own: what it is, who it is for, what it
+            promises. Open one to edit it.
+          </p>
         </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="ws-audience">Audience</Label>
-          <Input
-            id="ws-audience"
-            value={draft.audience}
-            onChange={(e) => set("audience", e.target.value)}
-            placeholder="Product & marketing teams at B2B startups"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="ws-value">Value proposition</Label>
-          <Textarea
-            id="ws-value"
-            value={draft.valueProp}
-            onChange={(e) => set("valueProp", e.target.value)}
-            placeholder="Automatically monitor competitors and surface strategic insights."
-            rows={3}
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="ws-pricing">Pricing model</Label>
-          <Input
-            id="ws-pricing"
-            value={draft.pricingModel}
-            onChange={(e) => set("pricingModel", e.target.value)}
-            placeholder="Subscription, tiered per seat"
-          />
-        </div>
+        <ProductProfileList />
       </div>
 
       <div className="flex flex-col gap-3 pt-4 border-t border-border">
@@ -260,14 +190,15 @@ export function WorkspaceSettingsForm() {
             variant="outline"
             size="sm"
             onClick={() => setUpdateOpen(true)}
-            title="Refine your profile or re-analyze your source. Your competitors stay"
+            title="Re-analyze your source or change the stage. Your competitors stay"
           >
             <ArrowsClockwiseIcon size={16} />
-            Update my product profile
+            Re-analyze my product
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Edit the profile or re-analyze your source. Your tracked competitors stay.
+          Where your primary product stands, and the source we read to profile it.
+          Re-analyzing keeps your tracked competitors.
         </p>
       </div>
 
@@ -313,5 +244,86 @@ export function WorkspaceSettingsForm() {
 
       <UpdateProfileDialog open={updateOpen} onOpenChange={setUpdateOpen} onSaved={load} />
     </form>
+  );
+}
+
+/**
+ * One read-only row per product, each linking to the profile editor that owns it.
+ *
+ * Settings used to edit a profile inline, but the field it wrote (the org's
+ * `productProfile`) is workspace-wide and predates multi-SKU: a workspace with three
+ * products showed one profile and silently applied every edit to a single anchor. The
+ * per-product profile already has an editor with everything this form lacked
+ * (stickiness against re-scans, features, tech stack, pricing tiers), so this names
+ * the products and sends the user there instead of keeping a second, thinner one.
+ */
+function ProductProfileList() {
+  // Warm: the shell fetches this roster for the product switcher on every navigation.
+  const productsQ = useQuery(productsListQuery());
+  const products = (productsQ.data ?? []).filter((p) => p.status !== "archived");
+
+  if (productsQ.isLoading) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-14 w-full" />
+        <Skeleton className="h-14 w-full" />
+      </div>
+    );
+  }
+
+  if (products.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No product yet.{" "}
+        <Link
+          href="/dashboard/settings/products"
+          className="text-link underline-offset-2 hover:underline"
+        >
+          Add one
+        </Link>{" "}
+        to give discovery something to compare against.
+      </p>
+    );
+  }
+
+  return (
+    <Card className="divide-y divide-border p-0">
+      {products.map((p) => {
+        // Category and audience are the two lines that answer "is this profile still
+        // right", which is the only question this list exists to let the user ask.
+        const lines = [p.profile?.category, p.profile?.audience].filter(Boolean);
+        return (
+          <div key={p.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <ProductTile
+              name={p.name}
+              url={p.url}
+              repoUrl={p.repoUrl}
+              position={p.position}
+              size={26}
+              ring
+            />
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-medium">{p.name}</span>
+                {p.isPrimary && (
+                  <span className="shrink-0 rounded-sm border border-border bg-surface-2 px-1.5 py-0.5 text-meta font-medium text-muted-foreground">
+                    Primary
+                  </span>
+                )}
+              </div>
+              <span className="truncate text-meta text-muted-foreground">
+                {lines.length > 0 ? lines.join(" · ") : "No profile yet"}
+              </span>
+            </div>
+            <Button asChild variant="ghost" size="sm" className="ml-auto shrink-0">
+              <Link href={`/dashboard/products/${p.id}?tab=positioning`}>
+                <PencilIcon size={16} />
+                Edit profile
+              </Link>
+            </Button>
+          </div>
+        );
+      })}
+    </Card>
   );
 }

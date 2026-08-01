@@ -212,6 +212,7 @@ productsRouter.get("/", async (c) => {
         url: competitors.url,
         selfCompetitorId: products.selfCompetitorId,
         selfOverrides: competitors.overrides,
+        selfProfile: competitors.selfProfile,
       })
       .from(products)
       .innerJoin(competitors, eq(competitors.id, products.selfCompetitorId))
@@ -375,7 +376,7 @@ productsRouter.get("/", async (c) => {
     monitorsByAnchor.set(m.competitorId, arr);
   }
 
-  const enriched = rows.map((p) => {
+  const enriched = rows.map(({ selfProfile, ...p }) => {
     const anchors = monitorsByAnchor.get(p.selfCompetitorId) ?? [];
     const lastScan = anchors.reduce((max, m) => Math.max(max, m.lastRunAt?.getTime() ?? 0), 0);
     const repo = anchors.find((m) => m.sourceType === "github_repo");
@@ -412,6 +413,15 @@ productsRouter.get("/", async (c) => {
     return {
       ...p,
       repoUrl,
+      // The two lines that say what this product IS, for surfaces that list products
+      // without opening one (Settings names them, the product page edits them). Two
+      // short strings rather than the whole selfProfile: the roster behind this
+      // endpoint is fetched on every dashboard navigation, and features / techStack /
+      // pricingTiers would ride along on each of them for no reader.
+      profile: {
+        category: selfProfile?.category?.value ?? null,
+        audience: selfProfile?.audience?.value ?? null,
+      },
       // What we can observe of it, which is what the detail page's monitors follow:
       // a live site, a repo while it is being built, or neither.
       stage: p.url ? ("live" as const) : repoUrl ? ("developing" as const) : ("idea" as const),

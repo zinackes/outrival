@@ -49,6 +49,7 @@ import {
   ensurePrimaryProductForSelf,
   associateCompetitorWithScopedProduct,
   primaryProductId,
+  primarySelfCompetitorId,
 } from "../lib/products";
 import { fetchRepoArtifacts } from "../lib/github";
 import { extractDocumentText } from "../lib/extract-document";
@@ -503,12 +504,18 @@ onboardingRouter.post("/discover", async (c) => {
 
 // Keep the My Product self-profile in step with the org product profile when the
 // update modal saves (patch: dual-profile sync). Only the three fields both
-// profiles share are mirrored — features/techStack/pricingTiers stay self-only and
+// profiles share are mirrored, features/techStack/pricingTiers stay self-only and
 // pricingModel stays org-only. Stickiness: a field the user manually typed freezes
 // against future auto-scans (isFromAutoDetect=false); a value merely accepted from a
 // re-analysis stays auto-detected. Unchanged fields keep their prior sticky state.
 // No-op during first-time onboarding (the self-competitor doesn't exist until
 // /complete). Best-effort: never blocks the profile save.
+//
+// The target is the PRIMARY product's anchor, never "some self": this dialog edits
+// the org-wide profile, which describes the primary product, and a multi-SKU org has
+// one self-competitor PER product. The unordered lookup this replaces wrote a
+// workspace-level edit onto whichever anchor Postgres happened to return, including
+// the anchor of an archived product.
 const SELF_SHARED_FIELDS = ["category", "audience", "valueProp"] as const;
 type SelfSharedField = (typeof SELF_SHARED_FIELDS)[number];
 
@@ -517,8 +524,18 @@ async function syncSelfProfile(
   profile: ProductProfile,
   manualFields: Set<string>,
 ) {
+  const anchorId = await primarySelfCompetitorId(orgId);
   const self = await db.query.competitors.findFirst({
-    where: and(eq(competitors.orgId, orgId), eq(competitors.type, "self")),
+    // No product row (legacy org, or mid-onboarding): the org's single live self IS
+    // its primary product, oldest-first for the same reason getSelf orders that way.
+    where: anchorId
+      ? and(eq(competitors.id, anchorId), eq(competitors.orgId, orgId))
+      : and(
+          eq(competitors.orgId, orgId),
+          eq(competitors.type, "self"),
+          isNull(competitors.deletedAt),
+        ),
+    orderBy: (t, { asc }) => asc(t.createdAt),
   });
   if (!self) return;
 

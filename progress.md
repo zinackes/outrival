@@ -2064,7 +2064,11 @@ events` + `known_integrations` présentes, `content_items.votes` + `status_norma
 présentes, valeurs d'enum `roadmap_shift` + `integration_catalog` présentes.
 
 **Reste côté humain** :
-- Migration 0070 : appliquée sur DEV, **PAS en prod**.
+- Migration 0070 : appliquée sur DEV **ET SUR PROD** (2026-08-01). Vérifiée par l'état des
+  deux côtés : 71 lignes au ledger = 71 au journal, tables + colonnes + enum présentes.
+  Prod portait 0 ligne `content_items` roadmap au moment de la migration — la 1re capture
+  d'un portail y sera donc une baseline, par construction.
+- PR #399 ouverte.
 - Déployer api + web + workers (le job `ingest-integrations` est nouveau : sans déploiement
   worker, les enqueues du sitemap s'empilent sans consommateur).
 - P5 dépend de P1 en prod pour la lens : sans lignes changelog, la lens Shipping se masque

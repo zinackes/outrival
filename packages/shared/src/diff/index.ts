@@ -96,6 +96,27 @@ export function computeTextDiff(before: string, after: string): TextDiffResult {
 export function splitDiffText(diffText: string): { removed: string[]; added: string[] } {
   const removed: string[] = [];
   const added: string[] = [];
+  for (const line of classifyDiffLines(diffText)) {
+    (line.side === "removed" ? removed : added).push(line.text);
+  }
+  return { removed, added };
+}
+
+interface ClassifiedDiffLine {
+  side: "removed" | "added";
+  /** The line as written, marker included — what a re-serialisation must emit. */
+  raw: string;
+  /** The line's content, marker and surrounding whitespace stripped. */
+  text: string;
+}
+
+/**
+ * The ONE place the `-`/`+` convention (and its tolerance for unmarked
+ * continuation lines) is decoded. Both readers of a persisted diff go through it,
+ * so a change to the convention cannot land on one and not the other.
+ */
+function classifyDiffLines(diffText: string): ClassifiedDiffLine[] {
+  const out: ClassifiedDiffLine[] = [];
   let side: "removed" | "added" | null = null;
 
   for (const raw of diffText.split("\n")) {
@@ -103,18 +124,71 @@ export function splitDiffText(diffText: string): { removed: string[]; added: str
     if (!line.trim()) continue;
     if (line.startsWith("- ") || line === "-") {
       side = "removed";
-      removed.push(line.slice(1).trim());
+      out.push({ side, raw: line, text: line.slice(1).trim() });
     } else if (line.startsWith("+ ") || line === "+") {
       side = "added";
-      added.push(line.slice(1).trim());
-    } else if (side === "removed") {
-      removed.push(line.trim());
-    } else if (side === "added") {
-      added.push(line.trim());
+      out.push({ side, raw: line, text: line.slice(1).trim() });
+    } else if (side) {
+      // A leading unmarked line has no side yet and is discarded.
+      out.push({ side, raw: line, text: line.trim() });
     }
   }
 
-  return { removed, added };
+  return out;
+}
+
+/** What a `changes.diff_text` column stores. */
+export const DIFF_TEXT_MAX_CHARS = 50_000;
+
+const TRUNCATION_MARKER = "… [truncated to fit both sides of the diff]";
+
+function cutSide(text: string, budget: number): string {
+  if (text.length <= budget) return text;
+  const kept = Math.max(0, budget - TRUNCATION_MARKER.length - 1);
+  return `${text.slice(0, kept)}\n${TRUNCATION_MARKER}`;
+}
+
+/**
+ * Cap a diff for storage while keeping BOTH of its sides.
+ *
+ * `computeTextDiff` writes every removed line, then every added line, so a flat
+ * `slice(0, max)` spends the whole budget on removals and can drop the added side
+ * entirely. That is not a smaller diff, it is a different one: what the page NOW
+ * shows disappears, and every reader downstream — the classifier, the insight, the
+ * faithfulness check, the web preview — sees a page that was deleted. It happened
+ * on an App Store reviews snapshot, one 63 KB JSON line per side: the stored diff
+ * was the truncated removed side and nothing else, and the signal reported a
+ * competitor removing all its reviews.
+ *
+ * Each side gets half the budget, and a side that needs less than half hands the
+ * remainder to the other, so the common lopsided case (a one-line removal against
+ * a large addition) still stores the large side nearly whole. A cut side says so:
+ * a silent cap reads downstream as the whole story.
+ */
+export function truncateDiffText(diffText: string, maxChars = DIFF_TEXT_MAX_CHARS): string {
+  if (diffText.length <= maxChars) return diffText;
+
+  const removed: string[] = [];
+  const added: string[] = [];
+  for (const line of classifyDiffLines(diffText)) {
+    (line.side === "removed" ? removed : added).push(line.raw);
+  }
+  const removedText = removed.join("\n");
+  const addedText = added.join("\n");
+
+  // Nothing parseable, or a genuinely one-sided diff: there is no second side to
+  // protect, so cut as before (with the marker, since the cap still applies).
+  if (removedText.length === 0 || addedText.length === 0) {
+    return cutSide(diffText, maxChars);
+  }
+
+  // -1 for the newline that rejoins the two sides.
+  const budget = maxChars - 1;
+  const half = Math.floor(budget / 2);
+  const removedBudget =
+    removedText.length <= half ? removedText.length : Math.max(half, budget - addedText.length);
+
+  return `${cutSide(removedText, removedBudget)}\n${cutSide(addedText, budget - removedBudget)}`;
 }
 
 /**

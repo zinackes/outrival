@@ -6,6 +6,7 @@ import {
   normalizeHtmlForDiff,
   parseLabelledDiff,
   splitDiffText,
+  truncateDiffText,
 } from "./index";
 
 describe("normalizeHtmlForDiff", () => {
@@ -118,5 +119,57 @@ describe("formatDiffForPrompt", () => {
 
     expect(formatDiffForPrompt(blob)).toBe(blob);
     expect(parseLabelledDiff(blob)).toBeNull();
+  });
+});
+
+// A flat slice spends the whole storage budget on the removed side, because
+// computeTextDiff writes every removal before the first addition. On an App Store
+// reviews snapshot (one 63 KB JSON line per side) that stored the removals alone,
+// and the signal reported a competitor deleting all of its reviews.
+describe("truncateDiffText", () => {
+  const big = (marker: "-" | "+", n: number) => `${marker} ${"x".repeat(n)}`;
+
+  it("leaves a diff that fits completely untouched", () => {
+    const diff = computeTextDiff("old line\n", "new line\n").diffText;
+    expect(truncateDiffText(diff)).toBe(diff);
+  });
+
+  it("keeps BOTH sides when one side alone would exhaust the budget", () => {
+    const diff = `${big("-", 60_000)}\n${big("+", 60_000)}`;
+    const out = truncateDiffText(diff, 1000);
+
+    expect(out.length).toBeLessThanOrEqual(1000);
+    const { removed, added } = splitDiffText(out);
+    expect(removed.length).toBeGreaterThan(0);
+    expect(added.length).toBeGreaterThan(0);
+  });
+
+  it("hands the unused half to the side that needs it", () => {
+    const diff = `- short removal\n${big("+", 60_000)}`;
+    const out = truncateDiffText(diff, 1000);
+
+    // The small side survives whole; the large one takes what is left, far more
+    // than an even split would have given it.
+    expect(out).toContain("- short removal");
+    expect(splitDiffText(out).added[0]!.length).toBeGreaterThan(900);
+  });
+
+  it("says a side was cut instead of capping silently", () => {
+    const out = truncateDiffText(`${big("-", 60_000)}\n${big("+", 60_000)}`, 1000);
+    expect(out.match(/truncated to fit both sides/g)).toHaveLength(2);
+  });
+
+  it("a genuinely one-sided diff is still capped, and still says so", () => {
+    const out = truncateDiffText(big("+", 60_000), 1000);
+    expect(out.length).toBeLessThanOrEqual(1000);
+    expect(splitDiffText(out).removed).toHaveLength(0);
+    expect(out).toContain("truncated to fit both sides");
+  });
+
+  it("survives an unparseable blob rather than dropping it", () => {
+    const blob = "z".repeat(3000);
+    const out = truncateDiffText(blob, 1000);
+    expect(out.length).toBeLessThanOrEqual(1000);
+    expect(out.startsWith("zzz")).toBe(true);
   });
 });

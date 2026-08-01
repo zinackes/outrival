@@ -7,7 +7,13 @@ import {
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { db, monitors, competitors, snapshots, changes } from "@outrival/db";
-import { computeHash, computeTextDiff, uploadToR2, getFromR2 } from "@outrival/shared";
+import {
+  computeHash,
+  computeTextDiff,
+  truncateDiffText,
+  uploadToR2,
+  getFromR2,
+} from "@outrival/shared";
 import { extractContent } from "@outrival/scrapers/extract";
 import { getArchivedPage } from "@outrival/scrapers/backfill";
 import { isCloudflareChallenge } from "@outrival/scrapers/block-detection";
@@ -238,7 +244,7 @@ async function runBackfill(
               monitorId: monitor.id,
               snapshotBeforeId: archiveSnap.id,
               snapshotAfterId: currentSnapshot.id,
-              diffText: diff.diffText.slice(0, 50000),
+              diffText: truncateDiffText(diff.diffText),
               diffType: "text",
               rawDiff: { added: diff.added, removed: diff.removed },
               detectedAt: new Date(),

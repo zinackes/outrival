@@ -1965,7 +1965,32 @@ PRODUCT_LIMIT_BUSINESS=999
 
 # Staged extraction pipeline (patch-30)
 STAGED_EXTRACTION_ENABLED=true         # false → bypass des étages, comportement actuel exact (plancher)
-EXTRACTOR_HEAL_COOLDOWN_HOURS=12       # min heures entre 2 self-heal sur un extracteur cassé (anti-thrash)
+EXTRACTOR_HEAL_COOLDOWN_HOURS=12       # min heures avant de retenter un heal qui a ATTEINT un
+                                       # provider et n'a produit aucun parser exploitable. Il
+                                       # parque la PAGE, donc il n'est armé que par ce qu'on a
+                                       # appris SUR la page. Armé sur les 3 sorties (spec qui ne
+                                       # rejoue pas, génération parse-failed, erreur inattendue),
+                                       # y compris quand AUCUNE ligne parser_extractors n'existe :
+                                       # une 1re génération ratée sur un domaine inconnu ne
+                                       # stampait rien, donc le scrape suivant re-payait
+EXTRACTOR_HEAL_POOL_PAUSE_MINUTES=5    # durée pendant laquelle TOUS les heals d'un process worker
+                                       # se mettent en retrait après un refus du pool IA (tous les
+                                       # providers rate-limités, ou breaker global ouvert). Séparé
+                                       # du cooldown ci-dessus parce qu'un échec de pool ne dit
+                                       # RIEN de la page : la parquer 12h enregistrerait un fait
+                                       # jamais constaté, et affamerait le chemin de heal, puisque
+                                       # le pool est saturé exactement quand le fan-out horaire
+                                       # tourne, c'est-à-dire quand la plupart des pages sont
+                                       # capturées. Mesuré avant la séparation, sur 14 j en prod :
+                                       # 405 des 656 appels generate_extractor n'ont jamais eu de
+                                       # réponse, 45 heals seulement ont abouti pour 218 parsers
+                                       # cachés, et 181 des 410 runs sur 7 j tombaient à moins de
+                                       # CINQ MINUTES du précédent pour le MÊME concurrent (le
+                                       # `catch` avalait l'erreur sans rien écrire, donc le
+                                       # cooldown ne s'armait jamais sur ce chemin). Court par
+                                       # construction : les tiers gratuits se rechargent en
+                                       # continu, un 429 Groq demande des secondes. 0 désactive la
+                                       # pause seule. 📄 docs/ai-consumption-audit-2026-08.md
 EXTRACTOR_REVALIDATE_INTERVAL_DAYS=14  # R8 — âge max d'un parser caché avant régénération forcée contre le DOM courant (un sélecteur dérivé "plausible mais faux" ne peut plus être trusté indéfiniment). last_validated_at n'est plus stampé à chaque cache hit
 EXTRACTOR_MAX_CONSECUTIVE_FAILURES=5   # R8 — échecs de replay consécutifs après lesquels un parser caché est distrusté d'office
 PRUNE_HTML_MAX_CHARS=40000             # cap de l'HTML élagué envoyé au générateur de sélecteurs

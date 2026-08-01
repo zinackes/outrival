@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { formatDiffForPrompt } from "@outrival/shared";
+import { formatDiffForPrompt, truncateDiffText } from "@outrival/shared";
 import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
 
@@ -66,8 +66,9 @@ export async function isSubstantiveChange(
 ): Promise<CosmeticGateResult | null> {
   const where = [context.competitorName, context.sourceType].filter(Boolean).join(" — ");
   // Slice the raw diff FIRST, then label: capping the formatted string could cut a
-  // block open and leave the model reading a side that never closes.
-  const source = formatDiffForPrompt(diffText.slice(0, 8000));
+  // block open and leave the model reading a side that never closes. Per SIDE, so
+  // a large removal cannot push every added line out of the window.
+  const source = formatDiffForPrompt(truncateDiffText(diffText, 8000));
   const prompt = `${where ? `This change was detected on: ${where}.\n` : ""}<change>
 ${source}
 </change>`;
@@ -83,8 +84,11 @@ ${source}
       // Namespace bumped for the labelled-diff prompt: withAiCache returns a stored
       // entry without re-deriving it, so verdicts answered from the unlabelled blob
       // would keep flowing in under the new prompt. A new namespace retires them.
+      // "-bothsides" does the same for verdicts reached on a window that a large
+      // removal could fill before the first added line: "nothing was added" is
+      // exactly the shape this gate reads as substantive.
       input: [context.sourceType ?? "", diffText].join("\n"),
-      namespace: "cosmetic-gate-polarity",
+      namespace: "cosmetic-gate-polarity-bothsides",
       ttlSeconds: CACHE_TTL_SECONDS,
     },
   });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { formatDiffForPrompt } from "@outrival/shared";
+import { formatDiffForPrompt, truncateDiffText } from "@outrival/shared";
 import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
 import { attachQuality, type WithQuality } from "../grounding/types";
@@ -187,8 +187,10 @@ export async function classifyChange(
   // Variable payload only (context + diff) — the static instructions ride in
   // CLASSIFY_SYSTEM so the cacheable prefix stays byte-identical (F2).
   // Slice the raw diff FIRST, then label: capping the formatted string could cut a
-  // block open and leave the model reading a side that never closes.
-  const evidence = formatDiffForPrompt(diffText.slice(0, 8000));
+  // block open and leave the model reading a side that never closes. The cap is
+  // per SIDE — a flat slice starts at the removals and can spend the whole window
+  // before reaching a single added line, which reads as a page that was deleted.
+  const evidence = formatDiffForPrompt(truncateDiffText(diffText, 8000));
   const prompt = `${contextBlock}<change>
 ${evidence}
 </change>`;
@@ -214,10 +216,13 @@ ${evidence}
     // (a model-chosen severity, no sub-scores) would flow into the new resolver as
     // undefined materiality. A new namespace retires them instead. "-polarity"
     // retires the entries answered from the unlabelled diff blob for the same
-    // reason: their before/after may be the two sides swapped.
+    // reason: their before/after may be the two sides swapped. "-bothsides"
+    // retires the entries answered from a prompt whose flat 8000-char cap could
+    // have shown the removals alone: the key hashes the WHOLE diff, so those would
+    // otherwise keep being served for a diff the model now reads differently.
     cache: {
       input: cacheKey,
-      namespace: "classify-materiality-polarity",
+      namespace: "classify-materiality-polarity-bothsides",
       ttlSeconds: CACHE_TTL_SECONDS,
     },
   });

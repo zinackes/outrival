@@ -275,22 +275,68 @@ not currently throttled.
   `extraction_runs` shows no rise in `ai_fallback` (a broken split shows up as parse
   failures, not as silence).
 
-### P1.2 — a deterministic pre-filter ahead of the cosmetic gate
+### P1.2 — a deterministic pre-filter ahead of the cosmetic gate — TRIED, MEASURED, DROPPED
 
-Before spending the call, normalise both sides of the diff (collapse whitespace,
-strip punctuation and casing, sort list items) and compare. Identical after
-normalisation means cosmetic with certainty, no model needed. Only what survives that
-goes to the gate, and only when the diff is prose-shaped and under a size floor.
+The idea was to normalise both sides of the diff (case, typography, whitespace, line
+order) and suppress for free when they come out identical, so only genuine rewordings
+would reach the model.
 
-617 calls currently catch 58 suppressions. The deterministic pass should catch a good
-share of them for free, and the remaining calls stop being paid on diffs that no
-model could suppress anyway.
+It was built and run against every generic lexical change on prod over 30 days:
 
-- Effort: ~2 h, pure function plus a unit test.
-- Verify: `changes.suppression_reason='cosmetic'` count per 14 days holds at or above
-  58 while `ai_runs task='cosmetic_gate'` drops by more than half.
-- Expected: **-4 % tokens**, and one AI call removed from the critical path of most
-  signals (latency win on every signal the user is waiting for).
+| | |
+|---|---:|
+| Generic lexical changes examined | 713 |
+| Suppressed by the AI gate | 58 |
+| **of which the pre-filter catches** | **2** |
+| Changes the AI kept that the pre-filter would suppress | 2 |
+
+Both of those last two turned out to be cases where the pre-filter was RIGHT and the
+model was wrong: one casing-only change (`Que des résultats` → `que des résultats`)
+and one diff whose two sides were byte-identical after whitespace. So precision is
+perfect and recall is 3 %. It would save about four model calls a month.
+
+**Why it cannot work.** Real cosmetic changes on a marketing page are REWORDINGS, not
+reformattings. "Ship faster with less overhead" becoming "Move faster, with less
+overhead" is what the gate exists for, and no normalisation reaches it. The premise
+that a deterministic pass could take "a good share" of the gate's work was wrong, and
+90 lines for four calls a month is complexity with no case behind it. Dropped.
+
+### What the measurement found instead: the gate is 5x net-negative
+
+Pricing the gate properly, over 14 days:
+
+| | |
+|---|---:|
+| Eligible generic changes | 483 |
+| Gate calls | 618, of which **246 fail** |
+| Successful calls x avg cost | 333 x 1 243 tok = **414k tokens** |
+| Suppressions obtained | ~27 |
+| What one suppression saves downstream | 1 classify (2 265) + 43 % x 1 insight (1 735) = ~3 011 tok |
+| **Total saved** | ~**81k tokens** |
+
+**The gate spends 414k tokens to save 81k.** This document previously filed it under
+structural savings at -4 %, which was simply wrong. It is a QUALITY feature — 58 fewer
+noisy signals per 30 days, against 283 signals emitted, so roughly 17 % less noise —
+and it costs about 6 % of the entire AI budget to deliver that.
+
+That may well be worth it; signal quality is the product. But it has to be argued as a
+quality trade, not booked as a saving, and two things about it are indefensible as they
+stand:
+
+1. **40 % of its calls fail** (246 of 618). Each failure is a full pool-exhaustion
+   round trip on the critical path between a change being detected and the signal a
+   user is waiting for, and it suppresses nothing (fail-open). P0.3 and P0.4 should
+   largely fix this; it is the single best reason to deploy them.
+2. **It runs on the fast tier, which only Groq serves.** Cerebras publishes no small
+   model, so a `fast` task falls back to its 120b there — the gate's measured 1 243
+   tokens a call is not a cheap call. Routing a boolean judgement to a 120b model is
+   worth revisiting on its own.
+
+**Recommended next step on the gate** (a product decision, not a code one): decide
+whether 17 % less signal noise is worth 6 % of the AI budget. If yes, leave it and let
+P0.3/P0.4 fix the failure rate. If no, the cheapest version is to run it only on the
+sources where marketing copy actually churns (`homepage`, `blog`) rather than on every
+generic change.
 
 ### P1.3 — make the staged ladder actually pay off
 

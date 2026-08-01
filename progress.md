@@ -1962,3 +1962,112 @@ chaque `db:generate`.**
 **Prochaine session** : P5 — roadmap intelligence (`top_request_planned`,
 delivered-rate), `/integrations` → `integration_published`, lens Shipping velocity dans
 le compare. NE PAS commencer sans /clear.
+
+## Content Intelligence v2 — P5 : roadmap intelligence, /integrations, lens Shipping (2026-08-01)
+
+**Le constat** : un portail roadmap publie DEUX choses en même temps — ce qu'un
+concurrent s'est engagé à construire, et combien de ses propres clients l'ont réclamé.
+On capturait les deux depuis P1 et on ne lisait ni l'un ni l'autre : les votes étaient
+mis en BANDE dans le corps diffé (à raison — les comptes bruts bougent sur chaque ligne
+chaque semaine, un listing brut se difftait de bout en bout à chaque capture) et jamais
+stockés, donc rien ne pouvait classer une demande contre une autre. En parallèle, la
+catégorie `partnerships` existait depuis la taxonomie v2 sans qu'aucune source ne
+l'alimente en direct.
+
+**Réalisé** (migration 0070) :
+- `content_items += votes, status_normalized`. Le compte EXACT quitte le chemin du diff
+  (l'îlot JSON le porte désormais ; `extractContent` le retire avant de hasher, donc il
+  ne peut pas déplacer un content hash), et le label VERBATIM du portail reste dans
+  `status` — c'est ce que ses clients lisent, `status_normalized` est ce qu'une requête
+  peut grouper.
+- `@outrival/shared/roadmap-status.ts` — résolveur PUR, patron industry-catalog :
+  `under_review|planned|in_progress|delivered|closed|other`, alias EN/FR/DE, 64 tests.
+  **Les refus sont matchés EN PREMIER** : « not planned », « won't do » et « nicht
+  geplant » contiennent tous le vocabulaire des états qu'ils nient, et lire « not
+  planned » comme planned annoncerait un engagement de shipping qui était un refus.
+  `beta` reste délibérément `other` (ni engagement non démarré, ni disponibilité
+  générale — les deux lectures déplacent un signal qui ne devrait pas bouger).
+- `roadmap_status_events` (migration 0070) : chaque MOUVEMENT, les deux côtés en brut ET
+  en normalisé. **La première lecture d'un portail est une BASELINE** (`is_baseline=1`,
+  jamais signalante) — trente entrées dont la moitié sont « Planned » depuis 2024
+  annonceraient trente mouvements le jour où on ajoute un concurrent. `signalled_at`
+  (patron `posting_facts`) porte le cooldown de 30 j PAR ENTRÉE : un statut qui flappe
+  deux fois en quinze jours est UNE nouvelle.
+- Signal `top_request_planned` — DÉTERMINISTE : rang (top-3 des demandes OUVERTES, par
+  votes) + plancher (≥10 votes sur l'entrée). Les deux portent : sans rang ça tire chaque
+  semaine sur ce que l'équipe a groomé le matin ; sans plancher le #1 d'un portail à 6
+  votes se fait couronner. HIGH si rang 1 ET ≥50 votes, sinon MEDIUM. Ancre : le change
+  du portail quand il existe (scrape-monitor DÉFÈRE désormais le classify roadmap comme
+  il défère le changelog — `signals.changeId` est unique, deux écrivains sur un change
+  en perdent un en silence), sinon l'ancre synthétique `roadmap_shift`.
+- `known_integrations` + job `ingest-integrations` — le jumeau exact de `known_customers`
+  (P3), y compris la normalisation conservatrice et l'insert-only. Deux lectures : la
+  VOIE SITEMAP (`/integrations/<slug>` NOMME une intégration → zéro fetch, on marche déjà
+  le sitemap chaque semaine) et la VOIE INDEX (probe court, adresse cachée sur
+  `competitors.metadata.integrationsUrl`, MISS caché aussi). Signal
+  `integration_published` MEDIUM, catégorie `partnerships`, GROUPÉ par run.
+  `/partners` sans slug enfant = page PROGRAMME, jamais un catalogue (testé).
+- Lens **Shipping velocity** dans le compare (self inclus) + `@outrival/shared/
+  shipping-velocity.ts`. Trois règles, chacune la différence entre une lecture et un
+  chiffre qui flatte celui qu'on a onboardé en premier : seuls les mois TERMINÉS comptent
+  (sinon tout le monde a l'air gelé le 3 du mois) ; les mois antérieurs à la 1re entrée
+  détenue sont ABSENTS, pas zéro ; **sous 2 mois pleins il n'y a pas de lecture** — le
+  concurrent est absent de la lens plutôt que crédité d'un « 12/mo » extrapolé d'une
+  semaine de tracking.
+- Battle card : section « Top requested, not delivered » 100% déterministe (patron
+  « Their customers » P3) + `GET /:id/roadmap`, et les MÊMES faits injectés dans
+  l'évidence groundée de `battle-card.ts`. La ligne « Shipped N roadmap items in last
+  90 d » compte les transitions qu'on a VUES (baseline exclue), pas l'historique.
+- Fact blocks `roadmap_request` et `integrations` (+ rendu web), lus sur le rawDiff du
+  change : le rang et le compte sont ceux publiés À LA CAPTURE QUI A VU LE MOUVEMENT.
+  Les recalculer donnerait un bloc qui contredit sa propre phrase une semaine plus tard.
+
+**Zéro call AI ajouté** : vérifié, pas supposé. Le test worker roadmap mocke
+`@outrival/ai` avec un COMPTEUR et chaque chemin doit le laisser à 0 ; le job
+integrations n'importe aucun modèle du tout (la preuve est structurelle). `ai_runs`
+strictement inchangé.
+
+**La garde qui a failli manquer** : un portail qui renomme sa colonne (« Planned » →
+« Planned (Q3) ») n'écrit AUCUN event. La comparaison se fait sur le statut NORMALISÉ,
+donc une retouche de copy ne peut pas devenir un engagement de shipping — mais les votes
+rafraîchis atterrissent quand même (ils sont lus pour le classement, pas pour le diff).
+Testé des deux côtés.
+
+**Deux décisions à connaître** :
+1. Les labels de statut sont LOWERCASE partout en aval (`humanChangeBefore: "under
+   review"`). C'est une décision P1 : les adaptateurs les minusculisent à la capture et
+   la ligne du snapshot lit `[planned] SSO / SAML`. Les recapitaliser ici ferait diverger
+   le signal de ce qui est diffé.
+2. Un MISS de probe `/integrations` est caché (comme `customersUrl` en P3). Conséquence
+   assumée : un concurrent dont le catalogue ne portait qu'une tuile au moment du probe
+   (barre de qualification : ≥2) n'est jamais re-probé — la voie sitemap reste, elle.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · shared 776 ✓ (+77) · scrapers 997 ✓ (+43) ·
+workers 284 ✓ (+22) · api 292 ✓ (+9) · web 175 ✓ (+7). Les tests workers tournent contre
+un vrai Postgres in-process (PGlite + migrations réelles) : baseline 30 entrées → 0
+signal + 30 events `is_baseline=1` ; baseline 40 tuiles → 0 signal + 40 lignes ; portail
+à 6 votes → rien ; rang 4 → rien ; flapping sur 4 captures → 1 seul signal ; `/partners`
+→ rien ; retrait → rien.
+
+**Landmine journal drizzle (6e fois)** : `db:generate` a stampé 0070 à 1785589598531,
+SOUS 0068 (…243) — silencieusement skippée. Corrigé à 1785614303244. **Et une collision
+préexistante sur `main`** : 0068 et 0069 pointaient tous deux 0067 comme parent (générées
+sur deux branches), et le snapshot 0069 ne portait pas la valeur d'enum de 0068 —
+`db:generate` refusait de tourner. Réparé (prevId + enum) ; le SQL de 0069 n'a pas bougé.
+Reste connu et NON corrigé : `when(0069) < when(0068)` dans le journal. Les deux sont
+appliquées sur dev ET prod, un env vierge applique dans l'ordre du tableau, donc le seul
+env à risque serait un env resté à 0067 — il n'en existe pas. Le bumper ferait REJOUER
+0069 là où elle est déjà passée (`CREATE TABLE` sans `IF NOT EXISTS`).
+
+**Vérifié PAR L'ÉTAT sur DEV** : 71 lignes au ledger = 71 au journal, `roadmap_status_
+events` + `known_integrations` présentes, `content_items.votes` + `status_normalized`
+présentes, valeurs d'enum `roadmap_shift` + `integration_catalog` présentes.
+
+**Reste côté humain** :
+- Migration 0070 : appliquée sur DEV, **PAS en prod**.
+- Déployer api + web + workers (le job `ingest-integrations` est nouveau : sans déploiement
+  worker, les enqueues du sitemap s'empilent sans consommateur).
+- P5 dépend de P1 en prod pour la lens : sans lignes changelog, la lens Shipping se masque
+  entièrement — comportement voulu, pas une panne.
+
+**La card « Content — Intelligence v2 » est COMPLÈTE** (P1 → P5).

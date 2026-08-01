@@ -43,18 +43,21 @@ const GUIDES: Record<ExtractorKind, Guide> = {
   },
 };
 
-export async function generateExtractor(
-  kind: ExtractorKind,
-  prunedHtml: string,
-): Promise<ExtractorSpec | null> {
+/**
+ * The static half of the prompt, one string per kind, built once at module load.
+ *
+ * `kind` takes exactly two values, so this is two byte-identical prefixes rather
+ * than one, and every pricing generation still shares its prefix with every other
+ * pricing generation — which is all a provider's prefix cache needs. Building it up
+ * front rather than per call is not about the allocation: it is so that nothing
+ * request-specific can reach it by accident later, since a single interpolated value
+ * would stop the prefix matching and the cache would silently never hit again.
+ */
+function buildExtractorSystem(kind: ExtractorKind): string {
   const guide = GUIDES[kind];
-  const prompt = `You are generating a DETERMINISTIC HTML extractor (CSS selectors) for a ${kind} page, so future scrapes can extract the data WITHOUT any LLM.
+  return `You are generating a DETERMINISTIC HTML extractor (CSS selectors) for a ${kind} page, so future scrapes can extract the data WITHOUT any LLM.
 
-Below is the pruned HTML skeleton (tags + class/id kept, copy truncated).
-
-<html>
-${prunedHtml}
-</html>
+The pruned HTML skeleton (tags + class/id kept, copy truncated) follows in the next message.
 
 <task>
 Produce a JSON "extractor spec" that, replayed with cheerio, yields the ${kind} data.
@@ -74,8 +77,27 @@ Reply ONLY with the JSON object, no markdown, no surrounding text.
 <format>
 ${guide.format}
 </format>`;
+}
 
-  const raw = await complete(AI_CONFIG.classification, { prompt, json: true, maxTokens: 1024 });
+const EXTRACTOR_SYSTEM: Record<ExtractorKind, string> = {
+  pricing: buildExtractorSystem("pricing"),
+  jobs: buildExtractorSystem("jobs"),
+};
+
+export async function generateExtractor(
+  kind: ExtractorKind,
+  prunedHtml: string,
+): Promise<ExtractorSpec | null> {
+  const prompt = `<html>
+${prunedHtml}
+</html>`;
+
+  const raw = await complete(AI_CONFIG.classification, {
+    system: EXTRACTOR_SYSTEM[kind],
+    prompt,
+    json: true,
+    maxTokens: 1024,
+  });
   const result = safeParseJson(raw, ExtractorSpecSchema);
   if (!result.ok) {
     console.error(`generate-extractor parse failed (${kind}):`, result.error, "raw:", raw.slice(0, 500));

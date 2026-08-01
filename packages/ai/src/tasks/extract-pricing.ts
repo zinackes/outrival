@@ -91,12 +91,15 @@ function focusPricingText(text: string, max = MAX_PRICING_TEXT): string {
   return text.slice(start, start + max);
 }
 
-export async function extractPricing(pricingPageText: string): Promise<PricingExtraction | null> {
-  const prompt = `<pricing_page>
-${focusPricingText(pricingPageText)}
-</pricing_page>
-
-<task>
+// The static half of the prompt: the rules and the output shape, byte-identical on
+// every call, and 77% of what this task sends. It goes in `system` AHEAD of the
+// variable page text because both providers auto-cache a shared prefix — Cerebras in
+// 128-token blocks, Groq from a per-model minimum this comfortably clears — and on
+// Groq a cached token does not count against the per-minute ceiling that binds this
+// fleet. Nothing interpolated may ever move in here: one substituted value and the
+// prefix stops matching, the cache never hits again, and the only trace is a bill
+// that quietly stops improving.
+const EXTRACT_PRICING_SYSTEM = `<task>
 Extract the structured pricing plans from this pricing page. Write all text values in English.
 - "plan_name": exact plan name (e.g. Free, Starter, Pro, Enterprise)
 - "price": numeric amount (0 for free, strip the currency symbol). Use null for quote-based plans with no public price (e.g. "Contact sales", "Custom"). For a "usage" plan, this is the per-unit RATE (e.g. 0.10 for "$0.10 per API call").
@@ -170,9 +173,19 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 }
 </format>`;
 
+export async function extractPricing(pricingPageText: string): Promise<PricingExtraction | null> {
+  const prompt = `<pricing_page>
+${focusPricingText(pricingPageText)}
+</pricing_page>`;
+
   // 2048, not 1536: a page that publishes a ladder emits a tiers array per
   // metered plan, and a response truncated mid-array parses as nothing at all.
-  const raw = await complete(AI_CONFIG.classification, { prompt, json: true, maxTokens: 2048 });
+  const raw = await complete(AI_CONFIG.classification, {
+    system: EXTRACT_PRICING_SYSTEM,
+    prompt,
+    json: true,
+    maxTokens: 2048,
+  });
   const result = safeParseJson(raw, PricingSchema);
   if (!result.ok) {
     console.error("Pricing extraction parse failed:", result.error, "raw:", raw.slice(0, 500));

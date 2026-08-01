@@ -223,21 +223,57 @@ policy hammer it.
 
 ## P1 — structural savings (est. -15 % more tokens, +30 % effective TPM)
 
-### P1.1 — split `system` on the top consuming tasks
+### P1.1 — split `system` on the top consuming tasks — DONE for four, three deferred
 
-Move the static half (role, rubric, JSON schema, format block, "write in English")
-into `CompletionOptions.system` for, in order of payoff: `extract_pricing`,
-`generate_extractor`, `insight`, `extract_jobs`, `faithfulness_check`,
-`competitor_summary`, `classify_structured`.
+Move the static half (rules, JSON schema, format block, "write in English") into
+`CompletionOptions.system`, ahead of the variable payload, so the providers can cache
+the prefix. It must be **byte-identical across calls** or the cache never hits, so
+anything interpolated stays in the user message.
 
-The split must be **byte-identical across calls** or the cache never hits. Anything
-interpolated (competitor name, source type) stays in the user message.
+Both providers auto-cache with no code change, and the two behaviours differ in a way
+that matters here:
 
-- Effort: ~3 h for the seven tasks.
-- Verify: on Groq, `prompt_tokens` per run drops on the second call onward for the
-  same task; the TPM ceiling is hit less often.
-- Expected: **-10 to -15 % tokens**, and roughly **+30 % TPM headroom** since cached
-  prefixes are not billed against the rate limit.
+| | granularity / minimum | cached tokens vs rate limit | cost |
+|---|---|---|---|
+| Cerebras (p1, most traffic) | 128-token blocks, TTL 5 min to 1 h | not billed | free |
+| Groq (p3) | 128 to 1024 tokens depending on model; `openai/gpt-oss-120b` is supported | do not count, but are subtracted AFTER processing, so parallel bursts can still hit the ceiling | 50 % off |
+
+That Groq caveat is why P1.1 does not replace P0.3: caching lowers what a burst
+costs, pacing is what stops the burst from arriving all at once.
+
+**Measured static prefix, and its real share of the prompt** (14-day averages over
+runs that actually returned tokens):
+
+| task | static prefix | share of prompt | status |
+|---|---:|---:|---|
+| `extract_pricing` | 1 879 tok | **77 %** | done |
+| `competitor_summary` | 266 tok | 25 % | done |
+| `extract_jobs` | 177 tok | 9 % | done |
+| `generate_extractor` | 310 tok | ~3 % | done |
+| `insight` | ~175 tok | ~13 % | **deferred** |
+| `classify_structured` | not measured | — | **deferred** |
+| `faithfulness_check` | not measured | — | **deferred** |
+
+`extract_pricing` is the whole prize: three quarters of its prompt is now a cacheable
+prefix, roughly 480k tokens per 14 days. The other three qualify on Cerebras' 128-token
+blocks and may fall under Groq's minimum; they were free to do and cannot hurt, but
+they are not where the win is. Total cacheable: ~613k tokens per 14 days, which is 9 %
+of today's budget and about 15 % of the post-P0.1 budget.
+
+**Why three are deferred rather than done.** Splitting `insight`, `classify_structured`
+and `faithfulness_check` means REORDERING their prompts, not just relocating text: the
+task block currently sits after the evidence and refers to it as being "above". Those
+three are also the ones whose output is a judgement rather than a parse — prose a
+customer reads, a severity band, a publish-or-block verdict — and the repo already has
+labelled evals built for exactly them (`eval:severity`, `eval:faithfulness`). Doing
+them without running those evals first would be trading measured quality for an
+unmeasured 13 %. They should be done, gated on a green eval run against a pool that is
+not currently throttled.
+
+- Effort spent: ~2 h. Remaining three: ~2 h plus an eval run.
+- Verify: `prompt_tokens` per `extract_pricing` run drops once a prefix is hot, and
+  `extraction_runs` shows no rise in `ai_fallback` (a broken split shows up as parse
+  failures, not as silence).
 
 ### P1.2 — a deterministic pre-filter ahead of the cosmetic gate
 

@@ -24,12 +24,16 @@ export type JobsExtraction = z.infer<typeof JobsSchema>;
 // gpt-oss-120b reads 40k characters (~10k tokens) without trouble.
 const MAX_PAGE_CHARS = 40000;
 
-export async function extractJobs(careersPageText: string): Promise<JobsExtraction | null> {
-  const prompt = `<careers_page>
-${careersPageText.slice(0, MAX_PAGE_CHARS)}
-</careers_page>
-
-<task>
+// Static half of the prompt (rules + output shape), byte-identical every call, sent
+// as `system` ahead of the variable page so the providers can cache the prefix. See
+// extract-pricing for why that matters more than the token saving: on Groq a cached
+// token does not count against the per-minute ceiling. Never interpolate in here.
+//
+// Modest here on purpose: this prefix is ~177 tokens, 9% of the prompt, and a board's
+// text dominates. It clears Cerebras' 128-token block granularity (where most of our
+// traffic lands) and may fall under Groq's per-model minimum. Kept because it costs
+// nothing and cannot hurt, not because it is where the saving is.
+const EXTRACT_JOBS_SYSTEM = `<task>
 Extract every job posting listed on this careers page.
 - "title": exact title (e.g. "Senior Software Engineer")
 - "department": standard category ("Engineering", "Sales", "Marketing",
@@ -50,9 +54,19 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 }
 </format>`;
 
+export async function extractJobs(careersPageText: string): Promise<JobsExtraction | null> {
+  const prompt = `<careers_page>
+${careersPageText.slice(0, MAX_PAGE_CHARS)}
+</careers_page>`;
+
   // A 56-role board already spends ~2k tokens of JSON; 4096 left no headroom, and an
   // answer cut mid-object fails the parse and drops the whole extraction.
-  const raw = await complete(AI_CONFIG.classification, { prompt, json: true, maxTokens: 8192 });
+  const raw = await complete(AI_CONFIG.classification, {
+    system: EXTRACT_JOBS_SYSTEM,
+    prompt,
+    json: true,
+    maxTokens: 8192,
+  });
   const result = safeParseJson(raw, JobsSchema);
   if (!result.ok) {
     console.error("Jobs extraction parse failed:", result.error, "raw:", raw.slice(0, 500));

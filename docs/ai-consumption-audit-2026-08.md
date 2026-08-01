@@ -338,7 +338,56 @@ P0.3/P0.4 fix the failure rate. If no, the cheapest version is to run it only on
 sources where marketing copy actually churns (`homepage`, `blog`) rather than on every
 generic change.
 
-### P1.3 — make the staged ladder actually pay off
+### P1.3 — the selector generator was shown a page with no prices on it — FIXED
+
+The plan assumed the JSON-LD reader was leaving pricing markup on the table, because
+pricing resolves `structured` 12 % of the time against jobs' 33 %. That assumption was
+wrong twice over, and the data says something better.
+
+**Why the structured share cannot be the lever.** Jobs reaches 33 % because Google Jobs
+rich results give every ATS a commercial reason to emit `JobPosting` JSON-LD. Pricing
+has no equivalent rich result: `schema.org/Product` + `Offer` serves e-commerce product
+pages, and a SaaS pricing table wins nothing by marking itself up. The existing mapper
+already reads `Product`, `SoftwareApplication` and `Service` with their offers and
+price specifications, which is essentially all schema.org offers for this shape. The
+gap is what the web publishes, not what we read.
+
+**What the data actually pointed at.** Of 131 cached pricing parsers, **90 have
+`last_validated_at = null`** — never validated. R8 expiry accounts for 7 and distrust
+for 3, so neither trust gate is the constraint. The constraint is that heals do not
+succeed: 656 `generate_extractor` calls over 14 days produced 250 specs, of which 45
+replayed. **82 % of generated specs fail.**
+
+**And 79 of those 90 specs are literally empty** — `{version:1, fields:{}}`, which is
+the exact answer the prompt asks for when the data is not in the HTML. The model was
+not failing. It was being handed a page with no pricing in it and saying so.
+
+The two stages are fed differently:
+
+| stage | input |
+|---|---|
+| `generate_extractor` | `pruneHtmlForSelectors(html)` — tag-heavy skeleton, **head-sliced at 40 000 chars** |
+| `ai_fallback` (the floor) | `htmlToText(html)` — compact text, and it extracts pricing fine |
+
+A pricing table sits below the nav, the hero and the feature grid. A skeleton that
+keeps every tag and class reaches the cap long before it reaches the prices, so the
+generator never saw them. The size data agrees: **every page whose parser ever
+validated has under 21k of text, while the ones returning empty specs run to 940k.**
+
+**The fix** is the repair `focusPricingText` already applies to the extraction prompt's
+own input, for the same reason, now applied to the skeleton: when it overflows, window
+it on the first price token instead of taking the head. Inert below the cap (a skeleton
+that fits is returned byte-identical), and `jobs` declares no anchor, so its behaviour
+is unchanged — a board's rows carry no token as distinctive as a currency, and a wrong
+guess would move the window off the listing.
+
+- Verify: `extraction_runs` `heal` share rises, then `cache` rises behind it as the
+  parsers that finally validate get replayed; `ai_fallback` falls from 65 %.
+- Expected: this is the mechanism behind the 65 % floor share, so the ceiling here is
+  much higher than the -5 to -8 % originally guessed. It should be measured after
+  deploy rather than predicted.
+
+### P1.3b — remaining ladder work
 
 `extraction_runs` over 14 days:
 

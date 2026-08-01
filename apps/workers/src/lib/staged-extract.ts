@@ -10,7 +10,7 @@ import {
   type ExtractionResolution,
 } from "@outrival/shared";
 import { replayExtractor } from "@outrival/scrapers/cached-extractor";
-import { pruneHtmlForSelectors } from "@outrival/scrapers/prune-html";
+import { pruneHtmlForSelectors, SELECTOR_ANCHORS } from "@outrival/scrapers/prune-html";
 import { generateExtractor, AI_CONFIG, AIUnavailableError, type ExtractorKind } from "@outrival/ai";
 import { logExtractionRun, loggedAi } from "./analytics";
 import { shouldTrustCachedExtractor } from "./extractor-trust";
@@ -186,7 +186,15 @@ export async function stagedExtract<T>(
       const spec = await loggedAi(
         "generate_extractor",
         AI_CONFIG.classification,
-        () => generateExtractor(input.kind, pruneHtmlForSelectors(input.html)),
+        () =>
+          generateExtractor(
+            input.kind,
+            // Window the skeleton on what this kind is looking for. A pricing table
+            // sits below the nav, the hero and the features, and the tag-heavy
+            // skeleton hits the cap before it reaches the prices — see prune-html
+            // for the 79 empty specs that measured.
+            pruneHtmlForSelectors(input.html, { anchor: SELECTOR_ANCHORS[input.kind] }),
+          ),
         { competitorId: input.competitorId },
       );
       if (spec) {

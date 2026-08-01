@@ -260,6 +260,48 @@ content_items          id, competitor_id (cascade), source_type
                        citer. topics/products/personas/competitors_named restent
                        vides en P1 (remplis par l'enrichissement blog, P2)
 
+case_studies           id, content_item_id (set null), competitor_id (cascade),
+                       url, title, customer_name, customer_industry,
+                       customer_industry_label, is_canonical_industry (int),
+                       use_case, metrics_claimed text[], confidence, recorded_at
+                       (Content Intelligence v2 P3, migration 0067). Les histoires
+                       clients qu'un concurrent PUBLIE sur lui-même. Les logos
+                       homepage (patch-17) disaient COMBIEN ; une case study dit QUI,
+                       dans QUEL marché, pour QUEL résultat — la question qu'une
+                       équipe sales pose réellement. Unique (competitor, url) : le
+                       même lien re-listé chaque semaine n'insère rien, et c'est ce
+                       qui rend la découverte idempotente. `customer_name` null sur
+                       une histoire anonymisée (« a leading European bank ») : la
+                       ligne compte pour la verticale et n'est JAMAIS un
+                       customer_win — pas de nom, pas de win. `customer_industry` =
+                       slug canonique (@outrival/shared `industry-catalog`, ~32
+                       slugs + alias EN/FR/DE, patron entitlement-catalog) ou label
+                       slugifié avec `is_canonical_industry=0` ; SEUL un slug
+                       canonique des DEUX côtés peut faire monter le signal en high,
+                       un slug free-text n'étant que le mot de cette page-là.
+                       `metrics_claimed` VERBATIM, substring-checké côté code
+                       (garde posting_facts) : une métrique que la page n'écrit pas
+                       est droppée, toute sa valeur venant de ce que le concurrent
+                       l'a écrite en public
+
+known_customers        id, competitor_id (cascade), name_normalized, display_name,
+                       source ('case_study'|'customers_page'), evidence_url,
+                       first_seen_at — Content Intelligence v2 P3 (migration 0067).
+                       Le registre qui fait de `customer_win` un fait et non une
+                       supposition : unique (competitor, name_normalized), donc un
+                       client annoncé sur le blog, puis lié depuis l'index, puis
+                       encore listé le trimestre suivant est UN win, à vie. Sans
+                       lui, « nouveau client » voudrait dire « absent de la capture
+                       de la semaine dernière », et un mur de logos qui tourne, une
+                       case study republiée sous une autre URL ou une page paginée
+                       ré-annonceraient chacun le même win. Normalisation
+                       CONSERVATRICE (lowercase, trim, suffixe légal retiré
+                       seulement en fin de nom) : une fusion à tort perd un win en
+                       SILENCE, ce que rien ne peut détecter. INSERT-ONLY : une
+                       disparition n'écrit jamais rien (décision verrouillée — les
+                       murs tournent et paginent, un signal de churn bâti sur
+                       l'absence serait faux la plupart du temps)
+
 reviews                id, competitor_id, source (g2|capterra|appstore|playstore),
                        score, content, author (praise|complaint|<name>),
                        detected_at
@@ -424,7 +466,12 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     changelog EST ce contre quoi la capture suivante se diffe,
                     donc y écrire un snapshot de vélocité ferait diffe le
                     prochain scrape contre un document qui n'est pas le
-                    changelog), hiring_shift (ancre du signal
+                    changelog), customer_proof (ancre des deux signaux de preuve
+                    client — case_study_published et customer_win, Content
+                    Intelligence v2 P3 ; jamais semée ni scrapée. ANCRE DÉDIÉE et
+                    pas `sitemap`/`blog` : ce sont ces deux chaînes de snapshots
+                    que la capture suivante se diffe, et la sévérité y serait
+                    aussi jugée sur la mauvaise source), hiring_shift (ancre du signal
                     d'inflexion de vélocité de recrutement par département, jamais
                     scrapée), job_facts (ancre des deux signaux minés des JD —
                     tech_adoption et product_hint, cf. posting_facts ; jamais semée
@@ -690,7 +737,7 @@ scrape_runs         monitor_id, competitor_id, source_type, status (success|no_c
                     duration_ms, recorded_at  — ops (patch-02/20)
 ai_runs             task (classify|classify_structured|narrate_change|insight|digest|
                     battle_card|extract_pricing|extract_jobs|extract_reviews|
-                    extract_self_profile|generate_extractor|mine_job_facts|type_content_items|source_summary|
+                    extract_self_profile|generate_extractor|mine_job_facts|type_content_items|extract_case_studies|source_summary|
                     competitor_summary|batch_summary|ask|…), provider, model,
                     status (success|parse_failed|error), recorded_at      — ops (patch-02 ;
                     `ask` = Ask Outrival, 1er logger ai_runs côté API via lib/ai-runs.ts)
@@ -1331,6 +1378,62 @@ carte (état live uniquement).
        type) via `buildSignalFacts`. `changelog` joint la fenêtre d'attribution,
        `shipping_velocity` lit le rawDiff du change (les nombres affichés sont ceux
        que le détecteur a décidés, pas un recalcul sur un feed qui a bougé depuis)
+
+[par capture sitemap · par post blog typé case_study] ingest-case-studies
+  └─ Content Intelligence v2 P3. Event-driven (pas de cron) : la branche sitemap de
+       scrape-monitor enqueue à CHAQUE capture (les URLs clients neuves partent en
+       payload, et le job re-lit l'index — un logo ajouté à une page existante ne
+       déplace aucune URL, donc attendre une URL neuve raterait la façon la plus
+       courante dont un win devient public), et ingest-blog-posts enqueue les posts
+       que l'enrichissement P2 vient de lire comme des case studies. Jamais sur
+       backfill, jamais de signal sur le self
+  └─ LA PREMIÈRE PASSE EST UNE BASELINE (planCustomersRun, testé) : une page
+       /customers liste TOUS les clients qu'une boîte a jamais eus, donc la lire pour
+       la 1re fois annoncerait quinze « wins » le jour où on ajoute un concurrent,
+       tous vieux de plusieurs années. Les lignes ET le registre sont écrits — c'est
+       toute la mémoire que la feature existe pour bâtir — et rien ne signale. Le
+       compteur porte sur les DEUX tables : un concurrent dont toutes les histoires
+       sont anonymisées garderait un registre vide, donc compter le seul registre
+       rendrait chaque run « le premier » et la feature muette à vie
+  └─ index clients : probe court des paths (/customers, /case-studies, /clients,
+       /kunden, /clientes…) UNE fois, adresse mise en cache sur competitors.metadata
+       (`customersUrl`, merge jsonb SQL) — un MISS est caché lui aussi, sinon un
+       concurrent sans page clients repaierait le probe chaque semaine. Une page ne
+       compte que si elle SE NOMME (title/h1) ET porte des logos ou des liens
+       (`looksLikeCustomersIndex`) : un site qui sert sa home sur tout path inconnu
+       répond 200 avec un mur de logos, c'est-à-dire exactement ce qu'on cherche
+  └─ deux lectures de l'index : logos via `<img alt>` seul (classifyLogoName +
+       normalizeCustomerName — un alt qui est un chemin CDN n'est pas une marque, et
+       un logo sans nom n'est pas un win) → upsert known_customers ; liens de stories
+       même-host → file de lecture (cap 10 pages/run, index compris ; le reste au run
+       suivant, loggé — jamais tronqué en silence)
+  └─ extraction : batches de 5 (les case studies sont longues), AI_CONFIG.classification,
+       loggé ai_runs `extract_case_studies`, nouvelles pages uniquement. Le modèle
+       PROPOSE, `applyCaseStudyGuards` DÉCIDE : le nom du client et chaque métrique
+       doivent être dans le texte de la page. Le match du nom est SENSIBLE À LA CASSE,
+       et c'est toute la garde — une histoire anonymisée écrit « a leading European
+       bank » et un modèle rend « European Bank », que la recherche insensible à la
+       casse trouve puisque les mots y sont vraiment
+  └─ signal `case_study_published` : HIGH seulement si le marché du user résout en
+       slug CANONIQUE, celui de l'histoire aussi, et qu'ils sont égaux — sinon MEDIUM.
+       Le marché du user vient du selfProfile des products (audience AVANT category :
+       la question est à qui ils VENDENT), null = high impossible, jamais approximé
+  └─ signal `customer_win` MEDIUM, catégorie `partnerships` (l'existante la plus
+       proche — l'enum n'est pas étendu) : les noms de la page clients jamais vus,
+       UN signal groupé par run (« 3 new customers — Acme, Globex, Initech »), jamais
+       un par nom. Un client vu d'abord dans une case study entre au registre mais
+       n'émet PAS de win : le signal de case study le nomme déjà et porte le marché
+       et les chiffres. Une disparition n'émet RIEN, jamais
+  └─ ancre synthétique `customer_proof` → change (snapshotAfterId = la capture qui a
+       déclenché, même forme que competitor_named_you) → generate-signal avec une
+       classification SYNTHÉTISÉE. Fact blocks : la story (client, marché, métriques
+       verbatim, lien) ou les clients neufs (nom + date de 1re observation), lus sur
+       le rawDiff du change et jamais sur une fenêtre — les deux signaux portent sur
+       un ensemble NOMMÉ par l'émetteur
+  └─ battle card : section « Their customers » 100% déterministe (patron Packaging) —
+       GET /api/competitors/:id/customers (verticales canoniques seules, wins < 90 j,
+       marquee = les plus anciens) rendue côté web sans modèle ; les mêmes faits sont
+       AUSSI injectés dans l'évidence groundée de battle-card.ts, avec leurs n
 
 [par competitor dont un scrape jobs a inséré des postings AVEC corps] mine-job-facts
   └─ skip self / deleted (un « ils adoptent Kubernetes » sur son propre produit est du bruit)

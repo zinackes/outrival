@@ -1,7 +1,7 @@
 import { logger } from "../lib/job-logger";
 import { NonRetriable as AbortTaskRunError } from "@outrival/queue";
 import { z } from "zod";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import {
   db,
   battleCards,
@@ -13,6 +13,8 @@ import {
   reviews,
   signals,
   techStackEntries,
+  caseStudies,
+  knownCustomers,
   selfProfileLastEditedAt,
   insertAiQualityCheck,
   type SelfProfile,
@@ -29,6 +31,7 @@ import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfu
 import {
   uploadToR2,
   getFromR2,
+  industryLabel,
   resolveCurrentPricing,
   type CompetitorOverrides,
 } from "@outrival/shared";
@@ -57,6 +60,57 @@ function isEmptyCard(c: BattleCardContent): boolean {
     c.when_we_win.length === 0 &&
     c.when_we_lose.length === 0
   );
+}
+
+/**
+ * Who a competitor publishes as its customers (Content Intelligence v2 P3).
+ *
+ * Both counts travel with the lists, because they are what stop the model turning
+ * three case studies into "they dominate fintech". Canonical markets only: a
+ * free-text industry slug is one page's own wording, so counting it as a vertical
+ * would report a market that exists in exactly one story.
+ *
+ * Best-effort like every other evidence read here — null when they have published
+ * nothing we have read, which the evidence blocks omit entirely rather than render
+ * as a gap the model can cite.
+ */
+async function loadCustomerProof(competitorId: string) {
+  const [stories, registry] = await Promise.all([
+    db
+      .select({
+        industry: caseStudies.customerIndustry,
+        isCanonical: caseStudies.isCanonicalIndustry,
+      })
+      .from(caseStudies)
+      .where(eq(caseStudies.competitorId, competitorId)),
+    db
+      .select({ name: knownCustomers.displayName })
+      .from(knownCustomers)
+      .where(eq(knownCustomers.competitorId, competitorId))
+      .orderBy(desc(knownCustomers.firstSeenAt))
+      .limit(12),
+  ]);
+  if (stories.length === 0 && registry.length === 0) return null;
+
+  const counts = new Map<string, number>();
+  for (const s of stories) {
+    if (!s.industry || s.isCanonical !== 1) continue;
+    counts.set(s.industry, (counts.get(s.industry) ?? 0) + 1);
+  }
+  const [total] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(knownCustomers)
+    .where(eq(knownCustomers.competitorId, competitorId));
+
+  return {
+    verticals: [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 5)
+      .map(([slug, count]) => ({ label: industryLabel(slug), count })),
+    names: registry.map((r) => r.name),
+    storiesTotal: stories.length,
+    customersTotal: Number(total?.n ?? registry.length),
+  };
 }
 
 // Pull the latest homepage capture as clean text so the card grounds feature
@@ -290,6 +344,10 @@ async function generate(payload: z.input<typeof InputSchema>) {
     });
     const competitorReviews = await getLatestReviewScore(competitor.id);
     const competitorHomepageExcerpt = await loadHomepageExcerpt(competitor.id);
+    // Their published customer proof (Content Intelligence v2 P3). Read here so
+    // the generated sections can reason over who they actually win — the "Their
+    // customers" section itself renders from the same rows without a model.
+    const competitorCustomers = await loadCustomerProof(competitor.id);
 
     // Our own product's evidence — features / tech / pricing come from the self
     // profile (extract-self-profile keeps them current), homepage from its snapshot.
@@ -332,6 +390,7 @@ async function generate(payload: z.input<typeof InputSchema>) {
         importance: t.importance,
       })),
       competitorReviews,
+      competitorCustomers,
       reviewPraises: praisesRows.map((r) => r.content ?? "").filter(Boolean),
       reviewComplaints: complaintsRows.map((r) => r.content ?? "").filter(Boolean),
       recentSignals: recentSignals.map((s) => ({

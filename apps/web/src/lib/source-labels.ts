@@ -58,6 +58,8 @@ const SOURCE_LABELS: Record<string, string> = {
   pricing_probe: "Calculator pricing",
   // Internal anchor for release-cadence moves counted off content_items.
   shipping_velocity: "Shipping velocity",
+  // Internal anchor for published case studies + first-seen customer names.
+  customer_proof: "Customer proof",
   // Developer documentation (pro+): OpenAPI spec diff, else docs page list.
   docs: "Developer docs",
   // User-watched arbitrary page on the competitor's domain ("Watch a custom page").
@@ -108,6 +110,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   comparison_page: "Comparison page",
   pricing_probe: "Calculator pricing",
   shipping_velocity: "Shipping velocity",
+  customer_proof: "Customer proof",
   docs: "Developer docs",
   custom: "Custom page",
   roadmap: "Roadmap portal",

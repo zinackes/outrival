@@ -128,6 +128,13 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // velocity snapshot written into it would make the following scrape diff against
   // a document that is not the changelog. Always isActive=false.
   "shipping_velocity",
+  // Customer-proof anchor (Content Intelligence v2 P3). Infra-only, like
+  // shipping_velocity: never seeded, never scraped, never user-selectable. It
+  // anchors the snapshot → change → signal chain for the two customer signals — a
+  // case study published, and a customer named for the first time. A dedicated
+  // source_type rather than `sitemap` or `blog`, whose snapshot chains are what
+  // content-hash dedup diffs the next capture against. Always isActive=false.
+  "customer_proof",
   // Developer documentation (user-selectable, pro+). Structured-first: an OpenAPI /
   // Swagger spec becomes a canonical sorted operation+schema listing (so the generic
   // lexical diff reads as a structural diff), else the docs sitemap's page list plus

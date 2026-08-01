@@ -34,6 +34,8 @@ import {
   organizations,
   products,
   productCompetitors,
+  caseStudies,
+  knownCustomers,
 } from "@outrival/db";
 import { db } from "../lib/db";
 import { scoreCompetitorOverlap, scoreCompetitorsOverlap } from "../lib/overlap";
@@ -101,6 +103,7 @@ import {
   buildCoverage,
   type SourceState,
   creditBurnActionKey,
+  industryLabel,
   type SourceType,
   type MonitorFrequency,
   type PricingTier,
@@ -2531,6 +2534,83 @@ competitorsRouter.get("/:id/entitlements", async (c) => {
     recordedAt: current[0]?.recorded_at ?? null,
   });
 });
+
+/**
+ * Who this competitor says it is winning (Content Intelligence v2 P3).
+ *
+ * Three readings of the same two tables, all deterministic — the battle card
+ * section built on this is rendered from these numbers, not written by a model, so
+ * it can never claim a customer the competitor has not published.
+ *
+ *  - VERTICALS: the markets their stories are set in. Canonical slugs only: a
+ *    free-text slug is one page's wording, so counting it as a vertical would
+ *    report a market that exists in exactly one case study.
+ *  - WINS: customers first seen inside the recent window. "First seen" is OUR date,
+ *    which is the only one we have — the page carries none.
+ *  - MARQUEE: the oldest names we hold. A customer that was already on the wall
+ *    when we arrived is one they have had long enough to be a reference.
+ *
+ * Every list travels with the count it was taken from, so a section built on three
+ * stories cannot read like a survey.
+ */
+competitorsRouter.get("/:id/customers", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const [stories, registry] = await Promise.all([
+    db
+      .select({
+        industry: caseStudies.customerIndustry,
+        isCanonical: caseStudies.isCanonicalIndustry,
+        industryLabel: caseStudies.customerIndustryLabel,
+      })
+      .from(caseStudies)
+      .where(eq(caseStudies.competitorId, competitor.id)),
+    db
+      .select({
+        name: knownCustomers.displayName,
+        firstSeenAt: knownCustomers.firstSeenAt,
+        evidenceUrl: knownCustomers.evidenceUrl,
+      })
+      .from(knownCustomers)
+      .where(eq(knownCustomers.competitorId, competitor.id))
+      .orderBy(knownCustomers.firstSeenAt),
+  ]);
+
+  const counts = new Map<string, number>();
+  for (const s of stories) {
+    if (!s.industry || s.isCanonical !== 1) continue;
+    counts.set(s.industry, (counts.get(s.industry) ?? 0) + 1);
+  }
+  const verticals = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 5)
+    .map(([slug, count]) => ({ slug, label: industryLabel(slug), count }));
+
+  const cutoff = Date.now() - CUSTOMER_WIN_WINDOW_DAYS * 86_400_000;
+  const toIso = (d: Date) => new Date(d).toISOString();
+  const wins = registry
+    .filter((r) => new Date(r.firstSeenAt).getTime() >= cutoff)
+    .slice(-10)
+    .reverse()
+    .map((r) => ({ name: r.name, firstSeenAt: toIso(r.firstSeenAt), evidenceUrl: r.evidenceUrl }));
+
+  return c.json({
+    verticals,
+    wins,
+    // Oldest first — the ones already on the wall when we arrived.
+    marquee: registry.slice(0, 6).map((r) => ({ name: r.name, firstSeenAt: toIso(r.firstSeenAt) })),
+    storiesTotal: stories.length,
+    customersTotal: registry.length,
+    windowDays: CUSTOMER_WIN_WINDOW_DAYS,
+  });
+});
+
+/** How recent a first sighting has to be to still read as a win. */
+const CUSTOMER_WIN_WINDOW_DAYS = 90;
 
 const PricingOverrideSchema = z.object({
   status: z.enum(PRICING_STATUSES),

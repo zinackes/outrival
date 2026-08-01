@@ -48,6 +48,7 @@ import { BattleCardHead, MetaDot } from "./head";
 import { ConfidenceBadge } from "./evidence";
 import { BattleCardSections } from "./sections";
 import { PackagingSection } from "./packaging";
+import { TheirCustomersSection } from "./their-customers";
 
 const EMPTY_CONTENT: BattleCardContent = {
   their_strengths: [],
@@ -764,6 +765,18 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
               competitorId={competitorId}
               competitorName={competitor.name}
               productId={resolvedProductId ?? undefined}
+            />
+          )}
+
+          {/* Their customers (P3): deterministic lines from their published case
+              studies and the customer registry. Hidden while editing (nothing here
+              is editable) and absent entirely when we hold no customer proof. No
+              product scope: who a competitor sells to is a fact about them, not
+              about which of our SKUs the card compares. */}
+          {!editing && competitor && (
+            <TheirCustomersSection
+              competitorId={competitorId}
+              competitorName={competitor.name}
             />
           )}
 

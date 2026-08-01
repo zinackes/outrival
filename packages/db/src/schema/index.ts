@@ -13,6 +13,7 @@ export * from "./alerts";
 export * from "./job_postings";
 export * from "./posting-facts";
 export * from "./content-items";
+export * from "./case-studies";
 export * from "./reviews";
 export * from "./battle_cards";
 export * from "./notifications";

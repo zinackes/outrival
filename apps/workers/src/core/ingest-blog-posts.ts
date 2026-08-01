@@ -1,5 +1,9 @@
 import { logger } from "../lib/job-logger";
-import { NonRetriable as AbortTaskRunError, generateSignal } from "@outrival/queue";
+import {
+  NonRetriable as AbortTaskRunError,
+  generateSignal,
+  ingestCaseStudies,
+} from "@outrival/queue";
 import { z } from "zod";
 import { and, desc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import {
@@ -173,6 +177,8 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
   const self: SelfIdentity | null =
     competitor.type === "self" ? null : await resolveSelfIdentity(competitor.orgId);
   const named: Array<{ id: string; url: string; title: string; snippet: string }> = [];
+  /** Posts this run read as customer stories (P3), handed to the customers path. */
+  const caseStudyItemIds: string[] = [];
   let enrichedCount = 0;
 
   for (let i = 0; i < fetched.length; i += BATCH_SIZE) {
@@ -237,6 +243,11 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
         .where(eq(contentItems.id, post.id));
 
       enrichedCount++;
+      // Content Intelligence v2 P3 — a post the model just read as a customer story
+      // is one, and the customers path knows what to do with it. The URL goes over,
+      // not the text: that job re-reads the page itself, so what it stores as a
+      // verbatim metric is checked against the page it actually holds.
+      if (guarded.itemType === "case_study") caseStudyItemIds.push(post.id);
       if (mine) {
         named.push({
           id: post.id,
@@ -246,6 +257,17 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
         });
       }
     }
+  }
+
+  // Content Intelligence v2 P3 — hand the customer stories over. Fired even on a
+  // capture that emitted no `named_you`, and never on a baseline (that path returns
+  // long before here), so a blog's back catalogue is never read as fresh wins.
+  if (caseStudyItemIds.length > 0) {
+    await ingestCaseStudies.enqueue({
+      snapshotId: snapshot.id,
+      competitorId: competitor.id,
+      contentItemIds: caseStudyItemIds,
+    });
   }
 
   // ── Signal ──────────────────────────────────────────────────────────────────
@@ -260,6 +282,7 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
     inserted,
     fetched: fetched.length,
     enriched: enrichedCount,
+    caseStudies: caseStudyItemIds.length,
     emitted,
   });
   return {

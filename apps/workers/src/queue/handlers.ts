@@ -24,6 +24,7 @@ import {
   mineJobFacts,
   ingestContentItems,
   ingestBlogPosts,
+  ingestCaseStudies,
   notifyOnboardingAnalysis,
   scheduleScraping,
   scheduleTechStack,
@@ -61,6 +62,7 @@ import { runExtractJobs } from "../core/extract-jobs";
 import { runMineJobFacts } from "../core/mine-job-facts";
 import { runIngestContentItems } from "../core/ingest-content-items";
 import { runIngestBlogPosts } from "../core/ingest-blog-posts";
+import { runIngestCaseStudies } from "../core/ingest-case-studies";
 import { runDetectHiringFootprint } from "../core/detect-hiring-footprint";
 import { runDetectSalaryShifts } from "../core/detect-salary-shifts";
 import { runExtractReviews } from "../core/extract-reviews";
@@ -178,6 +180,7 @@ export async function registerHandlers(role: WorkerRole): Promise<string[]> {
     await on(mineJobFacts, runMineJobFacts);
     await on(ingestContentItems, runIngestContentItems);
     await on(ingestBlogPosts, runIngestBlogPosts);
+    await on(ingestCaseStudies, runIngestCaseStudies);
     await on(detectHiringFootprint, runDetectHiringFootprint);
     await on(detectSalaryShifts, runDetectSalaryShifts);
 

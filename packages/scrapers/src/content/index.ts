@@ -7,3 +7,4 @@ export * from "./blog-run";
 export * from "./blog-enrich";
 export * from "./article-text";
 export * from "./named-you";
+export * from "./customers";

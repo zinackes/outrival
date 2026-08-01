@@ -32,6 +32,7 @@ const ROLES_COLLAPSED = 6;
 const PLANS_COLLAPSED = 6;
 const FACTS_COLLAPSED = 4;
 const ENTRIES_COLLAPSED = 5;
+const CUSTOMERS_COLLAPSED = 6;
 
 export function SignalFacts({ facts }: { facts: Facts }) {
   if (!facts) return null;
@@ -39,6 +40,8 @@ export function SignalFacts({ facts }: { facts: Facts }) {
   if (facts.kind === "job_facts") return <JobFacts facts={facts} />;
   if (facts.kind === "salary") return <SalaryFacts facts={facts} />;
   if (facts.kind === "content") return <ContentFacts facts={facts} />;
+  if (facts.kind === "case_study") return <CaseStudyFacts facts={facts} />;
+  if (facts.kind === "customer_win") return <CustomerWinFacts facts={facts} />;
   return <PricingFacts facts={facts} />;
 }
 
@@ -153,6 +156,117 @@ function ContentFacts({ facts }: { facts: Extract<Facts, { kind: "content" }> })
           <CaretDownIcon size={14} aria-hidden />
           <span className="tabular-nums">{hidden}</span> more
         </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The customer story a competitor just published.
+ *
+ * The signal says a story went out; this says WHO it is about, in which market,
+ * and — the part a sales team acts on — the results the page claims, in the
+ * competitor's own words. Every metric here was checked against the page before it
+ * was stored, so each one is quoted rather than paraphrased.
+ *
+ * An anonymised story ("a leading European bank") names nobody, and that is shown
+ * as what it is instead of being filled in.
+ */
+function CaseStudyFacts({ facts }: { facts: Extract<Facts, { kind: "case_study" }> }) {
+  return (
+    <div>
+      <p className="text-dense text-muted-foreground">
+        <span className="font-medium text-foreground">
+          {facts.customerName ?? "An unnamed customer"}
+        </span>
+        {facts.industry && <> · {facts.industry}</>}
+        {facts.sameMarket && (
+          <> · <span className="font-medium text-foreground">your market</span></>
+        )}
+      </p>
+
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-2">
+        <a
+          href={facts.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          {facts.title ?? facts.url}
+          <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
+        </a>
+      </div>
+
+      {facts.metrics.length > 0 && (
+        <ul className="mt-2 space-y-1.5">
+          {facts.metrics.map((m) => (
+            <li
+              key={m}
+              className="border-l-2 border-border pl-2 text-xs text-muted-foreground"
+            >
+              {m}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Customers we had never seen this competitor claim.
+ *
+ * The date is when WE first saw them, not when the deal closed — the page carries
+ * no such date, and inventing one would turn our scrape schedule into their sales
+ * calendar. Names are only ever added: a logo that disappears says nothing, since
+ * walls rotate and paginate.
+ */
+function CustomerWinFacts({ facts }: { facts: Extract<Facts, { kind: "customer_win" }> }) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? facts.customers : facts.customers.slice(0, CUSTOMERS_COLLAPSED);
+  const hidden = facts.customersTotal - shown.length;
+
+  return (
+    <div>
+      <p className="text-dense text-muted-foreground">
+        <span className="font-medium text-foreground tabular-nums">{facts.customersTotal}</span>{" "}
+        {facts.customersTotal === 1 ? "customer" : "customers"} we had not seen before
+      </p>
+
+      <ul className="mt-2 space-y-1.5">
+        {shown.map((c) => (
+          <li key={c.name} className="flex flex-wrap items-baseline gap-x-2">
+            <span className="text-sm text-foreground">{c.name}</span>
+            {c.firstSeenAt && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                first seen {c.firstSeenAt}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      {hidden > 0 && !expanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <CaretDownIcon size={14} aria-hidden />
+          <span className="tabular-nums">{hidden}</span> more
+        </button>
+      )}
+
+      {facts.evidenceUrl && (
+        <a
+          href={facts.evidenceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-flex items-baseline gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          Their customers page
+          <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
+        </a>
       )}
     </div>
   );

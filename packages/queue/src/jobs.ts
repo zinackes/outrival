@@ -79,6 +79,24 @@ export type IngestContentItemsPayload = {
  * `content` signal on a new post, and `competitor_named_you` is an additional signal
  * of a different category, written onto its own anchor. */
 export type IngestBlogPostsPayload = { snapshotId: string; competitorId: string };
+/**
+ * Content Intelligence v2 P3 — read a competitor's customer proof.
+ *
+ * Two entry points write the same payload: the sitemap branch, when new URLs match
+ * a customers path, and the blog reader, when a post it just enriched turned out to
+ * be a case study. `snapshotId` is the capture that triggered it, which becomes the
+ * evidence side of any change row, exactly as `competitor_named_you` does.
+ *
+ * `urls` are pages to read directly; when it is absent the job probes for the
+ * competitor's customers index (once — the address is cached afterwards) and reads
+ * that. `contentItemIds` links a story back to the feed entry it came from.
+ */
+export type IngestCaseStudiesPayload = {
+  snapshotId: string;
+  competitorId: string;
+  urls?: string[];
+  contentItemIds?: string[];
+};
 export type ExtractReviewsPayload = { snapshotId: string; competitorId: string; source: string };
 export type ScrapeAiVisibilityPayload = { orgId: string; notifyOnComplete?: boolean };
 export type RefreshCompetitorSummaryPayload = {
@@ -274,6 +292,13 @@ export const ingestContentItems = defineJob<IngestContentItemsPayload>("ingest-c
 // others do not: up to twenty sequential post fetches, each waiting the polite
 // per-domain gap, before any model call happens.
 export const ingestBlogPosts = defineJob<IngestBlogPostsPayload>("ingest-blog-posts", {
+  expireInSeconds: 900,
+});
+// Customer-proof reading (Content Intelligence v2 P3), event-triggered off the
+// sitemap branch and off the blog reader. Same window as its blog sibling and for
+// the same reason: it fetches up to ten pages sequentially, each waiting the polite
+// per-domain gap, before any model call happens.
+export const ingestCaseStudies = defineJob<IngestCaseStudiesPayload>("ingest-case-studies", {
   expireInSeconds: 900,
 });
 // Hiring footprint detectors (Hiring Intelligence v2 P2), event-triggered per

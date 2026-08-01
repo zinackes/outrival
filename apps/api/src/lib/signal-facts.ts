@@ -1,8 +1,16 @@
-import { and, eq, gt, gte, lte, sql as dsql, type SQL } from "drizzle-orm";
-import { changes, contentItems, jobPostings, postingFacts } from "@outrival/db";
+import { and, eq, gt, gte, inArray, lte, sql as dsql, type SQL } from "drizzle-orm";
+import {
+  caseStudies,
+  changes,
+  contentItems,
+  jobPostings,
+  knownCustomers,
+  postingFacts,
+} from "@outrival/db";
 import {
   diffEntitlements,
   diffPriceTiers,
+  industryLabel,
   normalizeDepartment,
   DEPARTMENT_BUCKET_LABELS,
   type DepartmentBucket,
@@ -116,6 +124,16 @@ export interface ContentEntryFact {
   snippet?: string | null;
 }
 
+/** One customer we had never seen this competitor claim. */
+export interface CustomerFact {
+  /** As the page wrote it. */
+  name: string;
+  /** "YYYY-MM-DD" — when WE first saw them, which is the only date we have. */
+  firstSeenAt: string | null;
+  /** Where we saw them: the customers page, or the story that named them. */
+  evidenceUrl: string | null;
+}
+
 /** The cadence a shipping_velocity signal is about, and the months behind it. */
 export interface VelocityFact {
   month: string;
@@ -186,6 +204,29 @@ export type SignalFacts =
       entriesTotal: number;
       velocity: VelocityFact | null;
     }
+  | {
+      /** The customer story this signal is about (Content Intelligence v2 P3). */
+      kind: "case_study";
+      title: string | null;
+      url: string;
+      /** Null on an anonymised story — which is a fact, not a gap. */
+      customerName: string | null;
+      /** Human label of the market ("HR tech"), or the page's own wording. */
+      industry: string | null;
+      /** The reader's own market and the story's are the same catalog slug. */
+      sameMarket: boolean;
+      /** Result claims VERBATIM from the page, substring-verified before storage. */
+      metrics: string[];
+    }
+  | {
+      /** Customers named for the first time (Content Intelligence v2 P3). */
+      kind: "customer_win";
+      customers: CustomerFact[];
+      /** Names before the cap, so a truncated list can say what it is hiding. */
+      customersTotal: number;
+      /** The page they were read off, so a win can be checked at its source. */
+      evidenceUrl: string | null;
+    }
   | null;
 
 // A board can open fifty roles at once and a catalog can carry thirty plans. The
@@ -204,6 +245,9 @@ const MAX_BAND_ROLES = 8;
 // A release month can hold forty entries; the block names the release, it does
 // not reproduce the changelog.
 const MAX_CONTENT_ENTRIES = 12;
+// A wall refresh can add a dozen logos at once; the block names the win, it does
+// not reproduce the customers page.
+const MAX_CUSTOMER_FACTS = 12;
 
 // How long after a change its extraction may still land. The extractor is
 // enqueued in the same scrape run, but it is the WORKER that stamps the row, and
@@ -463,6 +507,94 @@ async function namedYouFacts(monitorId: string, detectedAt: Date): Promise<Signa
   if (!row) return null;
 
   return { kind: "content", entries: [row], entriesTotal: 1, velocity: null };
+}
+
+/**
+ * The customer proof behind a `case_study_published` or `customer_win` signal
+ * (Content Intelligence v2 P3).
+ *
+ * Read off the change's OWN rawDiff — the story id, or the exact names — rather
+ * than a time window. Both signals are about a NAMED set that the emitter already
+ * decided; a window over `known_customers` would sweep in whatever else the same
+ * run happened to record, so a one-customer win would render as four.
+ */
+async function customerFacts(
+  competitorId: string,
+  monitorId: string,
+  detectedAt: Date,
+): Promise<SignalFacts> {
+  const [change] = await db
+    .select({ rawDiff: changes.rawDiff })
+    .from(changes)
+    .where(and(eq(changes.monitorId, monitorId), eq(changes.detectedAt, detectedAt)))
+    .limit(1);
+
+  const raw = change?.rawDiff as Record<string, unknown> | null | undefined;
+  if (!raw) return null;
+
+  if (raw.kind === "case_study_published") {
+    const id = typeof raw.caseStudyId === "string" ? raw.caseStudyId : null;
+    if (!id) return null;
+    const [row] = await db
+      .select({
+        title: caseStudies.title,
+        url: caseStudies.url,
+        customerName: caseStudies.customerName,
+        industry: caseStudies.customerIndustry,
+        industryLabel: caseStudies.customerIndustryLabel,
+        isCanonical: caseStudies.isCanonicalIndustry,
+        metrics: caseStudies.metricsClaimed,
+      })
+      .from(caseStudies)
+      .where(eq(caseStudies.id, id))
+      .limit(1);
+    if (!row) return null;
+    return {
+      kind: "case_study",
+      title: row.title,
+      url: row.url,
+      customerName: row.customerName,
+      // A canonical slug renders as its shared label; a free-text one renders as
+      // the page's own wording, which is all it ever was.
+      industry: row.industry
+        ? row.isCanonical === 1
+          ? industryLabel(row.industry)
+          : (row.industryLabel ?? row.industry.replace(/_/g, " "))
+        : null,
+      sameMarket: raw.sameMarket === true,
+      metrics: row.metrics ?? [],
+    };
+  }
+
+  if (raw.kind === "customer_win") {
+    const names = Array.isArray(raw.names)
+      ? raw.names.filter((n): n is string => typeof n === "string")
+      : [];
+    if (names.length === 0) return null;
+    const rows = await db
+      .select({
+        name: knownCustomers.displayName,
+        firstSeenAt: dsql<string | null>`to_char(${knownCustomers.firstSeenAt}, 'YYYY-MM-DD')`,
+        evidenceUrl: knownCustomers.evidenceUrl,
+      })
+      .from(knownCustomers)
+      .where(
+        and(
+          eq(knownCustomers.competitorId, competitorId),
+          inArray(knownCustomers.displayName, names),
+        ),
+      )
+      .orderBy(knownCustomers.firstSeenAt);
+    if (rows.length === 0) return null;
+    return {
+      kind: "customer_win",
+      customers: rows.slice(0, MAX_CUSTOMER_FACTS),
+      customersTotal: rows.length,
+      evidenceUrl: typeof raw.evidenceUrl === "string" ? raw.evidenceUrl : null,
+    };
+  }
+
+  return null;
 }
 
 /** This competitor's changelog entries matching `predicate`, newest first. */
@@ -849,7 +981,8 @@ export async function buildSignalFacts(args: {
     sourceType !== "hiring_salary" &&
     sourceType !== "changelog" &&
     sourceType !== "shipping_velocity" &&
-    sourceType !== "comparison_page"
+    sourceType !== "comparison_page" &&
+    sourceType !== "customer_proof"
   ) {
     return null;
   }
@@ -867,6 +1000,9 @@ export async function buildSignalFacts(args: {
     }
     if (sourceType === "comparison_page") {
       return await namedYouFacts(monitorId, new Date(detectedAt));
+    }
+    if (sourceType === "customer_proof") {
+      return await customerFacts(competitorId, monitorId, new Date(detectedAt));
     }
     const window = await attributionWindow(monitorId, new Date(detectedAt));
     if (sourceType === "jobs") return await hiringFacts(competitorId, window);

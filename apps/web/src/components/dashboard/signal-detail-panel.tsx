@@ -682,6 +682,8 @@ export function SignalDetailPanel({
               {hasVisual && (
                 <VisualDiff
                   signalId={signal.id}
+                  beforeCapturedAt={detail?.screenshots?.beforeCapturedAt}
+                  afterCapturedAt={detail?.screenshots?.afterCapturedAt}
                   onUnavailable={() => setVisualFailed(true)}
                 />
               )}

@@ -114,6 +114,8 @@ export function SignalEvidence({
           <Label>Visual change</Label>
           <VisualDiff
             signalId={signalId}
+            beforeCapturedAt={detail.screenshots?.beforeCapturedAt}
+            afterCapturedAt={detail.screenshots?.afterCapturedAt}
             onUnavailable={() => setVisualFailed(true)}
           />
         </section>

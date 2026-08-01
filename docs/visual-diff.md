@@ -134,8 +134,9 @@ org, degrade gracefully when a side is missing. typecheck + build green.
 ## 6. Edge cases & the reflow caveat
 
 - **Before is null** (first-ever snapshot for the monitor) → after-only, no diff.
-- **Non-homepage sources** → no screenshot (capture is homepage-only today) → section
-  hidden. Extending capture to other sources is a separate scope.
+- **Sources that never render** → no screenshot → section hidden. Homepage always
+  captures (it floors its scrape at the render level); pricing captures on the runs
+  that render anyway (§8bis). A source that resolves at L0 has no picture to show.
 - **Pre-patch-17 snapshots** → `screenshot_phash` null → treated as "no screenshot".
 - **Differing dimensions (the real wrinkle):** `fullPage` screenshots change *height*
   between captures (content added/removed), so naive `pixelmatch` (which requires equal
@@ -162,6 +163,39 @@ org, degrade gracefully when a side is missing. typecheck + build green.
   `screenshots` flags correct (homepage w/ phash vs not).
 - Web: build green; visual-diff renders side-by-side + slider; degraded states; no
   broken images when a side is absent.
+
+## 8bis. Shipped corrections (2026-08-01)
+
+Measured on prod over 30 days: 343 signals, of which only **40 could render a diff**.
+Three separate causes, all addressed here.
+
+1. **The wipe was inverted.** The after capture was revealed from the LEFT
+   (`clip-path: inset(0 {100-pos}% 0 0)`) while the "Before" chip sat on that same
+   left edge — so the pane labelled *Before* showed the newest capture, i.e. the page
+   as it looks right now, and every reading of the change came out backwards. The
+   after is now clipped off on the left (`inset(0 0 0 {pos}%)`), which puts it on the
+   right, under its own label. Verified against signal
+   `96c94633` (Zentrik): the R2 objects themselves were correct all along — the
+   07-23 capture carries the long hero subheadline, the 07-31 one the short
+   replacement, exactly as `human_change_before/after` records them.
+2. **Availability was gated on the source, not on capture.** `sourceType ===
+   "homepage"` was redundant with the pHash test (a pHash exists exactly when a PNG
+   was written) and it hard-coded the one source that captured at the time. Now the
+   pHash alone decides, so the feature follows capture wherever it spreads.
+3. **Only the homepage ever captured.** Pricing was the largest source with no
+   picture at all (100 of the 343 signals). It now sets `screenshotIfRendered`, a new
+   scrape option that captures **only when the run was already going to render** —
+   render retry, a learned `requiresLevel`, datacenter egress. That is 368 of 976
+   pricing scrapes measured over 14 days, at zero added browser passes. Flooring
+   pricing at L1 outright (as `screenshot` does) was rejected: it would add ~43
+   renders a day *and* change the captured HTML of every currently-L0 pricing page at
+   once, which the lexical diff would read as a change on every one of them.
+
+**Still without a diff, by construction:** 50 of the 53 homepage signals missing a
+before side have an `origin='archive'` before snapshot — a Wayback HTML
+reconstruction, which can never carry a PNG. Those changes get an after capture only,
+and the section stays hidden (one picture is not a comparison). This shrinks on its
+own as live-to-live changes replace onboarding backfill.
 
 ## 9. Open questions
 

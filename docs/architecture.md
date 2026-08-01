@@ -602,6 +602,22 @@ hiring_salary_bands competitor_id, department_bucket, currency, p25, p50, p75, n
                     un p50 sur deux rôles est un nombre, pas un taux de marché.
                     Bucket 'unknown' exclu. Rien ne signale sous n=3
 job_counts          competitor_id, department, count, recorded_at
+ats_coverage_gaps   platform, host, competitor_id, resolution (api_adapter|json_ld|
+                    ai_fallback|none), job_count, occurrences, last_seen_at —
+                    Hiring Intelligence v2 P4 (migration 0064) : COMMENT le board
+                    jobs de chaque concurrent est réellement lu, c'est-à-dire la
+                    boucle d'apprentissage qui décide du prochain adapter ATS.
+                    UPSERT par (platform, competitor), pas append-only : la question
+                    est l'état COURANT d'un board plus le nombre de fois qu'on l'a
+                    rencontré. `occurrences` s'incrémente, `resolution`/`job_count`
+                    sont écrasés — un board qui se met à résoudre par le markup
+                    quitte la liste des trous le jour même. `platform` vient de la
+                    détection PASSIVE (`detectAtsPlatform`, reconnaît sans fetcher :
+                    les 9 adapters + teamtailor/join/softgarden/taleez/talentsoft/
+                    jobylon/factorial/breezy/bamboohr/pinpoint/homerun), donc un trou
+                    est NOMMÉ. Lecture : `pnpm --filter @outrival/workers ats:coverage`
+                    (classement par occurrences × job_count — ni le nombre de boards
+                    ni le volume d'annonces ne suffit seul)
 hiring_metrics      competitor_id, department_bucket, open_count, week_start,
                     recorded_at — hiring-velocity : open-role count PAR bucket
                     canonique (8 buckets + unknown) et PAR semaine ISO. Unique
@@ -888,7 +904,35 @@ carte (état live uniquement).
                    selected » : sans étiquette, l'extracteur voyait un 2e jeu de montants nus,
                    indiscernable de plans mensuels moins chers)
        jobs    → extract-jobs    → diff actives + Postgres job_counts
-                  (structured-first = ATS API JSON island puis JobPosting JSON-LD ; pipeline complet.
+                  (ÉCHELLE DE RÉSOLUTION EXCLUSIVE (Hiring Intelligence v2 P4) : adapter API
+                   connu → parseur JSON-LD générique → plancher AI. Jamais deux voies sur le
+                   même board, jamais de double ingestion. Le rung générique
+                   (`@outrival/scrapers` jobs/jsonld.ts) lit le `JobPosting` schema.org que
+                   presque tout ATS émet pour Google Jobs, et couvre d'un coup Teamtailor,
+                   JOIN, Softgarden, Taleez, Jobylon et la longue traîne des career sites
+                   maison. Bonus structurel : le JSON-LD porte description + baseSalary +
+                   addressCountry, donc P1 (mining), P2 (géo) et P3 (bandes de salaire)
+                   s'allument sur ces boards sans code en plus. Deux formes, dans cet ordre :
+                   (a) la page porte ses annonces → zéro fetch en plus ; (b) elle liste des
+                   pages job du MÊME host → seules les NOUVELLES sont ouvertes (dédup par URL
+                   canonique contre `job_postings`, via `ScrapeOptions.knownJobs`), une à une
+                   par `scrapePage` donc robots.txt + Crawl-delay + gap par domaine honorés,
+                   cap 30/run — le reste au run suivant, elles sont neuves donc leur absence
+                   n'est jamais lue comme une fermeture.
+                   CYCLE DE VIE : sur ce rung, ce qui rend un rôle OUVERT c'est d'être SUR LA
+                   LISTING, pas d'avoir eu sa page ouverte. Une listing non terminée
+                   (pagination au-delà de 5 pages, page en échec) rend donc `null` et non un
+                   préfixe — même doctrine que le `truncated` de fetchAtsJobs : un préfixe de
+                   board ferme tout ce qui dépasse. La pagination n'est suivie que par les
+                   liens que la page REND (`rel=next`, `?page=`), jamais devinée. Une annonce
+                   déjà connue est reportée avec son titre et son département VERBATIM, parce
+                   que computeJobsDelta clé sur ce couple et qu'une re-dérivation depuis la
+                   carte de listing re-clé la moitié du board.
+                   Teamtailor = entrée PROVIDERS SANS `api` (leur JSON est token-gated) : le
+                   board se résout en sautant sur la listing hébergée `{slug}.teamtailor.com`
+                   — qui 301 vers le domaine vanity du client — et en lisant le markup des
+                   pages job. Chaque run écrit sa voie dans `ats_coverage_gaps`.
+                   structured-first = ATS API JSON island puis JobPosting JSON-LD ; pipeline complet.
                    patch-32 : 7 ATS — Greenhouse/Lever/Ashby/SmartRecruiters/Recruitee/Workable +
                    Personio (feed XML) ; schéma cross-ATS enrichi séniorité/datePost/salaire normalisé.
                    + Workday et iCIMS, les deux ATS d'entreprise, PAGINÉS (les 7 autres

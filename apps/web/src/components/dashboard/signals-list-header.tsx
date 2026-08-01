@@ -171,7 +171,7 @@ export function SignalsListHeader({
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={onShowShortcuts}>
-              <KeyboardIcon size={16} /> KeyboardIcon shortcuts
+              <KeyboardIcon size={16} /> Keyboard shortcuts
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

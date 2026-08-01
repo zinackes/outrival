@@ -13,7 +13,7 @@ export function AdminMobileNav() {
         <SheetTrigger asChild>
           <Button variant="outline" size="sm">
             <ListIcon className="size-4" />
-            ListIcon
+            Menu
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-72 overflow-y-auto p-4">

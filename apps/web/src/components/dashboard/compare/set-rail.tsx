@@ -21,7 +21,7 @@ import { YouTag, type CompareEntity } from "./lens";
 
 /**
  * The compared set, made visible. It used to live only in the table's own headers,
- * with a remove-XIcon that appeared on hover, so the one thing the page is *about* — who
+ * with a remove-X that appeared on hover, so the one thing the page is *about* — who
  * is in this comparison — could not be read at a glance or edited without hunting.
  */
 

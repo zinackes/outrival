@@ -154,11 +154,11 @@ function RecoveryCodes({
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={copy}>
           <CopyIcon size={16} />
-          CopyIcon
+          Copy
         </Button>
         <Button variant="outline" size="sm" onClick={download}>
           <DownloadSimpleIcon size={16} />
-          DownloadSimpleIcon
+          Download
         </Button>
       </div>
       <label className="flex items-center gap-2 text-dense text-foreground">

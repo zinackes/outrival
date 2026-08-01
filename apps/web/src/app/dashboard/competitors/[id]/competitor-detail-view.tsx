@@ -162,7 +162,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: typeof PulseIcon }> = [
 const VISIBLE_TABS = TABS;
 
 // Per-tab freshness dot (patch-14): tabs backed by monitored sources show how
-// recent that section's data is. PulseIcon (signal feed) has no single source → no dot.
+// recent that section's data is. Activity (signal feed) has no single source → no dot.
 const TAB_SOURCES: Partial<Record<TabKey, string[]>> = {
   pricing: ["pricing"],
   hiring: ["jobs"],
@@ -412,7 +412,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
     toast.success("Competitor updated");
   }
 
-  // Kebab → PauseIcon / Resume monitoring. Optimistic local flip; the scheduler honours
+  // Kebab → Pause / Resume monitoring. Optimistic local flip; the scheduler honours
   // the flag on its next cycle.
   async function toggleMonitoringPaused() {
     if (!data) return;
@@ -616,7 +616,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
   }
 
   // What landed since the last time this competitor was opened. Read once on
-  // mount so the highlight is stable for the session; shared with the PulseIcon
+  // mount so the highlight is stable for the session; shared with the Activity
   // tab, which flags the same signals in its own list.
   const lastVisit = useLastVisit(`competitor:${id}`);
 
@@ -1184,7 +1184,7 @@ function Header({
                 </>
               ) : (
                 <>
-                  <PauseIcon size={16} /> PauseIcon monitoring
+                  <PauseIcon size={16} /> Pause monitoring
                 </>
               )}
             </DropdownMenuItem>

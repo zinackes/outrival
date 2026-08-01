@@ -78,6 +78,7 @@ beforeAll(async () => {
   const realQueue = await import("@outrival/queue");
   const realShared = await import("@outrival/shared");
   const realAi = await import("@outrival/ai");
+  const realAnalytics = await import("../src/lib/analytics");
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
@@ -113,7 +114,12 @@ beforeAll(async () => {
       return { items: batch.map((_, index) => ({ index, item_type: "feature", summary: "" })) };
     },
   }));
+  // Spread the REAL module: mock.module replaces it process-globally, and the
+  // files that run after this one read other exports off it (getHiringMetricsHistory,
+  // getArchivedPricingBatchTimes). Returning only `loggedAi` makes THEIR imports a
+  // SyntaxError, in a file that has nothing to do with this one.
   mock.module("../src/lib/analytics", () => ({
+    ...realAnalytics,
     loggedAi: async <T>(_task: string, _cfg: unknown, fn: () => Promise<T>) => fn(),
   }));
 

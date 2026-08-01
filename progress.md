@@ -1875,3 +1875,90 @@ structurellement. La DB de DEV ne l'a PAS — à appliquer avant de relancer `pn
 
 **Prochaine session** : P4, éditorial & Content tab (`editorial_pivot` + maquette
 artifact OBLIGATOIRE avant câblage, décision 3 de la card). NE PAS commencer sans /clear.
+
+---
+
+## Content Intelligence v2 — P4 : éditorial & Content tab (2026-08-01)
+
+**Le constat** : P2 a donné des topics à chaque post de blog ; rien ne les relisait.
+`content_items` accumulait des lignes que trois signaux interrogeaient et qu'aucune
+surface n'affichait — le blog, le changelog, la roadmap et les docs restaient quatre
+paragraphes classifiés puis oubliés.
+
+**GO maquette** : artifact soumis à Mathys AVANT tout code app (décision 3 de la card),
+validé sans retouche — « Les couleurs me vont. Pour la source ca me va. Tout le reste me
+va aussi, donc go ». La tab câblée suit la maquette structure pour structure.
+📄 maquette : https://claude.ai/code/artifact/d6c3e7cb-ce50-4aeb-aa5f-98c1eea0dccc
+
+**Réalisé** :
+- `@outrival/shared/editorial-metrics.ts` — 100% pur, zéro I/O : `topicDistribution`
+  (fenêtre demi-ouverte, `published_at ?? first_seen_at`, un topic répété dans un post
+  compte UNE fois), `jensenShannonDivergence` (base 2 → échelle réelle [0,1], **null**
+  quand un côté ne dit rien : ni 0 « rien n'a bougé » ni 1 « tout a bougé » ne serait
+  vrai), `risingDeclining` (rangé par PART, pas par compte — sinon publier deux fois
+  plus fait « monter » tout le monde), `cadenceByMonth` (dense, mois vide = vrai zéro,
+  mois courant marqué `partial`), `typeMix`, `detectEditorialPivot`. 50 tests.
+- Signal `editorial_pivot` MEDIUM, catégorie `content` (enum NON étendu), déterministe
+  de bout en bout. Ancre dédiée `editorial_shift` (migration 0068) — PAS le change blog :
+  `signals.changeId` est unique, donc s'y accrocher ferait perdre en silence l'un des
+  deux signaux (le classifieur lexical possède ce change), et la chaîne de snapshots du
+  monitor blog EST son registre de dédup.
+- Read side : `buildSignalFacts` kind `editorial` (lu sur le rawDiff du change, jamais
+  recalculé — la fenêtre a glissé depuis) + son rendu web.
+- API : `GET /:id/content` (timeline paginée, filtres source/type/période **en SQL**) et
+  `GET /:id/content-summary` (cadence, thèmes, type mix, totaux — UNE requête).
+- **Content tab v1** : verdict, FactStrip, callout pivot, cadence empilée par source,
+  thèmes, filtres, timeline groupée par mois, les deux empty states. Insérée entre
+  Reviews et Positioning. `content` sort de `RETIRED_TABS` (redevenu une vraie clé).
+
+**Les trois règles que la maquette a figées, et qui sont dans le code** :
+1. **La couleur n'est dépensée que sur les 3 types qui alertent** (`breaking` critical,
+   `deprecation`/`security` high). Teinter les 14 types aurait fait une planche
+   d'autocollants et n'aurait rien laissé à scanner.
+2. **Le mois en cours est dessiné OUVERT**, pas omis : le détecteur de cadence
+   n'évalue jamais un mois partiel, et un mois qui disparaît en silence laisse le
+   lecteur chercher où il est passé.
+3. **Un item non lu est affiché en entier** (titre, date, source, « not read yet »).
+   Le cacher ferait dire à la timeline qu'ils ont publié moins que la réalité — la
+   seule chose qu'un feed concurrentiel ne peut pas faire.
+
+**Zéro call AI ajouté** : vérifié, pas supposé — 2 sites d'appel AI dans
+`ingest-blog-posts.ts` avant, 2 après (l'enrichissement P2, inchangé). Toute la phase
+compte des topics que P2 avait déjà extraits et substring-checkés.
+
+**Conséquence assumée, documentée dans le détecteur** : `editorial_pivot` ne peut pas
+tirer avant ~6 mois de tracking. Les posts antérieurs à P2 ont été baselinés et jamais
+ouverts, et un post non ouvert ne porte pas de topics. C'est le design : l'alternative
+compare ce qu'on sait aujourd'hui à une fenêtre qu'on n'a jamais lue, ce qui
+annoncerait un pivot chez tous les concurrents le jour du déploiement.
+
+**La garde qui compte, et qui a failli manquer** : le plancher « 8 posts lus par
+fenêtre » se fait contourner par une baseline. Un concurrent onboardé il y a 3 mois a
+30 vieux posts avec `enriched_at` stampé et `topics` NULL — ils auraient rempli les deux
+fenêtres avec des posts que personne n'a ouverts. Le filtre est donc `topics IS NOT
+NULL`, pas `enriched_at IS NOT NULL` : les gardes P2 écrivent toujours un tableau (même
+vide), la baseline ne touche jamais la colonne. La distinction est testée des deux côtés
+(`topics: []` = lu et sans sujet ; `topics: null` = jamais ouvert).
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · shared 699 ✓ (+50) · api 283 ✓ (+17) ·
+scrapers+workers 954 ✓. Vérifié en dev sur fixture, avec la requête EXACTE du worker :
+8+8 posts divergents → pivot (divergence 1.000, « rising: ai agents, security ·
+declining: seo, onboarding, developer experience ») ; 7 posts dans une fenêtre → rien ;
+8+8 sur les mêmes sujets → rien ; 8+8 sur deux sujets seulement → rien.
+
+**Landmine journal drizzle (5e fois)** : `db:generate` a stampé 0068 à 1785585048476,
+SOUS 0067 (1785614303240) — la migration aurait été skippée EN SILENCE. Corrigé à la
+main à 1785614303241, journal vérifié monotone (69 entrées), puis appliqué sur DEV et
+vérifié PAR L'ÉTAT : 69 lignes au ledger = 69 au journal, valeur d'enum
+`editorial_shift` présente. **Ce poste stampe systématiquement en retard — vérifier à
+chaque `db:generate`.**
+
+**Reste côté humain** :
+- Migration 0068 : appliquée sur DEV, **PAS en prod**.
+- Déployer api + web + workers.
+- P4 dépend de P2 en prod : sans posts enrichis, la tab affiche l'empty state 2
+  (cadence réelle, thèmes vides) — ce qui est le comportement voulu, pas une panne.
+
+**Prochaine session** : P5 — roadmap intelligence (`top_request_planned`,
+delivered-rate), `/integrations` → `integration_published`, lens Shipping velocity dans
+le compare. NE PAS commencer sans /clear.

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."source_type" ADD VALUE 'editorial_shift' BEFORE 'docs';

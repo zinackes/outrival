@@ -628,7 +628,88 @@ export type SignalFacts =
       customersTotal: number;
       evidenceUrl: string | null;
     }
+  | {
+      /** The two windows an editorial pivot compared (Content Intelligence v2 P4). */
+      kind: "editorial";
+      /** Jensen-Shannon, base 2 — a real 0-to-1 scale. */
+      divergence: number;
+      windowDays: number;
+      /** Posts READ in each window, the denominator the minimums are checked on. */
+      currentPosts: number;
+      previousPosts: number;
+      currentTopics: TopicFact[];
+      previousTopics: TopicFact[];
+      rising: TopicMoveFact[];
+      declining: TopicMoveFact[];
+    }
   | null;
+
+export interface TopicFact {
+  topic: string;
+  count: number;
+}
+
+export interface TopicMoveFact {
+  topic: string;
+  /** Posts carrying it in the newer window. */
+  now: number;
+  /** And in the older one. */
+  then: number;
+}
+
+/** One row of the Content tab's timeline (Content Intelligence v2 P4). */
+export interface ContentItemRow {
+  id: string;
+  /** blog | changelog | roadmap | docs */
+  sourceType: string;
+  itemType: string | null;
+  /** Roadmap only: the portal's own status word. */
+  status: string | null;
+  title: string;
+  url: string | null;
+  /** ISO, or null when the source dates nothing. */
+  publishedAt: string | null;
+  firstSeenAt: string;
+  topics: string[];
+  summary: string | null;
+  /** We know what this item is. False renders the honest minimal row. */
+  enriched: boolean;
+}
+
+export interface ContentTimeline {
+  items: ContentItemRow[];
+  total: number;
+  hasMore: boolean;
+  /** source_type → items in the PERIOD, whatever source is selected. */
+  sourceCounts: Record<string, number>;
+  periodDays: number;
+}
+
+export interface ContentSummary {
+  windowDays: number;
+  cadence: Array<{
+    /** "YYYY-MM" */
+    month: string;
+    total: number;
+    bySource: Record<string, number>;
+    /** The month still running: drawn open, counted toward nothing. */
+    partial: boolean;
+  }>;
+  /** Top subjects, ranked by whichever window holds more of them. */
+  themes: Array<{ topic: string; now: number; then: number }>;
+  typeMix: Array<{ itemType: string | null; count: number }>;
+  totals: {
+    published: number;
+    previousPublished: number;
+    perMonth: number;
+    previousPerMonth: number;
+    /** Blog posts we opened in each window — what the themes rest on. */
+    postsRead: number;
+    previousPostsRead: number;
+    unread: number;
+    namesYou: number;
+  };
+}
 
 export interface CompetitorCustomers {
   /** Canonical markets only, most-published first. */
@@ -2936,6 +3017,25 @@ export const api = {
   // ones that were already on the wall. Every list travels with its own n.
   getCompetitorCustomers: (id: string) =>
     request<CompetitorCustomers>(`/api/competitors/${id}/customers`),
+  // Content Intelligence v2 P4 — what they published, filtered and paged SERVER
+  // side: an established competitor's blog + changelog + docs is thousands of rows.
+  getCompetitorContent: (
+    id: string,
+    params: { source?: string; type?: string; period?: number; limit?: number; offset?: number } = {},
+  ) => {
+    const q = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== "all") q.set(key, String(value));
+    }
+    const query = q.toString();
+    return request<ContentTimeline>(
+      `/api/competitors/${id}/content${query ? `?${query}` : ""}`,
+    );
+  },
+  // The aggregates above the timeline: cadence by month, themes against the
+  // previous quarter, and the mix of what they publish. Zero AI, all counted.
+  getCompetitorContentSummary: (id: string) =>
+    request<ContentSummary>(`/api/competitors/${id}/content-summary`),
   getCompetitorEntitlements: (id: string) =>
     request<{
       current: EntitlementCell[];

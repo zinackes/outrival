@@ -60,6 +60,8 @@ const SOURCE_LABELS: Record<string, string> = {
   shipping_velocity: "Shipping velocity",
   // Internal anchor for published case studies + first-seen customer names.
   customer_proof: "Customer proof",
+  // Internal anchor for a blog whose mix of subjects moved against its own quarter.
+  editorial_shift: "Editorial shift",
   // Developer documentation (pro+): OpenAPI spec diff, else docs page list.
   docs: "Developer docs",
   // User-watched arbitrary page on the competitor's domain ("Watch a custom page").
@@ -111,6 +113,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   pricing_probe: "Calculator pricing",
   shipping_velocity: "Shipping velocity",
   customer_proof: "Customer proof",
+  editorial_shift: "Editorial shift",
   docs: "Developer docs",
   custom: "Custom page",
   roadmap: "Roadmap portal",

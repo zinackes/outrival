@@ -135,6 +135,16 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // source_type rather than `sitemap` or `blog`, whose snapshot chains are what
   // content-hash dedup diffs the next capture against. Always isActive=false.
   "customer_proof",
+  // Editorial-shift anchor (Content Intelligence v2 P4). Infra-only, like
+  // shipping_velocity / customer_proof: never seeded, never scraped, never
+  // user-selectable. It anchors the snapshot → change → signal chain when the
+  // distribution of subjects a competitor blogs about diverges from its own
+  // previous quarter. A dedicated source_type rather than `blog`: that monitor's
+  // snapshot chain is what content-hash dedup diffs the next capture against, and
+  // hanging the signal off the blog change itself would collide with the lexical
+  // classifier's own signal on it (signals.changeId is unique — one of the two
+  // would silently lose). Always isActive=false.
+  "editorial_shift",
   // Developer documentation (user-selectable, pro+). Structured-first: an OpenAPI /
   // Swagger spec becomes a canonical sorted operation+schema listing (so the generic
   // lexical diff reads as a structural diff), else the docs sitemap's page list plus

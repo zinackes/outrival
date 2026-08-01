@@ -7,6 +7,7 @@ import {
   knownCustomers,
   knownIntegrations,
   postingFacts,
+  techStackEntries,
 } from "@outrival/db";
 import {
   diffEntitlements,
@@ -295,7 +296,39 @@ export type SignalFacts =
       rising: TopicMoveFact[];
       declining: TopicMoveFact[];
     }
+  | {
+      /** The third-party technology a competitor started using (patch-18). */
+      kind: "tech_stack";
+      techs: TechFact[];
+    }
+  | {
+      /** The public rating behind a reviews signal, and what it moved from. */
+      kind: "reviews";
+      /** The surface it was read off ("appstore", "trustpilot"). */
+      source: string;
+      score: number | null;
+      previousScore: number | null;
+      reviewCount: number | null;
+      previousReviewCount: number | null;
+      /** Recurring complaints clustered from the same capture; [] when none. */
+      complaints: ComplaintFact[];
+    }
   | null;
+
+interface TechFact {
+  name: string;
+  category: string;
+  importance: string;
+  /** Where it was detected, verbatim: a response header, a script URL, a DOM
+   * marker. This is what makes the detection checkable rather than asserted. */
+  evidence: string[];
+  firstDetectedAt: string | null;
+}
+
+interface ComplaintFact {
+  theme: string;
+  prevalence: string;
+}
 
 // A board can open fifty roles at once and a catalog can carry thirty plans. The
 // point of the block is to name what moved, not to reproduce the page, so the
@@ -319,6 +352,12 @@ const MAX_CUSTOMER_FACTS = 12;
 // A catalog release can list a batch of connectors; the block names them, it does
 // not reproduce the catalog.
 const MAX_INTEGRATION_FACTS = 12;
+// Evidence per technology. A detector can match a dozen headers on one vendor;
+// two or three name where it was seen, which is the whole job of the list.
+const MAX_TECH_EVIDENCE = 4;
+// Complaint themes are already clustered by the extractor, so the tail is the
+// long one. The top few are what a reader acts on.
+const MAX_COMPLAINT_FACTS = 5;
 
 // How long after a change its extraction may still land. The extractor is
 // enqueued in the same scrape run, but it is the WORKER that stamps the row, and
@@ -1186,6 +1225,146 @@ async function salaryFacts(
  * stack already carry a before/after pair from their deterministic detectors, so
  * they are the smaller gap; see docs/signal-evidence-audit.md wave 2.
  */
+/**
+ * The technology behind a tech-stack signal, with the evidence it was read off.
+ *
+ * The insight says a competitor "has adopted Vercel"; the reader's next question
+ * is how we know, and the answer was sitting unused in `tech_stack_entries`.
+ * Names come off the change's rawDiff — the set the detector decided — for the
+ * same reason integrations do: a window over the entries table would sweep in
+ * everything else the same monthly scan recorded, so a one-tech signal would
+ * render as five.
+ */
+async function techStackFacts(
+  competitorId: string,
+  monitorId: string,
+  detectedAt: Date,
+): Promise<SignalFacts> {
+  const [change] = await db
+    .select({ rawDiff: changes.rawDiff })
+    .from(changes)
+    .where(and(eq(changes.monitorId, monitorId), eq(changes.detectedAt, detectedAt)))
+    .limit(1);
+
+  const raw = change?.rawDiff as Record<string, unknown> | null | undefined;
+  const names = Array.isArray(raw?.added)
+    ? raw.added.filter((n): n is string => typeof n === "string")
+    : [];
+  if (names.length === 0) return null;
+
+  const rows = await db
+    .select({
+      name: techStackEntries.techName,
+      category: techStackEntries.category,
+      importance: techStackEntries.importance,
+      evidence: techStackEntries.evidence,
+      firstDetectedAt: dsql<
+        string | null
+      >`to_char(${techStackEntries.firstDetectedAt}, 'YYYY-MM-DD')`,
+    })
+    .from(techStackEntries)
+    .where(
+      and(
+        eq(techStackEntries.competitorId, competitorId),
+        inArray(techStackEntries.techName, names),
+      ),
+    )
+    .orderBy(techStackEntries.techName);
+  if (rows.length === 0) return null;
+
+  return {
+    kind: "tech_stack",
+    techs: rows.map((r) => ({
+      ...r,
+      // The column is typed as a string list, but it is jsonb: a row written by
+      // an older detector can hold anything, and a block that renders `[object
+      // Object]` as evidence is worse than one that renders none.
+      evidence: Array.isArray(r.evidence)
+        ? r.evidence.filter((e): e is string => typeof e === "string").slice(0, MAX_TECH_EVIDENCE)
+        : [],
+    })),
+  };
+}
+
+/**
+ * The rating a reviews signal is about, against the capture before it.
+ *
+ * A reviews signal said the score moved and showed neither number. Both are in
+ * `review_scores`, written by the same scrape: the latest row inside the
+ * attribution window, and the one strictly before it whatever its age, exactly
+ * as the pricing block reads its two batches.
+ *
+ * Sub-scores are deliberately not read. The column exists, but every surface
+ * still collected (App Store, Trustpilot's public API) publishes an aggregate
+ * only, so the field is null on every row in production and a block that
+ * rendered it would be describing the shape of the table, not the competitor.
+ */
+async function reviewFacts(
+  competitorId: string,
+  window: { lower: Date; upper: Date },
+): Promise<SignalFacts> {
+  const rows = await analyticsQuery<{
+    side: "current" | "previous";
+    source: string;
+    score: number | null;
+    reviewCount: number | null;
+    complaintThemes: unknown;
+  }>(sql`
+    WITH cur AS (
+      SELECT max(recorded_at) AS ts FROM review_scores
+      WHERE competitor_id = ${competitorId}
+        AND recorded_at >= ${window.lower.toISOString()}
+        AND recorded_at <= ${window.upper.toISOString()}
+    ), prev AS (
+      SELECT max(rs.recorded_at) AS ts FROM review_scores rs, cur
+      WHERE rs.competitor_id = ${competitorId} AND rs.recorded_at < cur.ts
+    )
+    SELECT 'current' AS side, rs.source, rs.score,
+           rs.review_count AS "reviewCount", rs.complaint_themes AS "complaintThemes"
+    FROM review_scores rs, cur
+    WHERE rs.competitor_id = ${competitorId} AND rs.recorded_at = cur.ts
+    UNION ALL
+    SELECT 'previous', rs.source, rs.score, rs.review_count, rs.complaint_themes
+    FROM review_scores rs, prev
+    WHERE rs.competitor_id = ${competitorId} AND rs.recorded_at = prev.ts
+  `);
+
+  const current = rows.find((r) => r.side === "current");
+  if (!current) return null;
+  const previous = rows.find((r) => r.side === "previous") ?? null;
+
+  const complaints = Array.isArray(current.complaintThemes)
+    ? (current.complaintThemes as unknown[])
+        .filter(
+          (c): c is ComplaintFact =>
+            typeof c === "object" &&
+            c !== null &&
+            typeof (c as ComplaintFact).theme === "string" &&
+            typeof (c as ComplaintFact).prevalence === "string",
+        )
+        .slice(0, MAX_COMPLAINT_FACTS)
+    : [];
+
+  return {
+    kind: "reviews",
+    source: current.source,
+    score: current.score,
+    previousScore: previous?.score ?? null,
+    reviewCount: current.reviewCount,
+    previousReviewCount: previous?.reviewCount ?? null,
+    complaints,
+  };
+}
+
+/** Review source types whose scrape writes a `review_scores` row. */
+const REVIEW_SOURCES = new Set([
+  "appstore_reviews",
+  "trustpilot_public",
+  "g2_reviews",
+  "capterra_reviews",
+  "review_shift",
+]);
+
 export async function buildSignalFacts(args: {
   monitorId: string | null;
   competitorId: string;
@@ -1206,7 +1385,9 @@ export async function buildSignalFacts(args: {
     sourceType !== "editorial_shift" &&
     sourceType !== "roadmap" &&
     sourceType !== "roadmap_shift" &&
-    sourceType !== "integration_catalog"
+    sourceType !== "integration_catalog" &&
+    sourceType !== "tech_stack" &&
+    !REVIEW_SOURCES.has(sourceType ?? "")
   ) {
     return null;
   }
@@ -1241,10 +1422,16 @@ export async function buildSignalFacts(args: {
     if (sourceType === "integration_catalog") {
       return await integrationFacts(competitorId, monitorId, new Date(detectedAt));
     }
+    // Reads the change's own rawDiff for the same reason integrations do: the
+    // monthly scan records every tech at once, so a window would name them all.
+    if (sourceType === "tech_stack") {
+      return await techStackFacts(competitorId, monitorId, new Date(detectedAt));
+    }
     const window = await attributionWindow(monitorId, new Date(detectedAt));
     if (sourceType === "jobs") return await hiringFacts(competitorId, window);
     if (sourceType === "job_facts") return await jobFactsFacts(competitorId, window);
     if (sourceType === "changelog") return await changelogFacts(competitorId, window);
+    if (REVIEW_SOURCES.has(sourceType ?? "")) return await reviewFacts(competitorId, window);
     return await pricingFacts(competitorId, window);
   } catch {
     return null;

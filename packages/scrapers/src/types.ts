@@ -15,6 +15,13 @@ export interface ScraperResult {
   lastModified?: string;
 }
 
+/** A posting the pipeline already stores, as the jobs scraper needs to see it. */
+export interface KnownJob {
+  url: string;
+  title: string;
+  department: string;
+}
+
 export interface ScrapeOptions {
   fullPage?: boolean;
   /**
@@ -104,6 +111,18 @@ export interface ScrapeOptions {
    * other scraper.
    */
   ambiguousName?: boolean;
+  /**
+   * Jobs source only: the postings we already hold for this competitor, so the
+   * generic JSON-LD rung can tell a role it has never seen from one it is simply
+   * re-reading. New ones get their detail page opened (bounded, polite); known
+   * ones are carried forward from these fields at zero cost.
+   *
+   * `title` and `department` come back VERBATIM on a carry-forward because the
+   * jobs delta keys on exactly that pair: re-deriving them from the listing card
+   * would re-key half the board on a wording change and read as a wave of
+   * closures followed by a wave of new roles.
+   */
+  knownJobs?: KnownJob[];
   /**
    * App Store reviews source only: the storefronts to iterate (2-letter country
    * codes). Set from `monitor.config.countries`; defaults to the country in the app

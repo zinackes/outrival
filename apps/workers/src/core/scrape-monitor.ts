@@ -13,7 +13,7 @@ import {
   backfillHistory,
 } from "@outrival/queue";
 import { z } from "zod";
-import { and, count, desc, eq, gte } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNotNull } from "drizzle-orm";
 import {
   db,
   monitors,
@@ -25,6 +25,7 @@ import {
   monitorAlternatives,
   forcedRescanLog,
   onboardingSessions,
+  jobPostings,
 } from "@outrival/db";
 import { stampFirstScrape } from "../lib/onboarding-funnel";
 import { recordMobileApps } from "../lib/mobile-apps";
@@ -567,6 +568,40 @@ function failureBackoffMs(consecutiveFailures: number): number {
   return (FAILURE_BACKOFF_HOURS[idx] ?? 72) * 60 * 60 * 1000;
 }
 
+/**
+ * The competitor's open postings that carry a URL (Hiring Intelligence v2 P4).
+ *
+ * Only the jobs scraper's generic JSON-LD rung reads these, and only to answer
+ * one question per link on a listing: have we seen this role before? A hit is
+ * carried forward with the title and department EXACTLY as stored — the pair the
+ * jobs delta keys on — so re-reading a board never re-keys it. A miss is what
+ * earns a (bounded, polite) fetch of the posting's own page.
+ *
+ * Postings extracted before this rung existed carry no URL and are simply absent
+ * here: they are matched the way they always were, by title and department.
+ */
+async function loadKnownJobs(competitorId: string) {
+  const rows = await db
+    .select({
+      url: jobPostings.url,
+      title: jobPostings.title,
+      department: jobPostings.department,
+    })
+    .from(jobPostings)
+    .where(
+      and(
+        eq(jobPostings.competitorId, competitorId),
+        eq(jobPostings.isActive, true),
+        isNotNull(jobPostings.url),
+      ),
+    );
+  return rows.map((r) => ({
+    url: r.url as string,
+    title: r.title,
+    department: r.department ?? "Other",
+  }));
+}
+
 // Runtime-neutral job body: shared verbatim by the pg-boss handler and the thin
 // Trigger.dev wrapper in ../jobs/scrape-monitor.job.ts (deleted at the cutover).
 // Only the header, the signature and the fan-out calls change.
@@ -765,6 +800,12 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
           // patch-31 — lets a scraper route via a structured connector (e.g. jobs →
           // ATS API). Null when never detected / detection disabled ⇒ today's path.
           platformProfile: competitor.platformProfile,
+          // Hiring Intelligence v2 P4 — the postings we already hold, so the jobs
+          // scraper's generic JSON-LD rung opens only the pages of roles it has
+          // never seen, and re-affirms the rest for free. Queried for this source
+          // only; every other scraper ignores it.
+          knownJobs:
+            monitor.sourceType === "jobs" ? await loadKnownJobs(competitor.id) : undefined,
           // hackernews source — the DB-free scraper needs the real competitor name
           // (title matching) + the ambiguity flag (strict vs lenient guard).
           competitorName: competitor.name,

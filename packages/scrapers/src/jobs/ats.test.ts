@@ -317,7 +317,15 @@ test("rebuilds a Lever board (provider-specific board URL)", () => {
 });
 
 test("returns null for an unknown provider", () => {
-  expect(atsBoardFromKey("teamtailor:acme")).toBeNull();
+  // Was "teamtailor" until P4 gave it a PROVIDERS entry (board hop + generic
+  // JSON-LD rung, no API). Any name we genuinely do not know does the job.
+  expect(atsBoardFromKey("softgarden:acme")).toBeNull();
+});
+
+test("rebuilds a Teamtailor board, which routes to its hosted listing", () => {
+  // No API mapping on purpose: Teamtailor's JSON is token-gated, so the board is
+  // resolved by hopping to the career site and reading its schema.org markup.
+  expect(atsBoardFromKey("teamtailor:acme")?.boardUrl).toBe("https://acme.teamtailor.com/jobs");
 });
 
 test("returns null for a malformed key", () => {

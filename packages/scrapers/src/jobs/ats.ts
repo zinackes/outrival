@@ -253,8 +253,12 @@ function jobDescription(...parts: unknown[]): string | null {
   return text.length > 0 ? text : null;
 }
 
-/** Build a fully-shaped AtsJob from a partial, filling enrichment defaults. */
-function mkJob(p: {
+/**
+ * Build a fully-shaped AtsJob from a partial, filling enrichment defaults.
+ * Exported for the generic JSON-LD rung (`./jsonld`), so a posting read from
+ * schema.org markup is shaped by the same function as one read from an API.
+ */
+export function mkJob(p: {
   title: string;
   department?: string;
   location?: string | null;
@@ -812,6 +816,51 @@ const PROVIDERS: ProviderDef[] = [
       },
     },
   },
+  {
+    // Teamtailor — the dominant career-site ATS in the Nordics and widespread
+    // across the EU, and the reason the generic JSON-LD rung exists.
+    //
+    // Deliberately NO `api`: Teamtailor's JSON is token-gated (the XML feed is
+    // opt-in per customer), so there is nothing public to call. What it DOES ship,
+    // on every hosted career site, is a `JobPosting` block on each job page — so
+    // the board is resolved by hopping to the hosted listing and letting the
+    // generic rung read the markup. `fetchAtsJobs` returning null here is not a
+    // failure, it is the routing: the scraper follows `boardUrl`.
+    //
+    // `{slug}.teamtailor.com` 301s to the customer's vanity domain when they have
+    // one (lunar.teamtailor.com → jobs.lunar.app), which the cascade follows — so
+    // one pattern covers both hosting shapes. The vanity domain reached DIRECTLY
+    // names no slug anywhere; it is recognised by its asset host instead (see
+    // PASSIVE_PLATFORMS), and needs no board hop because we are already on it.
+    name: "teamtailor",
+    patterns: [/([a-z0-9][a-z0-9-]{1,49})\.teamtailor\.com/i],
+    boardUrl: (t) => `https://${t}.teamtailor.com/jobs`,
+  },
+];
+
+/**
+ * Platforms with no adapter, recognised WITHOUT fetching anything, purely so the
+ * coverage counter can NAME them (`ats_coverage_gaps`). This is the learning loop
+ * that decides which adapter is worth writing next: "37 competitors sit on
+ * softgarden" is an argument, "a lot of boards fall through to the LLM" is not.
+ *
+ * Naming only — none of these is followed or parsed. A platform graduates out of
+ * this list by getting a `PROVIDERS` entry, once the counter says it earns one.
+ */
+const PASSIVE_PLATFORMS: ReadonlyArray<[string, RegExp]> = [
+  // Teamtailor on a customer vanity domain: no slug is stated anywhere on the
+  // page, but every career site loads its assets from this host.
+  ["teamtailor", /teamtailor-cdn\.com|\.teamtailor\.com/i],
+  ["join", /join\.com\/companies\//i],
+  ["softgarden", /softgarden\.(?:io|de|com)/i],
+  ["taleez", /taleez\.com/i],
+  ["talentsoft", /talentsoft\.com|cegid[.-]talentsoft/i],
+  ["jobylon", /jobylon\.com/i],
+  ["factorial", /factorialhr\.com/i],
+  ["breezy", /breezy\.hr/i],
+  ["bamboohr", /bamboohr\.com/i],
+  ["pinpoint", /pinpointhq\.com/i],
+  ["homerun", /homerun\.co\b/i],
 ];
 
 // Path/subdomain segments that are never a real board token.
@@ -832,6 +881,22 @@ export function detectAtsBoard(html: string): AtsBoard | null {
         return { provider: def.name, token, boardUrl: def.boardUrl(token) };
       }
     }
+  }
+  return null;
+}
+
+/**
+ * Name the hiring platform a page sits on, WITHOUT fetching anything. Adapters
+ * first (they carry a token, so they are the stronger read), then the
+ * naming-only list. Null when nothing is recognised — which is itself a fact the
+ * coverage counter records, since "a career site we cannot name" is a different
+ * gap from "a platform we have not adapted yet".
+ */
+export function detectAtsPlatform(html: string): string | null {
+  const board = detectAtsBoard(html);
+  if (board) return board.provider;
+  for (const [name, pattern] of PASSIVE_PLATFORMS) {
+    if (pattern.test(html)) return name;
   }
   return null;
 }
@@ -1088,11 +1153,27 @@ function coerceJob(x: unknown): AtsJob | null {
 }
 
 /**
- * Parse the postings the scraper embedded as a JSON island in the snapshot HTML.
- * Returns null when there is no island (the snapshot is a plain careers/board
- * page → the worker LLM-extracts instead).
+ * Does this platform have a hand-written API adapter, or was it resolved some
+ * other way? The island records the PLATFORM (greenhouse, teamtailor, …); this
+ * is what turns that name into how the board was actually read, which is the
+ * distinction the coverage counter is built on.
  */
-export function parseAtsJobsFromHtml(html: string): AtsJob[] | null {
+export function isApiAdapter(provider: string): boolean {
+  return PROVIDERS.some((p) => p.name === provider && p.api != null);
+}
+
+export interface AtsIsland {
+  provider: string;
+  token: string;
+  jobs: AtsJob[];
+}
+
+/**
+ * Parse the JSON island the scraper embedded in the snapshot HTML, postings and
+ * provenance both. Null when there is no island (the snapshot is a plain
+ * careers/board page → the worker LLM-extracts instead).
+ */
+export function parseAtsIslandFromHtml(html: string): AtsIsland | null {
   const re = new RegExp(
     `<script[^>]*id=["']${ATS_JOBS_MARKER}["'][^>]*>([\\s\\S]*?)<\\/script>`,
     "i",
@@ -1100,15 +1181,20 @@ export function parseAtsJobsFromHtml(html: string): AtsJob[] | null {
   const m = re.exec(html);
   if (!m || !m[1]) return null;
   try {
-    const data = JSON.parse(m[1]) as { jobs?: unknown };
+    const data = JSON.parse(m[1]) as { provider?: unknown; token?: unknown; jobs?: unknown };
     if (!Array.isArray(data.jobs)) return null;
-    const out: AtsJob[] = [];
+    const jobs: AtsJob[] = [];
     for (const j of data.jobs) {
       const job = coerceJob(j);
-      if (job) out.push(job);
+      if (job) jobs.push(job);
     }
-    return out;
+    return { provider: str(data.provider), token: str(data.token), jobs };
   } catch {
     return null;
   }
+}
+
+/** The island's postings alone. */
+export function parseAtsJobsFromHtml(html: string): AtsJob[] | null {
+  return parseAtsIslandFromHtml(html)?.jobs ?? null;
 }

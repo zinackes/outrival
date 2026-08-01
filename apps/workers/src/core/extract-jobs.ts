@@ -17,7 +17,7 @@ import {
   type JobsExtraction,
 } from "@outrival/ai";
 import { getFromR2, normalizeDomain, hasDisclosedSalary } from "@outrival/shared";
-import { parseAtsJobsFromHtml } from "@outrival/scrapers/jobs-ats";
+import { detectAtsPlatform, isApiAdapter, parseAtsIslandFromHtml } from "@outrival/scrapers/jobs-ats";
 import {
   bucketJobCounts,
   isoWeekStart,
@@ -33,8 +33,10 @@ import {
   upsertHiringGeo,
   upsertHiringMetrics,
   upsertHiringSalaryBands,
+  upsertAtsCoverageGap,
   loggedAi,
   logExtractionRun,
+  type JobsResolution,
 } from "../lib/analytics";
 import { stagedExtract } from "../lib/staged-extract";
 import { computeJobsDelta } from "../lib/jobs-delta";
@@ -88,8 +90,28 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
     // snapshot HTML. Map them straight to job_postings — accurate, carries the
     // apply URL, and skips the extraction LLM call entirely. Otherwise (plain
     // careers/board page) fall back to LLM extraction on the page text.
-    const atsJobs = parseAtsJobsFromHtml(html);
+    const island = parseAtsIslandFromHtml(html);
+    const atsJobs = island?.jobs ?? null;
+
+    // Hiring Intelligence v2 P4 — the coverage learning loop. Every jobs run says
+    // which platform the board is on and how it was read, so "which ATS adapter is
+    // worth writing next" becomes a query instead of a hunch. Best-effort by
+    // construction (it goes through the analytics writer), and recorded on EVERY
+    // outcome including the ones that resolve nothing — a board we consistently
+    // fail to read is the most interesting row in the table.
+    const boardHost = normalizeDomain(snapshot.resolvedUrl) ?? "";
+    const recordCoverage = (resolution: JobsResolution, jobCount: number) =>
+      upsertAtsCoverageGap({
+        platform: island?.provider || detectAtsPlatform(html) || "unknown",
+        host: boardHost,
+        competitor_id: input.competitorId,
+        resolution,
+        job_count: jobCount,
+        recorded_at: new Date(),
+      });
+
     let jobs: NormalizedJob[];
+    let resolution: JobsResolution;
     if (atsJobs) {
       // ATS API island (Greenhouse/Lever/Ashby…): the richest structured-first
       // path — carries the apply URL and skips the LLM. Logged as a structured
@@ -119,7 +141,15 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
         ai_used: 0,
         recorded_at: new Date(),
       });
-      logger.log("Jobs from ATS API (structured, no LLM)", { count: jobs.length });
+      // The island names the PLATFORM; whether that platform has a hand-written API
+      // adapter is what separates the two AI-free paths. Teamtailor and the long
+      // tail land here through schema.org markup, not an API.
+      resolution = isApiAdapter(island?.provider ?? "") ? "api_adapter" : "json_ld";
+      logger.log("Jobs from structured board (no LLM)", {
+        count: jobs.length,
+        platform: island?.provider,
+        resolution,
+      });
     } else {
       // No ATS: staged extraction — schema.org JobPosting → cached parser → AI
       // self-heal → direct AI extraction (the floor). stagedExtract logs the run.
@@ -138,8 +168,12 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
       });
       if (!result.data) {
         logger.warn("Jobs extraction returned null");
+        await recordCoverage("none", 0);
         return { ok: false, reason: "parse_failed" };
       }
+      // The staged extractor's own structured stage is the same schema.org read,
+      // reached from the worker side rather than the scraper's — count it as such.
+      resolution = result.resolution === "structured" ? "json_ld" : "ai_fallback";
       jobs = result.data.jobs.map((j) => ({
         title: j.title,
         department: j.department,
@@ -159,6 +193,8 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
       }));
       logger.log("Jobs extracted", { count: jobs.length, resolution: result.resolution });
     }
+
+    await recordCoverage(resolution, jobs.length);
 
     // Cross-check the extraction against the count the page itself prints. Every way
     // this pipeline undercounts — a client-paginated board captured on page 1, an AI

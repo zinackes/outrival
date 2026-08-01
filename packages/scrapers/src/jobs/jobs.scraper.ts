@@ -1,15 +1,38 @@
 import { scrapePage, scrapeFirstSuccess } from "../lib/crawler";
-import type { ScrapeOutcome, ScrapeOptions } from "../types";
+import type { ScrapeOutcome, ScrapeOptions, KnownJob } from "../types";
 import {
   detectAtsBoard,
+  detectAtsPlatform,
   fetchAtsJobs,
   appendAtsJobsToHtml,
   atsBoardFromKey,
+  mkJob,
   type AtsBoard,
   type AtsJob,
 } from "./ats";
+import {
+  canonicalJobUrl,
+  cardLocationHint,
+  jobDetailLinks,
+  jobPostingsFromJsonLd,
+  listingCardText,
+  nextListingLinks,
+  MAX_LISTING_PAGES,
+  MAX_NEW_JOB_PAGES,
+} from "./jsonld";
 import { findCareersLink, findJobListingLink, isSameResource } from "./careers-link";
 import { hasCareersSignals } from "./signals";
+
+/** Job-detail links that make a page a listing on structure alone. */
+const MIN_LISTING_JOB_LINKS = 3;
+
+/**
+ * Platform name recorded when a board resolves through schema.org markup on a
+ * career site we cannot name. Not a failure — a self-built site is exactly what
+ * the generic rung is for — but distinct in the coverage counter from a named
+ * platform that has no adapter yet.
+ */
+const GENERIC_PLATFORM = "generic";
 
 // A page is only trusted as "the careers page" when it actually reads like a jobs
 // listing OR links/embeds an ATS board — not merely because the path returned HTTP
@@ -17,7 +40,14 @@ import { hasCareersSignals } from "./signals";
 // non-existent `/careers` would lock in and get LLM-extracted for jobs that aren't
 // there. Fail-open on the ATS side: detectAtsBoard reads the same HTML cheaply.
 function looksLikeCareers(res: ScrapeOutcome): boolean {
-  return hasCareersSignals(res.html) || detectAtsBoard(res.html) !== null;
+  if (hasCareersSignals(res.html) || detectAtsBoard(res.html) !== null) return true;
+  // A page pointing at several job-detail pages of its OWN host is a listing,
+  // whatever vocabulary it uses. Teamtailor's hosted sites are the case in point:
+  // they name no ATS, and their listing carries no JobPosting markup (that lives on
+  // the job pages), so on wording alone a real board could be thrown away right
+  // before the rung that can read it.
+  const base = typeof res.metadata.url === "string" ? res.metadata.url : null;
+  return base !== null && jobDetailLinks(res.html, base).length >= MIN_LISTING_JOB_LINKS;
 }
 
 // patch-31 — synthesise a jobs snapshot straight from the ATS API result, no
@@ -245,6 +275,139 @@ export async function scrape(
     return probe ? keep(probe) : null;
   };
 
+  // Postings we already hold, by canonical URL. A link in this map costs nothing
+  // to re-affirm; one that isn't gets its page opened, within the budget below.
+  const knownByUrl = new Map<string, KnownJob>();
+  for (const job of options.knownJobs ?? []) {
+    const key = canonicalJobUrl(job.url);
+    if (key) knownByUrl.set(key, job);
+  }
+
+  /**
+   * The generic rung: resolve a board from schema.org `JobPosting` markup, for the
+   * boards no adapter covers. Two shapes, in order:
+   *
+   *  (a) the page states its postings itself → done, nothing else is fetched;
+   *  (b) it links to job pages on its own host → the NEW ones are opened, one at a
+   *      time, through the same cascade as everything else (so robots.txt and the
+   *      per-domain delay are honoured), capped at MAX_NEW_JOB_PAGES. The rest wait
+   *      for the next run; they are new, so nothing downstream mistakes their
+   *      absence for a closure.
+   *
+   * WHAT MAKES A ROLE OPEN, on this rung, is being ON THE LISTING — not having had
+   * its page opened. So a listing walk that could not be finished (paginating past
+   * the cap, a page that failed) returns null rather than a prefix: the caller
+   * treats a non-null result as the authoritative board, and a prefix of a board
+   * closes every posting past it.
+   *
+   * Returns null for "this is not a JSON-LD board" as well, and the caller falls to
+   * the AI floor — today's behaviour exactly, which is the floor this rung sits on.
+   */
+  const resolveJsonLdJobs = async (
+    page: ScrapeOutcome,
+    pageUrl: string,
+  ): Promise<AtsJob[] | null> => {
+    const inline = jobPostingsFromJsonLd(page.html, pageUrl);
+    if (inline.length > 0) return inline;
+
+    const detailLinks: string[] = [];
+    const seenLinks = new Set<string>();
+    const visitedPages = new Set<string>();
+    const cardText = new Map<string, string>();
+    let listingHtml = page.html;
+    let listingUrl = pageUrl;
+    let truncated = false;
+
+    for (let walked = 1; ; walked++) {
+      visitedPages.add(listingUrl);
+      for (const link of jobDetailLinks(listingHtml, listingUrl)) {
+        if (seenLinks.has(link)) continue;
+        seenLinks.add(link);
+        detailLinks.push(link);
+      }
+      for (const [link, text] of listingCardText(listingHtml, listingUrl)) {
+        if (!cardText.has(link)) cardText.set(link, text);
+      }
+      const next = nextListingLinks(listingHtml, listingUrl).find((u) => !visitedPages.has(u));
+      if (!next) break;
+      if (walked >= MAX_LISTING_PAGES) {
+        truncated = true;
+        break;
+      }
+      visitedPages.add(next);
+      try {
+        const nextPage = await scrapePage(next, probeOpts);
+        listingHtml = nextPage.html;
+        listingUrl =
+          (typeof nextPage.metadata.url === "string" && nextPage.metadata.url) || next;
+      } catch {
+        // A page of the listing we could not read leaves the board half-known.
+        truncated = true;
+        break;
+      }
+    }
+    if (truncated || detailLinks.length === 0) return null;
+
+    const jobs: AtsJob[] = [];
+    let opened = 0;
+    for (const link of detailLinks) {
+      const known = knownByUrl.get(link);
+      if (known) {
+        // Carried forward VERBATIM: the delta keys on title+department, so anything
+        // re-derived here would re-key the posting and read as closed-then-reopened.
+        jobs.push(mkJob({ title: known.title, department: known.department, url: link }));
+        continue;
+      }
+      if (opened >= MAX_NEW_JOB_PAGES) continue;
+      opened++;
+      try {
+        const detail = await scrapePage(link, probeOpts);
+        const [posting] = jobPostingsFromJsonLd(detail.html, link);
+        if (!posting) continue;
+        // The listing card fills in a location the posting's own markup omits —
+        // and ONLY a location, see cardLocationHint.
+        const card = posting.location === null ? cardText.get(link) : undefined;
+        const hint = card ? cardLocationHint(card, posting.title) : null;
+        jobs.push(hint ? { ...posting, location: hint } : posting);
+      } catch {
+        // One unreadable posting is one posting, never the board.
+      }
+    }
+    return jobs.length > 0 ? jobs : null;
+  };
+
+  /**
+   * Last rung before the AI floor. Runs ONLY on a page no ATS adapter answered
+   * for — the ladder is exclusive, so a Greenhouse board never reaches this, and
+   * no board is ever ingested twice.
+   */
+  const finish = async (page: ScrapeOutcome, board: AtsBoard | null): Promise<ScrapeOutcome> => {
+    if (page.metadata.atsJobs != null) return page;
+    const pageUrl = (typeof page.metadata.url === "string" && page.metadata.url) || url;
+    let jobs: AtsJob[] | null = null;
+    try {
+      jobs = await resolveJsonLdJobs(page, pageUrl);
+    } catch {
+      jobs = null;
+    }
+    if (!jobs) return page;
+    // Name the platform for the coverage counter: the board we followed if we
+    // detected one (Teamtailor), otherwise whatever the page passively identifies
+    // as, otherwise "generic". The resolution itself is derived downstream from
+    // whether that name has an API adapter — this rung never has one by definition.
+    const platform = board?.provider ?? detectAtsPlatform(page.html) ?? GENERIC_PLATFORM;
+    return withAtsJobs(
+      page,
+      {
+        provider: platform,
+        token: board?.token ?? hostname(pageUrl) ?? platform,
+        boardUrl: pageUrl,
+      },
+      jobs,
+      { jsonLdJobs: jobs.length },
+    );
+  };
+
   let result: ScrapeOutcome;
   let onCareersPage: boolean; // false ⇒ the homepage fallback, not a careers page
   let rendered = false; // did `result` already come from a browser render?
@@ -320,9 +483,11 @@ export async function scrape(
     targets.push({ url: careersLink, via: "careersFollowed" });
   }
 
+  const detectedBoard = ats.kind === "none" ? null : ats.board;
+
   for (const target of targets) {
     const hop = await followHop(target.url, target.via);
-    if (hop) return hop;
+    if (hop) return finish(hop, detectedBoard);
   }
   if (ats.kind !== "none") {
     result = { ...result, metadata: { ...result.metadata, atsDetected: ats.board.provider } };
@@ -336,11 +501,11 @@ export async function scrape(
     try {
       const full = await renderPage(finalUrl);
       if (full.text.length > result.text.length) {
-        return { ...full, metadata: { ...full.metadata, jobsRendered: true } };
+        return finish({ ...full, metadata: { ...full.metadata, jobsRendered: true } }, detectedBoard);
       }
     } catch {
       // ignore — keep the L0 careers page below
     }
   }
-  return result;
+  return finish(result, detectedBoard);
 }

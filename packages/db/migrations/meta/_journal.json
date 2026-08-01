@@ -449,6 +449,13 @@
       "when": 1785614302238,
       "tag": "0063_nappy_blacklash",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1785614303238,
+      "tag": "0064_light_centennial",
+      "breakpoints": true
     }
   ]
 }

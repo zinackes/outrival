@@ -131,6 +131,24 @@ so pure waste plus added latency).
 
 ---
 
+# Baseline, captured 2026-08-01 before any of this deployed
+
+Prod still runs the old code at this point, so these are the "before" numbers the
+verification queries below are compared against. Re-run the same queries a week after
+deploy; anything that has not moved did not work.
+
+| measure | window | before |
+|---|---|---:|
+| `generate_extractor` runs / failed | 7 d | 416 / 199 |
+| ...tokens | 7 d | 2 584 216 |
+| ...re-attempts within 5 min, same competitor | 7 d | **181 of 416** |
+| cerebras runs / failed | 7 d | 1 471 / 8 (1 %) |
+| groq runs / failed | 7 d | 903 / **477 (53 %)** |
+| pricing ladder: `ai_fallback` | 7 d | **64 %** |
+| ...`cache` / `heal` / `structured` | 7 d | 15 % / 11 % / 11 % |
+| pricing parsers never validated | now | **90 of 132** |
+| tokens per day, busiest three days | — | 1.13 M, 1.05 M, 1.03 M |
+
 # Plan
 
 Ordered by measured impact per unit of effort. Each item names its verification.

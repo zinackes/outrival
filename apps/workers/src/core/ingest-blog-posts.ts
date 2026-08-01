@@ -5,7 +5,7 @@ import {
   ingestCaseStudies,
 } from "@outrival/queue";
 import { z } from "zod";
-import { and, desc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import {
   db,
   competitors,
@@ -15,7 +15,15 @@ import {
   organizations,
   snapshots,
 } from "@outrival/db";
-import { getFromR2 } from "@outrival/shared";
+import {
+  computeHash,
+  getFromR2,
+  uploadToR2,
+  detectEditorialPivot,
+  topTopics,
+  EDITORIAL_WINDOW_DAYS,
+  type EditorialItem,
+} from "@outrival/shared";
 import { enrichBlogPosts, AI_CONFIG } from "@outrival/ai";
 import {
   parseBlogItems,
@@ -142,11 +150,16 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
     .limit(POST_FETCH_CAP);
 
   if (pending.length === 0) {
+    // Still evaluated: the two windows a pivot compares SLIDE, so the shape can
+    // move on a week where nothing new was published. The read is one indexed
+    // query and it costs nothing when there is nothing to compare.
+    const pivoted = await emitEditorialPivot(competitor, snapshot.id);
     logger.log("Completed ingest-blog-posts — nothing new to read", {
       competitorId: competitor.id,
       inserted,
+      pivoted,
     });
-    return { parsed: parsed.length, inserted, fetched: 0, enriched: 0, emitted: 0 };
+    return { parsed: parsed.length, inserted, fetched: 0, enriched: 0, emitted: 0, pivoted };
   }
 
   const { fetched, failed } = await fetchPostTexts(
@@ -277,6 +290,10 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
     if (ok) emitted++;
   }
 
+  // Content Intelligence v2 P4 — last, because it reads back what this run just
+  // wrote: the posts enriched above are part of the current window it measures.
+  const pivoted = await emitEditorialPivot(competitor, snapshot.id);
+
   logger.log("Completed ingest-blog-posts", {
     competitorId: competitor.id,
     inserted,
@@ -284,6 +301,7 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
     enriched: enrichedCount,
     caseStudies: caseStudyItemIds.length,
     emitted,
+    pivoted,
   });
   return {
     parsed: parsed.length,
@@ -291,6 +309,7 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
     fetched: fetched.length,
     enriched: enrichedCount,
     emitted,
+    pivoted,
   };
 }
 
@@ -462,4 +481,245 @@ async function emitNamedYou(args: {
     .set({ lastChangedAt: new Date() })
     .where(eq(monitors.id, anchor.id));
   return true;
+}
+
+/** Days a competitor stays quiet after an editorial_pivot. One window's length. */
+const PIVOT_COOLDOWN_DAYS = EDITORIAL_WINDOW_DAYS;
+
+/** Topics each side of the move names in the human-readable lines. */
+const PIVOT_TOPICS_SHOWN = 3;
+
+/**
+ * `editorial_pivot`: what a competitor writes about has moved.
+ *
+ * DETERMINISTIC end to end — this phase adds no AI call anywhere. The topics were
+ * extracted and substring-checked by P2; everything here is counting them, and the
+ * decision is a Jensen-Shannon divergence computed in `@outrival/shared`, where its
+ * thresholds are tested.
+ *
+ * Four gates, in the order they get cheaper to fail:
+ *
+ *  - NEVER ON THE SELF PRODUCT. The rows are written for the user's own blog too
+ *    (the Content tab compares them), but "you repositioned" is not news to them.
+ *  - THE MINIMUMS live in the detector: eight READ posts in each 90-day window and
+ *    five distinct topics across the two. A blog at two posts a month cannot pivot
+ *    statistically — its distribution swings on a single post.
+ *  - A 90-DAY COOLDOWN, read off the anchor's own snapshot chain, so a repositioning
+ *    that holds is one piece of news rather than one per capture while it lasts.
+ *  - CONTENT-HASH DEDUP on the same chain, so a retried run inside one day cannot
+ *    write the move twice.
+ *
+ * Worth stating rather than discovering: this cannot fire until a competitor has
+ * roughly six months of tracking behind them, because posts predating P2 were
+ * baselined and never opened, and an unopened post carries no topics. That is the
+ * design. The alternative compares what we know now against a window we never read,
+ * which would report a pivot at every competitor the day the feature ships.
+ */
+async function emitEditorialPivot(
+  competitor: CompetitorRow,
+  snapshotId: string,
+): Promise<boolean> {
+  if (competitor.type === "self") return false;
+
+  const since = new Date(Date.now() - 2 * EDITORIAL_WINDOW_DAYS * 86_400_000);
+  // `topics is not null` IS "we opened this post": applyBlogGuards always writes an
+  // array (possibly empty), while the baseline insert never touches the column. A
+  // baselined back catalogue would otherwise clear the post floor with posts nobody
+  // has read, leaving the whole comparison resting on a handful of topics.
+  const rows = await db
+    .select({
+      sourceType: contentItems.sourceType,
+      itemType: contentItems.itemType,
+      topics: contentItems.topics,
+      publishedAt: contentItems.publishedAt,
+      firstSeenAt: contentItems.firstSeenAt,
+    })
+    .from(contentItems)
+    .where(
+      and(
+        eq(contentItems.competitorId, competitor.id),
+        eq(contentItems.sourceType, "blog"),
+        isNotNull(contentItems.topics),
+        // Either date reaching into the span keeps the row; the detector then
+        // places each one on published_at ?? first_seen_at.
+        or(
+          gte(contentItems.publishedAt, since),
+          gte(contentItems.firstSeenAt, since),
+        ),
+      ),
+    );
+
+  const pivot = detectEditorialPivot(rows as EditorialItem[]);
+  if (!pivot) return false;
+
+  const anchor = await db.query.monitors.findFirst({
+    where: and(
+      eq(monitors.competitorId, competitor.id),
+      eq(monitors.sourceType, "editorial_shift"),
+    ),
+  });
+  if (anchor) {
+    const cooldownSince = new Date(Date.now() - PIVOT_COOLDOWN_DAYS * 86_400_000);
+    const [recent] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(snapshots)
+      .where(and(eq(snapshots.monitorId, anchor.id), gte(snapshots.scrapedAt, cooldownSince)));
+    if ((recent?.n ?? 0) > 0) return false;
+  }
+
+  const rising = pivot.rising.slice(0, PIVOT_TOPICS_SHOWN).map((t) => t.topic);
+  const declining = pivot.declining.slice(0, PIVOT_TOPICS_SHOWN).map((t) => t.topic);
+  // A move with nothing on one side is a broadening or a narrowing, not a pivot the
+  // reader can act on, and the sentence would read "rising: — ".
+  if (rising.length === 0 || declining.length === 0) return false;
+
+  const nowTopics = topTopics(pivot.current);
+  const thenTopics = topTopics(pivot.previous);
+  const line = (list: Array<{ topic: string; count: number }>) =>
+    list.map((t) => `${t.topic} (${t.count})`).join(", ");
+
+  const diffText =
+    `${competitor.name}'s blog has changed subject. Over the last ${EDITORIAL_WINDOW_DAYS} days ` +
+    `they published ${pivot.current.posts} posts we read; over the ${EDITORIAL_WINDOW_DAYS} before ` +
+    `that, ${pivot.previous.posts}. The mix of subjects between the two windows diverges by ` +
+    `${pivot.divergence.toFixed(2)} on a 0-to-1 scale.\n\n` +
+    `Rising: ${rising.join(", ")}\n` +
+    `Declining: ${declining.join(", ")}\n\n` +
+    `Now (${pivot.current.posts} posts): ${line(nowTopics)}\n` +
+    `Before (${pivot.previous.posts} posts): ${line(thenTopics)}\n\n` +
+    `Counted from the topics of their own posts, one post per row. What a company ` +
+    `chooses to publish about is the cheapest early read on what it is selling next ` +
+    `and who it is selling to.`;
+
+  const changeId = await writeEditorialChange(
+    competitor,
+    snapshotId,
+    `editorial:${new Date().toISOString().slice(0, 10)}:${rising.join("|")}`,
+    diffText,
+    {
+      kind: "editorial_pivot",
+      divergence: pivot.divergence,
+      windowDays: EDITORIAL_WINDOW_DAYS,
+      currentPosts: pivot.current.posts,
+      previousPosts: pivot.previous.posts,
+      distinctTopics: pivot.distinctTopics,
+      currentTopics: nowTopics,
+      previousTopics: thenTopics,
+      rising: pivot.rising.map((t) => ({ topic: t.topic, now: t.now, then: t.then })),
+      declining: pivot.declining.map((t) => ({ topic: t.topic, now: t.now, then: t.then })),
+    },
+  );
+  if (!changeId) return false;
+
+  await generateSignal.enqueue({
+    changeId,
+    classification: {
+      // The nearest existing category, and the right one: this is a read of what
+      // they publish. The enum is not extended for it.
+      category: "content" as const,
+      // An aggregate over a quarter of posts. Never critical — that band bypasses
+      // every moderation layer and mails within minutes, which a slow-moving shift
+      // in editorial subject has not earned.
+      severity: "medium" as const,
+      is_significant: true,
+      reason:
+        `Editorial shift — rising: ${rising.join(", ")} · declining: ${declining.join(", ")}`,
+      humanChangeBefore: thenTopics
+        .slice(0, PIVOT_TOPICS_SHOWN)
+        .map((t) => t.topic)
+        .join(", "),
+      humanChangeAfter: nowTopics
+        .slice(0, PIVOT_TOPICS_SHOWN)
+        .map((t) => t.topic)
+        .join(", "),
+    },
+  });
+  return true;
+}
+
+/**
+ * The synthetic `editorial_shift` anchor chain, the same shape the velocity and
+ * customer-proof detectors write.
+ *
+ * A DEDICATED anchor rather than the blog change this run came from, for two
+ * reasons that both bite: `signals.changeId` is unique, so hanging a second signal
+ * off the blog change would silently lose one of the two (the lexical classifier
+ * owns that change); and the blog monitor's snapshot chain is what content-hash
+ * dedup diffs the next capture against.
+ *
+ * R2 before DB — `snapshots.r2Key` is NOT NULL, and the body IS the evidence the
+ * insight gets grounded on.
+ */
+async function writeEditorialChange(
+  competitor: CompetitorRow,
+  blogSnapshotId: string,
+  hashKey: string,
+  diffText: string,
+  rawDiff: Record<string, unknown>,
+): Promise<string | null> {
+  let monitor = await db.query.monitors.findFirst({
+    where: and(
+      eq(monitors.competitorId, competitor.id),
+      eq(monitors.sourceType, "editorial_shift"),
+    ),
+  });
+  if (!monitor) {
+    [monitor] = await db
+      .insert(monitors)
+      .values({
+        competitorId: competitor.id,
+        sourceType: "editorial_shift",
+        frequency: "weekly", // unused — this monitor is never scheduled
+        isActive: false,
+        config: {},
+      })
+      .returning();
+  }
+  if (!monitor) throw new Error("Failed to ensure editorial_shift monitor");
+
+  const contentHash = computeHash(hashKey);
+  const [seen] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(snapshots)
+    .where(and(eq(snapshots.monitorId, monitor.id), eq(snapshots.contentHash, contentHash)));
+  if ((seen?.n ?? 0) > 0) return null;
+
+  const prevSnapshot = await db.query.snapshots.findFirst({
+    where: eq(snapshots.monitorId, monitor.id),
+    orderBy: desc(snapshots.scrapedAt),
+  });
+
+  const now = new Date();
+  const r2Key = `snapshots/${competitor.id}/editorial_shift/${now.toISOString()}`;
+  await uploadToR2(`${r2Key}.txt`, diffText, "text/plain; charset=utf-8", { compress: true });
+
+  const [snapshot] = await db
+    .insert(snapshots)
+    .values({
+      monitorId: monitor.id,
+      r2Key,
+      contentHash,
+      status: "success",
+      scrapedAt: now,
+      resolvedUrl: competitor.url ?? null,
+    })
+    .returning();
+  if (!snapshot) throw new Error("Failed to insert editorial_shift snapshot");
+
+  const [change] = await db
+    .insert(changes)
+    .values({
+      monitorId: monitor.id,
+      // The blog capture that triggered the read is the "after" side, so the
+      // signal's evidence points at a real page, the same shape emitNamedYou uses.
+      snapshotBeforeId: prevSnapshot?.id ?? null,
+      snapshotAfterId: snapshot.id,
+      diffText: diffText.slice(0, 50000),
+      diffType: "text",
+      rawDiff: { ...rawDiff, blogSnapshotId },
+      detectedAt: now,
+    })
+    .returning();
+  if (!change) throw new Error("Failed to insert editorial_shift change");
+  return change.id;
 }

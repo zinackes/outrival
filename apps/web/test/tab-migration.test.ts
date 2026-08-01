@@ -4,7 +4,7 @@ import {
   TAB_KEYS,
 } from "../src/app/dashboard/competitors/[id]/competitor-detail/tab-migration";
 
-describe("the competitor page has six reading tabs", () => {
+describe("the competitor page has seven reading tabs", () => {
   test("grouped by meaning, in display order", () => {
     expect(TAB_KEYS).toEqual([
       "overview",
@@ -12,6 +12,9 @@ describe("the competitor page has six reading tabs", () => {
       "pricing",
       "hiring",
       "reviews",
+      // Content Intelligence v2 P4. Sits beside Positioning: both answer "what
+      // are they saying".
+      "content",
       "product",
     ]);
   });
@@ -24,8 +27,12 @@ describe("the competitor page has six reading tabs", () => {
 });
 
 describe("retired ?tab= deep links still land somewhere", () => {
-  test("?tab=content opens Product & Positioning", () => {
-    expect(resolveTabParam("content")).toEqual({ kind: "tab", tab: "product" });
+  test("?tab=content is a real tab again, not a redirect", () => {
+    // It was retired into Product & Positioning, then rebuilt as its own tab
+    // (Content Intelligence v2 P4). The old notification rows carrying
+    // ?tab=content were written about blog and changelog changes, so landing on
+    // the Content tab is where they were always trying to go.
+    expect(resolveTabParam("content")).toEqual({ kind: "tab", tab: "content" });
   });
 
   test("?tab=custom opens Product & Positioning too", () => {

@@ -132,6 +132,14 @@ function ContentFacts({ facts }: { facts: Extract<Facts, { kind: "content" }> })
                 <span className="text-xs text-muted-foreground tabular-nums">{e.publishedAt}</span>
               )}
             </div>
+            {/* The sentence itself, when the fact IS a sentence — a post naming the
+                reader's product. Verbatim and substring-checked before storage, so
+                it can be shown as a quote rather than paraphrased. */}
+            {e.snippet && (
+              <p className="mt-1 border-l-2 border-border pl-2 text-xs text-muted-foreground">
+                {e.snippet}
+              </p>
+            )}
           </li>
         ))}
       </ul>

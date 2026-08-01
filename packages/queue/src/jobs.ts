@@ -74,6 +74,11 @@ export type IngestContentItemsPayload = {
    * lexical classify when no deterministic type turns up. */
   lexicalWorth?: boolean;
 };
+/** Content Intelligence v2 P2. No `changeId`: unlike the changelog, a blog capture
+ * does NOT defer its signal routing — the lexical classifier keeps emitting its own
+ * `content` signal on a new post, and `competitor_named_you` is an additional signal
+ * of a different category, written onto its own anchor. */
+export type IngestBlogPostsPayload = { snapshotId: string; competitorId: string };
 export type ExtractReviewsPayload = { snapshotId: string; competitorId: string; source: string };
 export type ScrapeAiVisibilityPayload = { orgId: string; notifyOnComplete?: boolean };
 export type RefreshCompetitorSummaryPayload = {
@@ -263,6 +268,13 @@ export const mineJobFacts = defineJob<CompetitorRefPayload>("mine-job-facts", {
 // zero-AI siblings use.
 export const ingestContentItems = defineJob<IngestContentItemsPayload>("ingest-content-items", {
   expireInSeconds: 300,
+});
+// Blog post reading (Content Intelligence v2 P2), event-triggered per capture off
+// scrape-monitor. Longer window than its content sibling because it does I/O the
+// others do not: up to twenty sequential post fetches, each waiting the polite
+// per-domain gap, before any model call happens.
+export const ingestBlogPosts = defineJob<IngestBlogPostsPayload>("ingest-blog-posts", {
+  expireInSeconds: 900,
 });
 // Hiring footprint detectors (Hiring Intelligence v2 P2), event-triggered per
 // competitor off extract-jobs. Pure SQL + pure functions, zero AI — same window as

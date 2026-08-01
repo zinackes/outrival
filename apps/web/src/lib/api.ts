@@ -617,6 +617,8 @@ export interface ContentEntryFact {
   publishedAt: string | null;
   /** feature | improvement | fix | breaking | deprecation | security */
   itemType: string | null;
+  /** Verbatim from the item — present on a post that names your own product. */
+  snippet?: string | null;
 }
 
 export interface VelocityFact {

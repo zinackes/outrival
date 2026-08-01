@@ -108,6 +108,12 @@ export interface ContentEntryFact {
   publishedAt: string | null;
   /** feature | improvement | fix | breaking | deprecation | security */
   itemType: string | null;
+  /**
+   * Verbatim from the item, substring-verified before it was stored. Present on a
+   * `competitor_named_you` block, where the sentence naming the user IS the fact —
+   * a title and a link would otherwise leave the reader to go and find it.
+   */
+  snippet?: string | null;
 }
 
 /** The cadence a shipping_velocity signal is about, and the months behind it. */
@@ -419,6 +425,44 @@ async function velocityFacts(
         : [],
     },
   };
+}
+
+/**
+ * The post behind a `competitor_named_you` signal (Content Intelligence v2 P2).
+ *
+ * Read off the change's OWN rawDiff — the URL it recorded — rather than a time
+ * window: the signal is about ONE post, the emitter named it, and a window would
+ * pull in whatever else the same capture published.
+ *
+ * The sitemap source writes onto this same anchor with no `kind`, so those changes
+ * fall through to null and render exactly as they do today.
+ */
+async function namedYouFacts(monitorId: string, detectedAt: Date): Promise<SignalFacts> {
+  const [change] = await db
+    .select({ rawDiff: changes.rawDiff })
+    .from(changes)
+    .where(and(eq(changes.monitorId, monitorId), eq(changes.detectedAt, detectedAt)))
+    .limit(1);
+
+  const raw = change?.rawDiff as Record<string, unknown> | null | undefined;
+  if (!raw || raw.kind !== "competitor_named_you") return null;
+  const itemId = typeof raw.contentItemId === "string" ? raw.contentItemId : null;
+  if (!itemId) return null;
+
+  const [row] = await db
+    .select({
+      title: contentItems.title,
+      url: contentItems.url,
+      publishedAt: dsql<string | null>`to_char(${contentItems.publishedAt}, 'YYYY-MM-DD')`,
+      itemType: contentItems.itemType,
+      snippet: contentItems.evidenceSnippet,
+    })
+    .from(contentItems)
+    .where(eq(contentItems.id, itemId))
+    .limit(1);
+  if (!row) return null;
+
+  return { kind: "content", entries: [row], entriesTotal: 1, velocity: null };
 }
 
 /** This competitor's changelog entries matching `predicate`, newest first. */
@@ -804,7 +848,8 @@ export async function buildSignalFacts(args: {
     sourceType !== "job_facts" &&
     sourceType !== "hiring_salary" &&
     sourceType !== "changelog" &&
-    sourceType !== "shipping_velocity"
+    sourceType !== "shipping_velocity" &&
+    sourceType !== "comparison_page"
   ) {
     return null;
   }
@@ -819,6 +864,9 @@ export async function buildSignalFacts(args: {
     }
     if (sourceType === "shipping_velocity") {
       return await velocityFacts(competitorId, monitorId, new Date(detectedAt));
+    }
+    if (sourceType === "comparison_page") {
+      return await namedYouFacts(monitorId, new Date(detectedAt));
     }
     const window = await attributionWindow(monitorId, new Date(detectedAt));
     if (sourceType === "jobs") return await hiringFacts(competitorId, window);

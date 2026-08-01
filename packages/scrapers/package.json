@@ -135,6 +135,10 @@
       "types": "./src/content/index.ts",
       "default": "./src/content/index.ts"
     },
+    "./content-fetch": {
+      "types": "./src/content/fetch.ts",
+      "default": "./src/content/fetch.ts"
+    },
     "./feeds": {
       "types": "./src/feeds/index.ts",
       "default": "./src/feeds/index.ts"

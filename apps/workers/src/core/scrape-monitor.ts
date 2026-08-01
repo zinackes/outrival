@@ -11,6 +11,7 @@ import {
   extractJobs,
   extractReviews,
   ingestContentItems,
+  ingestBlogPosts,
   backfillHistory,
 } from "@outrival/queue";
 import { z } from "zod";
@@ -50,6 +51,8 @@ import {
 import { evaluateSignificance } from "@outrival/ai/significance";
 // Pure subpath — cheerio only, never crawlee/playwright.
 import { analyzePricingHtml, type PricingAnalysis } from "@outrival/scrapers/pricing";
+// Pure subpath — reads the shape of a blog capture (Content Intelligence v2 P2).
+import { blogIslandShape } from "@outrival/scrapers/content";
 // Pure subpath — cheerio only. Diff/hash on extracted visible content, not raw
 // HTML, so CSS-in-JS hashes / SVG paths / hydration scripts don't fake changes.
 import { extractContent, isContentCollapsed } from "@outrival/scrapers/extract";
@@ -1756,8 +1759,27 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       // retry that inflates consecutiveFailures → premature unscrapable). The next
       // scrape diffs against the snapshot we just wrote.
       const beforeHtml = await getFromR2(`${lastSnapshot.r2Key}.html`).catch(() => null);
+
+      // Content Intelligence v2 P2 — the first capture after a blog turns
+      // feed-first compares a synthesised feed listing against the rendered index
+      // page it replaced. Every line differs, so the diff reads "they rewrote their
+      // entire blog" and the classifier faithfully says so. Nothing about the site
+      // changed: OUR representation of it did. Re-baseline in silence — store this
+      // capture, emit no change, and let the next scrape diff feed against feed.
+      const blogShapeChanged =
+        monitor.sourceType === "blog" &&
+        Boolean(result.metadata?.blogFeed) &&
+        beforeHtml !== null &&
+        blogIslandShape(beforeHtml) !== "feed";
+      if (blogShapeChanged) {
+        logger.log("Blog capture switched to feed-first — re-baselining, no change emitted", {
+          monitorId: monitor.id,
+          feed: String(result.metadata?.blogFeed),
+        });
+      }
+
       const diff =
-        beforeHtml === null
+        beforeHtml === null || blogShapeChanged
           ? null
           : computeTextDiff(extractContent(beforeHtml, monitor.sourceType), afterContent);
       if (diff?.hasChanges) {
@@ -1963,6 +1985,22 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         sourceType: monitor.sourceType,
         changeId: deferredContentChange?.id,
         lexicalWorth: deferredContentChange?.lexicalWorth,
+      });
+    } else if (
+      // Content Intelligence v2 P2 — read the posts this capture published. Written
+      // IN ADDITION to the diff above, which is untouched: the lexical classifier
+      // still emits its own `content` signal on a new post, and this job's
+      // `competitor_named_you` is a separate signal on its own anchor.
+      //
+      // Unreached when the capture is byte-identical to the last one (the content
+      // hash short-circuits the whole run before here), so a blog that publishes
+      // nothing costs nothing.
+      extractionAllowed &&
+      monitor.sourceType === "blog"
+    ) {
+      await ingestBlogPosts.enqueue({
+        snapshotId: newSnapshot.id,
+        competitorId: competitor.id,
       });
     } else if (
       // Trustpilot public surface (Reviews v2): a structured score/count snapshot, not

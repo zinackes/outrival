@@ -1,0 +1,1 @@
+ALTER TABLE "content_items" ADD COLUMN "enrich_attempts" integer DEFAULT 0 NOT NULL;

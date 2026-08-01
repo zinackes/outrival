@@ -138,6 +138,20 @@ export type {
   TypedContentItem,
   ContentItemForTyping,
 } from "./tasks/type-content-items";
+// Content Intelligence v2 P2 — batched blog-post reading. Every competitor it
+// names is re-checked against the post text in code before it can reach a signal.
+export {
+  enrichBlogPosts,
+  EnrichedBlogPostsSchema,
+  EnrichedBlogPostSchema,
+  BlogMentionSchema,
+  BLOG_POST_TYPES,
+} from "./tasks/enrich-blog-posts";
+export type {
+  EnrichedBlogPosts,
+  EnrichedBlogPost,
+  BlogPostForEnrichment,
+} from "./tasks/enrich-blog-posts";
 export { extractReviews, ReviewsSchema } from "./tasks/extract-reviews";
 export {
   extractAiVisibility,

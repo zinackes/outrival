@@ -98,7 +98,18 @@ export type IngestCaseStudiesPayload = {
   contentItemIds?: string[];
 };
 export type ExtractReviewsPayload = { snapshotId: string; competitorId: string; source: string };
-export type ScrapeAiVisibilityPayload = { orgId: string; notifyOnComplete?: boolean };
+export type ScrapeAiVisibilityPayload = {
+  orgId: string;
+  /**
+   * Scope the run to ONE product. The daily drip (schedule-ai-visibility) enqueues
+   * per product because the free-tier day budget is smaller than a whole org's prompt
+   * set, and a half-checked product is worse than an unchecked one: its share-of-voice
+   * is computed over whichever prompts happened to get through. Omitted by the
+   * on-demand "Run now" route, which still sweeps every product of the org.
+   */
+  productId?: string;
+  notifyOnComplete?: boolean;
+};
 export type RefreshCompetitorSummaryPayload = {
   competitorId: string;
   /** On-demand refresh route only → drop a durable "summary ready" notification. */
@@ -213,7 +224,11 @@ export const scrapeTechStack = defineJob<CompetitorRefPayload>("scrape-tech-stac
 });
 export const scrapeAiVisibility = defineJob<ScrapeAiVisibilityPayload>("scrape-ai-visibility", {
   retryLimit: 1, // was maxAttempts 2
-  expireInSeconds: 300,
+  // A paced sweep is SLOW ON PURPOSE: 10 prompts at the free tier's 13s gap is 130s
+  // before a single retry, and a rate limit we now ride out adds up to 65s more. The
+  // old 300s ceiling would expire a healthy run; pg-boss cannot interrupt a JS handler
+  // anyway, so expiring early only duplicates the work it failed to stop.
+  expireInSeconds: 900,
 });
 // Lever 7 — free one-time "share of model" taste at onboarding. Event-triggered,
 // never retried (would re-spend free-tier quota); writes one terminal row per org.
@@ -386,7 +401,10 @@ export const CRON_SCHEDULES: Record<string, string> = {
   "generate-daily-digest": "0 * * * *",
   "schedule-tech-stack": "0 6 * * *",
   "schedule-platform-detection": "0 4 * * *",
-  "schedule-ai-visibility": "0 7 * * 1",
+  // DAILY, not weekly: the free Gemini tier caps requests per day, so a week's worth
+  // of prompts fired on one Monday morning is the one shape it cannot serve. The job
+  // now drips what the day's budget covers. See docs/ai-visibility-engine-capacity.md.
+  "schedule-ai-visibility": "0 7 * * *",
   "signal-batching": "0 */6 * * *",
   "detect-structural-changes": "0 6 * * 1",
   "generate-weekly-digest": "0 8 * * 1",

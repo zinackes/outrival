@@ -4,7 +4,10 @@ import {
   boolean,
   timestamp,
   jsonb,
+  date,
+  integer,
   index,
+  primaryKey,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { InferSelectModel } from "drizzle-orm";
@@ -72,3 +75,38 @@ export const aiVisibilityTeasers = pgTable(
 );
 
 export type AiVisibilityTeaser = InferSelectModel<typeof aiVisibilityTeasers>;
+
+// The answer engines' spend ledger, one row per (engine, model), rewritten in place.
+// It exists because the free Gemini tier caps REQUESTS PER MODEL PER PROJECT (measured
+// 2026-08-01: 20 per day, 5 per minute), and the pacer that was supposed to respect
+// that lived in a module-level Map. In-process state cannot pace a fleet: six runs
+// picked up at once all read the same "last call", all slept the same amount, and all
+// fired together, so a weekly sweep answered 21 of its 110 prompts and most runs died
+// after one. Moving the gate into a row makes it hold across concurrent runs, across
+// worker processes, and across the API's on-demand path.
+//
+// `next_call_allowed_at` is a BOOKED SLOT, not a record of the last call: a caller
+// atomically pushes it forward by the pacing gap and receives the slot it just took.
+// Concurrent callers therefore queue instead of colliding, without a lock.
+//
+// `day` + `calls` is the hard code-side ceiling. It self-resets: a reservation on a new
+// UTC day overwrites `day` and restarts the count, so nothing has to sweep this table.
+export const aiVisibilityEngineBudget = pgTable(
+  "ai_visibility_engine_budget",
+  {
+    // "gemini" | "perplexity" — the Engine union in the workers' engine client.
+    engine: text("engine").notNull(),
+    // The exact model id, because the quota bucket is per MODEL: pinning a second
+    // model is a second free allowance on the same key and the same project.
+    model: text("model").notNull(),
+    // UTC day the `calls` count belongs to.
+    day: date("day").notNull(),
+    calls: integer("calls").notNull().default(0),
+    nextCallAllowedAt: timestamp("next_call_allowed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.engine, t.model] })],
+);
+
+export type AiVisibilityEngineBudget = InferSelectModel<typeof aiVisibilityEngineBudget>;

@@ -114,3 +114,139 @@ describe("collapsePositioningVersions", () => {
     expect(collapsePositioningVersions(rows, 5)).toHaveLength(5);
   });
 });
+
+// The parser reads the hero off `$("h1").first()` alone, so a page that titles in an
+// <h2> or a styled <div> yields headline AND subheadline null together and the whole
+// "How they position" section vanishes. Measured on prod 2026-08-01: 9 of 158 stored
+// structures, all of them live, fully-parsed pages. The cases below are those pages.
+describe("positioningCopyOf — <head> fallback when a page has no H1", () => {
+  const copyOf = (structure: unknown) =>
+    collapsePositioningVersions([{ structure, scrapedAt: at("2026-08-01T00:00:00Z") }])[0]!;
+
+  test("recovers og:title and og:description when the hero came back empty", () => {
+    // asista.com: 150 KB, 37 sections, 16 customer logos parsed, no <h1> anywhere.
+    const v = copyOf({
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      title: "AiDi - Asista",
+      openGraph: {
+        title: "AiDi - Asista",
+        description: "Asista AIDI transforms manufacturing operations by turning data into decisions.",
+      },
+    });
+
+    expect(v.headline).toBe("AiDi - Asista");
+    expect(v.subheadline).toBe(
+      "Asista AIDI transforms manufacturing operations by turning data into decisions.",
+    );
+  });
+
+  test("falls back to <title> and meta description when there are no og: tags", () => {
+    // rimworldgame.com ships a meta description and no og:title.
+    const v = copyOf({
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      title: "RimWorld - Sci-Fi Colony Sim",
+      metaDescription: "A sci-fi colony sim driven by an intelligent AI storyteller.",
+    });
+
+    expect(v.headline).toBe("RimWorld - Sci-Fi Colony Sim");
+    expect(v.subheadline).toBe("A sci-fi colony sim driven by an intelligent AI storyteller.");
+  });
+
+  test("site-builder boilerplate never becomes positioning copy", () => {
+    // api360.sa ships Framer's default og:description. Printing it would tell the
+    // reader which page builder the competitor bought, dressed as their pitch.
+    const v = copyOf({
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      title: "API360 for banks",
+      openGraph: { description: "Made with Framer" },
+    });
+
+    expect(v.headline).toBe("API360 for banks");
+    expect(v.subheadline).toBeNull();
+  });
+
+  test("a parked or stopped host page is not a positioning statement", () => {
+    // krysp.io resolves to its host's stopped-site page.
+    const v = copyOf({
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      title: "Sorry, the website has been stopped",
+    });
+
+    expect(v.headline).toBeNull();
+    expect(v.subheadline).toBeNull();
+  });
+
+  test("a bare brand token is not a headline", () => {
+    // The company name is the one thing the reader already knows; surfacing it as
+    // their positioning fills the section while saying nothing.
+    const v = copyOf({
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      title: "API360",
+      openGraph: { title: "API360" },
+    });
+
+    expect(v.headline).toBeNull();
+  });
+
+  test("keyword-stuffed <head> text is dropped, never truncated into a sentence", () => {
+    const v = copyOf({
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      title: `${"web scraping api proxy rotation ".repeat(12)}`,
+    });
+
+    expect(v.headline).toBeNull();
+  });
+
+  test("a real hero headline is never overwritten, and gains no invented subheadline", () => {
+    // 66 of the 158 carry a headline with no subheadline. They already render the
+    // section, so splicing a meta description under their real H1 would rewrite copy
+    // for 42% of the roster to reach the 6% that shows nothing.
+    const v = copyOf({
+      hero: { headline: "Ship faster than your competition" },
+      sections: [],
+      title: "Acme | The developer platform",
+      openGraph: { description: "Acme is the platform teams use to ship." },
+    });
+
+    expect(v.headline).toBe("Ship faster than your competition");
+    expect(v.subheadline).toBeNull();
+  });
+
+  test("the same string is not printed twice as headline and subheadline", () => {
+    // <title> and meta description are routinely identical; showing both reads as a
+    // rendering bug rather than as two things the competitor wrote.
+    const v = copyOf({
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      title: "The ultimate recruitment software",
+      metaDescription: "The ultimate recruitment software",
+    });
+
+    expect(v.headline).toBe("The ultimate recruitment software");
+    expect(v.subheadline).toBeNull();
+  });
+
+  test("the fallback does not read as a rewrite across captures", () => {
+    // It derives from stored fields, so every capture ever taken resolves the same
+    // way. If it ran only on the newest one, the Positioning tab would date a
+    // messaging change to the day this shipped.
+    const structure = {
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      openGraph: { title: "AiDi - Asista", description: "Turning plant data into decisions." },
+    };
+    const versions = collapsePositioningVersions([
+      { structure, scrapedAt: at("2026-08-01T00:00:00Z") },
+      { structure, scrapedAt: at("2026-06-01T00:00:00Z") },
+    ]);
+
+    expect(versions).toHaveLength(1);
+    expect(versions[0]!.capturedAt).toBe("2026-06-01T00:00:00.000Z");
+  });
+});

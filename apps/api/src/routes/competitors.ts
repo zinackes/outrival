@@ -155,6 +155,11 @@ async function assertOwnedCompetitor(competitorId: string, orgId: string) {
 // parser produces (patch-16/17) is restated here for the fields the fact sheet needs.
 type StoredHomepage = {
   language?: string | null;
+  // Read by the hero fallback below, never on the normal path: what the page says
+  // about itself in its own <head>, captured on every structure we already hold.
+  title?: string | null;
+  metaDescription?: string | null;
+  openGraph?: { title?: string | null; description?: string | null };
   hero?: {
     headline?: string | null;
     subheadline?: string | null;
@@ -290,6 +295,32 @@ const POSITIONING_HISTORY_SCAN_LIMIT = 400;
 // Distinct rewrites returned. Past a handful the list stops being a story.
 const POSITIONING_HISTORY_MAX_VERSIONS = 12;
 
+// Text a site builder writes into <head> on your behalf, and the parked/stopped
+// page a dead host serves in place of the site. Neither is the competitor saying
+// anything about itself, and both were measured in production as the only junk the
+// fallback below would otherwise surface as a headline ("Made with Framer" as an
+// og:description, "Sorry, the website has been stopped" as a title).
+const HEAD_BOILERPLATE_RE =
+  /^(made|built|created|designed)\s+(with|in|on|using)\s+\S+|^powered\s+by\s+\S+$|website\s+has\s+been\s+stopped|site\s+not\s+found/i;
+
+// A <head> line is only usable as positioning copy when it is a PHRASE. A bare
+// brand token ("API360") names the company and claims nothing, so it would fill the
+// section with the one thing the reader already knows.
+//
+// The length ceiling is measured, not guessed: across the 157 stored titles in
+// production the longest is 158 chars, so it never fires on a title at all. It
+// exists for descriptions, where the tail is auto-generated rather than written
+// (asista.com publishes a 522-char og:description that is its own page text dumped
+// twice and cut off at "[…]"). Over the ceiling the line is DROPPED, never
+// truncated: cutting it would hand the reader a sentence nobody wrote.
+function usableHeadCopy(value: string | null | undefined): string | null {
+  const v = value?.trim() ?? "";
+  if (!v || v.length > 200) return null;
+  if (!/\s/.test(v)) return null;
+  if (HEAD_BOILERPLATE_RE.test(v)) return null;
+  return v;
+}
+
 /**
  * The copy a competitor positions itself with, derived from one stored homepage
  * structure. Shared by the fact sheet and by the positioning history, so a "then"
@@ -326,9 +357,39 @@ function positioningCopyOf(s: StoredHomepage): {
     seen.add(k);
     valueProps.push(h);
   }
+  let headline = s.hero?.headline ?? null;
+  let subheadline = s.hero?.subheadline ?? null;
+
+  // The parser reads the hero off `$("h1").first()` and nothing else, and the
+  // subheadline branch is itself gated on that H1 existing, so a page with no <h1>
+  // loses BOTH at once. That is not a broken capture: Framer, Webflow and hand-built
+  // React landing pages routinely title in an <h2> or a styled <div>. Measured on
+  // prod 2026-08-01, 9 of 158 stored structures, every one of them a live page whose
+  // sections, nav and customer logos parsed fine (asista.com: 150 KB, 37 sections,
+  // 16 logos, no H1 anywhere). "How they position" is the section the whole tab
+  // opens on, so those competitors read as if we had captured nothing.
+  //
+  // Their own <title> and og: tags sit in the SAME structure we already stored, so
+  // this recovers them at read time and every capture ever taken fixes itself with no
+  // re-scrape (same discipline as the logo refiner above). It stays in this shared
+  // function rather than in the fact-sheet builder so the positioning HISTORY derives
+  // a "then" capture exactly like a "now" one; splitting them would make the fallback
+  // itself look like a rewrite on the day it shipped.
+  //
+  // Only when both are null. A headline with no subheadline already renders the
+  // section and is the state of 66 of those 158, so filling their subheadline from a
+  // meta description would rewrite copy for 42% of the roster to reach 6% of it.
+  if (!headline && !subheadline) {
+    headline = usableHeadCopy(s.openGraph?.title) ?? usableHeadCopy(s.title);
+    const sub = usableHeadCopy(s.openGraph?.description) ?? usableHeadCopy(s.metaDescription);
+    // <title> and meta description are frequently the same string. Printing it twice,
+    // once as the headline and once as the line under it, reads as a rendering bug.
+    subheadline = sub && sub.toLowerCase() !== headline?.toLowerCase() ? sub : null;
+  }
+
   return {
-    headline: s.hero?.headline ?? null,
-    subheadline: s.hero?.subheadline ?? null,
+    headline,
+    subheadline,
     valueProps: valueProps.slice(0, 8),
   };
 }

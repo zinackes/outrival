@@ -393,7 +393,7 @@ function CandidateRow({
   const name = candidateName(candidate);
   const dismissed = tab === "dismissed";
 
-  // J and K walk the list without leaving the keyboard, T and XIcon settle the row.
+  // J and K walk the list without leaving the keyboard, T and X settle the row.
   // The row is a div, not a button: it carries buttons of its own.
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Enter" || e.key === " ") {

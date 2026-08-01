@@ -88,7 +88,7 @@ export function SharedReportsSettings() {
             </div>
             <Button variant="ghost" size="sm" onClick={() => copy(link.url)}>
               <CopyIcon className="size-4" />
-              CopyIcon
+              Copy
             </Button>
             <Button variant="ghost" size="sm" onClick={() => revoke(link.id)}>
               <TrashIcon className="size-4" />

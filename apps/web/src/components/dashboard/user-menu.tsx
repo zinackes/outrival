@@ -23,12 +23,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-interface UserIcon {
+interface User {
   name: string | null;
   email: string | null;
 }
 
-export function UserMenu({ user }: { user: UserIcon }) {
+export function UserMenu({ user }: { user: User }) {
   const router = useRouter();
 
   async function handleSignOut() {
@@ -85,7 +85,7 @@ export function UserMenu({ user }: { user: UserIcon }) {
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/dashboard/settings">
-            <GearIcon className="size-4" /> GearIcon
+            <GearIcon className="size-4" /> Settings
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem

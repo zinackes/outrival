@@ -41,7 +41,7 @@ function dayOf(iso: string): { key: string; label: string; date: Date } {
 }
 
 /**
- * PulseIcon is the chronology: what happened, newest first, triaged by materiality.
+ * Activity is the chronology: what happened, newest first, triaged by materiality.
  *
  * It used to render signals and unclassified changes as one flat divided list,
  * repeating severity, category, timestamp and a "View page" link on every row,
@@ -284,7 +284,7 @@ export function ActivityTab({
       )}
 
       {/* This tab shows signals and classified changes. The full run history,
-          including every no-change and baseline check, lives on the PulseIcon page. */}
+          including every no-change and baseline check, lives on the Activity page. */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3">
         <span className="text-dense text-muted-foreground">
           {signals.length} {signals.length === 1 ? "signal" : "signals"} captured for this

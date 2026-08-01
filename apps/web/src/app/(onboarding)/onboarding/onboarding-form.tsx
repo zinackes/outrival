@@ -1452,7 +1452,7 @@ function DiscoverStep({
         Your competitors
       </h1>
       <p className="text-sm text-muted-foreground mt-3">
-        CheckIcon the ones that really matter. You can add or remove more later.
+        Check the ones that really matter. You can add or remove more later.
       </p>
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -1674,7 +1674,7 @@ function DoneStep({
   plan: Plan;
   onDashboard: () => void;
 }) {
-  // Per-competitor analysis progress (drives the "Analyzing XIcon/Y" badge and the
+  // Per-competitor analysis progress (drives the "Analyzing X/Y" badge and the
   // breakdown popover). A competitor counts as analyzed once it has an AI summary.
   const [progress, setProgress] = useState<
     { id: string; name: string; analyzed: boolean; stage: AnalysisStage }[]

@@ -1341,7 +1341,7 @@ function StaleRunNotice({
       </div>
       <Button onClick={onRetry} size="sm" variant="outline" className="shrink-0">
         <PlayIcon className="size-4" />
-        CheckIcon again
+        Check again
       </Button>
     </div>
   );

@@ -29,7 +29,7 @@ import { ActivityLog } from "./activity/log";
 import { UpNext } from "./activity/up-next";
 import { WatchStrip, type WatchHour } from "./activity/watch-strip";
 
-// PulseIcon answers two questions with one page: is Outrival still watching
+// Activity answers two questions with one page: is Outrival still watching
 // everything, and what did it find. The roster answers the first (a source that
 // stopped answering is named, not left to be inferred from an absence), the log
 // answers the second, and the strip carries the work between them.

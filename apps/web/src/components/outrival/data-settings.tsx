@@ -63,7 +63,7 @@ export function DataSettings() {
         <div className="flex-1">
           <div className="text-dense font-medium">Export</div>
           <div className="text-dense text-muted-foreground mt-1">
-            DownloadSimpleIcon everything in your workspace (competitors, signals, digests,
+            Download everything in your workspace (competitors, signals, digests,
             products, battle cards and more) as JSON.
           </div>
         </div>

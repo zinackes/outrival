@@ -1,100 +1,47 @@
 ---
 name: trigger-jobs
 description: >
-  Utiliser quand on crée ou modifie un job Trigger.dev v3.
-  Contient les patterns complets avec idempotence, concurrence,
-  et les jobs spécifiques à Outrival.
+  DEPRECATED. Trigger.dev a été entièrement retiré d'Outrival (Phase 7,
+  2026-08-02) — les jobs tournent sur pg-boss self-hosted (`@outrival/queue`).
+  Lire ce fichier si du vieux code, une spec ou un runbook mentionnent encore un
+  wrapper Trigger, pour savoir où ça a migré.
 allowed-tools: [Read, Write, Edit]
 ---
 
-# Trigger.dev v3 Patterns — Outrival
+# trigger-jobs — DÉPRÉCIÉ
 
-## Structure de base
+**Ne pas suivre l'ancien contenu de ce skill.** Il décrivait comment écrire un
+`task()` Trigger.dev v3 dans `apps/workers/src/jobs/*.job.ts`. Ces fichiers, le
+`trigger.config.ts` et le SDK ont tous été supprimés, et le package n'est plus une
+dépendance. Un job écrit selon l'ancien modèle ne compilerait pas et ne tournerait
+jamais.
 
-```typescript
-// apps/workers/src/jobs/[name].job.ts
-import { task, AbortTaskRunError } from "@trigger.dev/sdk/v3";
-import { z } from "zod";
+## Où c'est passé
 
-const InputSchema = z.object({
-  monitorId: z.string().uuid(),
-  competitorId: z.string().uuid(),
-});
+| Avant (Trigger.dev) | Maintenant (pg-boss) |
+|---|---|
+| `apps/workers/src/jobs/[name].job.ts` (`task({...})`) | `apps/workers/src/core/[name].ts`, export `run[Name]`, runtime-neutre |
+| `trigger.config.ts` liste les jobs | `packages/queue/src/jobs.ts` (`defineJob<Payload>()`) : nom, payload, retry, expire, concurrence |
+| `schedules.task({ cron })` | Cron posé par le worker `WORKER_ROLE=light`, qui le possède seul |
+| `maxAttempts: 3` | `retryLimit` (= nombre de RETRIES, donc N-1) |
+| `maxDuration` | `expireInSeconds` |
+| `queue({ concurrencyLimit })` | `concurrency` sur le job |
+| `throw new AbortTaskRunError(...)` | `throw new NonRetriable(...)` depuis `@outrival/queue` |
+| Dashboard Trigger Cloud | Tables pg-boss + dead-letter `outrival-dlq` |
 
-export const scrapeSourceJob = task({
-  id: "scrape-source",
-  maxAttempts: 3,
-  machine: { preset: "small-1x" },
+## Quoi lire à la place
 
-  async run(payload: z.infer, { ctx }) {
-    const input = InputSchema.parse(payload);
-    ctx.log("Starting scrape-source", { monitorId: input.monitorId });
+`.claude/rules/jobs.md` — les règles à jour (structure, payloads, idempotence,
+erreurs, cron, concurrence). Historique de la bascule et raisons du choix :
+`docs/trigger-to-pgboss-migration.md`.
 
-    // Idempotence check
-    const recentSnapshot = await db.query.snapshots.findFirst({
-      where: and(
-        eq(snapshots.monitorId, input.monitorId),
-        gte(snapshots.scrapedAt, subHours(new Date(), 1))
-      ),
-    });
-    if (recentSnapshot) {
-      ctx.log("Snapshot recent, skipping", { snapshotId: recentSnapshot.id });
-      return { skipped: true };
-    }
+## Pourquoi le retrait a été fait
 
-    // ... logique principale
-
-    ctx.log("Completed scrape-source", { monitorId: input.monitorId });
-    return { ok: true };
-  },
-});
-```
-
-## Concurrence par domaine
-
-```typescript
-export const scrapeSourceJob = task({
-  id: "scrape-source",
-  concurrencyKey: async (payload) => {
-    const monitor = await db.query.monitors.findFirst({
-      where: eq(monitors.id, payload.monitorId),
-      with: { competitor: true },
-    });
-    return new URL(monitor!.competitor.url).hostname;
-  },
-  queue: { concurrencyLimit: 1 },
-  // ...
-});
-```
-
-## Jobs clés Outrival
-
-### scrape-monitor.job.ts
-Scrape une source pour un monitor. Inputs : monitorId.
-Logique : scrape → upload R2 → compute diff → create Change si changé → trigger classify-change.
-
-### classify-change.job.ts
-Classifie un Change avec Groq. Inputs : changeId.
-Logique : lire change → Groq classification → si significant → trigger generate-signal.
-
-### generate-signal.job.ts
-Génère un Signal avec Claude Sonnet. Inputs : changeId, classification.
-Logique : lire change + context competitor → Claude insight → stocker Signal → si severity high/critical → trigger send-alert.
-
-### generate-weekly-digest.job.ts
-Génère le digest hebdomadaire. Inputs : orgId, weekStart.
-Idempotence : vérifier si digest existe déjà pour cette semaine.
-Logique : agréger signals de la semaine → Claude Sonnet digest → stocker → Resend email.
-
-### discover-competitors.job.ts
-Découverte auto des concurrents. Inputs : orgId, productUrl.
-Logique : Exa.ai search → score overlap → retourner liste triée.
-
-## AbortTaskRunError (erreurs non-retriable)
-
-```typescript
-// Utiliser pour les erreurs qui ne bénéficieront pas d'un retry
-if (!monitor) {
-  throw new AbortTaskRunError(`Monitor ${input.monitorId} not found`);
-}
-```
+Après le cutover, les wrappers Trigger devaient survivre une semaine comme
+rollback. Ils ont survécu plus longtemps, et comme leurs schedules sont
+**déclaratifs** (le cron vit dans le code déployé, donc ni le dashboard ni l'API ne
+peuvent le désactiver), Trigger Cloud a continué à exécuter toute la flotte en
+parallèle de pg-boss, sur une version du 13/07. Chaque concurrent était scrapé deux
+fois par deux flottes qui ne partagent pas le rate-limiter par domaine, l'IA et Exa
+étaient payées deux fois, et du code périmé écrivait en base. Supprimer les wrappers
+et redéployer est la seule façon de retirer un schedule déclaratif.

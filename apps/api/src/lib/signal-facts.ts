@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, inArray, lte, sql as dsql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, lte, sql as dsql, type SQL } from "drizzle-orm";
 import {
   caseStudies,
   changes,
@@ -6,6 +6,7 @@ import {
   jobPostings,
   knownCustomers,
   knownIntegrations,
+  messagingVersions,
   postingFacts,
   techStackEntries,
 } from "@outrival/db";
@@ -182,6 +183,36 @@ export interface VelocityFact {
   baseline: Array<{ month: string; count: number }>;
 }
 
+/** How a competitor described itself, before and after (Positioning v2 P1). */
+export interface MessagingFact {
+  h1Before: string | null;
+  h1After: string;
+  subheadlineBefore: string | null;
+  subheadlineAfter: string | null;
+  /** Both sides only when the CTA itself moved — an unchanged CTA is noise here. */
+  ctaBefore: string | null;
+  ctaAfter: string | null;
+  /** "YYYY-MM-DD" the previous wording first appeared, so the reader knows how
+   *  long it stood. Null when this is the first wording we ever recorded. */
+  previousSince: string | null;
+}
+
+/** One quantified claim that moved, in the words the page printed. */
+export interface ClaimFact {
+  /** "customers", "uptime" — the thing being counted. */
+  context: string;
+  /** VERBATIM spans, both sides: "10,000+ customers" → "15,000+ customers". */
+  before: string;
+  after: string;
+  /** Signed fractional move, as the detector computed it. */
+  variation: number;
+  /** The round number this crossed (10000, 1000000…), when it crossed one. */
+  milestone: number | null;
+  /** Every value we hold for this claim, oldest first — the mini timeline that
+   *  turns one jump into a trajectory. */
+  series: Array<{ observedAt: string; value: number; rawText: string }>;
+}
+
 /** One open role behind a salary band, with the range its own posting states. */
 export interface BandRoleFact {
   title: string;
@@ -281,6 +312,15 @@ export type SignalFacts =
       integrationsTotal: number;
       /** The catalog page they were read off. */
       evidenceUrl: string | null;
+    }
+  | {
+      /** How a homepage signal's competitor describes itself, before and after,
+       *  and which of its quantified claims moved (Positioning v2 P1). Either
+       *  half can be absent — a hero rewrite with no claim move, or a claim move
+       *  under untouched copy, are both ordinary. */
+      kind: "positioning";
+      messaging: MessagingFact | null;
+      claims: ClaimFact[];
     }
   | {
       /** The two windows an `editorial_pivot` compared (Content Intelligence v2 P4). */
@@ -1215,6 +1255,132 @@ async function salaryFacts(
   };
 }
 
+// A homepage can print a dozen quantified brags; the block names what moved, it
+// does not reproduce the page.
+const MAX_CLAIM_FACTS = 6;
+// Enough of a claim's history to read it as a trajectory rather than a jump.
+const MAX_CLAIM_SERIES = 8;
+
+interface ClaimSeriesRow {
+  pattern: string;
+  unit: string;
+  context: string;
+  value: number;
+  raw_text: string;
+  observed_at: string;
+}
+
+/**
+ * What a homepage signal's competitor now says about itself, against what it said
+ * before, plus the quantified claims that moved with it (Positioning v2 P1).
+ *
+ * Deliberately NOT a second signal. A hero rewrite already reaches the reader
+ * through the homepage classifier — what it could never say was what the copy
+ * changed FROM, because the previous wording lived only inside a snapshot nobody
+ * read. The materialised timeline holds it, so the signal that already exists
+ * gains its other half instead of gaining a duplicate.
+ *
+ * The claims are read off the change's OWN structured diff rather than recomputed:
+ * the detector already decided which claim moved and against which prior value,
+ * and re-deriving it from a table that has since taken new observations would
+ * print numbers that contradict the sentence above them. The verbatim spans it
+ * carries are what the competitor PUBLISHED — "10,000+ customers", not our
+ * rendering of the integer we parsed out of it.
+ */
+async function positioningFacts(
+  competitorId: string,
+  monitorId: string,
+  detectedAt: Date,
+  window: { lower: Date; upper: Date },
+): Promise<SignalFacts> {
+  const [change] = await db
+    .select({ structuredDiff: changes.structuredDiff })
+    .from(changes)
+    .where(and(eq(changes.monitorId, monitorId), eq(changes.detectedAt, detectedAt)))
+    .limit(1);
+
+  // The two most recent versions at or before this capture: the one this capture
+  // opened (when it opened one) and the wording it replaced.
+  const versions = await db
+    .select({
+      h1: messagingVersions.h1,
+      subheadline: messagingVersions.subheadline,
+      primaryCta: messagingVersions.primaryCta,
+      capturedAt: messagingVersions.capturedAt,
+    })
+    .from(messagingVersions)
+    .where(
+      and(
+        eq(messagingVersions.competitorId, competitorId),
+        lte(messagingVersions.capturedAt, window.upper),
+      ),
+    )
+    .orderBy(desc(messagingVersions.capturedAt))
+    .limit(2);
+
+  const [current, previous] = versions;
+  // A version only counts as THIS signal's when the capture that opened it falls
+  // in the window. Otherwise the copy stood still and the signal is about
+  // something else on the page — printing the standing wording as a "change"
+  // would invent a rewrite.
+  const opened = current && current.capturedAt >= window.lower ? current : null;
+  const messaging: MessagingFact | null =
+    opened && opened.h1
+      ? {
+          h1Before: previous?.h1 ?? null,
+          h1After: opened.h1,
+          subheadlineBefore: previous?.subheadline ?? null,
+          subheadlineAfter: opened.subheadline,
+          ctaBefore: previous && previous.primaryCta !== opened.primaryCta ? previous.primaryCta : null,
+          ctaAfter: previous && previous.primaryCta !== opened.primaryCta ? opened.primaryCta : null,
+          previousSince: previous ? previous.capturedAt.toISOString().slice(0, 10) : null,
+        }
+      : null;
+
+  const diff = Array.isArray(change?.structuredDiff)
+    ? (change.structuredDiff as Array<{ kind?: string; metadata?: Record<string, unknown> | null }>)
+    : [];
+  const moved = diff
+    .filter((c) => c.kind === "numeric_claim_changed")
+    .slice(0, MAX_CLAIM_FACTS)
+    .map((c) => c.metadata ?? {})
+    .filter((m) => typeof m.rawTextBefore === "string" && typeof m.rawTextAfter === "string");
+
+  let claims: ClaimFact[] = [];
+  if (moved.length > 0) {
+    // One read for every claim in the block: the series is the same table, keyed
+    // by the same triple the detector compared on.
+    const rows =
+      (await analyticsQuery<ClaimSeriesRow>(sql`
+        SELECT pattern, unit, context, value, raw_text, observed_at::text AS observed_at
+        FROM numeric_claims
+        WHERE competitor_id = ${competitorId}
+        ORDER BY observed_at DESC
+        LIMIT 400
+      `)) ?? [];
+
+    claims = moved.map((m) => {
+      const key = `${String(m.pattern ?? "")}|${String(m.unit ?? "")}|${String(m.context ?? "")}`;
+      const series = rows
+        .filter((r) => `${r.pattern}|${r.unit ?? ""}|${r.context}` === key)
+        .slice(0, MAX_CLAIM_SERIES)
+        .reverse()
+        .map((r) => ({ observedAt: r.observed_at, value: r.value, rawText: r.raw_text }));
+      return {
+        context: String(m.context ?? ""),
+        before: String(m.rawTextBefore),
+        after: String(m.rawTextAfter),
+        variation: typeof m.variation === "number" ? m.variation : 0,
+        milestone: typeof m.milestone === "number" ? m.milestone : null,
+        series,
+      };
+    });
+  }
+
+  if (!messaging && claims.length === 0) return null;
+  return { kind: "positioning", messaging, claims };
+}
+
 /**
  * The structured facts behind one signal, or null when its source has none.
  *
@@ -1387,6 +1553,7 @@ export async function buildSignalFacts(args: {
     sourceType !== "roadmap_shift" &&
     sourceType !== "integration_catalog" &&
     sourceType !== "tech_stack" &&
+    sourceType !== "homepage" &&
     !REVIEW_SOURCES.has(sourceType ?? "")
   ) {
     return null;
@@ -1428,6 +1595,9 @@ export async function buildSignalFacts(args: {
       return await techStackFacts(competitorId, monitorId, new Date(detectedAt));
     }
     const window = await attributionWindow(monitorId, new Date(detectedAt));
+    if (sourceType === "homepage") {
+      return await positioningFacts(competitorId, monitorId, new Date(detectedAt), window);
+    }
     if (sourceType === "jobs") return await hiringFacts(competitorId, window);
     if (sourceType === "job_facts") return await jobFactsFacts(competitorId, window);
     if (sourceType === "changelog") return await changelogFacts(competitorId, window);

@@ -33,6 +33,8 @@ import {
 } from "@outrival/db";
 import { stampFirstScrape } from "../lib/onboarding-funnel";
 import { recordMobileApps } from "../lib/mobile-apps";
+import { recordMessagingVersion } from "../lib/messaging-versions";
+import { crossesRoundMilestone } from "../lib/claim-milestone";
 import {
   clampFrequencyToPlan,
   computeHash,
@@ -1168,6 +1170,30 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       logger.warn("Mobile-app detection failed (non-fatal)", { error: String(err) });
     }
 
+    // Messaging timeline (Positioning Intelligence v2 P1): materialise how this
+    // competitor describes itself, off the structure this capture already parsed.
+    // Like the mobile-app read above it emits NO change and NO signal — the
+    // homepage classifier already carries a hero rewrite to the reader, and the
+    // fact block reads this table to say what the copy went FROM.
+    //
+    // Gated on a COMPLETE capture: an SPA that served its error boundary parses
+    // into a structure with a hero, and recording it would print "Something went
+    // wrong" as the day they repositioned. Only this path (a live scrape) writes
+    // versions — an archive snapshot is reconstructed by the one-shot backfill,
+    // which never runs from here.
+    if (monitor.sourceType === "homepage" && homepageStructure && graded.complete) {
+      try {
+        await recordMessagingVersion({
+          competitorId: competitor.id,
+          structure: homepageStructure,
+          capturedAt: newSnapshot.scrapedAt,
+          snapshotKey: r2Key,
+        });
+      } catch (err) {
+        logger.warn("Messaging version write failed (non-fatal)", { error: String(err) });
+      }
+    }
+
     // Pricing taxonomy (patch-11): analyse the page we just captured, store the
     // latest status on the competitor (unless the user took manual control), and
     // remember the prior status to detect a repositioning when routing the change.
@@ -1291,21 +1317,45 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       const currentClaims = extractNumericClaims(claimText);
       if (currentClaims.length > 0) {
         const lastClaims = await getLastNumericClaims(monitor.competitorId);
-        const lastByKey = new Map<string, number>();
+        const lastByKey = new Map<string, { value: number; rawText: string }>();
         for (const lc of lastClaims ?? []) {
-          lastByKey.set(`${lc.pattern}|${lc.unit}|${lc.context}`, lc.value);
+          lastByKey.set(`${lc.pattern}|${lc.unit}|${lc.context}`, {
+            value: lc.value,
+            rawText: lc.rawText,
+          });
         }
         for (const claim of currentClaims) {
-          const prev = lastByKey.get(`${claim.pattern}|${claim.unit ?? ""}|${claim.context}`);
-          if (prev === undefined || prev <= 0) continue;
+          const last = lastByKey.get(`${claim.pattern}|${claim.unit ?? ""}|${claim.context}`);
+          // No prior observation = the first time we have seen this competitor make
+          // this claim. It is a baseline, not a move, and announcing it would open
+          // every competitor's first homepage capture with a wall of "business
+          // claims changed".
+          if (last === undefined || last.value <= 0) continue;
+          const prev = last.value;
           const variation = (claim.value - prev) / prev;
           if (Math.abs(variation) > CLAIM_VARIATION_THRESHOLD) {
+            const milestone = crossesRoundMilestone(prev, claim.value, claim.unit);
             structuredChanges.push({
               kind: "numeric_claim_changed",
               field: "numeric_claim_changed",
               before: formatClaim(prev, claim.unit, claim.context),
               after: formatClaim(claim.value, claim.unit, claim.context),
-              metadata: { variation, pattern: claim.pattern, context: claim.context },
+              metadata: {
+                variation,
+                pattern: claim.pattern,
+                context: claim.context,
+                unit: claim.unit,
+                // The spans the page actually printed, both sides. The before/after
+                // above are OUR rendering of the parsed numbers, which is what the
+                // classifier needs; a reader checking the claim against the page
+                // needs the words the page used. Positioning Intelligence v2 P1.
+                rawTextBefore: last.rawText,
+                rawTextAfter: claim.rawText,
+                // The round number this move crossed, when it crossed one — the
+                // difference between a company drifting upward and a company
+                // reaching the figure it will put in a press release.
+                ...(milestone !== null ? { milestone } : {}),
+              },
             });
           }
         }

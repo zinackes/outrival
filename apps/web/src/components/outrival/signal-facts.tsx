@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowSquareOutIcon, CaretDownIcon } from "@/components/icons";
+import {
+  ArrowElbowDownRightIcon,
+  ArrowSquareOutIcon,
+  CaretDownIcon,
+} from "@/components/icons";
 import type {
   EntitlementFact,
   JobFact,
@@ -47,7 +51,113 @@ export function SignalFacts({ facts }: { facts: Facts }) {
   if (facts.kind === "editorial") return <EditorialFacts facts={facts} />;
   if (facts.kind === "tech_stack") return <TechStackFacts facts={facts} />;
   if (facts.kind === "reviews") return <ReviewFacts facts={facts} />;
+  if (facts.kind === "positioning") return <PositioningFacts facts={facts} />;
   return <PricingFacts facts={facts} />;
+}
+
+/** "15,000" — a claim's parsed value, at the precision the page implies. */
+const claimValue = (n: number) =>
+  n >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : String(n);
+
+/**
+ * How a competitor now describes itself, against how it described itself before.
+ *
+ * The homepage signal could say the copy changed and never what it changed FROM,
+ * which is the half carrying the meaning: "Everything your TCG world needs" is a
+ * headline; "they stopped saying track your collection and started saying buy,
+ * sell, trade" is a repositioning. Both sides come from the materialised
+ * messaging timeline, so what is printed here is what was captured, not a
+ * model's account of it.
+ *
+ * The claims are shown in the words the page PRINTED — "10,000+ customers", not
+ * our rendering of the number parsed out of it — because the whole point of a
+ * claim is that the competitor published it in those terms.
+ */
+function PositioningFacts({ facts }: { facts: Extract<Facts, { kind: "positioning" }> }) {
+  const { messaging, claims } = facts;
+
+  return (
+    <div className="space-y-4">
+      {messaging && (
+        <div className="space-y-2.5">
+          {messaging.h1Before && (
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">
+                Before
+                {messaging.previousSince && <> · since {messaging.previousSince}</>}
+              </p>
+              <p className="text-sm leading-snug text-muted-foreground line-through decoration-muted-foreground/50">
+                {messaging.h1Before}
+              </p>
+              {messaging.subheadlineBefore && (
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {messaging.subheadlineBefore}
+                </p>
+              )}
+            </div>
+          )}
+          <div className="space-y-0.5">
+            <p className="text-xs text-muted-foreground">Now</p>
+            <p className="text-lead font-semibold leading-snug tracking-tight text-balance text-foreground">
+              {messaging.h1After}
+            </p>
+            {messaging.subheadlineAfter && (
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {messaging.subheadlineAfter}
+              </p>
+            )}
+          </div>
+          {messaging.ctaAfter && (
+            <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+              <span className="text-xs text-muted-foreground">Primary CTA</span>
+              {messaging.ctaBefore && (
+                <span className="text-muted-foreground line-through decoration-muted-foreground/50">
+                  {messaging.ctaBefore}
+                </span>
+              )}
+              <ArrowElbowDownRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="text-foreground">{messaging.ctaAfter}</span>
+            </p>
+          )}
+        </div>
+      )}
+
+      {claims.length > 0 && (
+        <ul className={cn("space-y-2.5", messaging && "border-t border-border pt-3.5")}>
+          {claims.map((claim) => (
+            <li key={claim.context} className="space-y-1">
+              <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                <span className="text-muted-foreground line-through decoration-muted-foreground/50">
+                  {claim.before}
+                </span>
+                <ArrowElbowDownRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="text-foreground">{claim.after}</span>
+                <span className="text-meta text-muted-foreground tabular-nums">
+                  {claim.variation > 0 ? "+" : ""}
+                  {Math.round(claim.variation * 100)}%
+                </span>
+                {claim.milestone !== null && (
+                  <span className="text-meta text-foreground">
+                    passed {claimValue(claim.milestone)}
+                  </span>
+                )}
+              </p>
+              {claim.series.length > 1 && (
+                <p className="flex flex-wrap gap-x-2 text-xs text-muted-foreground tabular-nums">
+                  {claim.series.map((point, i) => (
+                    <span key={`${point.observedAt}-${i}`}>
+                      {point.observedAt.slice(0, 10)}{" "}
+                      <span className="text-foreground">{claimValue(point.value)}</span>
+                    </span>
+                  ))}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 /**

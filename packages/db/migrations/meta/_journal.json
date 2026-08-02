@@ -498,6 +498,13 @@
       "when": 1785614303244,
       "tag": "0070_adorable_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1785684810244,
+      "tag": "0071_lush_franklin_storm",
+      "breakpoints": true
     }
   ]
 }

@@ -16,6 +16,7 @@ export * from "./content-items";
 export * from "./case-studies";
 export * from "./roadmap-status-events";
 export * from "./known-integrations";
+export * from "./messaging-versions";
 export * from "./reviews";
 export * from "./battle_cards";
 export * from "./notifications";

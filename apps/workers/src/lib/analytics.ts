@@ -1549,6 +1549,10 @@ export interface LastNumericClaim {
   unit: string;
   context: string;
   value: number;
+  /** The span the page printed ("10,000+ customers"). A claim change reads as
+   *  what the competitor WROTE, not as our reformatting of the number we parsed
+   *  out of it — "10,000 customers" is a sentence they never published. */
+  rawText: string;
 }
 
 // Latest value per (pattern, unit, context) for a competitor. Called BEFORE
@@ -1563,6 +1567,7 @@ export async function getLastNumericClaims(
         unit: numericClaims.unit,
         context: numericClaims.context,
         value: numericClaims.value,
+        rawText: numericClaims.rawText,
       })
       .from(numericClaims)
       .where(eq(numericClaims.competitorId, competitorId))

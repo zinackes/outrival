@@ -1,57 +1,52 @@
-# Deployment — OVH VPS + Coolify
+# Deployment — OVH (app, Coolify) + Netcup (workers, plain compose)
 
 Code-side companion to the Notion runbook *"🚀 Runbook — Mise en prod (OVH VPS +
-Coolify)"*. The runbook covers the server (hardening, UFW/fail2ban, swap,
+Coolify)"*. The runbook covers the **OVH** server (hardening, UFW/fail2ban, swap,
 Cloudflare proxied, backups) — follow it as-is. **This file covers what the
 runbook does not: the app-specific config that breaks a deploy if missed.**
 
+The **Netcup queue box** (workers + pg-boss Postgres) has no Coolify and no Notion
+runbook: its rebuild procedure is `infra/queue-box/README.md`.
+
 ## Topology (decided)
 
-- **Jobs are authored on Trigger.dev v4** (`task()`, `project:
-  proj_syxlttkfpjwsjmkdnmhp`) — execution is **migrating to self-hosted pg-boss**
-  workers (`@outrival/queue`, `apps/workers/src/queue/worker.ts`,
-  `Dockerfile.queue-light` + `Dockerfile.queue-browser`, `WORKER_ROLE=browser|light`,
-  `QUEUE_DATABASE_URL`). Migration in progress — see
-  `docs/trigger-to-pgboss-migration.md` for the phase-by-phase state and which
-  jobs still run on Trigger Cloud vs. the pg-boss workers.
-- **Coolify apps from this one repo**, behind Cloudflare (proxied, Full strict):
+**Two servers, not one.** Coolify runs the app; it does not touch the workers.
+
+- **OVH VPS** (`151.80.58.65`, wg `10.10.0.2`) — Coolify apps from this one repo,
+  behind Cloudflare (proxied, Full strict):
   - `web` → `https://outrival.io` (Next.js 16, Node, standalone)
   - `api` → `https://api.outrival.io` (Hono on Bun)
-  - `workers` (pg-boss) → two services built from `Dockerfile.queue-light`
-    (`WORKER_ROLE=light`: crons, AI, extracts, alerts) and
-    `Dockerfile.queue-browser` (`WORKER_ROLE=browser`: scrapes, platform,
-    battle-card PDF) once cut over.
-- **Managed**: Neon (Postgres) — also backs the dedicated always-on
-  `QUEUE_DATABASE_URL` pg-boss queue (never the Neon serverless branch), Upstash
+- **Netcup RS 1000 G12** (`outrival-queue-01`, `152.53.113.71`, wg `10.10.0.1`) —
+  plain `docker compose` under `/opt/outrival`, **no Coolify**:
+  - `outrival-pg` — the pg-boss queue Postgres (`QUEUE_DATABASE_URL`), bound to
+    the WireGuard address only
+  - `outrival-worker-light` (`WORKER_ROLE=light`: crons, AI, extracts, alerts —
+    owns cron and maintenance, exactly one process may)
+  - `outrival-worker-browser` (`WORKER_ROLE=browser`: scrapes, platform detection,
+    battle-card PDF)
+- The two boxes talk over **WireGuard `10.10.0.0/24`**; the queue is never exposed
+  publicly. Runbook + compose mirrors: `infra/queue-box/README.md`.
+- **Managed**: Neon (Postgres, business data only — never the queue), Upstash
   (Redis), Cloudflare R2.
 
-> The runbook's *"App 2 — Workers"* Dockerfile installs **Playwright Chromium**
-> (used for both the battle-card PDF and the L1/L2 scrape render). On Trigger Cloud
-> the browser runs on Trigger's machines; on the pg-boss `browser` worker it runs on
-> the VPS, so that Dockerfile's browser-binary install step applies there. The
-> browser-binary check it anticipates still applies on both paths (see *Browser
-> binaries* below).
+> Jobs are pg-boss only. Trigger.dev was retired entirely (Phase 7, 2026-08-02):
+> no `trigger.config.ts`, no `*.job.ts`, no `trigger deploy`. History:
+> `docs/trigger-to-pgboss-migration.md`.
 
-## ⚠️ Pre-launch check #1 — browser binaries on Trigger Cloud
+## ⚠️ Pre-launch check #1 — browser binaries on the browser worker
 
 The collection-doctrine cascade launches a single **Playwright Chromium** for the
-L1/L2 render (there is no separate scrape browser anymore). The `installBrowsers()`
-build extension in `trigger.config.ts` installs exactly that Chromium into the
-shared `/ms-playwright` store, so PDF rendering and scraping share one binary.
+L1/L2 render (there is no separate scrape browser anymore), shared with the
+battle-card PDF. It is installed by `Dockerfile.queue-browser` and runs on the
+Netcup box, so a missing binary is a build-layer problem, not a platform one.
 
 - **L0 fetch**: fine (no browser).
-- **L1/L2 render**: depends on the Playwright Chromium install layer having run at
-  deploy build (it's the same one the battle-card PDF already relies on).
+- **L1/L2 render**: depends on the Chromium install layer having run at image build.
 
-**Test before launch**: `trigger deploy`, then force a scrape on a JS site that
-needs a render and watch `scrape_runs.level` + the run logs. If the browser is
-missing:
-
-1. Confirm the `installBrowsers()` layer ran (`playwright install --with-deps
-   chromium`) and `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright` is set at runtime.
-2. Self-host the scraping jobs (runbook's App 2 Dockerfile) — hybrid, heavier.
-3. Launch **L0-only** first (many sites scrape fine via direct fetch) and wire the
-   render right after.
+**Test after each worker image deploy**: force a scrape on a JS site that needs a
+render and watch `scrape_runs.level` + the container logs. If the browser is
+missing, confirm the image ran `playwright install --with-deps chromium` and that
+`PLAYWRIGHT_BROWSERS_PATH=/ms-playwright` is set at runtime.
 
 ## Code changes made for prod (this branch)
 
@@ -103,7 +98,7 @@ apply the identical files. Reset the branch from prod whenever it drifts.
 
 > Use the **direct** endpoint for DDL (not `-pooler`); the app keeps the pooled
 > URL. When a full staging environment lands later (Coolify app on a `staging`
-> git branch + Trigger staging env + Stripe **test** keys + an
+> git branch + its own pg-boss queue + Stripe **test** keys + an
 > `outrival-snapshots-staging` R2 bucket), this same Neon branch becomes its DB.
 
 ## Environment matrix
@@ -162,38 +157,47 @@ RESEND_API_KEY= / RESEND_AUTH_FROM=
 GROQ_API_KEY= (or AI_PROVIDER_*) / ANTHROPIC_API_KEY=
 EXA_API_KEY=
 POSTHOG_API_KEY=
-TRIGGER_SECRET_KEY=                   # api triggers tasks via @trigger.dev/sdk
+QUEUE_DATABASE_URL=                   # send-only: the api enqueues, never runs a handler
 SENTRY_DSN=                           # optional
 ```
 
 > If you ever serve marketing on `www.outrival.io`, widen the **hardcoded** CORS
 > origin in `apps/api/src/index.ts` (currently `["https://outrival.io"]` only).
 
-### Trigger.dev Cloud (set in the Trigger dashboard, NOT Coolify)
-`DATABASE_URL`, `R2_*`, `GROQ_API_KEY`/`AI_PROVIDER_*`, `ANTHROPIC_API_KEY`,
-`RESEND_API_KEY`, `EXA_API_KEY`, `PROXYSCRAPE_DC_*`, `POSTHOG_API_KEY`,
-`SENTRY_*`, and the patch tuning knobs (see `.env.example`).
+### `workers` (Netcup queue box — NOT Coolify)
+The two workers and the queue Postgres run on a **separate server**
+(`outrival-queue-01`, Netcup RS 1000 G12, `152.53.113.71`), driven by a plain
+`docker compose` under `/opt/outrival`. There is no Coolify UI here.
 
-### `workers` (pg-boss, Coolify runtime — target of the migration)
-Two services, both built from `apps/workers` (`Dockerfile.queue-light` /
-`Dockerfile.queue-browser`), same job env as Trigger.dev Cloud above plus:
+**Env lives in `/opt/outrival/.env.worker` (0600), read once at boot** — appending
+a var does nothing until the process restarts. Both services are built from
+`apps/workers` (`Dockerfile.queue-light` / `Dockerfile.queue-browser`) and take the
+job env (`DATABASE_URL`, `R2_*`, `AI_PROVIDER_*`, `ANTHROPIC_API_KEY`,
+`RESEND_API_KEY`, `EXA_API_KEY`, `PROXYSCRAPE_DC_*`, `POSTHOG_API_KEY`, `SENTRY_*`,
+plus the tuning knobs in `.env.example`) plus:
 ```
 WORKER_ROLE=light                     # or browser — one value per service, not both
-QUEUE_DATABASE_URL=                   # DEDICATED always-on Postgres, NEVER the Neon serverless branch
+QUEUE_DATABASE_URL=                   # the local queue Postgres, NEVER the Neon serverless branch
 SCRAPE_CONCURRENCY=3                  # browser service only
 HEARTBEAT_URL=                        # light service only (it owns cron)
 ```
-`QUEUE_DATABASE_URL` also goes on the **`api`** service — it enqueues (send-only:
-never a handler, never cron). Without it, every route that fires a job 500s while
-the rest of the API keeps serving.
+`QUEUE_DATABASE_URL` also goes on the **`api`** service **in Coolify** — the API
+enqueues (send-only: never a handler, never cron) and reaches the queue box over
+the WireGuard tunnel (`10.10.0.1:5432`, no public bind). Without it, every route
+that fires a job 500s while the rest of the API keeps serving. The password lives
+in three places at once: `.env.worker`, Coolify, and the `outrival` role — rotate
+all three in one shell.
 
-See `docs/trigger-to-pgboss-migration.md` for cutover state.
+Compose files, WireGuard config and the full rebuild-from-scratch runbook are
+mirrored in `infra/queue-box/` (copies for disaster recovery — nothing there is
+applied automatically; edit on the box, mirror in the same commit).
 
 #### Sizing on the Netcup RS 1000 (8 GB shared by all three)
 
 The queue Postgres, the light worker and the browser worker share one box, so the
 limits are what stop a Chromium spike from taking down the queue everything else
-depends on. Set them in Coolify → service → Resources:
+depends on. They are set in `docker-compose.override.yml`
+(`deploy.resources.limits.memory`), not in any UI:
 
 | Service | Memory limit | Notes |
 |---|---|---|
@@ -202,10 +206,13 @@ depends on. Set them in Coolify → service → Resources:
 | `workers-browser` | 4–5 GB | Chromium is out-of-process per page; `SCRAPE_CONCURRENCY=3` is sized for this ceiling. |
 
 Also on the **browser** service:
-- **`--shm-size=1g`** (Docker Options). Chromium's default 64 MB `/dev/shm` causes
-  renderer crashes that surface as random scrape failures, not as OOM.
-- **Stop grace period ≥ 60 s**, so a redeploy mid-scrape drains through pg-boss's
-  graceful stop instead of leaving jobs stuck `active` until `expireInSeconds`.
+- **`shm_size: 1g`**. Chromium's default 64 MB `/dev/shm` causes renderer crashes
+  that surface as random scrape failures, not as OOM.
+- **`stop_grace_period: 40s`** on BOTH workers. The code asks pg-boss for a 30 s
+  graceful drain; Compose's 10 s default SIGKILLed it every time, and pg-boss
+  cannot observe a SIGKILL — the job stays `active` until `expireInSeconds` (900
+  for `scrape-monitor`), then retries, and three of those mark the monitor
+  unscrapable. Measured cost: up to 45 scrapes on 2026-08-01 alone.
 
 If real load OOMs the browser worker, the fix is a bigger box (RS 2000, 16 GB —
 in-place upgrade at Netcup, no migration), NOT raising concurrency on this one.
@@ -221,8 +228,9 @@ signature). The `stripe listen` in `pnpm dev` is dev-only.
 ## Deploy order
 
 1. Provision Neon / Upstash / R2 / Cloudflare DNS (proxied) / Stripe webhook.
-2. Server: follow the Notion runbook (Phases 0–4, 7).
-3. `trigger deploy` → **run the browser test (blocker #1)**.
+2. **OVH box**: follow the Notion runbook (Phases 0–4, 7).
+3. **Netcup queue box**: `infra/queue-box/README.md` (WireGuard first, then
+   Postgres, then the workers) → **run the browser test (blocker #1)**.
 4. Coolify `api` app (Dockerfile, env, pre-deploy migrate command), then `web` app
    (Dockerfile, build args, domain).
 5. Smoke test (below).

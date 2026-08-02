@@ -5,6 +5,7 @@ import {
   isConfigError,
   isTooLarge,
   rateLimitBackoffSec,
+  classifyExhaustion,
 } from "./provider";
 import {
   estimateRequestTokens,
@@ -153,4 +154,48 @@ test("an unset ceiling means unknown, never zero", () => {
   // let the provider answer. A ceiling of 0 in env must read the same way.
   expect(providersAcceptingSize([provider("mistral")], 999_999)).toHaveLength(1);
   expect(providersAcceptingSize([provider("mistral", 0)], 999_999)).toHaveLength(1);
+});
+
+// --- what a pool exhaustion means -------------------------------------------
+//
+// Only a "transient" verdict may reach recordFailure, and five of those in a row
+// pause AI for the whole workspace. The empty-completion branch used to set no flag
+// at all, so an exhaustion made only of empty replies landed here unlabelled and was
+// counted as infra distress — the exact opposite of what its comment claimed.
+
+const seen = (over: Partial<Parameters<typeof classifyExhaustion>[0]> = {}) => ({
+  configError: false,
+  transientError: false,
+  tooLarge: false,
+  emptyCompletion: false,
+  ...over,
+});
+
+test("empty replies from every provider are not an outage", () => {
+  expect(classifyExhaustion(seen({ emptyCompletion: true }))).toBe("empty_replies");
+});
+
+test("a real transient fault outranks every request-shaped reading", () => {
+  // Something WAS distressed: this is the one verdict allowed to feed the breaker.
+  expect(classifyExhaustion(seen({ transientError: true }))).toBe("transient");
+  expect(classifyExhaustion(seen({ transientError: true, emptyCompletion: true }))).toBe(
+    "transient",
+  );
+  expect(classifyExhaustion(seen({ transientError: true, tooLarge: true }))).toBe("transient");
+  expect(classifyExhaustion(seen({ transientError: true, configError: true }))).toBe("transient");
+});
+
+test("the pre-existing config and too-large verdicts are unchanged", () => {
+  expect(classifyExhaustion(seen({ configError: true }))).toBe("misconfigured");
+  expect(classifyExhaustion(seen({ tooLarge: true }))).toBe("too_large");
+  // A bad key outranks a size refusal: fixing env is what unblocks the pool.
+  expect(classifyExhaustion(seen({ configError: true, tooLarge: true }))).toBe("misconfigured");
+  // A size refusal outranks an empty reply: it names the actionable budget.
+  expect(classifyExhaustion(seen({ tooLarge: true, emptyCompletion: true }))).toBe("too_large");
+});
+
+test("an exhaustion with nothing observed still counts as transient", () => {
+  // pickProvider returned null on the first pass (everyone parked or over quota):
+  // no attempt was made, so nothing contradicts the pool being in distress.
+  expect(classifyExhaustion(seen())).toBe("transient");
 });

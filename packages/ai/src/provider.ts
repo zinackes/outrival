@@ -137,6 +137,18 @@ export function isConfigError(err: unknown): boolean {
 const RATE_LIMIT_BACKOFF_FALLBACK_SEC = 30;
 const RATE_LIMIT_BACKOFF_MAX_SEC = 120;
 
+// How long to park a provider that answered 200 with an EMPTY body. Short, because
+// the fault belongs to the request (its max_tokens budget against a reasoning model's
+// hidden reasoning), not to the provider: the same provider serves the next, smaller
+// prompt fine. This used to fall through to AI_CIRCUIT_BREAKER_RESET_MIN — the scale
+// meant for a bad key — so one oversized prompt on the priority-1 provider handed the
+// whole fleet to the next provider down for ten minutes, long enough for that one to
+// hit its own per-request ceiling and leave the pool with nobody. Measured on prod
+// (2026-08-02): 475 pool exhaustions in a week, every one of them attributed to the
+// last provider standing. The in-call `tried` set already stops THIS call re-picking
+// it, so this park only has to cool other concurrent tasks.
+const EMPTY_COMPLETION_PARK_SEC = 60;
+
 export function rateLimitBackoffSec(
   err: unknown,
   fallbackSec = RATE_LIMIT_BACKOFF_FALLBACK_SEC,
@@ -172,6 +184,32 @@ export function resolveReasoningEffort(
 ): "low" | "medium" | "high" | undefined {
   if (!model.toLowerCase().includes("gpt-oss")) return undefined;
   return override ?? "low";
+}
+
+/**
+ * What a pool exhaustion MEANS, decided from what the attempts actually returned.
+ * The distinction that matters is whether anything was genuinely down: only then may
+ * the failure count toward the global breaker, which pauses AI for the whole
+ * workspace. A request the pool refuses on its own terms (too large, or answered
+ * empty by every provider) reproduces everywhere precisely BECAUSE it is the same
+ * request, so treating it as an outage blanks AI over one bad task.
+ * Pure, and exported for the unit test.
+ */
+export type PoolExhaustion = "misconfigured" | "too_large" | "empty_replies" | "transient";
+
+export function classifyExhaustion(seen: {
+  configError: boolean;
+  transientError: boolean;
+  tooLarge: boolean;
+  emptyCompletion: boolean;
+}): PoolExhaustion {
+  // A transient fault anywhere means something really was distressed: it outranks
+  // every "the request was the problem" reading below.
+  if (seen.transientError) return "transient";
+  if (seen.configError) return "misconfigured";
+  if (seen.tooLarge) return "too_large";
+  if (seen.emptyCompletion) return "empty_replies";
+  return "transient";
 }
 
 /** One provider reply, however it was fetched — the pool logic reads only this. */
@@ -290,6 +328,11 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
   // A request no provider would accept is a bug in what WE sent, not an outage —
   // see the exhaustion path for why that distinction has to survive to the end.
   let sawTooLarge = false;
+  // Same reasoning for a 200 with an empty body: it is a property of the request, so
+  // it reproduces on every provider. Tracked separately because the empty-completion
+  // branch below sets no error flag at all, which is exactly how it used to reach the
+  // exhaustion path unlabelled and be counted as infra distress.
+  let sawEmptyCompletion = false;
   // In-memory record of providers already tried THIS call. The per-provider breaker
   // (tripBreaker) only advances pickProvider to the next provider when it persists —
   // which needs Redis. Without Upstash that breaker is a no-op, so pickProvider would
@@ -368,15 +411,19 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
       // A 200 with empty content is a failed generation, never a valid answer (every
       // prompt asks for JSON or prose). It happens when a reasoning model's hidden
       // reasoning eats the whole max_tokens budget before any answer, or on a silent
-      // refusal. Treat it like a transient provider fault: trip THIS provider's
-      // breaker and fail over to the next, instead of returning "" — which used to
-      // surface as a hard "Empty completion" throw that failed the task without ever
-      // trying another provider, taking down every AI task when the priority-1
-      // provider was a reasoning one. Per-provider only: an empty 200 is provider
-      // misbehaviour, not the infra distress the global breaker watches for, so it
-      // must not count toward tripping it (recordFailure is intentionally skipped).
+      // refusal. Fail over to the next provider instead of returning "" — which used
+      // to surface as a hard "Empty completion" throw that failed the task without
+      // ever trying another provider, taking down every AI task when the priority-1
+      // provider was a reasoning one.
+      //
+      // The park is deliberately SHORT (see EMPTY_COMPLETION_PARK_SEC) and the flag is
+      // what keeps this out of the global breaker. Skipping recordFailure here was
+      // never enough on its own: this branch set no error flag, so an exhaustion made
+      // of nothing but empty replies fell through to the transient path at the end and
+      // was counted anyway — the opposite of what the old comment claimed.
       if (!content.trim()) {
-        await tripBreaker(provider.id, "empty_completion");
+        await tripBreaker(provider.id, "empty_completion", EMPTY_COMPLETION_PARK_SEC);
+        sawEmptyCompletion = true;
         lastErr = new Error(`empty completion from ${provider.id}`);
         continue;
       }
@@ -427,13 +474,19 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
   }
 
   // Pool exhausted for THIS task — every pickable provider failed.
+  const detail = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  const exhaustion = classifyExhaustion({
+    configError: sawConfigError,
+    transientError: sawTransientError,
+    tooLarge: sawTooLarge,
+    emptyCompletion: sawEmptyCompletion,
+  });
+
   // Config-only exhaustion (every provider rejected with 401/403/404, no transient
   // fault) is a misconfigured pool, not an outage: back-off won't fix an env mistake,
   // so trip the global breaker immediately and loudly to make ops fix AI_PROVIDER_*.
-  const misconfigured = sawConfigError && !sawTransientError;
-  if (misconfigured) {
+  if (exhaustion === "misconfigured") {
     await tripGlobalBreaker("ai_provider_misconfigured");
-    const detail = lastErr instanceof Error ? lastErr.message : String(lastErr);
     throw new AIUnavailableError(
       `ai_provider_misconfigured: every provider rejected the request (last: ${detail}). ` +
         `Check AI_PROVIDER_*_BASE_URL (needs a trailing /v1) and AI_PROVIDER_*_MODEL.`,
@@ -443,9 +496,16 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
   // the max_tokens budget is simply bigger than the pool can serve, and counting it
   // toward the global breaker would blank AI for the whole workspace over one
   // oversized task. Surface it as what it is, so the fix goes to the caller's budget.
-  if (sawTooLarge && !sawTransientError && !sawConfigError) {
-    const detail = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  if (exhaustion === "too_large") {
     throw new AIUnavailableError(`ai_request_too_large: ${detail}`);
+  }
+  // Every provider answered 200 with an empty body, and nothing errored. Same verdict
+  // as too_large and for the same reason: an empty reply is a property of the request
+  // (its max_tokens budget against a reasoning model), so it reproduces across the
+  // whole pool without anything being down. The fix is the caller's budget, not a
+  // ten-minute workspace-wide pause.
+  if (exhaustion === "empty_replies") {
+    throw new AIUnavailableError(`ai_empty_completions: ${detail}`);
   }
   // Transient cross-provider failure: count this failed TASK (not per attempt).
   // recordFailure trips the global breaker only once AI_CIRCUIT_BREAKER_THRESHOLD

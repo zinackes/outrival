@@ -124,4 +124,28 @@ describe("findJobListingLink", () => {
     const html = `<a href="/careers/all-jobs?loc=fr">Open positions</a>`;
     expect(findJobListingLink(html, "https://acme.com/careers/all-jobs")).toBeNull();
   });
+
+  it("does not read a single role's CTA as the listing", () => {
+    // clickup.com/careers, verbatim shape: two featured openings, each with an
+    // "Explore the role" button. Singular — it names ONE posting. Treating it as
+    // the board sent the scraper to one job's page and made a 64-role board read
+    // as two roles.
+    const html = `<article>
+      <h3>100x Operator, Chief Of Staff</h3>
+      <a href="/careers/100x-cos">Explore the role</a>
+    </article>
+    <article>
+      <h3>100x Marketer, Chief Marketing Officer</h3>
+      <a href="/careers/100x-cmo">Explore the role</a>
+    </article>`;
+    expect(findJobListingLink(html, "https://clickup.com/careers")).toBeNull();
+  });
+
+  it("still follows a plural listing CTA next to single-role ones", () => {
+    const html = `<article><a href="/careers/100x-cos">Explore the role</a></article>
+      <a href="/careers/openings">Explore all roles</a>`;
+    expect(findJobListingLink(html, "https://acme.com/careers")).toBe(
+      "https://acme.com/careers/openings",
+    );
+  });
 });

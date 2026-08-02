@@ -21,7 +21,7 @@ export function CompareShell({ children }: { children: ReactNode }) {
           </Link>
           <div className="flex items-center gap-2">
             <Link
-              href="/#pricing"
+              href="/pricing"
               className="mr-2 hidden text-sm text-text-muted transition-colors hover:text-foreground sm:inline"
             >
               Pricing

@@ -437,6 +437,7 @@ ${lines.slice(0, 6000)}
 
   // withAiContext spans the call AND its log so the tokens/model complete()
   // marks reach the row (Bun drops the lazy child-frame enterWith).
+  // interactive: this brief renders inside a request the user is waiting on.
   return withAiContext(async () => {
     try {
       const raw = await complete(AI_CONFIG.insights, { prompt, maxTokens: 240 });
@@ -448,7 +449,7 @@ ${lines.slice(0, 6000)}
       await logApiAiRun("signals_brief", AI_CONFIG.insights.model, "error", { orgId });
       return c.json({ brief: null, count: rows.length });
     }
-  });
+  }, { interactive: true });
 });
 
 // Mark all read — full scope, server-side. Two paths on one endpoint:
@@ -589,6 +590,31 @@ function evidenceDiff(diffText: string | null): string | null {
   return lines.length > 0 ? lines.join("\n") : null;
 }
 
+/**
+ * The Wayback replay address of an archived capture.
+ *
+ * A backfill signal quotes text that was removed up to three months ago, and
+ * "Open source" sent the reader to the LIVE page, where by construction none of
+ * it is left. The capture it actually quotes is still addressable: the backfill
+ * writes the Wayback capture time into `scraped_at` and the page's own address
+ * into `resolved_url`, so the replay URL is those two fields and needs no column
+ * of its own. Derived rather than stored, so it also answers for every archive
+ * signal already in the table.
+ *
+ * The timestamp is UTC and 14 digits, the format the Archive replays; it resolves
+ * to the nearest capture anyway, so a second of drift costs nothing.
+ */
+function waybackUrl(capturedAt: Date | null, url: string | null): string | null {
+  if (!capturedAt || !url) return null;
+  const d = new Date(capturedAt);
+  if (Number.isNaN(d.getTime())) return null;
+  const p = (n: number) => String(n).padStart(2, "0");
+  const ts =
+    `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}` +
+    `${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}`;
+  return `https://web.archive.org/web/${ts}/${url}`;
+}
+
 // User-safe "Why this insight?" detail (patch-14, progressive disclosure level 2).
 // Exposes the plain-language before/after, the monitored page (live URL), when it
 // was detected, and the lines the change added and removed. NEVER the R2 snapshot
@@ -657,6 +683,11 @@ signalsRouter.get("/:id/detail", async (c) => {
       // landed overnight from one that took a month.
       afterCapturedAt: snapshots.scrapedAt,
       beforeCapturedAt: beforeSnap.scrapedAt,
+      // Where the "before" side came from. 'archive' means the capture is a
+      // Wayback reconstruction, which is what makes it replayable (and what makes
+      // it impossible for it to carry a screenshot).
+      beforeOrigin: beforeSnap.origin,
+      beforeResolvedUrl: beforeSnap.resolvedUrl,
     })
     .from(signals)
     .innerJoin(competitors, eq(competitors.id, signals.competitorId))
@@ -753,6 +784,16 @@ signalsRouter.get("/:id/detail", async (c) => {
       relevanceScore,
       sourceType: row.sourceType,
       sourceUrl: row.sourceUrl,
+      // The archived page this signal quotes, when the change was reconstructed
+      // from the web archive. null on every live-to-live signal, where sourceUrl
+      // already points at the page the text is on.
+      archive:
+        row.beforeOrigin === "archive"
+          ? (() => {
+              const url = waybackUrl(row.beforeCapturedAt, row.beforeResolvedUrl);
+              return url ? { url, capturedAt: row.beforeCapturedAt } : null;
+            })()
+          : null,
       // Whether a before/after screenshot is available to render (visual diff).
       // Gated on the pHash alone, NOT on the source type: a pHash exists exactly
       // when a PNG was captured, so the flag follows capture wherever it happens

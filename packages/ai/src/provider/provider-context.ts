@@ -34,6 +34,8 @@ interface Scope {
   model: string | null;
   usage: TokenUsage;
   truncated: boolean;
+  /** Someone is waiting on this call at a screen (see withAiContext). */
+  interactive: boolean;
 }
 
 const zeroUsage = (): TokenUsage => ({ promptTokens: 0, completionTokens: 0, totalTokens: 0 });
@@ -43,7 +45,7 @@ const store = new AsyncLocalStorage<Scope>();
 function scope(): Scope {
   let s = store.getStore();
   if (!s) {
-    s = { id: null, model: null, usage: zeroUsage(), truncated: false };
+    s = { id: null, model: null, usage: zeroUsage(), truncated: false, interactive: false };
     store.enterWith(s);
   }
   return s;
@@ -62,9 +64,28 @@ function scope(): Scope {
  * Wrap at the unit-of-attribution boundary: loggedAi, or a task-call + logAiRun
  * sequence. The enterWith fallback stays for unwrapped sites (works on plain
  * Node, degrades to zeros elsewhere — exactly the pre-fix behaviour).
+ *
+ * `interactive` marks a call someone is waiting on at a screen, so the pool lets it
+ * draw on the share of each provider's per-minute budget that background work is
+ * held back from (see provider/tpm-window). It is INHERITED by nested scopes: a job
+ * a user is watching wraps its body once, and every loggedAi inside it is
+ * interactive without threading a flag through each task. Defaults to false, which
+ * is the right default for everything the hourly fan-out runs.
  */
-export function withAiContext<T>(fn: () => Promise<T>): Promise<T> {
-  return store.run({ id: null, model: null, usage: zeroUsage(), truncated: false }, fn);
+export function withAiContext<T>(
+  fn: () => Promise<T>,
+  opts?: { interactive?: boolean },
+): Promise<T> {
+  const interactive = store.getStore()?.interactive || (opts?.interactive ?? false);
+  return store.run(
+    { id: null, model: null, usage: zeroUsage(), truncated: false, interactive },
+    fn,
+  );
+}
+
+/** Whether the current async scope is a call someone is waiting on. */
+export function isInteractive(): boolean {
+  return store.getStore()?.interactive ?? false;
 }
 
 export function markProvider(id: string): void {

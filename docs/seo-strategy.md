@@ -1,203 +1,237 @@
-# SEO & discoverability strategy — Outrival
+# SEO & discoverability strategy for Outrival
 
-Written 2026-07-04. Canonical domain decision: **`outrival.app`**.
-
-This doc exists because the site is effectively invisible in search: typing
-"outrival", "outrival app", or the product's own name never surfaces it. This is
-diagnosed below and turned into a prioritized plan. Owner tags:
-`[code]` = shipped in the repo, `[infra]` = Coolify/DNS/Resend config (needs an
-explicit prod go), `[manual]` = founder action off the codebase.
-
----
-
-## 1. The honest diagnosis — 3 root causes, hardest first
-
-### 1.1 "Outrival" is already taken — the wall
-Searching `outrival` returns, in order:
-- **OutRival, Inc.** (`outrival.com`, `docs.outrival.com`) — a Y Combinator W19
-  startup (voice-AI agents, founder Ruben Harris, ~$4.2M ARR). Has a LinkedIn
-  company page, Crunchbase, PitchBook, G2, docs. It owns the term.
-- The **dictionary word** "outrival" (Merriam-Webster, Cambridge) = to outdo a rival.
-
-We are fighting **a dictionary word AND an established YC startup** on the bare
-term. Realistically we will never rank #1 for "outrival" alone. The winnable
-targets are qualified queries where the other entity is absent:
-- `outrival app`
-- `outrival competitive intelligence` / `outrival competitor monitoring`
-- `outrival.app`
-- brand + feature ("outrival battle cards", "outrival vs Crayon")
-
-**Implication for copy:** always pair the brand with a qualifier in titles/meta
-so the disambiguation is baked in ("Outrival — competitive intelligence",
-"Outrival.app"). Never ship a bare "Outrival" `<title>`.
-
-### 1.2 The site is not indexed — the actual root cause of "we never show up"
-`site:outrival.app` and `site:outrival.io` both return **zero** results on Google.
-Google does not know the site exists. This is not a ranking problem, it is an
-**indexing** problem — until fixed, nothing else matters. It's also the fastest
-fix (days after Search Console submission). Almost certainly the site was never
-verified/submitted to Google Search Console (`metadata.verification` is unset).
-
-### 1.3 Domain inconsistency: `outrival.app` vs `outrival.io` — CLOSED 2026-08-02
-- The **web app** (canonicals, `metadataBase`, sitemap, robots, OG image text,
-  JSON-LD) was already consistently on **`outrival.app`**, the live deploy
-  (2026-06-14).
-- The **backend/config** used to reference **`outrival.io`** in `WEB_URL`,
-  `BETTER_AUTH_URL`, `AUTH_COOKIE_DOMAIN`, the email from-addresses and the
-  scraper bot UA. All code fallbacks and every doc/`.env.example` placeholder are
-  now `.app`; `outrival.io` was never ours (it resolves to `165.227.254.193`, an
-  unrelated host) and is absent from the Resend account, so the old email
-  fallbacks could only ever have been refused.
-
-For Google and LLMs, **entity consistency** (one domain everywhere) is a ranking
-and knowledge-graph signal. Two contradictory domains dilute it. Decision:
-**`outrival.app` is canonical**; every user- and crawler-facing `outrival.io`
-reference gets aligned to `.app` (details in §3).
+Canonical domain: **`outrival.app`**.
+First written 2026-07-04 (pre-launch foundation). **Rewritten 2026-08-01** against
+real Search Console data, which changed the diagnosis: the site is now crawled and
+partly indexed, so the problem has moved from "invisible" to "indexed but
+uncited". Owner tags: `[code]` = in the repo, `[infra]` = Coolify/DNS/Cloudflare,
+`[manual]` = founder action off the codebase.
 
 ---
 
-## 2. Current state — code audit
+## 0. Where we actually are (measured 2026-08-01)
 
-### Already good (don't touch)
-- Rich root `metadata` in `apps/web/src/app/layout.tsx`: title + `title.template`
-  `"%s — Outrival"`, description, `metadataBase = https://outrival.app`,
-  `alternates.canonical`, `openGraph`, `twitter: summary_large_image`,
-  `robots: { index: true, follow: true, googleBot max-image-preview: large }`.
-- Per-page `metadata` with unique title + canonical on every public page
-  (`/demo`, `/changelog`, `/status`, `/privacy`, `/terms`, `/dpa`, `/docs`).
-- JSON-LD (`apps/web/src/components/landing/json-ld.tsx`): `WebSite` +
-  `Organization` + `SoftwareApplication` (with `Offer`s) + `FAQPage`.
-- Dynamic OG + Twitter images (`app/opengraph-image.tsx`, `app/twitter-image.tsx`).
-- `robots.ts` allows `/`, disallows `/api/`, `/dashboard/`, `/auth`; points at
-  sitemap. Private areas correctly `noindex`. `next.config.ts` redirects are 308.
+| Signal | Value | Reading |
+|---|---|---|
+| Pages in the index | **2** | of 23 known. The single biggest number on this page. |
+| Pages not indexed | **21**, 4 reasons | Google has seen them and declined. |
+| Sitemap | submitted, read 2026-07-30, 29 URLs discovered | Discovery works. Not the bottleneck. |
+| Impressions, 3 months | 173 | about 2 a day. |
+| Clicks, 3 months | **0** | CTR 0% at average position 8.6. |
+| Queries | **brand only** ("outrival", variants) | No non-brand query has ever produced an impression. |
 
-### Gaps (the fix list)
-| # | Gap | File | Impact |
-|---|-----|------|--------|
-| G1 | No Search Console verification + never submitted | `layout.tsx` metadata / GSC | **Not indexed** (root cause 1.2) |
-| G2 | Sitemap lists homepage only | `apps/web/src/app/sitemap.ts` | Other public routes never advertised |
-| G3 | No favicon / apple-icon / manifest (`public/` empty) | `apps/web/src/app/` | No brand icon in tabs/SERP; "unfinished" signal |
-| G4 | `Organization.sameAs: []` empty | `json-ld.tsx` | Google can't link the entity to LinkedIn/Crunchbase/G2 |
-| G5 | Domain inconsistency app vs io | multiple (see §3) | Entity dilution |
-| G6 | Almost no content (1 landing; no `/blog`, no `/pricing` URL, no comparison pages) | `apps/web/src/app/` | Nothing to rank; nothing for LLMs to cite |
-| G7 | `aggregateRating` undefined in `SoftwareApplication` | `json-ld.tsx` | No rich-result stars |
-| G8 | `/dev/cron` not disallowed/noindexed | `app/dev/cron/page.tsx` | Dev tool potentially crawlable |
+Three facts follow from that table, and every priority below comes from them.
 
----
+1. **Crawling is not the problem.** 29 URLs discovered, sitemap accepted, every
+   public page returns 200 with `index, follow`. Nothing is blocked.
+2. **Indexing is the problem.** 21 of 23 declined is Google saying "seen it, not
+   worth storing". That is a quality and authority verdict on a domain with no
+   corroborating links, not a technical fault.
+3. **Zero non-brand impressions is a content-surface problem.** Nine commercial
+   pages, in a market where the incumbents publish hundreds. There is almost
+   nothing for a non-brand query to match.
 
-## 3. Canonical domain = `outrival.app` — alignment checklist
+### On the Lighthouse warning
+"Search engines are unable to include your pages in search results if they don't
+have permission to crawl them" is Lighthouse's `is-crawlable` audit. It fires when
+the audited URL carries `noindex`, an `X-Robots-Tag`, **or is disallowed in
+robots.txt**. Verified 2026-08-01 across all 29 sitemap URLs:
 
-Keep `outrival.app` (live + already the web SEO domain). Align every
-`outrival.io` reference. Note the code-vs-infra split — `.env.example` is only a
-template; the **real** prod values live in Coolify, so some of this is
-config, not code (and per prod rules needs an explicit go before any prod switch).
+- every one returns HTTP 200 with `<meta name="robots" content="index, follow">`
+  and a self-referencing canonical;
+- no `X-Robots-Tag` header on any response;
+- `robots.txt` is byte-identical for Googlebot, Chrome-Lighthouse, GPTBot and
+  PerplexityBot, so Cloudflare is not injecting AI-crawler blocks (see §4).
 
-| Reference | Location | Action | Owner |
-|-----------|----------|--------|-------|
-| Bot UA `+https://outrival.io/bot` | `packages/scrapers/**` | ✅ done — `outrival.app/bot` | `[code]` |
-| `WEB_URL ?? "https://outrival.io"` fallback | `apps/workers/src/lib/structural-change-notify.ts` | ✅ done 2026-08-02 — the last `.io` fallback in the repo | `[code]` |
-| Email from `auth@outrival.io`, `alerts@outrival.io` | `apps/api`, `apps/workers` | ✅ done 2026-08-02 — `outrival.app` confirmed as the only domain in Resend, so the condition was met and the 5 fallbacks moved | `[code]` + `[infra]` |
-| `.env.example` placeholders (`WEB_URL`, `NEXT_PUBLIC_API_URL`, `BETTER_AUTH_URL`, `AUTH_COOKIE_DOMAIN`) | `.env.example` | ✅ done 2026-08-02 | `[code]` |
-| Live `WEB_URL`, `BETTER_AUTH_URL`, `AUTH_COOKIE_DOMAIN`, Google OAuth redirect, Stripe URLs | Coolify env / Google console / Stripe | Confirm they already use `.app` (site is live, so likely yes); if any still `.io`, switch deliberately | `[infra]` |
-| Resend sender domain | Resend dashboard | Verify `outrival.app` for deliverability + brand consistency | `[infra]` |
-
-> If `outrival.io` is not owned/served, it should 301-redirect to `outrival.app`
-> (or be dropped). Never leave two live hosts serving the same content.
+No public page is blocked. The audit fires on `/dashboard`, `/auth`, `/report/*`
+or `/brief/*`, which are disallowed **on purpose**: a logged-in app screen must
+not be in the index. Run Lighthouse against `https://outrival.app/` or `/pricing`
+and the audit passes. **There is nothing to fix here.** The only real action it
+produced was tightening `/dashboard/` to `/dashboard` so the bare entry point is
+covered too.
 
 ---
 
-## 4. Action plan (prioritized by leverage)
+## 1. The three root causes, hardest first
 
-### P0 — Get indexed (this week, effect in days)
-The single highest-leverage block. Nothing else moves the needle until done.
+### 1.1 Brand collision, the wall (unchanged)
+`outrival` is a dictionary word ("to outdo a rival", Merriam-Webster) **and** an
+established YC W19 company, **OutRival, Inc.** (`outrival.com`, voice AI). They
+own the term: LinkedIn, Crunchbase, PitchBook, G2, docs subdomain.
 
-**Code `[code]`:**
-- G1: add `metadata.verification.google` (+ `.other['msvalidate.01']` for Bing)
-  once tokens exist.
-- G2: expand `sitemap.ts` to every public route (`/`, `/demo`, `/changelog`,
-  `/status`, `/privacy`, `/terms`, `/dpa`, `/docs`).
-- G3: add `app/icon.tsx` (or `favicon.ico`), `app/apple-icon`, `app/manifest.ts`.
-- G8: add `/dev/` to robots `disallow` (or env-gate the route).
+That is why average position is 8.6 on our own brand name and CTR is 0. We sit on
+page one for "outrival" and nobody clicks the eighth result when the first is the
+company they meant. **Never ship a bare "Outrival" title.** Winnable queries:
+`outrival app`, `outrival competitive intelligence`, `outrival.app`,
+`outrival vs crayon`.
 
-**Manual `[manual]` — the actual indexing trigger:**
-1. **Google Search Console** → add property `outrival.app` → verify (paste the
-   token into `metadata.verification.google`, or DNS TXT) → **submit
-   `https://outrival.app/sitemap.xml`** → **URL Inspection → Request indexing** on
-   `/` and the top pages. This is action #1, full stop.
-2. **Bing Webmaster Tools** → same (import from GSC is one click). Bing feeds the
-   web index behind ChatGPT/Perplexity → this is also GEO groundwork.
-3. Re-check `site:outrival.app` after 2–5 days; expect pages to start appearing.
+The machine-readable half of this fight is `Organization.sameAs`, still empty
+(§3, G4). Until it points at profiles that corroborate us, a search engine has no
+evidence that this domain is a distinct entity from `outrival.com`.
 
-### P1 — Build the brand entity (weeks — this is what unlocks real ranking)
-Off-site, founder-owned. Code alone cannot do this. Google wants ~30
-corroborations from consistent, trustworthy sources before it treats the brand as
-a known entity (and eventually shows a Knowledge Panel).
+### 1.2 No authority, which is why 21 pages are declined
+A domain with effectively zero inbound links has no crawl-priority budget and no
+quality prior. Google's guidance and every practitioner write-up converge on the
+same fix list for "Discovered / Crawled, currently not indexed": internal links,
+crawl depth, sitemap quality, canonical setup, content differentiation.
+Repeatedly hitting "Request indexing" does nothing. This is fixed off-site (§5).
 
-`[manual]`:
-- Create/claim, with **identical** name/description/logo/URL everywhere:
-  **LinkedIn company page**, **Crunchbase**, **X/Twitter**, **Product Hunt**
-  (a launch = backlink + traffic + press mentions), **G2** listing.
-- Get listed in the "best competitive intelligence tools 2026" listicles — those
-  are the pages that rank #1 for the market and that LLMs synthesize from.
-  Competitors already there: Crayon, Klue, Kompyte, Contify, Visualping.
-- Keep one canonical "brand facts" sheet (name, one-liner, long description, logo
-  URL, founding year, HQ, socials) and reuse it verbatim on every profile —
-  consistency is the strongest knowledge-graph lever.
-
-`[code]` once the profiles exist:
-- G4: fill `Organization.sameAs` in `json-ld.tsx` with every profile URL.
-- G7: add `aggregateRating` once there are real G2/Capterra reviews (never fake it).
-
-### P2 — Content + GEO (the long game)
-In 2026 ~25% of searches run through AI assistants (ChatGPT ~70% share); LLMs
-cite **structured, sourced content**, not a one-page landing.
-`[code]` + content:
-- **Comparison pages**: `/vs/crayon`, `/vs/klue`, `/vs/kompyte` — the #1 format
-  Google and LLMs serve for SaaS buying queries.
-- **`/blog`** with fact- and stat-dense posts (named sources, concrete numbers —
-  exactly what LLMs quote).
-- Dedicated indexable **`/pricing`** URL (today pricing is only a landing section).
-- **`llms.txt`** at the root (emerging 2026 convention guiding AI crawlers).
-- Solid internal linking from the landing to all of the above.
-
-### P3 — Polish
-- Per-page OG images (all pages share one generic card today).
-- Keep JSON-LD validated via Google Rich Results Test after each change.
+### 1.3 Nothing to match a non-brand query
+Nine commercial URLs and three articles. "Competitive intelligence software" is
+contested by vendors with a decade of content behind them. The realistic entry
+points are long-tail, high-intent and specific, and the one with the highest
+intent in this category, *what it costs*, had no page at all until 2026-08-01
+(§2).
 
 ---
 
-## 5. GEO / AI-search notes (2026)
-- AI assistants are becoming the first place a buyer hears a product name; only a
-  handful of brands get named in any answer. LLM-referred visitors convert far
-  above organic (ChatGPT ~15.9%, Perplexity ~10.5% vs ~1.8% organic).
-- What actually works is unglamorous and overlaps with good SEO: solid technical
-  foundation, cite authoritative sources, quote named experts, add specific
-  statistics, write confident declarative prose, and — critically — **be present
-  in the third-party sources the models read** (listicles, G2, Reddit, comparison
-  posts). Being un-indexed (§1.2) also means being un-citable by LLMs.
-- Submitting to Bing (P0.2) matters here: several AI engines lean on Bing's index.
+## 2. Shipped 2026-08-01 `[code]`
+
+| # | Change | Why |
+|---|---|---|
+| S1 | **`/pricing` as a real URL** (`app/pricing/page.tsx`) with a sourced "what this category costs" table, a 7-question FAQ plus `FAQPage` JSON-LD, and breadcrumbs | Pricing existed only as `/#pricing`. The highest-intent query in the category had no page to rank and no document to cite. Every rival hides its price behind a demo, so this is also the one question the web answers badly. |
+| S2 | **8 internal links repointed** from `/#pricing` to `/pricing` across the footer, the compare shell and all four comparison templates | A new page with no internal links does not get indexed. |
+| S3 | **Sitemap: honest `lastmod`** | Every URL was stamped `new Date()` at build time. Google's stated behaviour is that lastmod trust is **binary per site**: one look at 29 URLs all modified today and the signal is discarded site-wide. Dates are now per-route literals, and omitted where unknown. |
+| S4 | **Sitemap: legal boilerplate removed** (7 URLs) | 11 of the 29 submitted URLs were legal text. A sitemap tells Google which pages we consider our best; it now lists 22, mostly commercial. Those pages stay indexable and stay linked in the footer. |
+| S5 | **`changefreq` and `priority` dropped** | Google has ignored both for years. They asserted a ranking order for our own pages that nothing reads. |
+| S6 | **`/llms.txt`** (`app/llms.txt/route.ts`) | The llmstxt.org convention: one plain-text file stating what the product is, what it costs, and which pages are worth reading. Generated from the same constants the pricing and comparison pages render, so it cannot drift. See §4. |
+| S7 | **IndexNow**, key at `public/9d965d…966.txt`, run with `pnpm --filter @outrival/web indexnow` | Bing's index is the retrieval layer behind ChatGPT Search and Copilot. Waiting for an organic Bing crawl on a zero-authority domain takes weeks; one POST replaces it. Google does not support IndexNow, so this is an AI-visibility play, not a Google one. |
+| S8 | **Entity markup**: `Organization.description` and `knowsAbout` added, `SoftwareApplication` given `@id`, `url` and `publisher` so it links to the org, empty `sameAs` omitted rather than emitted | §1.1. The product entity floated free of the company entity, and nothing said they were the same thing. |
+| S9 | **robots.txt**: `/dashboard/` tightened to `/dashboard`, `/brief/` added | The bare app entry point was crawlable, and `/brief/*` are one-off generated documents worth nobody's crawl budget. |
+| S10 | **Internal links added to 2 of the 3 blog posts** | Two posts linked nowhere. Articles that link to money pages are how link equity reaches them. |
+
+Verification after deploy: `bun scripts/check-metadata.ts`, which now covers
+`/pricing`.
 
 ---
 
-## 6. Realistic expectations
-- **Indexing** (P0): visible in `site:outrival.app` within days of GSC submission.
-- **Ranking** on "outrival app" / market queries: weeks→months, gated by P1+P2
-  (authority + corroborations). No shortcut.
-- **"outrival" bare term / Knowledge Panel**: hardest, contested by the YC
-  company + dictionary word; treat as a long-term entity-building outcome, not a
-  near goal.
+## 3. Remaining code gaps
 
-**KPIs to watch in GSC:** pages indexed, impressions/clicks on branded queries
-("outrival app", "outrival competitive intelligence"), average position on
-market terms, and appearance in AI Overviews.
+| # | Gap | File | Blocked on |
+|---|-----|------|-----------|
+| G4 | `Organization.sameAs` empty | `components/landing/json-ld.tsx` (`SAME_AS`) | The profiles existing (§5). One line per URL once they do. |
+| G7 | No `aggregateRating` | same | Real reviews. **Never fake it**: it is a structured-data policy violation and a manual action. |
+| G11 | No per-page OG images | `app/*/opengraph-image.tsx` | Nothing. Low priority, it affects share CTR rather than ranking. |
+| G12 | No Bing / Yandex verification meta | `layout.tsx` `metadata.verification` | Tokens from Bing Webmaster Tools (§5). |
 
 ---
 
-## 7. Sources
-- [Technical SEO Checklist 2026 — DebugBear](https://www.debugbear.com/blog/technical-seo-checklist)
-- [Full Technical SEO Checklist 2026 — Yotpo](https://www.yotpo.com/blog/full-technical-seo-checklist/)
-- [GEO: The 2026 Guide to AI Search Visibility — LLMrefs](https://llmrefs.com/generative-engine-optimization)
-- [GEO vs AEO vs SEO 2026 — Jasper](https://www.jasper.ai/blog/geo-aeo)
-- [Get your brand in Google's Knowledge Graph — Search Engine Journal](https://www.searchenginejournal.com/get-brand-in-google-knowledge-graph-without-wikipedia-page/356530/)
-- [Google Knowledge Panel — Semrush](https://www.semrush.com/blog/google-knowledge-panel/)
-- Brand-collision evidence: [OutRival Inc. (YC W19)](https://www.ycombinator.com/companies/outrival-inc), [outrival.com](https://www.outrival.com/), [Merriam-Webster "outrival"](https://www.merriam-webster.com/dictionary/outrival)
+## 4. AI search (AEO / GEO), what is actually true in 2026
+
+Gartner's January 2026 figure is that around 40% of information-seeking queries
+now start in an AI interface. For a product nobody searches by name, that channel
+is more reachable than blue links, because an assistant will name a product it can
+*state facts about* even when the domain has no authority.
+
+What that requires, in order of leverage:
+
+1. **Be crawlable by the AI bots.** Verified clean (§0). The trap is Cloudflare's
+   **"Managed robots.txt"** toggle (AI Crawl Control): it injects
+   `GPTBot / ClaudeBot / Google-Extended / CCBot: Disallow: /` **above** the app's
+   own robots.txt and cannot be overridden from code. It was ON once already,
+   found and turned off on 2026-07-04. **If AI crawlers vanish from the logs,
+   check that toggle before anything else.** `[infra]`
+2. **Be in Bing.** ChatGPT Search and Copilot retrieve from it, hence S7. The code
+   half is done; the Bing Webmaster account is `[manual]` (§5).
+3. **State facts in a form a model can lift**: dated, attributed, specific. The
+   comparison pages already do this well, with named third-party sources and a
+   review date, and `/pricing` plus `/llms.txt` now do too. Vague marketing prose
+   is uncitable, because a model will not assert something it cannot ground.
+4. **Structured data.** `FAQPage`, `Organization`, `SoftwareApplication` and
+   `BreadcrumbList` are the types answer engines resolve entities with. All four
+   ship. Only `sameAs` is missing.
+5. **Be present in the third-party sources the models read**: listicles, review
+   platforms, Reddit, comparison posts. That is §5, and it is not code.
+
+Honest caveat: `llms.txt` is a convention, not a standard, and no major engine has
+committed to reading it. It costs one route handler and is generated from live
+constants, so the downside is nil, but nothing on this page depends on it.
+
+---
+
+## 5. The actual ranking levers, `[manual]`, founder only
+
+Code cannot move §1.2. This list can, roughly in order of impact.
+
+1. **Fix the brand-collision signal.** Create, with *identical* name, one-liner,
+   logo and URL everywhere: LinkedIn company page, then Crunchbase, X, Product
+   Hunt, and a review-platform listing. Then paste each URL into `SAME_AS` (G4).
+   This is the highest-leverage manual action on this page. It is what turns
+   `outrival.app` from an orphan domain into an entity, and it unblocks the 21
+   declined pages more than any on-page edit will.
+2. **Bing Webmaster Tools**, one-click import from Search Console. Feeds §4.2 and
+   yields the token for G12.
+3. **Get into the listicles.** "Best competitive intelligence tools 2026" pages
+   are what ranks for the market *and* what LLMs synthesise from. Crayon, Klue,
+   Kompyte, Contify and Visualping are already in them. Getting added is outreach,
+   not code.
+4. **Product Hunt launch**, a one-shot: backlink, traffic, press mentions, plus
+   the corroboration in (1). Do it once the product is ready, not before.
+5. **Write where the buyers already are.** One substantive answer in a thread
+   about competitor tracking outperforms three more pages on this domain right
+   now, because it carries a link from a domain Google already trusts.
+
+---
+
+## 6. Content plan, and why *not* to mass-produce pages yet
+
+The instinct with 0 non-brand impressions is to publish 30 pages. With 21 of 23
+already declined, that makes things worse: thin pages on a low-authority domain
+are the exact input that produces "Crawled, currently not indexed", and the ratio
+of declined to indexed is itself a site-level signal.
+
+The order that works is **deepen, then widen.**
+
+**Now, deepen what exists.** Each of these is a page Google already knows about:
+
+- `/pricing`: keep the category cost table current. It is the most linkable asset
+  on the site, because it publishes a number the whole category hides.
+- The three `/vs/*` and three `/alternatives/*` pages: refresh `LAST_REVIEWED` and
+  re-read the Vendr figures. A dated, re-checked comparison is what both buyers
+  and models prefer over an undated one.
+- Blog: three posts is not a blog. Two a month, fact-dense, named sources, real
+  production numbers. The pipeline post is the model to copy, since it quotes
+  measured ratios. Outrival's unfair advantage is that it *measures* this market.
+
+**Next, widen one page at a time, and only when the previous one gets indexed:**
+
+- `/vs/kompyte`, `/vs/visualping`, `/vs/contify`, same template, real research for
+  each. Do not ship three at once.
+- Informational pages for the queries a buyer types before they know the category
+  exists: "how to track competitor pricing changes", "competitor monitoring for
+  startups". Those are what feed AI answers.
+
+**Rule of thumb:** if a new page cannot say something the first page of results
+does not already say, it will not be indexed, and shipping it costs more than
+skipping it.
+
+---
+
+## 7. Realistic expectations
+
+- Indexing of the newly-linked pages: days to weeks after deploy. The 21 declined
+  pages move on §5, not on §2.
+- Non-brand impressions: the first ones from long-tail comparison and pricing
+  queries within weeks, meaningful volume at 4 to 8 months. Practitioner consensus
+  for B2B SaaS is ranking movement at 3 to 4 months, traffic at 6 to 8, pipeline
+  at around 12.
+- "outrival" as a bare term, or a Knowledge Panel: a long-term entity outcome,
+  contested by a YC company and a dictionary word. Not a goal.
+
+**KPIs, in this order:** pages indexed (2, target 20+), then the first non-brand
+impression, then non-brand clicks, then appearing in AI Overviews and ChatGPT
+answers for "competitive intelligence tool for founders".
+
+---
+
+## 8. Sources
+- [Page is blocked from indexing, Lighthouse, Chrome for Developers](https://developer.chrome.com/docs/lighthouse/seo/is-crawlable)
+- [How to fix "Discovered, currently not indexed", Onely](https://www.onely.com/blog/how-to-fix-discovered-currently-not-indexed-in-google-search-console/)
+- [Sitemap lastmod: Google says drop inaccurate dates](https://www.digitalapplied.com/blog/xml-sitemap-lastmod-hygiene-illyes-directive-seo-2026)
+- [Why IndexNow matters for GEO: without Bing, your brand stays invisible to ChatGPT](https://www.oltre.ai/blog/indexnow-for-geo-bing-chatgpt-visibility/)
+- [Does Google support IndexNow in 2026? No, here's who does](https://pressonify.ai/blog/indexnow-instant-indexing-press-releases-2026)
+- [Answer Engine Optimization (AEO): get cited by AI in 2026](https://www.graygroupintl.com/blog/answer-engine-optimization-aeo-guide-2026/)
+- [Structured data for AI search: schema markup guide 2026](https://www.stackmatix.com/blog/structured-data-ai-search)
+- [Programmatic SEO for SaaS: how to do it the right way in 2026, TripleDart](https://www.tripledart.com/blog/programmatic-seo-for-saas)
+- [llmstxt.org, the llms.txt convention](https://llmstxt.org/)
+- Brand collision: [OutRival Inc. (YC W19)](https://www.ycombinator.com/companies/outrival-inc), [Merriam-Webster "outrival"](https://www.merriam-webster.com/dictionary/outrival)

@@ -10,10 +10,15 @@ import {
   type ExtractionResolution,
 } from "@outrival/shared";
 import { replayExtractor } from "@outrival/scrapers/cached-extractor";
-import { pruneHtmlForSelectors } from "@outrival/scrapers/prune-html";
-import { generateExtractor, AI_CONFIG, type ExtractorKind } from "@outrival/ai";
+import { pruneHtmlForSelectors, SELECTOR_ANCHORS } from "@outrival/scrapers/prune-html";
+import { generateExtractor, AI_CONFIG, AIUnavailableError, type ExtractorKind } from "@outrival/ai";
 import { logExtractionRun, loggedAi } from "./analytics";
 import { shouldTrustCachedExtractor } from "./extractor-trust";
+import {
+  shouldAttemptHeal,
+  healPausedUntil,
+  pauseHealsAfterPoolFailure,
+} from "./heal-cooldown";
 import { normalizeReplayOutput } from "./replay-normalize";
 
 /**
@@ -28,6 +33,13 @@ import { normalizeReplayOutput } from "./replay-normalize";
 const STAGED_ENABLED = process.env.STAGED_EXTRACTION_ENABLED !== "false";
 const HEAL_COOLDOWN_MS =
   Number(process.env.EXTRACTOR_HEAL_COOLDOWN_HOURS ?? 12) * 3_600_000;
+
+// How long every heal in this process stands down after the AI pool refused to
+// answer one. Short by design: it is the pool we are waiting on, not the page, and
+// the free tiers refill continuously (a Groq 429 asks for seconds, not hours). See
+// lib/heal-cooldown for why a pool failure must not arm the per-page cooldown.
+const HEAL_POOL_PAUSE_MS =
+  Number(process.env.EXTRACTOR_HEAL_POOL_PAUSE_MINUTES ?? 5) * 60_000;
 
 // R8 — a cached spec expires and is regenerated against the current DOM, so a
 // drifted selector producing wrong-but-plausible data can't be trusted forever.
@@ -158,18 +170,31 @@ export async function stagedExtract<T>(
     }
   }
 
-  // 3. AI self-heal: regenerate the parser (the only new AI call). Skipped while a
-  //    freshly-failed extractor is in cooldown, so a durably-broken page doesn't
-  //    burn a call every run — it rides the ai_fallback floor until cooldown lapses.
-  const inCooldown =
-    cached?.lastHealAttemptAt != null &&
-    Date.now() - cached.lastHealAttemptAt.getTime() < HEAL_COOLDOWN_MS;
-  if (!inCooldown) {
+  // 3. AI self-heal: regenerate the parser (the only new AI call). Skipped while
+  //    THIS page is in cooldown (a heal that reached a provider and produced no
+  //    working parser), and while the whole process is standing down after the pool
+  //    refused one. Those two brakes are separate on purpose — see lib/heal-cooldown.
+  if (
+    shouldAttemptHeal({
+      lastHealAttemptAt: cached?.lastHealAttemptAt ?? null,
+      now: Date.now(),
+      cooldownMs: HEAL_COOLDOWN_MS,
+      poolPausedUntil: healPausedUntil(),
+    })
+  ) {
     try {
       const spec = await loggedAi(
         "generate_extractor",
         AI_CONFIG.classification,
-        () => generateExtractor(input.kind, pruneHtmlForSelectors(input.html)),
+        () =>
+          generateExtractor(
+            input.kind,
+            // Window the skeleton on what this kind is looking for. A pricing table
+            // sits below the nav, the hero and the features, and the tag-heavy
+            // skeleton hits the cap before it reaches the prices — see prune-html
+            // for the 79 empty specs that measured.
+            pruneHtmlForSelectors(input.html, { anchor: SELECTOR_ANCHORS[input.kind] }),
+          ),
         { competitorId: input.competitorId },
       );
       if (spec) {
@@ -183,41 +208,99 @@ export async function stagedExtract<T>(
           return finish(healed, "heal", version);
         }
       }
-      // Generated but didn't validate → persist the attempt so the cooldown arms
-      // (nullable lastValidatedAt marks it never-validated) instead of re-paying the
-      // generator on every scrape of a page we can't parse.
-      if (spec) {
-        const version = (cached?.version ?? 0) + 1;
-        await db
-          .insert(parserExtractors)
-          .values({
-            domain, sourceType: input.sourceType,
-            spec: { ...spec, version }, version,
-            healCount: cached?.healCount ?? 0,
-            consecutiveFailures: (cached?.consecutiveFailures ?? 0) + 1,
-            lastValidatedAt: null,
-            lastHealAttemptAt: new Date(), updatedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: [parserExtractors.domain, parserExtractors.sourceType],
-            set: { lastHealAttemptAt: new Date(), consecutiveFailures: (cached?.consecutiveFailures ?? 0) + 1, updatedAt: new Date() },
-          });
-      } else if (cached) {
-        // parse-failed generation: stamp the existing row only (nothing new to store)
-        await db.update(parserExtractors)
-          .set({ lastHealAttemptAt: new Date() })
-          .where(eq(parserExtractors.id, cached.id));
-      }
+      // The generator reached a provider and we still have no working parser: it
+      // either returned a spec that does not replay, or returned nothing parseable.
+      // Both are facts about this PAGE, so arm its cooldown instead of re-paying the
+      // generator on every scrape of a page we cannot parse.
+      await stampHealAttempt(domain, input.sourceType, cached ?? null, spec);
     } catch (err) {
-      logger.warn("self-heal generate-extractor failed (non-fatal)", {
-        sourceType: input.sourceType,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      if (err instanceof AIUnavailableError) {
+        // We never reached a provider, so we learned nothing about this page and
+        // must not park it for the full cooldown. Stand every heal in this process
+        // down instead: while the pool refuses, no page's heal can succeed.
+        pauseHealsAfterPoolFailure(Date.now(), HEAL_POOL_PAUSE_MS);
+        logger.warn("self-heal skipped: AI pool unavailable, pausing heals", {
+          sourceType: input.sourceType,
+          domain,
+          pauseMs: HEAL_POOL_PAUSE_MS,
+          error: err.message,
+        });
+      } else {
+        // Something else broke while we were looking at THIS page (a spec that blew
+        // up the replayer, an empty completion). Arm the page's cooldown: an
+        // unclassified failure must not become the one path that can still thrash.
+        await stampHealAttempt(domain, input.sourceType, cached ?? null, null);
+        logger.warn("self-heal generate-extractor failed (non-fatal)", {
+          sourceType: input.sourceType,
+          domain,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 
   // 4. AI fallback — the floor (exactly today's extraction).
   return finish(await runFallback(), "ai_fallback", 0);
+}
+
+/**
+ * Arms the per-page heal cooldown after a heal that REACHED a provider and left us
+ * without a working parser.
+ *
+ * Writes a row when none exists. That gap was half of why the cooldown never armed:
+ * a first-ever generation on an unknown domain that parse-failed stamped nothing, so
+ * the next scrape paid the generator again, and the one after that.
+ *
+ * `spec` is whatever the generator returned. When it returned something, the row
+ * stores it so the version line stays honest; when it returned nothing, the row
+ * carries an EMPTY spec, because it exists to anchor the cooldown rather than to be
+ * replayed. Either way `lastValidatedAt` stays null, which is what makes
+ * shouldTrustCachedExtractor skip the row on the next scrape instead of replaying a
+ * parser nothing ever validated.
+ *
+ * `consecutiveFailures` counts REPLAY failures (it gates cache trust), so it only
+ * moves when a spec actually existed and failed to replay. A model parse miss says
+ * nothing about a cached parser and must not distrust one that still works.
+ *
+ * Best-effort: the cooldown is an optimisation and extraction is the contract, so a
+ * failed bookkeeping write is logged, never propagated.
+ */
+async function stampHealAttempt(
+  domain: string,
+  sourceType: SourceType,
+  cached: { version: number; healCount: number; consecutiveFailures: number } | null,
+  spec: ExtractorSpec | null,
+): Promise<void> {
+  const now = new Date();
+  const version = (cached?.version ?? 0) + 1;
+  const failures = (cached?.consecutiveFailures ?? 0) + (spec ? 1 : 0);
+  try {
+    await db
+      .insert(parserExtractors)
+      .values({
+        domain,
+        sourceType,
+        spec: spec ? { ...spec, version } : { version, fields: {} },
+        version,
+        healCount: cached?.healCount ?? 0,
+        consecutiveFailures: failures,
+        lastValidatedAt: null,
+        lastHealAttemptAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [parserExtractors.domain, parserExtractors.sourceType],
+        // Bookkeeping only on an existing row: a spec that just failed to replay
+        // must not overwrite one that may still work.
+        set: { lastHealAttemptAt: now, consecutiveFailures: failures, updatedAt: now },
+      });
+  } catch (err) {
+    logger.warn("could not arm heal cooldown (non-fatal)", {
+      domain,
+      sourceType,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 async function upsertExtractor(

@@ -192,6 +192,60 @@ AI_PROVIDER_4_ID=mistral           # La Plateforme free : 1 Md tokens/mois, 1 re
 # Plus de plancher PAYANT : `AI_PROVIDER_3_ID=hyperbolic` était documenté depuis patch-22
 # mais n'a jamais eu de clé en prod et n'a jamais servi une requête (ai_runs ne connaît que
 # groq et cerebras du 05/06 au 31/07/2026). Quand les gratuits sont épuisés, l'IA s'arrête.
+AI_PROVIDER_N_TPM_LIMIT=           # plafond TOKENS PAR MINUTE du provider (cerebras 30000,
+                                   # groq 8000). C'est LE plafond qui mordait : le quota
+                                   # journalier n'a jamais été atteint. Mesuré en prod le
+                                   # 2026-07-31 — Cerebras sert 420k tokens sur l'heure de 05:00,
+                                   # tape son plafond par minute, puis DISPARAÎT le reste de la
+                                   # journée à 740k sur 1M, pendant que Groq répond à 169 appels
+                                   # dans la même heure et en rate 152. Le pool ignorait
+                                   # l'existence d'un plafond par minute, donc le fan-out horaire
+                                   # 429ait le seul provider sain, le parquait jusqu'à 2 min, et
+                                   # basculait tout sur celui qui pouvait le moins l'absorber.
+                                   # `pickProvider` DÉPRIORISE désormais un provider dont la
+                                   # fenêtre glissante ne peut pas financer la requête, sans
+                                   # jamais l'exclure : l'estimation est un ratio sur un nombre de
+                                   # caractères, pas un tokenizer, donc elle ne doit jamais être
+                                   # la raison d'un échec. Le plancher reste le comportement
+                                   # d'avant ; le gain est qu'un provider saturé est sauté AVANT
+                                   # son 429, pas après. Réservation avant l'appel (sinon N appels
+                                   # concurrents lisent tous une fenêtre vide et partent tous),
+                                   # réconciliée sur l'usage réel dans le MÊME bucket de minute.
+                                   # 0 = pas de pacing pour ce provider
+AI_INTERACTIVE_RESERVE_FRACTION=0.2 # part de chaque plafond par minute réservée à l'INTERACTIF
+                                   # (question Ask, brief signals, tout ce qu'un humain regarde).
+                                   # Le background est plafonné aux 80% restants. Sans ça la
+                                   # flotte et la personne devant l'écran tiraient sur le même
+                                   # pot, et la flotte passe toujours en premier : c'est
+                                   # exactement pourquoi un testeur SEUL voyait « AI insights are
+                                   # delayed » sans que rien ne soit cassé. Le flag vit dans le
+                                   # scope withAiContext et les scopes imbriqués en HÉRITENT, donc
+                                   # un job que l'user regarde s'enveloppe une fois et tous ses
+                                   # loggedAi sont interactifs. 0 désactive la réserve
+AI_DEFER_BASE_SEC=75               # délai avant qu'un JOB refusé par le pool soit REJOUÉ. La
+                                   # politique de retry de la queue est 1s avec backoff plafonné
+                                   # à 10s : juste pour une panne transitoire, faux pour un rate
+                                   # limit, puisque les tiers gratuits répondent au 429 en
+                                   # demandant 18 à 60 s. Les 3 tentatives tombaient donc DANS la
+                                   # fenêtre encore throttlée et le job échouait après 2 rondes
+                                   # d'appels providers pour rien (mesuré sur 7 j : 333 appels
+                                   # extract_pricing pour 184 pages pricing réellement changées).
+                                   # Seul AIUnavailableError défère, et PAS quand le pool est
+                                   # mal configuré ni quand la requête est trop grosse : ni l'un
+                                   # ni l'autre ne guérit en attendant, donc les deux gardent le
+                                   # retry normal et finissent en DLQ où quelqu'un les voit
+AI_DEFER_JITTER_FRACTION=0.4       # étalement UNILATÉRAL de ce délai (jamais plus tôt que la
+                                   # base). Sans lui, tous les jobs déférés par la même panne
+                                   # reviennent au même instant et reconstruisent le burst qui a
+                                   # causé la panne, une fenêtre plus tard
+QUEUE_MAX_DEFERRALS=3              # nombre de reports qu'un job peut accumuler avant de retomber
+                                   # sur le retry normal (puis la DLQ). Une BORNE, pas un réglage :
+                                   # un pool durablement indisponible ne doit pas reprogrammer un
+                                   # job indéfiniment, un job qui n'échoue jamais est un job dont
+                                   # personne n'est prévenu. Compteur porté dans le PAYLOAD (clé
+                                   # réservée `__deferrals`, retirée par `jobData`) : un report
+                                   # RE-SEND le job, donc le compteur de retry pg-boss repart à
+                                   # zéro et ne peut pas borner la boucle
 AI_CIRCUIT_BREAKER_THRESHOLD=5     # échecs consécutifs (tous providers) avant coupure globale
 AI_CIRCUIT_BREAKER_RESET_MIN=10    # minutes avant retry (breaker provider ET global)
 AI_INTENSIVE_RATE_LIMIT=           # OVERRIDE d'urgence ops UNIQUEMENT. Le plafond horaire
@@ -264,7 +318,32 @@ PRODUCT_LIMIT_BUSINESS=999
 
 # Staged extraction pipeline (patch-30)
 STAGED_EXTRACTION_ENABLED=true         # false → bypass des étages, comportement actuel exact (plancher)
-EXTRACTOR_HEAL_COOLDOWN_HOURS=12       # min heures entre 2 self-heal sur un extracteur cassé (anti-thrash)
+EXTRACTOR_HEAL_COOLDOWN_HOURS=12       # min heures avant de retenter un heal qui a ATTEINT un
+                                       # provider et n'a produit aucun parser exploitable. Il
+                                       # parque la PAGE, donc il n'est armé que par ce qu'on a
+                                       # appris SUR la page. Armé sur les 3 sorties (spec qui ne
+                                       # rejoue pas, génération parse-failed, erreur inattendue),
+                                       # y compris quand AUCUNE ligne parser_extractors n'existe :
+                                       # une 1re génération ratée sur un domaine inconnu ne
+                                       # stampait rien, donc le scrape suivant re-payait
+EXTRACTOR_HEAL_POOL_PAUSE_MINUTES=5    # durée pendant laquelle TOUS les heals d'un process worker
+                                       # se mettent en retrait après un refus du pool IA (tous les
+                                       # providers rate-limités, ou breaker global ouvert). Séparé
+                                       # du cooldown ci-dessus parce qu'un échec de pool ne dit
+                                       # RIEN de la page : la parquer 12h enregistrerait un fait
+                                       # jamais constaté, et affamerait le chemin de heal, puisque
+                                       # le pool est saturé exactement quand le fan-out horaire
+                                       # tourne, c'est-à-dire quand la plupart des pages sont
+                                       # capturées. Mesuré avant la séparation, sur 14 j en prod :
+                                       # 405 des 656 appels generate_extractor n'ont jamais eu de
+                                       # réponse, 45 heals seulement ont abouti pour 218 parsers
+                                       # cachés, et 181 des 410 runs sur 7 j tombaient à moins de
+                                       # CINQ MINUTES du précédent pour le MÊME concurrent (le
+                                       # `catch` avalait l'erreur sans rien écrire, donc le
+                                       # cooldown ne s'armait jamais sur ce chemin). Court par
+                                       # construction : les tiers gratuits se rechargent en
+                                       # continu, un 429 Groq demande des secondes. 0 désactive la
+                                       # pause seule. 📄 docs/ai-consumption-audit-2026-08.md
 EXTRACTOR_REVALIDATE_INTERVAL_DAYS=14  # R8 — âge max d'un parser caché avant régénération forcée contre le DOM courant (un sélecteur dérivé "plausible mais faux" ne peut plus être trusté indéfiniment). last_validated_at n'est plus stampé à chaque cache hit
 EXTRACTOR_MAX_CONSECUTIVE_FAILURES=5   # R8 — échecs de replay consécutifs après lesquels un parser caché est distrusté d'office
 PRUNE_HTML_MAX_CHARS=40000             # cap de l'HTML élagué envoyé au générateur de sélecteurs

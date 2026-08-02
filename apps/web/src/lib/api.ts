@@ -407,6 +407,11 @@ export interface Monitor {
   // The exact page this source last scraped (resolved_url ?? config.url). Null when
   // nothing was captured yet or the source has no single page (HN, subdomains).
   pageUrl?: string | null;
+  // Whether that page is the competitor's own homepage rather than the dedicated
+  // page this source watches. True means discovery found nothing and the scraper
+  // fell back (jobs, pricing), so an empty tab must say we never opened a careers /
+  // pricing page instead of implying the competitor doesn't publish one.
+  pageIsHomepage?: boolean;
   lastRunAt: string | null;
   // When the scheduler will next check this source. Null (or past) = due on the
   // next hourly cron tick, not a stale timestamp — never render it as a past date.
@@ -657,7 +662,37 @@ export type SignalFacts =
       rising: TopicMoveFact[];
       declining: TopicMoveFact[];
     }
+  | {
+      /** The third-party technology a competitor started using (patch-18). */
+      kind: "tech_stack";
+      techs: TechFact[];
+    }
+  | {
+      /** The public rating behind a reviews signal, and what it moved from. */
+      kind: "reviews";
+      source: string;
+      score: number | null;
+      previousScore: number | null;
+      reviewCount: number | null;
+      previousReviewCount: number | null;
+      complaints: ComplaintFact[];
+    }
   | null;
+
+export interface TechFact {
+  name: string;
+  category: string;
+  importance: string;
+  /** Where it was detected, verbatim: a response header, a script URL, a DOM
+   * marker. What makes the detection checkable rather than asserted. */
+  evidence: string[];
+  firstDetectedAt: string | null;
+}
+
+export interface ComplaintFact {
+  theme: string;
+  prevalence: string;
+}
 
 export interface RoadmapRequestFact {
   title: string;
@@ -940,6 +975,10 @@ export interface SignalDetail {
   relevanceScore: number | null;
   sourceType: string | null;
   sourceUrl: string | null;
+  // The archived capture a backfill signal quotes, replayable on the Wayback
+  // Machine. `sourceUrl` points at the LIVE page, which for these signals no
+  // longer holds the text they cite. null on every live-to-live signal.
+  archive?: { url: string; capturedAt: string | null } | null;
   // Whether before/after screenshots are available for the visual diff, and when
   // each side was captured. Any source that renders can carry one (homepage always,
   // pricing on the runs that render) — never assume homepage-only.

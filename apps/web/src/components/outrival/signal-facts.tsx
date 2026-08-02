@@ -45,7 +45,127 @@ export function SignalFacts({ facts }: { facts: Facts }) {
   if (facts.kind === "roadmap_request") return <RoadmapRequestFacts facts={facts} />;
   if (facts.kind === "integrations") return <IntegrationFacts facts={facts} />;
   if (facts.kind === "editorial") return <EditorialFacts facts={facts} />;
+  if (facts.kind === "tech_stack") return <TechStackFacts facts={facts} />;
+  if (facts.kind === "reviews") return <ReviewFacts facts={facts} />;
   return <PricingFacts facts={facts} />;
+}
+
+/**
+ * The technology a competitor started using, and how we know.
+ *
+ * The insight says they "adopted Vercel"; without the evidence line that is an
+ * assertion the reader has to take on trust. The detector matched a response
+ * header or a script URL, and printing it verbatim is what lets the claim be
+ * checked against the competitor's own site.
+ */
+function TechStackFacts({ facts }: { facts: Extract<Facts, { kind: "tech_stack" }> }) {
+  return (
+    <ul className="space-y-2.5">
+      {facts.techs.map((t) => (
+        <li key={t.name}>
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span className="text-sm font-medium text-foreground">{t.name}</span>
+            <span className="text-xs text-muted-foreground">{t.category}</span>
+            {t.importance === "high" && (
+              <span className="rounded-sm border border-border bg-surface-2 px-1.5 py-0.5 text-meta text-muted-foreground">
+                core to their stack
+              </span>
+            )}
+            {t.firstDetectedAt && (
+              <span className="text-xs tabular-nums text-muted-foreground">
+                first seen {t.firstDetectedAt}
+              </span>
+            )}
+          </div>
+          {t.evidence.length > 0 && (
+            // Mono, and one of the few places it is right: these are header
+            // names and script URLs, read glyph by glyph, where a character
+            // misread changes what was detected.
+            <ul className="mt-1 space-y-0.5">
+              {t.evidence.map((e) => (
+                <li
+                  key={e}
+                  className="truncate font-mono text-xs text-muted-foreground"
+                  title={e}
+                >
+                  {e}
+                </li>
+              ))}
+            </ul>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * The rating behind a reviews signal, and what it moved from.
+ *
+ * The score alone is not the fact: a 0.1 drop across 12000 reviews and the same
+ * drop across 30 are different events, so the count travels with it. The
+ * complaint themes are what the reader can actually act on, and they were only
+ * ever visible on the competitor's Reviews tab.
+ */
+function ReviewFacts({ facts }: { facts: Extract<Facts, { kind: "reviews" }> }) {
+  const moved =
+    facts.score !== null &&
+    facts.previousScore !== null &&
+    facts.score !== facts.previousScore;
+  const delta = moved ? facts.score! - facts.previousScore! : 0;
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        {moved && (
+          <span className="text-sm tabular-nums text-muted-foreground line-through">
+            {facts.previousScore!.toFixed(2)}
+          </span>
+        )}
+        <span className="text-lead font-semibold tabular-nums text-foreground">
+          {facts.score !== null ? facts.score.toFixed(2) : "—"}
+        </span>
+        {moved && (
+          <span
+            className={cn(
+              "text-xs tabular-nums",
+              delta > 0 ? "text-positive" : "text-critical",
+            )}
+          >
+            {delta > 0 ? "+" : ""}
+            {delta.toFixed(2)}
+          </span>
+        )}
+        {facts.reviewCount !== null && (
+          <span className="text-xs text-muted-foreground">
+            across <span className="tabular-nums">{facts.reviewCount.toLocaleString()}</span>{" "}
+            reviews on {facts.source}
+          </span>
+        )}
+      </div>
+
+      {facts.complaints.length > 0 && (
+        <div className="mt-3">
+          <p className="text-xs text-muted-foreground">What reviewers complain about</p>
+          <ul className="mt-1.5 space-y-1">
+            {facts.complaints.map((c) => (
+              <li key={c.theme} className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-sm text-foreground">{c.theme}</span>
+                <span
+                  className={cn(
+                    "text-meta",
+                    c.prevalence === "high" ? "text-critical" : "text-muted-foreground",
+                  )}
+                >
+                  {c.prevalence}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**

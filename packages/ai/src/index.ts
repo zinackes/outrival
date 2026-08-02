@@ -8,6 +8,7 @@ export {
   consumeUsage,
   wasTruncated,
   withAiContext,
+  isInteractive,
 } from "./provider/provider-context";
 export type { TokenUsage } from "./provider/provider-context";
 export { AIUnavailableError, checkGlobalBreaker } from "./provider/circuit-breaker";

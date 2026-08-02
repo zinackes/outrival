@@ -16,11 +16,16 @@ const PAGE_LABEL: Record<string, string> = {
   twitter: "X / Twitter page",
 };
 
+/** What to call the page a source is supposed to watch ("careers page", "blog", …). */
+export function sourcePageLabel(sourceType?: string): string {
+  return (sourceType && PAGE_LABEL[sourceType]) ?? "page";
+}
+
 export function friendlyScrapeError(
   raw: string | null | undefined,
   sourceType?: string,
 ): string {
-  const page = (sourceType && PAGE_LABEL[sourceType]) ?? "page";
+  const page = sourcePageLabel(sourceType);
   if (!raw) return "The scrape failed after several retries. We'll try again automatically.";
 
   const e = raw.toLowerCase();

@@ -199,7 +199,7 @@ export function VsPage({ competitorKey }: { competitorKey: CompetitorKey }) {
                 <Link href="/auth">Start free</Link>
               </Button>
               <Button asChild size="lg" variant="outline">
-                <Link href="/#pricing">See all plans</Link>
+                <Link href="/pricing">See all plans</Link>
               </Button>
             </div>
           </div>

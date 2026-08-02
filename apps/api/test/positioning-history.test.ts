@@ -114,3 +114,266 @@ describe("collapsePositioningVersions", () => {
     expect(collapsePositioningVersions(rows, 5)).toHaveLength(5);
   });
 });
+
+// `classifySection` only calls a section `features` when its heading contains one of
+// a handful of words, and homepages name sections after the benefit instead. On prod
+// 2026-08-01 that left 87% of stored sections typed `other` and 95 of 158 competitors
+// with no highlight at all. The selection is inverted: trust the type only where the
+// parser decided it structurally, and treat the rest as candidates.
+describe("positioningCopyOf — highlights beyond the `features` keyword list", () => {
+  const propsOf = (sections: unknown[]) =>
+    collapsePositioningVersions([
+      { structure: { hero: { headline: "H" }, sections }, scrapedAt: at("2026-08-01T00:00:00Z") },
+    ])[0]!.valueProps;
+
+  test("a benefit-named section becomes a highlight", () => {
+    // Real prod copy the keyword list dropped.
+    expect(
+      propsOf([
+        { type: "other", heading: "Stop choosing between speed and control" },
+        { type: "other", heading: "PostgreSQL re-engineered for multi-tenant apps" },
+      ]),
+    ).toEqual([
+      "Stop choosing between speed and control",
+      "PostgreSQL re-engineered for multi-tenant apps",
+    ]);
+  });
+
+  test("a typed hit is never displaced by the ones now added", () => {
+    // The whole safety argument: this may only ADD. A features section sitting last
+    // in the document still survives a page with more candidates than the cap.
+    const props = propsOf([
+      ...Array.from({ length: 10 }, (_, i) => ({ type: "other", heading: `Benefit number ${i}` })),
+      { type: "features", heading: "The one the classifier caught" },
+    ]);
+
+    expect(props[0]).toBe("The one the classifier caught");
+    expect(props).toHaveLength(8);
+  });
+
+  test("structurally-decided sections are never highlights", () => {
+    // Each of these verdicts rests on a price pattern, a blockquote, an image wall or
+    // stacked <details>, so they are the ones worth trusting.
+    expect(
+      propsOf([
+        { type: "pricing", heading: "Simple pricing that scales" },
+        { type: "faq", heading: "Everything you wanted to ask" },
+        { type: "testimonials", heading: "What our users tell us" },
+        { type: "logos", heading: "Teams that switched" },
+        { type: "cta", heading: "Your data is waiting" },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("a `logos` section is judged on its heading, not on its type", () => {
+    // The parser awards `logos` to any section with 5+ images and little text,
+    // whatever the heading says. On prod that shape is a product grid more often
+    // than a customer wall (31 of 50), so excluding the type wholesale threw away
+    // real highlights. Both of these are stored as `logos` today.
+    expect(
+      propsOf([
+        { type: "logos", heading: "130+ connectors or build your own" },
+        { type: "logos", heading: "Trusted by the teams you know" },
+      ]),
+    ).toEqual(["130+ connectors or build your own"]);
+  });
+
+  test("a French press wall is not read as a claim", () => {
+    // "Ils parlent de nous" reads as a product statement to any English-only pattern.
+    expect(
+      propsOf([
+        { type: "logos", heading: "Ils parlent de nous" },
+        { type: "other", heading: "Nos clients" },
+        { type: "other", heading: "Votre comptabilité en pilote automatique" },
+      ]),
+    ).toEqual(["Votre comptabilité en pilote automatique"]);
+  });
+
+  test("a customer wall, a closing CTA and a blog strip are not claims", () => {
+    // These reach `other` when the structural cues are missing (no <img> count, no
+    // button), and each would otherwise read as something the product does.
+    expect(
+      propsOf([
+        { type: "other", heading: "Trusted by industry leaders" },
+        { type: "other", heading: "Ready to extract valuable data?" },
+        { type: "other", heading: "Latest insights & expert articles" },
+        { type: "other", heading: "Track your portfolio in real time" },
+      ]),
+    ).toEqual(["Track your portfolio in real time"]);
+  });
+
+  test("the exclusions are anchored, so a real claim survives the same words", () => {
+    // "Start shipping on day one" opens with the same verb as "Start free". Matching
+    // it anywhere in the string would silently delete product claims.
+    expect(
+      propsOf([
+        { type: "other", heading: "Start shipping on day one" },
+        { type: "other", heading: "Start free, upgrade whenever" },
+      ]),
+    ).toEqual(["Start shipping on day one"]);
+  });
+
+  test("a one-word heading is a tab label, not a highlight", () => {
+    expect(
+      propsOf([
+        { type: "other", heading: "Solo" },
+        { type: "other", heading: "Teams" },
+        { type: "other", heading: "Scan to add" },
+      ]),
+    ).toEqual(["Scan to add"]);
+  });
+
+  test("a heading the section walk glued into a paragraph is dropped", () => {
+    const glued = `1 - MARQUE EMPLOYEUR ${"Boostez votre marque employeur en communiquant ".repeat(4)}`;
+    expect(propsOf([{ type: "other", heading: glued }, { type: "other", heading: "Sourcing de candidats" }])).toEqual([
+      "Sourcing de candidats",
+    ]);
+  });
+
+  test("the repeat filter counts per pool, so a typed hit is not dropped by its echoes", () => {
+    // Sharing one tally across both pools would remove a highlight that renders today.
+    expect(
+      propsOf([
+        { type: "features", heading: "Real-time pricing" },
+        { type: "other", heading: "Real-time pricing" },
+        { type: "other", heading: "Real-time pricing" },
+      ]),
+    ).toEqual(["Real-time pricing"]);
+  });
+});
+
+// The parser reads the hero off `$("h1").first()` alone, so a page that titles in an
+// <h2> or a styled <div> yields headline AND subheadline null together and the whole
+// "How they position" section vanishes. Measured on prod 2026-08-01: 9 of 158 stored
+// structures, all of them live, fully-parsed pages. The cases below are those pages.
+describe("positioningCopyOf — <head> fallback when a page has no H1", () => {
+  const copyOf = (structure: unknown) =>
+    collapsePositioningVersions([{ structure, scrapedAt: at("2026-08-01T00:00:00Z") }])[0]!;
+
+  test("recovers og:title and og:description when the hero came back empty", () => {
+    // asista.com: 150 KB, 37 sections, 16 customer logos parsed, no <h1> anywhere.
+    const v = copyOf({
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      title: "AiDi - Asista",
+      openGraph: {
+        title: "AiDi - Asista",
+        description: "Asista AIDI transforms manufacturing operations by turning data into decisions.",
+      },
+    });
+
+    expect(v.headline).toBe("AiDi - Asista");
+    expect(v.subheadline).toBe(
+      "Asista AIDI transforms manufacturing operations by turning data into decisions.",
+    );
+  });
+
+  test("falls back to <title> and meta description when there are no og: tags", () => {
+    // rimworldgame.com ships a meta description and no og:title.
+    const v = copyOf({
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      title: "RimWorld - Sci-Fi Colony Sim",
+      metaDescription: "A sci-fi colony sim driven by an intelligent AI storyteller.",
+    });
+
+    expect(v.headline).toBe("RimWorld - Sci-Fi Colony Sim");
+    expect(v.subheadline).toBe("A sci-fi colony sim driven by an intelligent AI storyteller.");
+  });
+
+  test("site-builder boilerplate never becomes positioning copy", () => {
+    // api360.sa ships Framer's default og:description. Printing it would tell the
+    // reader which page builder the competitor bought, dressed as their pitch.
+    const v = copyOf({
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      title: "API360 for banks",
+      openGraph: { description: "Made with Framer" },
+    });
+
+    expect(v.headline).toBe("API360 for banks");
+    expect(v.subheadline).toBeNull();
+  });
+
+  test("a parked or stopped host page is not a positioning statement", () => {
+    // krysp.io resolves to its host's stopped-site page.
+    const v = copyOf({
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      title: "Sorry, the website has been stopped",
+    });
+
+    expect(v.headline).toBeNull();
+    expect(v.subheadline).toBeNull();
+  });
+
+  test("a bare brand token is not a headline", () => {
+    // The company name is the one thing the reader already knows; surfacing it as
+    // their positioning fills the section while saying nothing.
+    const v = copyOf({
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      title: "API360",
+      openGraph: { title: "API360" },
+    });
+
+    expect(v.headline).toBeNull();
+  });
+
+  test("keyword-stuffed <head> text is dropped, never truncated into a sentence", () => {
+    const v = copyOf({
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      title: `${"web scraping api proxy rotation ".repeat(12)}`,
+    });
+
+    expect(v.headline).toBeNull();
+  });
+
+  test("a real hero headline is never overwritten, and gains no invented subheadline", () => {
+    // 66 of the 158 carry a headline with no subheadline. They already render the
+    // section, so splicing a meta description under their real H1 would rewrite copy
+    // for 42% of the roster to reach the 6% that shows nothing.
+    const v = copyOf({
+      hero: { headline: "Ship faster than your competition" },
+      sections: [],
+      title: "Acme | The developer platform",
+      openGraph: { description: "Acme is the platform teams use to ship." },
+    });
+
+    expect(v.headline).toBe("Ship faster than your competition");
+    expect(v.subheadline).toBeNull();
+  });
+
+  test("the same string is not printed twice as headline and subheadline", () => {
+    // <title> and meta description are routinely identical; showing both reads as a
+    // rendering bug rather than as two things the competitor wrote.
+    const v = copyOf({
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      title: "The ultimate recruitment software",
+      metaDescription: "The ultimate recruitment software",
+    });
+
+    expect(v.headline).toBe("The ultimate recruitment software");
+    expect(v.subheadline).toBeNull();
+  });
+
+  test("the fallback does not read as a rewrite across captures", () => {
+    // It derives from stored fields, so every capture ever taken resolves the same
+    // way. If it ran only on the newest one, the Positioning tab would date a
+    // messaging change to the day this shipped.
+    const structure = {
+      hero: { headline: null, subheadline: null },
+      sections: [],
+      openGraph: { title: "AiDi - Asista", description: "Turning plant data into decisions." },
+    };
+    const versions = collapsePositioningVersions([
+      { structure, scrapedAt: at("2026-08-01T00:00:00Z") },
+      { structure, scrapedAt: at("2026-06-01T00:00:00Z") },
+    ]);
+
+    expect(versions).toHaveLength(1);
+    expect(versions[0]!.capturedAt).toBe("2026-06-01T00:00:00.000Z");
+  });
+});

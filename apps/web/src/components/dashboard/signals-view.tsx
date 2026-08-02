@@ -237,7 +237,15 @@ export function SignalsView() {
   async function markRead(id: string) {
     mutateSignals((prev) => prev.map((s) => (s.id === id ? { ...s, isRead: true } : s)));
     if (sample) return;
-    await api.markSignalRead(id);
+    try {
+      await api.markSignalRead(id);
+    } catch {
+      // Revert, or the row reads "read" until the next poll contradicts it — and
+      // selectRow fires this without awaiting, so an uncaught rejection would be
+      // silent. Mark-unread below has always done this.
+      mutateSignals((prev) => prev.map((s) => (s.id === id ? { ...s, isRead: false } : s)));
+      toast.error("Couldn't mark read. Try again.");
+    }
   }
 
   async function markUnread(id: string) {
@@ -984,7 +992,15 @@ export function SignalsView() {
             selecting={selectionActive || isChecked}
             selected={selectedId === id}
             tabStop={tabStopId === id}
-            onFocus={() => setFocusedId(id)}
+            // Selecting on FOCUS, not only on click: on mobile the detail opens as
+            // `fixed inset-0` over the list, so the row under the finger is covered
+            // between mousedown and mouseup and the browser retargets the click to a
+            // common ancestor — onSelect never fired, and the signal was never marked
+            // read. Focus lands before that reflow. Both handlers stay: WebKit does
+            // not focus a <button> on tap (so click is the one that fires there, and
+            // nothing moves to swallow it), and selectRow is idempotent — the second
+            // pass sees isRead and skips the PATCH.
+            onFocus={() => selectRow(id)}
             onSelect={() => selectRow(id)}
           />
         </div>

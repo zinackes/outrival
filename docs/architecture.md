@@ -36,7 +36,7 @@ Mise à jour à chaque phase / patch.
 | ORM               | Drizzle ORM                              | Type-safe, léger, Postgres |
 | DB                | PostgreSQL (Neon)                        | Serverless, scale-to-zero, branching ; relationnel + time-series/analytics dans une seule base |
 | Stockage binaire  | Cloudflare R2                            | Quasi-gratuit pour snapshots HTML/screenshots/PDFs |
-| Jobs              | **pg-boss v12** self-hosted (`@outrival/queue`)     | Postgres-natif : 0 € de logiciel, pas de compteur par run, pas de cap à 10 crons, pas de risque roadmap vendeur. Les wrappers Trigger.dev survivent une semaine après le cutover comme rollback, cf. `docs/trigger-to-pgboss-migration.md` |
+| Jobs              | **pg-boss v12** self-hosted (`@outrival/queue`)     | Postgres-natif : 0 € de logiciel, pas de compteur par run, pas de cap à 10 crons, pas de risque roadmap vendeur. Trigger.dev est entièrement retiré depuis la Phase 7 (2026-08-02) : plus de wrappers, plus de schedules déclaratifs, pg-boss est le seul exécuteur. Historique : `docs/trigger-to-pgboss-migration.md` |
 | Scraping          | Playwright (Chromium) + fetch            | Rendu honnête : UA OutrivalBot identifiable, pas de spoofing d'automatisation, respect robots.txt (collection doctrine) |
 | Parsing YAML      | `yaml` (MIT, dép de @outrival/scrapers)  | Specs OpenAPI publiées en YAML (source `docs`) — un parser maison sur un sous-ensemble YAML casserait en silence sur les ancres / blocs multi-lignes |
 | Egress proxy      | ProxyScrape datacenter (egress amont)    | Cascade 3 niveaux (L0 fetch · L1 render · L2 datacenter). Collection doctrine : arrêt sur refus, jamais d'escalade IP/fingerprint |
@@ -1555,7 +1555,8 @@ carte (état live uniquement).
   └─ SLO first-signal (audit 2026-07-10, docs/slos/onboarding-first-signal.md) :
      SLI 28j/7j + coverage 24h loggés à chaque run ; alertes event-based (3 misses
      consécutifs → page, 7j<50% n≥5 → ticket, 28j<70% n≥10 → policy). Piggyback
-     ici car le cap de 10 schedules Trigger est plein
+     ici par héritage du cap de 10 schedules de Trigger ; pg-boss n'a plus ce cap,
+     donc ce piggyback peut redevenir un cron à part quand ça vaut le détour
 
 [cron */30 min] ai-capacity-check (patch-22)
   └─ usage tokens/jour cumulé du pool de providers (Redis) → Slack ops aux paliers
@@ -1734,8 +1735,6 @@ INTERNAL_API_SECRET=         # standing queries — shared secret worker→API (
                             # queries sauvées mais jamais réévaluées (dégradation propre)
 
 # Jobs
-TRIGGER_SECRET_KEY=          # Trigger.dev — being replaced by pg-boss (removed at migration Phase 7)
-TRIGGER_PROJECT_ID=
 QUEUE_DATABASE_URL=          # pg-boss queue — DEDICATED always-on Postgres, NEVER Neon (cf. docs/trigger-to-pgboss-migration.md)
 WORKER_ROLE=                 # browser | light — which queues a worker process handles
                             # QUEUE_DATABASE_URL is ALSO required on the api service (send-only:
@@ -2422,11 +2421,11 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
   jamais un scrape, un job IA ou un handler (l'UI dégrade gracieusement). ClickHouse
   a été retiré (un seul Postgres, moins d'infra à opérer).
 - **R2 avant DB** systématique pour les snapshots : si upload R2 fail, on throw →
-  retry Trigger.dev, pas de row orpheline.
+  retry pg-boss, pas de row orpheline.
 - **Idempotence Signal** : check `signals.changeId` (unique) dans BOTH `classify-change`
   ET `generate-signal` (protège des races).
 - **SSE DB-backed** plutôt qu'Upstash pub/sub : latence 3s ok pour veille, gratuit, scale VPS.
-- **Discovery synchrone** (Phase 4) : appels <15s, pas de Trigger.dev Realtime (gratuit + simple).
+- **Discovery synchrone** (Phase 4) : appels <15s, pas de job asynchrone (gratuit + simple).
 - **Subpath exports** `@outrival/scrapers/{discovery,quick-fetch}` pour ne pas
   pull crawlee/playwright dans l'API.
 

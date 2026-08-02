@@ -18,7 +18,6 @@
     "@outrival/scrapers": "workspace:*",
     "@outrival/shared": "workspace:*",
     "@sentry/node": "^10.54.0",
-    "@trigger.dev/sdk": "^4.4.6",
     "better-auth": "^1.6.22",
     "disposable-email-domains-js": "^1.25.0",
     "drizzle-orm": "^0.45.2",

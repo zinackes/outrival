@@ -1,32 +1,53 @@
-# Règles jobs Trigger.dev v3
+# Règles jobs — pg-boss (`@outrival/queue`)
 
-S'applique aux fichiers **/*.job.ts
+S'applique aux handlers de `apps/workers/src/core/*.ts` et au registre
+`packages/queue/src/jobs.ts`.
+
+> Trigger.dev a été **entièrement retiré** (Phase 7). Plus de `*.job.ts`, plus de
+> `trigger.config.ts`, plus de `schedules.task`. Si du vieux code ou une spec
+> mentionne encore un wrapper Trigger, c'est périmé.
 
 ## Structure obligatoire
 
-- Chaque job dans apps/workers/src/jobs/[name].job.ts
-- Export nommé : export const [nomCamelCase]Job = task({ id: "kebab-case-id", ... })
-- id du job : kebab-case descriptif (ex: scrape-pricing-page, generate-weekly-digest)
+- Le corps du job vit dans `apps/workers/src/core/[name].ts`, export nommé
+  `run[NameCamelCase]`. Runtime-neutre : aucun import de queue dedans.
+- Le job est **déclaré** dans `packages/queue/src/jobs.ts` via `defineJob<Payload>()` :
+  nom, type de payload, politique (retry, `expireInSeconds`, concurrence,
+  dead-letter). C'est la source unique de vérité, importée par l'API (enqueue seul)
+  et par les workers (enqueue + work + cron).
+- Le handler est câblé au registre dans `apps/workers/src/queue/worker.ts`.
+- Nom de job : kebab-case descriptif (`scrape-monitor`, `generate-weekly-digest`).
+
+## Payloads
+
+- Le type exporté dans `jobs.ts` doit refléter le `InputSchema` zod du handler.
+  Une dérive entre les deux est une erreur de parse **au runtime sur le worker**,
+  pas à la compilation : les tenir synchrones fait partie du changement.
 
 ## Idempotence
 
-- TOUJOURS concevoir les jobs pour être idempotents (relancé = pas de doublon)
-- Utiliser content_hash pour détecter si un snapshot est déjà identique
-- Vérifier en DB si le job a déjà été exécuté avec les mêmes params avant de traiter
-
-## Logging
-
-- TOUJOURS context.log() au début : context.log("Starting [job-name]", { params })
-- TOUJOURS context.log() à la fin : context.log("Completed [job-name]", { result })
-- Logger les étapes intermédiaires importantes
-
-## Config
-
-- maxAttempts: 3 par défaut sur tous les jobs
-- Utiliser triggerAndWait() pour les sous-tâches dépendantes
-- Concurrency : max 1 job de scraping par domaine simultanément (utiliser concurrencyKey)
+- TOUJOURS concevoir les jobs pour être idempotents (relancé = pas de doublon).
+- `content_hash` pour détecter qu'un snapshot est déjà identique.
+- Contrainte d'unicité côté DB quand elle existe (`signals.change_id`), plutôt
+  qu'un check applicatif seul : deux workers peuvent courir en parallèle.
 
 ## Erreurs
 
-- Ne jamais catch et ignorer les erreurs — laisser Trigger.dev gérer les retries
-- En cas d'erreur métier (non-retriable) : throw new AbortTaskRunError("raison")
+- Échec **transitoire** → `throw` normal : pg-boss réessaie selon `retryLimit`.
+- Échec **métier / terminal** → `throw new NonRetriable("raison")` : complété sans
+  retry. C'est la distinction que le wrapper `work` lit par `instanceof`, donc une
+  erreur maison qui n'en hérite pas sera réessayée trois fois.
+- Ne jamais catch-and-ignore : les épuisements de retry atterrissent dans
+  `outrival-dlq` pour inspection.
+
+## Cron
+
+- Les schedules sont posés par le worker `WORKER_ROLE=light`, qui possède seul le
+  cron et la maintenance. Ils ne vivent PAS dans le code du handler.
+- Le worker `browser` ne fait que consommer (scrapes, platform, PDF).
+
+## Concurrence
+
+- La concurrence est une propriété du job dans `jobs.ts`, pas du handler.
+- Max 1 scrape par domaine simultané : c'est le rate-limit par eTLD+1 de la
+  cascade qui le tient (`.claude/rules/scraping.md`), pas la queue.

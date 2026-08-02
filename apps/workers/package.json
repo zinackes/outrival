@@ -3,11 +3,10 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "trigger dev",
+    "dev": "bun run --hot src/queue/worker.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "bun test --timeout 60000 test/",
-    "trigger:dev": "trigger dev",
     "queue:dev": "bun run --hot src/queue/worker.ts",
     "queue:start": "bun run src/queue/worker.ts",
     "backfill:hiring-geo": "bun run src/scripts/backfill-hiring-geo.ts",
@@ -23,8 +22,6 @@
     "@outrival/shared": "workspace:*",
     "@sentry/esbuild-plugin": "^5.3.0",
     "@sentry/node": "^10.54.0",
-    "@trigger.dev/build": "^4.4.6",
-    "@trigger.dev/sdk": "^4.4.6",
     "drizzle-orm": "^0.45.2",
     "playwright": "^1.60.0",
     "posthog-node": "^5.35.5",
@@ -33,7 +30,6 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.2",
-    "@types/node": "^25.9.1",
-    "trigger.dev": "^4.4.6"
+    "@types/node": "^25.9.1"
   }
 }

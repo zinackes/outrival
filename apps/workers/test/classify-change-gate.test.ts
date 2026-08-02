@@ -52,8 +52,9 @@ beforeAll(async () => {
   // later `import` would hand back the mock and the real gateAppliesTo /
   // suppressesAsCosmetic (which we deliberately keep live) would be lost.
   const realAi = await import("@outrival/ai");
-  // Same reason, for the queue: NonRetriable must stay the REAL class or
-  // asTriggerRun's `instanceof` check silently stops recognising an abort.
+  // Same reason, for the queue: NonRetriable must stay the REAL class or the
+  // pg-boss `work` wrapper's `instanceof` check silently stops recognising a
+  // terminal failure and retries it three times instead.
   const realQueue = await import("@outrival/queue");
 
   const harness = await makeTestDb();
@@ -62,16 +63,8 @@ beforeAll(async () => {
 
   mock.module("@outrival/db", () => ({ ...schema, db: harness.db }));
 
-  mock.module("@trigger.dev/sdk/v3", () => ({
-    // `task(cfg)` returning cfg is what makes `job.run(payload)` callable at all.
-    task: (cfg: unknown) => cfg,
-    queue: (cfg: unknown) => cfg,
-    logger: { log: () => {}, warn: () => {}, error: () => {}, info: () => {} },
-    AbortTaskRunError: class AbortTaskRunError extends Error {},
-  }));
-
-  // The job body now fans out through the typed pg-boss registry, not the Trigger
-  // SDK, so the capture lives here. Without a started queue `enqueue` would throw
+  // The job body fans out through the typed pg-boss registry, so the capture lives
+  // here. Without a started queue `enqueue` would throw
   // "Queue not started" and every substantive-path assertion would fail on the
   // fan-out instead of on what it means to test.
   mock.module("@outrival/queue", () => ({
@@ -109,10 +102,11 @@ beforeAll(async () => {
     },
   }));
 
-  const jobModule = await import("../src/jobs/classify-change.job");
-  runJob = (jobModule.classifyChangeJob as unknown as {
-    run: (p: { changeId: string }) => Promise<unknown>;
-  }).run;
+  // The core handler IS the job now: pg-boss calls it directly, and the Trigger
+  // wrapper that used to sit in front of it is gone (Phase 7). Imported late so it
+  // resolves the mocks installed above.
+  const core = await import("../src/core/classify-change");
+  runJob = core.runClassifyChange as (p: { changeId: string }) => Promise<unknown>;
 });
 
 afterAll(async () => {

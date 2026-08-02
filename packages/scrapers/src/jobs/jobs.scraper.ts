@@ -2,6 +2,7 @@ import { scrapePage, scrapeFirstSuccess } from "../lib/crawler";
 import type { ScrapeOutcome, ScrapeOptions, KnownJob } from "../types";
 import {
   detectAtsBoard,
+  detectAtsEmbed,
   detectAtsPlatform,
   fetchAtsJobs,
   appendAtsJobsToHtml,
@@ -41,6 +42,10 @@ const GENERIC_PLATFORM = "generic";
 // there. Fail-open on the ATS side: detectAtsBoard reads the same HTML cheaply.
 function looksLikeCareers(res: ScrapeOutcome): boolean {
   if (hasCareersSignals(res.html) || detectAtsBoard(res.html) !== null) return true;
+  // An embed CONTAINER counts too. A page whose openings are injected client-side
+  // can be a near-empty shell with no hiring vocabulary of its own to match on —
+  // the container is then the only thing on it that says "the roles are here".
+  if (detectAtsEmbed(res.html) !== null) return true;
   // A page pointing at several job-detail pages of its OWN host is a listing,
   // whatever vocabulary it uses. Teamtailor's hosted sites are the case in point:
   // they name no ATS, and their listing carries no JobPosting markup (that lives on
@@ -515,7 +520,11 @@ export async function scrape(
   // openings client-side (a "Loading positions…" placeholder). The probe fetched
   // it cheaply at L0, so render it once now to surface the roles. Fail-soft and
   // only kept when the render yields more text than the L0 capture.
-  if (renderJobs && onCareersPage && !rendered) {
+  //
+  // An embed container earns the render on its own, even off the homepage
+  // fallback that renders nothing today: the page has TOLD us it is holding a
+  // board back, and the token only exists once its script has run.
+  if (renderJobs && (onCareersPage || detectAtsEmbed(result.html) !== null) && !rendered) {
     try {
       const full = await renderPage(finalUrl);
       // An EMBEDDED board writes its own reference at runtime: ClickUp's careers

@@ -325,6 +325,56 @@ describe("jobs scraper — careers discovery routing", () => {
       });
     }
   });
+
+  it("renders for an embed container even off the homepage fallback", async () => {
+    // The other vendor of the same class (later.com is `grnhse_app`), on the path
+    // that used to render NOTHING: every standard careers path 404s, so we hold the
+    // homepage — which here embeds the board inline, the one-page-site shape. The
+    // container is the page telling us it is holding a board back, and it is the
+    // only reason to spend a render on a page that isn't a careers page.
+    const ssrHtml = `<html><body>
+      <h1>Acme</h1><p>Serverless Postgres, built for developers who ship.</p>
+      <h2>Open positions</h2><div id="grnhse_app"></div>
+    </body></html>`;
+    const renderedHtml = ssrHtml.replace(
+      "</body>",
+      `<script src="https://boards.greenhouse.io/embed/job_board/js?for=acme"></script></body>`,
+    );
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          jobs: [
+            {
+              title: "Founding Engineer",
+              departments: [{ name: "Engineering" }],
+              location: { name: "Remote" },
+              absolute_url: "https://boards.greenhouse.io/acme/jobs/1",
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as unknown as typeof fetch;
+    // First call is the L0 homepage probe; the render that follows returns the DOM.
+    scrapePage.mockImplementationOnce(async () => outcome(ssrHtml, HOMEPAGE));
+    scrapePage.mockImplementation(async (u: string) => outcome(renderedHtml, u));
+    try {
+      const res = await scrape("comp-embed-home", HOMEPAGE);
+      expect(res.metadata.atsDetected).toBe("greenhouse");
+      expect(res.metadata.atsJobs).toBe(1);
+      expect(res.text).toContain("Founding Engineer");
+    } finally {
+      globalThis.fetch = realFetch;
+      scrapePage.mockImplementation(async (u: string) => {
+        if (u.includes("/jobs-with-links")) return outcome(listingWithNavHtml, u);
+        if (u.includes("/careers/all-jobs")) return outcome(listingHtml, u);
+        if (u.includes("/careers")) return outcome(hubHtml, u);
+        if (u.includes("/about-us")) return outcome(listingHtml, u);
+        if (u.includes("jobs.wttj.com")) return outcome(listingHtml, u);
+        return outcome(homepageHtml, HOMEPAGE);
+      });
+    }
+  });
 });
 
 // ── Generic JSON-LD rung (Hiring Intelligence v2 P4) ─────────────────────────

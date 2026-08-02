@@ -1820,7 +1820,8 @@ export interface SourceDefaults {
   intendedSources: SourceType[];
   effectiveSources: SourceType[];
   availableSources: SourceType[];
-  seedableSources: SourceType[];
+  /** Every source the card offers: seeded blind, or seeded once detection resolves it. */
+  selectableSources: SourceType[];
   competitorCount: number;
   gaps: { sourceType: SourceType; missingOn: number }[];
 }

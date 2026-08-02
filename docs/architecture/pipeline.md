@@ -21,10 +21,21 @@ Un competitor n'a pas automatiquement un monitor par source. Trois chemins de cr
     semée (ancre de la détection plateforme, de l'extraction de profil, de la
     découverte pricing et du diff visuel).
   - Ne sont JAMAIS semés à l'aveugle : `status`/`changelog` (la détection plateforme
-    les sème déjà **avec l'URL résolue** quand la surface existe),
-    `appstore_reviews`/`github_repo` (URL obligatoire → la ligne ne pourrait
-    qu'échouer), `trustpilot_public` (dépend de `TRUSTPILOT_API_KEY`), `custom` (flow
-    dédié).
+    les sème déjà **avec l'URL résolue** quand la surface existe), `github_repo` (URL
+    obligatoire que rien ne découvre → la ligne ne pourrait qu'échouer),
+    `trustpilot_public` (dépend de `TRUSTPILOT_API_KEY`), `custom` (flow dédié).
+  - **Semé par la DÉTECTION** (`DETECTION_SEEDED_SOURCES`) : `appstore_reviews`.
+    Même préférence stockée et même carte Settings que les sources ci-dessus, mais
+    la ligne n'est créée que quand `recordMobileApps` connaît l'app id iOS du
+    concurrent (badge de store / smart app banner sur la homepage, ou fingerprint
+    wellknown → lookup Apple). Le monitor est créé avec l'URL canonique
+    `apps.apple.com/<pays>/app/id<appId>`, weekly, premier scrape enqueue immédiat.
+    Trois garde-fous : jamais sur un self-competitor (les reviews ne sont pas
+    scrapées pour soi), jamais si l'org a décoché la source, jamais sous le plan
+    requis (pro+) — et comme le semis est retenté à **chaque capture** qui connaît
+    une app (pas seulement celle qui l'a découverte), la source apparaît d'elle-même
+    au scrape suivant un upgrade. Jamais recréée si elle existe : une source coupée
+    reste coupée.
   - Réglage + rattrapage : `GET/PATCH /api/settings/sources` (liste cochable dans
     Settings → General, une source au-dessus du plan est **stockée quand même** →
     elle s'applique le jour de l'upgrade) et `POST /api/settings/sources/apply`
@@ -115,8 +126,9 @@ carte (état live uniquement).
        `competitors.metadata.mobileApps` = { ios, android }. Zéro IA, zéro scrape en
        plus. Homepage = badges de store dans le pied de page + smart app banner
        (`<meta name="apple-itunes-app">`) ; le lien App Store porte l'ID NUMÉRIQUE
-       d'Apple, donc la détection pré-remplit aussi l'URL que `appstore_reviews`
-       faisait coller à la main. Wellknown = repli sur le fingerprint déjà capturé :
+       d'Apple, donc la détection **sème directement le monitor `appstore_reviews`**
+       (`seedAppStoreReviews`, cf. semis plus haut) au lieu de faire coller l'URL à la
+       main. Wellknown = repli sur le fingerprint déjà capturé :
        un package Android EST une URL Play (déterministe), un bundle iOS passe par le
        lookup public sans clé d'Apple (même famille que le flux RSS des reviews).
        Les bundles de providers d'identité sont filtrés (cf. wellknown), et une

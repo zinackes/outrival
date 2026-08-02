@@ -29,6 +29,8 @@ const SOURCE_HINTS: Partial<Record<SourceType, string>> = {
   jobs: "Open roles from their ATS: the earliest read on where they're investing.",
   docs: "Their developer docs: a new endpoint ships before the changelog says so.",
   roadmap: "Their public Canny / ProductBoard portal: what they committed to build.",
+  appstore_reviews:
+    "Ratings, praises and complaints — only on competitors whose site links an App Store app.",
 };
 
 export function MonitoringDefaultsCard() {
@@ -47,7 +49,7 @@ export function MonitoringDefaultsCard() {
   }
   if (!q.data) return null;
 
-  const { intendedSources, availableSources, seedableSources, gaps, competitorCount, plan } =
+  const { intendedSources, availableSources, selectableSources, gaps, competitorCount, plan } =
     q.data;
   // The INTENDED set, not the plan-narrowed one: a source above the plan is checked
   // (with its lock badge) and, more importantly, survives a save — narrowing the
@@ -92,13 +94,13 @@ export function MonitoringDefaultsCard() {
       <div>
         <h3 className="text-sm font-medium tracking-tight">Monitoring defaults</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          What every competitor you add starts watching. Status pages and changelogs
-          are added on their own whenever we detect one.
+          What every competitor you add starts watching. Status pages, changelogs and
+          App Store reviews are added on their own whenever we detect one.
         </p>
       </div>
 
       <ul className="flex flex-col">
-        {seedableSources.map((source) => {
+        {selectableSources.map((source) => {
           const locked = !availableSources.includes(source);
           const required = source === REQUIRED_SEED_SOURCE;
           const checked = selected.has(source) || required;
@@ -159,10 +161,10 @@ export function MonitoringDefaultsCard() {
         </div>
       )}
 
-      {availableSources.length < seedableSources.length && (
+      {availableSources.length < selectableSources.length && (
         <p className="text-xs text-muted-foreground">
           Your {PLAN_LABELS[plan]} plan covers {availableSources.length} of{" "}
-          {seedableSources.length} of these sources.
+          {selectableSources.length} of these sources.
         </p>
       )}
     </section>

@@ -33,8 +33,10 @@ export const REQUIRED_SEED_SOURCE: SourceType = "homepage";
  * Deliberately absent:
  *   - status / changelog — platform detection already seeds these WITH the resolved
  *     URL when the surface exists (seedDetectedSources), which beats a blind guess;
- *   - appstore_reviews / github_repo — the enable route requires an explicit URL,
- *     so a seeded row could only ever fail;
+ *   - appstore_reviews — needs a per-competitor URL, so it can't be seeded blind;
+ *     it is seeded from DETECTION instead (see DETECTION_SEEDED_SOURCES below);
+ *   - github_repo — the enable route requires an explicit URL and nothing discovers
+ *     it, so a seeded row could only ever fail;
  *   - trustpilot_public — needs TRUSTPILOT_API_KEY, an env the seeding path has no
  *     business branching on;
  *   - custom — its own flow, several per competitor, quota'd.
@@ -49,12 +51,37 @@ export const SEEDABLE_SOURCES: readonly SourceType[] = [
 ];
 
 /**
- * The default set when an org has never customised it. It is the full seedable list:
- * the plan filter below is what keeps it honest (free allows only homepage/pricing/
- * blog, so free workspaces see no change at all, while a paid workspace gets the
- * sources it is already paying for without a per-competitor chore).
+ * Sources that carry a per-competitor URL and are therefore seeded only once
+ * DETECTION has produced it — never blind.
+ *
+ * `appstore_reviews` is the case: the App Store id is not derivable from a domain,
+ * so the source used to sit behind a manual paste even though we already read the
+ * competitor's store badge off their homepage on every scrape (mobile-apps.ts writes
+ * competitors.metadata.mobileApps). The setting below is what the user consents to:
+ * "when we find their App Store listing, start reading its reviews".
+ *
+ * They are org preferences like the blind-seedable ones (same stored column, same
+ * settings card), but they never widen `resolveSeedSources` — a competitor with no
+ * detected app gets no row at all.
  */
-export const DEFAULT_SEED_SOURCES: readonly SourceType[] = SEEDABLE_SOURCES;
+export const DETECTION_SEEDED_SOURCES: readonly SourceType[] = ["appstore_reviews"];
+
+/**
+ * Everything the monitoring-defaults setting can offer and store: what can be seeded
+ * blind, plus what detection seeds once it has the URL.
+ */
+export const SELECTABLE_DEFAULT_SOURCES: readonly SourceType[] = [
+  ...SEEDABLE_SOURCES,
+  ...DETECTION_SEEDED_SOURCES,
+];
+
+/**
+ * The default set when an org has never customised it. It is the full selectable
+ * list: the plan filter below is what keeps it honest (free allows only homepage/
+ * pricing/blog, so free workspaces see no change at all, while a paid workspace gets
+ * the sources it is already paying for without a per-competitor chore).
+ */
+export const DEFAULT_SEED_SOURCES: readonly SourceType[] = SELECTABLE_DEFAULT_SOURCES;
 
 /**
  * Cadence a source is SEEDED at (the enable route has its own default, deliberately
@@ -95,6 +122,21 @@ export function resolveSeedSources(
  * is not offered here; it reappears on its own once the plan includes it, which is
  * exactly the moment the banner has something to say.
  */
-export function seedableSourcesForPlan(plan: Plan): SourceType[] {
-  return SEEDABLE_SOURCES.filter((s) => planAllowsMonitorSource(plan, s));
+export function defaultSourcesForPlan(plan: Plan): SourceType[] {
+  return SELECTABLE_DEFAULT_SOURCES.filter((s) => planAllowsMonitorSource(plan, s));
+}
+
+/**
+ * Whether the org wants a DETECTION-seeded source provisioned when detection finds
+ * its URL. Same stored preference as the blind-seed set (null = follow the built-in
+ * default, i.e. on), and the caller still owns the plan gate — unlike the blind path
+ * this one re-runs on every capture, so a source skipped on free is provisioned by
+ * itself on the next scrape after an upgrade.
+ */
+export function wantsDetectedSource(
+  source: SourceType,
+  orgDefaults: readonly SourceType[] | null | undefined,
+): boolean {
+  if (!DETECTION_SEEDED_SOURCES.includes(source)) return false;
+  return (orgDefaults ?? DEFAULT_SEED_SOURCES).includes(source);
 }

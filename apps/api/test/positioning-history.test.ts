@@ -165,6 +165,30 @@ describe("positioningCopyOf — highlights beyond the `features` keyword list", 
     ).toEqual([]);
   });
 
+  test("a `logos` section is judged on its heading, not on its type", () => {
+    // The parser awards `logos` to any section with 5+ images and little text,
+    // whatever the heading says. On prod that shape is a product grid more often
+    // than a customer wall (31 of 50), so excluding the type wholesale threw away
+    // real highlights. Both of these are stored as `logos` today.
+    expect(
+      propsOf([
+        { type: "logos", heading: "130+ connectors or build your own" },
+        { type: "logos", heading: "Trusted by the teams you know" },
+      ]),
+    ).toEqual(["130+ connectors or build your own"]);
+  });
+
+  test("a French press wall is not read as a claim", () => {
+    // "Ils parlent de nous" reads as a product statement to any English-only pattern.
+    expect(
+      propsOf([
+        { type: "logos", heading: "Ils parlent de nous" },
+        { type: "other", heading: "Nos clients" },
+        { type: "other", heading: "Votre comptabilité en pilote automatique" },
+      ]),
+    ).toEqual(["Votre comptabilité en pilote automatique"]);
+  });
+
   test("a customer wall, a closing CTA and a blog strip are not claims", () => {
     // These reach `other` when the structural cues are missing (no <img> count, no
     // button), and each would otherwise read as something the product does.

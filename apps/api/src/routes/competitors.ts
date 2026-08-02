@@ -324,19 +324,30 @@ function usableHeadCopy(value: string | null | undefined): string | null {
 // Highlights shown at a glance. More than this stops being a glance.
 const MAX_VALUE_PROPS = 8;
 
-// The section types the parser decides STRUCTURALLY (a currency-and-period pattern,
-// a blockquote, an image wall, stacked <details>, a button under a closing line)
-// rather than by matching words in the heading. None of them is a product claim, and
-// because none rests on vocabulary, they are the verdicts worth trusting.
-const NEVER_A_VALUE_PROP = new Set(["pricing", "faq", "testimonials", "logos", "cta"]);
+// The section types the parser decides on a cue that cannot be mistaken for a
+// product claim: a currency-and-period pattern, a blockquote, stacked <details>, a
+// button under a closing line. These verdicts are worth trusting outright.
+const NEVER_A_VALUE_PROP = new Set(["pricing", "faq", "testimonials", "cta"]);
 
-// The three families of section heading that survive that filter and still are not a
-// claim about the product: a customer wall the logo detector missed, the closing
-// call to action, and the blog/press teaser strip near the footer. Anchored at the
-// start where the phrasing is a section opener, so a genuine claim that happens to
-// contain "start" ("Start shipping on day one") is untouched.
+// `logos` is deliberately NOT in that set. The parser awards it to any section with
+// five or more images and little text, whatever the heading says, and that shape is
+// far more often a product grid than a customer wall: of the 50 stored `logos`
+// sections on prod 2026-08-01, 31 are not customer walls at all, and excluding them
+// wholesale threw away real highlights ("130+ connectors or build your own",
+// "Wide list of trending social media channels", "Fits Right Into Your Hiring
+// Stack"). So the heading decides, and only for this one type.
+//
+// French included because the roster is: "Ils parlent de nous" is a press wall and
+// reads as a claim to any English-only pattern.
+const CUSTOMER_WALL_RE =
+  /\b(trusted by|used by|loved by|backed by|powering|join(ed)? \d|our (customers|clients|partners)|(companies|brands|teams|developers) (that|who))\b|\b(ils (parlent de nous|nous font confiance)|nos (clients|partenaires|références))\b/i;
+
+// Two more families that are not a claim about the product: the closing call to
+// action, and the blog/press teaser strip near the footer. Anchored at the start,
+// where that phrasing opens a section, so a genuine claim carrying the same verb
+// ("Start shipping on day one") is untouched.
 const NOT_A_CLAIM_RE =
-  /\b(trusted by|used by|loved by|backed by|our (customers|clients|partners))\b|^(ready to|get started|start (free|now|your|building)|try |book a |contact (us|sales)|sign up|request a )|^(latest|recent|more from|from the blog|blog|news|press|resources|events|webinars|case stud|customer stor)/i;
+  /^(ready to|get started|start (free|now|your|building)|try |book a |contact (us|sales)|sign up|request a )|^(latest|recent|more from|from the blog|blog|news|press|resources|events|webinars|case stud|customer stor)/i;
 
 // A highlight is a PHRASE the competitor wrote about its product. One word is a tab
 // label ("Solo", "Teams", "Pricing"), and past ~120 chars the heading is a whole
@@ -345,7 +356,7 @@ function isClaimLike(heading: string | undefined): boolean {
   const h = heading?.trim() ?? "";
   if (!h || h.length > 120) return false;
   if (h.split(/\s+/).filter(Boolean).length < 2) return false;
-  return !NOT_A_CLAIM_RE.test(h);
+  return !NOT_A_CLAIM_RE.test(h) && !CUSTOMER_WALL_RE.test(h);
 }
 
 /**
@@ -407,9 +418,11 @@ function positioningCopyOf(s: StoredHomepage): {
   // and control", "PostgreSQL re-engineered for multi-tenant apps".
   //
   // So the selection is inverted. What the classifier is genuinely reliable at is
-  // recognising what ISN'T a claim, because each of those verdicts rests on
-  // structure rather than vocabulary: a price pattern, a blockquote, an image wall,
-  // stacked <details>. Everything it did not rule out that way is a candidate.
+  // recognising what ISN'T a claim, because those verdicts rest on structure rather
+  // than vocabulary: a price pattern, a blockquote, stacked <details>, a button
+  // under a closing line. Everything it did not rule out that way is a candidate,
+  // `logos` included, since counting images cannot tell a customer wall from a
+  // product grid and only the heading can (see CUSTOMER_WALL_RE).
   //
   // Typed hits come FIRST and the cap is applied after, so this can only ever ADD:
   // no competitor loses a highlight that renders today. Verified against all 158

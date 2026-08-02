@@ -26,6 +26,32 @@ export interface CompetitorSummaryInput {
   homepageContent?: string | null;
 }
 
+// Static half of the prompt (rules + output shape), byte-identical every call, sent
+// as `system` ahead of the variable competitor blocks so providers cache the prefix.
+// See extract-pricing for why: on Groq a cached token does not count against the
+// per-minute ceiling. Never interpolate in here.
+//
+// ~266 tokens, a quarter of this prompt. Clears Cerebras' 128-token blocks; may fall
+// under Groq's per-model minimum. Worth doing, not where the saving is.
+const SUMMARY_SYSTEM = `<task>
+Write an executive summary of this competitor in 2-3 factual sentences, and classify its market category.
+- Informative tone, in English
+- summary: what they do, where they sit, recent momentum. No superlatives, no speculation.
+- category: the market segment this competitor operates in — 1-3 words, Title Case, in English
+  (e.g. "CRM", "Project management", "Email marketing", "Observability", "Customer support").
+  Derive it from the homepage content first, then the description and signals. ALWAYS commit to
+  your best-guess segment even from sparse content — only return "" if there is genuinely no
+  usable content at all (e.g. an empty page or a blocked/anti-bot shell).
+- If page content (homepage_content) is provided, rely on it first to describe their offering, positioning and target
+- Otherwise, if there are no recent signals, just state the product profile
+
+Reply ONLY with a valid JSON object, no markdown and no surrounding text.
+</task>
+
+<format>
+{ "summary": "Two to three factual sentences.", "category": "Market segment" }
+</format>`;
+
 export async function generateCompetitorSummary(
   input: CompetitorSummaryInput,
 ): Promise<WithQuality<CompetitorSummary> | null> {
@@ -60,31 +86,13 @@ ${signalsBlock}
 
 <reviews>
 ${reviewBlock}
-</reviews>
-
-<task>
-Write an executive summary of this competitor in 2-3 factual sentences, and classify its market category.
-- Informative tone, in English
-- summary: what they do, where they sit, recent momentum. No superlatives, no speculation.
-- category: the market segment this competitor operates in — 1-3 words, Title Case, in English
-  (e.g. "CRM", "Project management", "Email marketing", "Observability", "Customer support").
-  Derive it from the homepage content first, then the description and signals. ALWAYS commit to
-  your best-guess segment even from sparse content — only return "" if there is genuinely no
-  usable content at all (e.g. an empty page or a blocked/anti-bot shell).
-- If page content (homepage_content) is provided, rely on it first to describe their offering, positioning and target
-- Otherwise, if there are no recent signals, just state the product profile
-
-Reply ONLY with a valid JSON object, no markdown and no surrounding text.
-</task>
-
-<format>
-{ "summary": "Two to three factual sentences.", "category": "Market segment" }
-</format>`;
+</reviews>`;
 
   const sourceText = [homepageBlock ?? "", signalsBlock, reviewBlock].join("\n\n");
   const result = await groundedAiCall({
     taskName: "summarize_competitor",
     config: AI_CONFIG.classification,
+    system: SUMMARY_SYSTEM,
     prompt,
     sourceText,
     schema: SummarySchema,

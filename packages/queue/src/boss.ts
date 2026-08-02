@@ -18,8 +18,45 @@ export type QueueMode = "worker" | "sender";
  * decoupled from any monitoring vendor. */
 type ErrorReporter = (err: unknown, ctx: { job: string; id: string }) => void;
 
+/**
+ * App-supplied classifier: given a handler error, how many SECONDS to wait before
+ * running this job again, or null to apply the queue's normal retry policy.
+ *
+ * It exists for one failure the retry policy is exactly wrong for. The queue
+ * retries at 1s, backing off to at most 10s, which is right for a transient fault
+ * and wrong for a rate limit: the free AI tiers answer a 429 asking for 18 to 60
+ * seconds, so all three attempts land inside the window that is still throttled and
+ * the job fails having burned two extra rounds of provider calls. Measured on prod
+ * over 7 days: 333 extract_pricing AI calls for 184 pricing pages that changed.
+ *
+ * A function rather than an error class so this package stays decoupled from the AI
+ * pool, the same way _reportError keeps it decoupled from Sentry (@outrival/queue
+ * must not import @outrival/ai).
+ */
+type DeferralResolver = (err: unknown) => number | null;
+
 let _boss: PgBoss | null = null;
 let _reportError: ErrorReporter = () => {};
+let _resolveDeferral: DeferralResolver = () => null;
+
+/**
+ * Reserved payload key counting how many times a job has been deferred. Carried in
+ * the payload because a deferral re-SENDS the job, so pg-boss's own retry count
+ * resets and cannot bound the loop. Stripped by jobData, so no handler ever sees it.
+ */
+const DEFERRAL_KEY = "__deferrals";
+
+/** Deferrals a single job may accumulate before it goes back to the normal retry
+ *  policy (and from there to the dead-letter queue). A bound, not a tuning knob:
+ *  without it a permanently unavailable pool would reschedule a job forever, and a
+ *  job that never fails is a job nobody is told about. */
+const MAX_DEFERRALS = Number(process.env.QUEUE_MAX_DEFERRALS ?? 3);
+
+function deferralCount(data: unknown): number {
+  if (!data || typeof data !== "object") return 0;
+  const n = (data as Record<string, unknown>)[DEFERRAL_KEY];
+  return typeof n === "number" && Number.isFinite(n) ? n : 0;
+}
 
 // pg-boss emits `error` per failed operation, so a queue-Postgres outage fires it
 // on every poll of every worker. Unthrottled that is hundreds of Slack messages an
@@ -70,9 +107,13 @@ export async function startQueue(opts: {
   /** maintenance/monitoring ownership (default: mode === "worker") */
   supervise?: boolean;
   reportError?: ErrorReporter;
+  /** See DeferralResolver: reschedules a job instead of burning its retries on a
+   *  fault that will still be there a second later. */
+  deferralResolver?: DeferralResolver;
 }): Promise<PgBoss> {
   if (_boss) return _boss;
   if (opts.reportError) _reportError = opts.reportError;
+  if (opts.deferralResolver) _resolveDeferral = opts.deferralResolver;
 
   const isWorker = opts.mode === "worker";
   const boss = new PgBoss({
@@ -279,7 +320,13 @@ export async function registerQueues(): Promise<void> {
  * one. Exported for the unit test.
  */
 export function jobData<P extends object>(data: P | null | undefined): P {
-  return data ?? ({} as P);
+  if (!data) return {} as P;
+  // The deferral counter is queue bookkeeping, not payload: a handler that saw it
+  // could store or forward it. Returns the SAME object when there is nothing to
+  // strip, which is every job that has never been deferred.
+  if (!(DEFERRAL_KEY in data)) return data;
+  const { [DEFERRAL_KEY]: _counter, ...rest } = data as Record<string, unknown>;
+  return rest as P;
 }
 
 /**
@@ -292,6 +339,14 @@ export type AbortedOutput = { aborted: true; message: string };
 
 export function isAbortedOutput(output: unknown): output is AbortedOutput {
   return !!output && typeof output === "object" && (output as AbortedOutput).aborted === true;
+}
+
+/** What a deferral leaves on the job row it replaced, so "rescheduled because the
+ *  AI pool was throttled" is queryable and never reads as a plain success. */
+export type DeferredOutput = { deferred: true; seconds: number; attempt: number; reason: string };
+
+export function isDeferredOutput(output: unknown): output is DeferredOutput {
+  return !!output && typeof output === "object" && (output as DeferredOutput).deferred === true;
 }
 
 /**
@@ -322,6 +377,39 @@ export function work<P extends object>(
         if (err instanceof NonRetriable) {
           // Terminal + expected → complete the job, but say so in the output.
           last = { aborted: true, message: err.message } satisfies AbortedOutput;
+          continue;
+        }
+        // A fault that will still be there a second from now (the AI pool being
+        // rate-limited) is rescheduled rather than retried, because the queue's
+        // 1s-to-10s backoff spends every attempt inside the window that is still
+        // throttled. Bounded by MAX_DEFERRALS so an outage cannot reschedule a job
+        // forever: past it the error falls through to the normal retry policy, and
+        // from there to the dead-letter queue, where someone finds out.
+        const deferSeconds = _resolveDeferral(err);
+        const deferred = deferralCount(job.data);
+        if (deferSeconds !== null && deferred < MAX_DEFERRALS) {
+          const payload = { ...jobData(job.data), [DEFERRAL_KEY]: deferred + 1 } as P;
+          // The work() fetch returns a plain Job, which carries neither priority nor
+          // singletonKey; both live on JobWithMetadata. Read them here rather than
+          // turning includeMetadata on fleet-wide, so the extra query is paid only
+          // when a job is actually deferred and every normal fetch is untouched.
+          // Losing them would matter: a user-priority scrape must not come back as
+          // background work, and a job enqueued under a singleton key must not
+          // reappear as a second copy of itself.
+          const meta = await getBoss()
+            .getJobById<P>(def.name, job.id)
+            .catch(() => null);
+          await getBoss().send(def.name, payload, {
+            startAfter: deferSeconds,
+            ...(meta?.priority ? { priority: meta.priority } : {}),
+            ...(meta?.singletonKey ? { singletonKey: meta.singletonKey } : {}),
+          });
+          last = {
+            deferred: true,
+            seconds: deferSeconds,
+            attempt: deferred + 1,
+            reason: err instanceof Error ? err.message : String(err),
+          } satisfies DeferredOutput;
           continue;
         }
         _reportError(err, { job: def.name, id: job.id });

@@ -9,6 +9,8 @@ import {
   providersAcceptingSize,
   trackUsage,
   tripBreaker,
+  reserveTpm,
+  reconcileTpm,
   type Provider,
 } from "./provider/provider-pool";
 import {
@@ -18,7 +20,13 @@ import {
   tripGlobalBreaker,
   AIUnavailableError,
 } from "./provider/circuit-breaker";
-import { markProvider, markModel, markUsage, markTruncated } from "./provider/provider-context";
+import {
+  markProvider,
+  markModel,
+  markUsage,
+  markTruncated,
+  isInteractive,
+} from "./provider/provider-context";
 
 // One OpenAI client per pool provider (Cerebras/Cloudflare/Groq/Mistral are all
 // OpenAI-compatible, routed by baseURL). maxRetries lets the SDK absorb a transient
@@ -290,8 +298,16 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
   // reaching a healthy lower-priority one). This local set makes failover progress
   // regardless of Redis: each picked provider is excluded from the next pick.
   const tried = new Set<string>();
+  // `requestTokens` (computed above for the size filter) is exactly what this
+  // request costs against a per-minute ceiling too — output budget included, since
+  // providers count prompt + max_tokens before the model runs. One estimate, two
+  // uses: remove a provider that cannot take the request at all, deprioritise one
+  // whose minute is already spent. Booked before the call and corrected after, so
+  // concurrent callers see each other's in-flight spend rather than all reading an
+  // empty window and all firing.
+  const interactive = isInteractive();
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const provider = await pickProvider(tried, requestTokens);
+    const provider = await pickProvider(tried, requestTokens, interactive);
     if (!provider) break; // every eligible provider exhausted, in breaker, or already tried
     tried.add(provider.id);
     markProvider(provider.id);
@@ -306,6 +322,10 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
     // Nobody left to fail over to once every provider has been tried — only then is
     // waiting out a rate limit better than giving up.
     const lastResort = tried.size >= maxAttempts;
+    // The window bucket this attempt booked into, while the booking is still an
+    // estimate. Cleared once reconciled; read by the failure path to decide whether
+    // the booking describes something that happened.
+    let bucketKey: string | null = null;
     try {
       const body = {
         model,
@@ -324,9 +344,15 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
       };
       const requestOptions = { maxRetries: lastResort ? LAST_RESORT_SDK_RETRIES : 0 };
       const client = clientFor(provider);
+      bucketKey = await reserveTpm(provider.id, requestTokens);
       const res = options.onPartial
         ? await streamReply(client, body, requestOptions, options.onPartial)
         : await wholeReply(client, body, requestOptions);
+      // Swap the estimate for what it really cost, in the bucket the estimate was
+      // booked into (a call spanning a minute boundary must not credit the minute
+      // that never spent the tokens).
+      await reconcileTpm(bucketKey, res.usage.totalTokens - requestTokens);
+      bucketKey = null;
       await trackUsage(provider.id, res.usage.totalTokens);
       // Accumulate per-task token usage for ai_runs cost attribution. Counted here
       // (with trackUsage) even on the empty-content failover below: those tokens
@@ -360,6 +386,13 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
       if (shouldFailover(err)) {
         const rateLimited = err instanceof OpenAI.APIError && err.status === 429;
         const tooLarge = isTooLarge(err);
+        // A 429 says the window really is full, so the booking stands and keeps the
+        // next caller off this provider. Every other failure means the request never
+        // ran, so holding its tokens would penalise a provider that spent nothing.
+        if (bucketKey && !rateLimited) {
+          await reconcileTpm(bucketKey, -requestTokens);
+          bucketKey = null;
+        }
         if (isConfigError(err)) sawConfigError = true;
         else if (tooLarge) sawTooLarge = true;
         else sawTransientError = true;
@@ -385,6 +418,10 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
         lastErr = err;
         continue;
       }
+      // A request WE built wrong never reached the model, so its booking describes
+      // nothing: release it before failing fast, or one malformed call would pace
+      // every caller off a healthy provider for a minute.
+      if (bucketKey) await reconcileTpm(bucketKey, -requestTokens);
       throw err; // real error — fail fast, don't churn the pool
     }
   }

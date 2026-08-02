@@ -74,7 +74,12 @@ export function runAskAgent(
   // withAiContext spans both passes AND their log sites. Bun (the API runtime)
   // drops the lazy child-frame enterWith complete() falls back on, so without
   // this every ask row in ai_runs carried 0 tokens and a static model label.
-  return withAiContext(() => runAsk(orgId, userId, question, context, emit, options));
+  // interactive: someone typed this question and is watching the answer stream in.
+  // It draws on the share of each provider's per-minute budget the hourly fan-out
+  // is held back from, so a click never queues behind a thousand cron-seeded jobs.
+  return withAiContext(() => runAsk(orgId, userId, question, context, emit, options), {
+    interactive: true,
+  });
 }
 
 async function runAsk(

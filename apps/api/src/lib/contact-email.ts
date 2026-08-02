@@ -16,7 +16,7 @@ function getResend(): Resend | null {
 
 // From a verified sender (reuse the auth domain); TO our own inbox. Reply-To is the
 // requester so hitting "reply" reaches them directly.
-const FROM = process.env.RESEND_AUTH_FROM ?? "Outrival <auth@outrival.io>";
+const FROM = process.env.RESEND_AUTH_FROM ?? "Outrival <auth@outrival.app>";
 const TO = process.env.CONTACT_EMAIL ?? "hello@outrival.app";
 
 export type DemoRequest = {

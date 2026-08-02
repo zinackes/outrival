@@ -3,7 +3,9 @@
 SaaS de veille concurrentielle — monitore automatiquement les concurrents
 et génère des insights stratégiques IA via digests hebdomadaires et alertes.
 
-@docs/architecture.md — stack complète, infra, domaine métier, schéma DB
+@docs/architecture.md — index : domaine, stack, infra, plans. Le détail
+(schéma, pipeline, env, décisions, auth) vit dans `docs/architecture/*` et se lit
+**à la demande** — ne pas l'importer avec `@`, ça le remettrait dans chaque session.
 @.claude/rules/karpathy.md — guidelines comportementaux obligatoires
 @.claude/rules/production.md — règles prod (deploy, branches, secrets, invariants)
 
@@ -54,7 +56,7 @@ plus par `db:push` direct (qui causait du drift + des colonnes manquantes en pro
 
 ## Conventions fichiers
 
-- Jobs Trigger.dev    → apps/workers/src/jobs/[name].job.ts
+- Handlers de jobs    → apps/workers/src/core/[name].ts (déclarés dans packages/queue/src/jobs.ts)
 - Scrapers            → packages/scrapers/src/[source]/[source].scraper.ts
 - Prompts AI          → packages/ai/src/prompts/[name].prompt.ts
 - Schema DB           → packages/db/src/schema/[entity].ts
@@ -96,61 +98,25 @@ n'est PAS la taille du diff ni l'empreinte technique — c'est l'importance prod
 
 ## Skills tierces
 
-Skills communautaires (MIT, PAS Anthropic) installés sélectivement dans
-`.claude/skills/`, depuis deux repos distincts. **Invoquer explicitement** : ne
-jamais les laisser s'auto-déclencher. Les descriptions « proactive » et les listes
-« Triggers on … » de la plupart contredisent karpathy §2, ma règle prime.
+Skills communautaires (MIT, PAS Anthropic) dans `.claude/skills/`. Leur
+description est déjà injectée par le harness : ne sont listées ici que les choses
+que cette description ne dit pas.
 
-### Dev workflow (repo `alirezarezvani/claude-skills`)
+**Règle** : les invoquer explicitement. Ne jamais les laisser s'auto-déclencher.
+Les mentions « proactive » et les listes « Triggers on … » contredisent
+karpathy §2 ; ma règle prime.
 
-Aucun hook, scripts stdlib-only (`python3`, pas de `pip install`). Deux scripts
-sortent de leur bac à sable : `aeo/aeo_audit.py` fait un `GET` réseau vers l'URL
-passée, `aeo/citation_tracker.py` écrit un ledger dans `~/.aeo-data/`, les deux
-sur invocation explicite seulement.
+Ce qu'il faut savoir avant de les lancer :
 
-- **llm-cost-optimizer** — auditer/réduire le coût du pool IA (Cerebras→Cloudflare→
-  Groq→Mistral), caching gpt-oss, routing par `tier`, logging `ai_runs` par feature.
-- **slo-architect** — transformer les promesses de la landing (onboarding ≤5 min,
-  ratio 70:1, scan horaire) en SLI/SLO/error-budget + alertes burn-rate.
-- **data-quality-auditor** — profiler la qualité des extractions (`pricing_history`,
-  `job_counts`, `review_scores`), missingness, score DQS avant de s'y fier.
-- **prompt-governance** — versioning + evals + détection de régression sur les
-  prompts de `packages/ai/src/prompts/`.
-- **aeo** — optimiser le contenu pour être cité par les LLM (sert AI Visibility +
-  les pages comparatives).
-- **competitor-alternatives** — structurer les pages GTM « alternatives à X » / « X vs Y ».
-- **programmatic-seo** — générer des pages SEO à l'échelle (templates + data).
-- **schema-markup** — poser/valider le JSON-LD structuré (rich results + visibilité IA).
-
-### Interface / design (repo `jakubkrehel/skills`)
-
-100 % markdown : zéro script, zéro hook, rien à exécuter. Les 7 skills du repo
-sont installés. `web-design-guidelines` (Vercel Web Interface Guidelines) reste
-en place et se recoupe avec `better-accessibility` : le premier est une commande
-de revue qui refetch ses règles, le second un corpus que `better-interface` peut
-charger comme domaine.
-
-- **better-ui** : polish et motion. Rayon concentrique (`outer = inner + padding`),
-  `scale(0.96)` au press, transitions CSS interruptibles plutôt que keyframes,
-  `initial={false}` sur `AnimatePresence`, jamais `transition: all`, stroke d'icône
-  aligné sur le poids du texte. C'est le plus proche de `lib/motion` et de `motion@12`.
-- **better-colors** : OKLCH. `globals.css` l'est déjà de bout en bout (tokens
-  `--cat-*`, `COMPETITOR_COLORS` en hue+chroma avec lightness dérivée en CSS).
-  Palettes, gamut P3, `@theme` Tailwind v4, contraste APCA/WCAG, drift de teinte.
-- **better-writing** : microcopy. Boutons verbe-first, une seule policy de casse,
-  erreurs qui disent comment réparer, empty states. Se lit avec
-  `.claude/rules/language.md` (tout le user-facing est en anglais).
-- **better-typography** : échelle de type, hiérarchie de titres, `tabular-nums`,
-  `text-wrap`, troncature, soulignements. Ne pas le laisser contredire la règle
-  « Geist Mono = voix data uniquement, jamais de la prose ».
-- **better-layout** : groupement, alignement, ordre de lecture, disclosure
-  progressive, breakpoints et container queries, propriétés logiques.
-- **better-accessibility** : focus states, support clavier, ARIA, formulaires,
-  lecteurs d'écran, hit areas, `prefers-reduced-motion`. Les 5 skills de domaine
-  ci-dessus lui délèguent explicitement tout ce qui touche à l'accessibilité.
-- **better-interface** : orchestrateur read-only. Il lance les six domaines
-  ci-dessus dans l'ordre (accessibilité en premier, polish en dernier, pour qu'un
-  défaut de fond ne soit pas masqué par du vernis) et consolide en un seul tableau
-  de findings + verdict (`Block` / `Needs changes` / `Approve`). Plafonné à 15
-  findings en mode `full`, 5 en `quick` : cadrer le périmètre avant de le lancer,
-  le web fait 90 pages et 210 composants.
+- `aeo` sort de son bac à sable : `aeo_audit.py` fait un GET réseau vers l'URL
+  passée, `citation_tracker.py` écrit un ledger dans `~/.aeo-data/`. Le reste des
+  skills dev-workflow est stdlib-only, sans hook. Les `better-*` sont 100 %
+  markdown : rien à exécuter.
+- `better-interface` orchestre les 6 domaines `better-*` (accessibilité d'abord,
+  polish en dernier) et plafonne à 15 findings en `full`, 5 en `quick`. Cadrer le
+  périmètre AVANT de le lancer : le web fait 90 pages et 210 composants.
+- `better-typography` ne doit pas contredire la règle maison « Geist Mono = voix
+  data uniquement, jamais de la prose ».
+- `better-writing` se lit avec `.claude/rules/language.md` (user-facing = anglais).
+- `web-design-guidelines` recoupe `better-accessibility` : le premier est une
+  commande de revue qui refetch ses règles, le second un corpus chargeable.

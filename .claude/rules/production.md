@@ -1,19 +1,19 @@
 # Règles production — Outrival
 
-Prod = OVH VPS + Coolify, jobs sur Trigger.dev Cloud, DB Neon.
+Prod = OVH VPS + Coolify, jobs sur pg-boss self-hosted (`@outrival/queue`), DB Neon.
 Voir `docs/deployment.md` (matrice d'env, pré-requis, smoke test).
 
 ## 1. Modèle de branches
 - `main` = SOURCE DE PROD (Coolify auto-déploie `main`). Toujours releasable :
   typecheck + test + build verts avant tout merge.
 - `staging` = miroir pré-prod (cible — pas encore provisionné) : sa propre branche
-  Neon + env Trigger staging + clés Stripe test. On teste là avant `main`.
+  Neon + sa propre queue pg-boss + clés Stripe test. On teste là avant `main`.
 - Les features partent de `main`, jamais d'une branche `patch-*`. Merge par PR.
   Fini l'empilement patch-sur-patch.
 
 ## 2. Actions outward-facing = TOUJOURS confirmation explicite
 L'assistant ne lance JAMAIS sans go explicite de l'utilisateur : `git push origin
-main`/`staging`, (re)deploy Coolify, `trigger deploy`, migration sur un env
+main`/`staging`, (re)deploy Coolify, restart d'un worker, migration sur un env
 partagé, changement Stripe/webhook. Il propose, l'utilisateur valide.
 
 ## 3. DB & migrations
@@ -25,10 +25,10 @@ partagé, changement Stripe/webhook. Il propose, l'utilisateur valide.
   dans l'image prod.
 
 ## 4. Secrets & env
-- Jamais de secret committé. Nouvelle var → `.env.example` + `docs/architecture.md`.
+- Jamais de secret committé. Nouvelle var → `.env.example` + `docs/architecture/env.md`.
 - `NEXT_PUBLIC_*` = build-time → passés en build args Docker (pas runtime).
-- Isolation par env : clés distinctes Stripe (test/live), branche Neon, env
-  Trigger, bucket R2.
+- Isolation par env : clés distinctes Stripe (test/live), branche Neon,
+  `QUEUE_DATABASE_URL` dédiée, bucket R2.
 - Les env boot-bloquants en prod (Upstash via `env.ts` superRefine) le restent —
   ne pas relâcher.
 
@@ -38,7 +38,7 @@ partagé, changement Stripe/webhook. Il propose, l'utilisateur valide.
 - `/health` reste sans auth (sonde Coolify).
 - Routes SSE gardent `X-Accel-Buffering: no`.
 - Cascade scraping : binaire browser (Playwright Chromium) vérifié sur le
-  runtime jobs après chaque `trigger deploy`.
+  worker `WORKER_ROLE=browser` après chaque deploy.
 
 ## 6. Avant un go-live
 Dérouler le smoke test de `docs/deployment.md` (login OTP → dashboard, OAuth,

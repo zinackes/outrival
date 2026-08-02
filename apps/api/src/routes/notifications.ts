@@ -147,7 +147,7 @@ notificationsRouter.post("/test", async (c) => {
       errors.email = "RESEND_API_KEY not set";
     } else {
       try {
-        const from = process.env.RESEND_FROM ?? "Outrival <alerts@outrival.io>";
+        const from = process.env.RESEND_FROM ?? "Outrival <alerts@outrival.app>";
         const r = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {

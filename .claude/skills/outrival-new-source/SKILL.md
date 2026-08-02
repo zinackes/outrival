@@ -71,13 +71,13 @@ reference map.
    `ScrapeOutcome` whose body is the entries **one per line, already sorted**, so
    `+`/`-` diff lines map 1:1 to added/removed items. Add a stable summary header
    (counts) that only moves when the mix changes. Do **not** write source-specific
-   diff logic in `scrape-monitor.job.ts` — sitemap/news add zero extraction code
+   diff logic in `apps/workers/src/core/scrape-monitor.ts` — sitemap/news add zero extraction code
    there; the generic `snapshot → diff → change → classify-change` chain surfaces
    and categorizes new entries for you.
 
 5. **Never let an empty scrape become a success snapshot.** A scrape that finds
    nothing must `throw` (like sitemap's `throw new Error("no_sitemap_found")`), so
-   Trigger retries and the monitor can eventually be marked unscrapable — **not**
+   pg-boss retries and the monitor can eventually be marked unscrapable — **not**
    write an empty snapshot. An empty success becomes the baseline and the next run
    diffs it as "everything removed" (phantom signal), then masks the real content.
    Also register append-y sources (they legitimately grow) in
@@ -121,7 +121,7 @@ reference map.
   activity feed.
 - **Append-y source flagged by the anti-void guard.** News/sitemap grow over time; a
   legitimately shorter run below the median gets graded `partial` and its diff is
-  skipped unless the source is in `SIZE_VARIABLE_SOURCES` (`scrape-monitor.job.ts`).
+  skipped unless the source is in `SIZE_VARIABLE_SOURCES` (`apps/workers/src/core/scrape-monitor.ts`).
 - **Migration committed but not applied in prod.** Prod runs the pre-deploy migrator
   on explicit user go. If you forget, the enum/column is missing in prod and every
   insert for the new source fails. Committing the SQL is not deploying it.
@@ -131,12 +131,9 @@ reference map.
 
 ## Related skills
 
-- **add-monitor-source** (project): the older FR checklist. **Superseded** — it
-  predates Patchright (says Crawlee) and versioned migrations (says `db:push`). Use
-  this skill instead.
-- **crawlee-patterns** (project): historical scraper patterns. Outdated stack
-  (Crawlee); the cascade is now Patchright — see `.claude/rules/scraping.md`.
-- **trigger-jobs** (project): use when the source needs its own job rather than the
-  generic `scrape-monitor` path (rare — most sources need no new job).
+- `.claude/rules/scraping.md`: the cascade contract (L0/L1/L2, refusal handling,
+  `scrapePage` / `scrapeStatic`). Read it before writing any capture code.
+- `.claude/rules/jobs.md`: only if the source needs its own pg-boss job rather than
+  the generic `scrape-monitor` path (rare — most sources need no new job).
 - **data-quality-auditor**: use to profile a new source's extracted rows
   (`pricing_history`, `job_counts`, …) for missingness before trusting the feed.

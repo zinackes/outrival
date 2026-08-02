@@ -45,6 +45,31 @@ export function digestLabel(d: Pick<Digest, "period" | "weekStart" | "weekEnd">)
   }
 }
 
+/**
+ * When the cron writes the brief, in UTC.
+ *
+ * Formatted through Intl with an explicit zone rather than date-fns `format`, which
+ * reads the machine's: the server and the browser sit in different zones often enough
+ * that the same instant would print a different weekday on each side and React would
+ * flag the hydration mismatch. UTC also matches how the page names the schedule.
+ */
+export function digestRunLabel(iso: string): string {
+  try {
+    const stamp = new Intl.DateTimeFormat("en-US", {
+      timeZone: "UTC",
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date(iso));
+    return `${stamp} UTC`;
+  } catch {
+    return iso;
+  }
+}
+
 export interface DigestMover {
   name: string;
   count: number;

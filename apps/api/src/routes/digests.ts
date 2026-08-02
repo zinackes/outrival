@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, count, desc, eq, gte, isNull, lt, ne, notInArray } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull, lt, ne, notInArray, or } from "drizzle-orm";
 import { digests, signals, competitors, organizations, monitors, changes } from "@outrival/db";
 import { generateDigest, toMyProductContext, type DigestInputSignal } from "@outrival/ai";
 import {
@@ -10,6 +10,7 @@ import {
   type DigestEmailData,
 } from "@outrival/shared";
 import { db } from "../lib/db";
+import { inProgressWindow } from "../lib/digest-window";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { sendEmail, ALERT_FROM } from "../lib/resend";
@@ -63,6 +64,94 @@ digestsRouter.get("/", async (c) => {
     limit: 100,
   });
   return c.json({ digests: list });
+});
+
+/** Same severity → urgency rule the daily job uses, so both read on one scale. */
+function severityToUrgency(severity: string): "action_required" | "watch" | "fyi" {
+  if (severity === "critical" || severity === "high") return "action_required";
+  if (severity === "medium") return "watch";
+  return "fyi";
+}
+
+/**
+ * What the next Monday brief has collected so far. The list only ever showed finished
+ * issues, so between two Mondays the page read as if nothing were running — this is
+ * the week under construction, named by the same window the cron will use.
+ *
+ * Returns null (and renders nothing) when there is no brief to anticipate: the window
+ * is empty, or its digest already exists because the cron ran or someone wrote one by
+ * hand. An "in progress" card next to the finished article it describes is noise.
+ */
+digestsRouter.get("/in-progress", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const now = new Date();
+  const { start, end, nextRunAt } = inProgressWindow(now);
+
+  const existing = await db.query.digests.findFirst({
+    where: and(
+      eq(digests.orgId, orgId),
+      eq(digests.weekStart, isoDate(start)),
+      eq(digests.period, "weekly"),
+    ),
+    columns: { id: true },
+  });
+  if (existing) return c.json({ inProgress: null });
+
+  // Upper bound clamped to the window: on a Monday before 08:00 the wall clock has
+  // already passed `end`, and the cron will not carry those signals into this brief.
+  const upper = now < end ? now : end;
+  const rows = await db
+    .select({ competitor: competitors.name, severity: signals.severity })
+    .from(signals)
+    .innerJoin(competitors, eq(competitors.id, signals.competitorId))
+    .where(
+      and(
+        eq(signals.orgId, orgId),
+        gte(signals.createdAt, start),
+        lt(signals.createdAt, upper),
+        // Mirrors the cron: a signal the faithfulness gate refused to publish is not
+        // going to be in the brief, so counting it here would promise a bigger week
+        // than the one that ships.
+        or(
+          isNull(signals.filteredReason),
+          ne(signals.filteredReason, "faithfulness_blocked"),
+        ),
+      ),
+    );
+
+  if (rows.length === 0) return c.json({ inProgress: null });
+
+  const byCompetitor = new Map<string, number>();
+  let action = 0;
+  let watch = 0;
+  let fyi = 0;
+  for (const r of rows) {
+    const urgency = severityToUrgency(r.severity);
+    if (urgency === "action_required") action += 1;
+    else if (urgency === "watch") watch += 1;
+    else fyi += 1;
+    const name = r.competitor.trim();
+    if (name) byCompetitor.set(name, (byCompetitor.get(name) ?? 0) + 1);
+  }
+
+  const movers = [...byCompetitor.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+  return c.json({
+    inProgress: {
+      weekStart: isoDate(start),
+      weekEnd: isoDate(end),
+      nextRunAt: nextRunAt.toISOString(),
+      moves: rows.length,
+      action,
+      watch,
+      fyi,
+      movers,
+    },
+  });
 });
 
 // On-demand digest for the current week / a rolling window. In-app preview only

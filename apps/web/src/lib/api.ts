@@ -1678,6 +1678,23 @@ export interface Digest {
 }
 
 /**
+ * The week the Monday brief is still collecting. Not a Digest: it has no content and
+ * no id, because nothing has been written yet — only the window, when it closes, and
+ * what has landed in it so far. Null whenever there is nothing to anticipate.
+ */
+export interface DigestInProgress {
+  weekStart: string;
+  weekEnd: string;
+  /** When the cron writes and sends it, ISO. */
+  nextRunAt: string;
+  moves: number;
+  action: number;
+  watch: number;
+  fyi: number;
+  movers: Array<{ name: string; count: number }>;
+}
+
+/**
  * Where one digest section points, resolved server-side against the org's own data.
  * Positional: `links[i]` belongs to `content.sections[i]`. Every field is nullable
  * because resolution is deliberately strict — an ambiguous match yields no link
@@ -3727,6 +3744,8 @@ export const api = {
   deleteSignalComment: (id: string, commentId: string) =>
     request<{ ok: true }>(`/api/signals/${id}/comments/${commentId}`, { method: "DELETE" }),
   listDigests: () => request<{ digests: Digest[] }>("/api/digests"),
+  getDigestInProgress: () =>
+    request<{ inProgress: DigestInProgress | null }>("/api/digests/in-progress"),
   getDigest: (id: string) => request<DigestDetail>(`/api/digests/${id}`),
   sendDigest: (id: string) =>
     request<{ ok: true; sentAt: string }>(`/api/digests/${id}/send`, {

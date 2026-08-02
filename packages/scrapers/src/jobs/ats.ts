@@ -863,6 +863,44 @@ const PASSIVE_PLATFORMS: ReadonlyArray<[string, RegExp]> = [
   ["homerun", /homerun\.co\b/i],
 ];
 
+/**
+ * Vendor containers of a CLIENT-SIDE embedded board.
+ *
+ * `PROVIDERS` and `PASSIVE_PLATFORMS` both recognise a board by a URL. An
+ * embedded board has none in the SSR HTML: the page ships an empty container and
+ * the vendor's script writes the board reference into the DOM after hydration.
+ * clickup.com/careers spells `jobs.ashbyhq.com/clickup` in a JS chunk and nowhere
+ * else; later.com/careers carries the bare string `grnhse_app` and no token at
+ * all. Both were read as "unknown platform, no board" — ClickUp then stored the 2
+ * roles its marketing copy hard-codes against 64 open on Ashby.
+ *
+ * Naming only — no token, so nothing here is ever fetched. What it buys is a page
+ * that ANNOUNCES it is hiding a board: enough to keep the page (looksLikeCareers),
+ * to spend a render on it (the token exists in the rendered DOM, and detectAtsBoard
+ * already matches it there), and to stop `ats_coverage_gaps` filing the whole class
+ * under "unknown".
+ *
+ * Measured against the fleet's 35 readable careers pages before being written, and
+ * kept to what actually hit: a loose marker is worse than none, since it would name
+ * the WRONG vendor in the counter that decides the next adapter. `rt-widget` was a
+ * candidate until it matched `data-shopping-cart-widget` on cloud.google.com.
+ */
+const ATS_EMBED_MARKERS: ReadonlyArray<[string, RegExp]> = [
+  ["ashby", /\bashby_embed\b/i],
+  ["greenhouse", /\bgrnhse_app\b/i],
+];
+
+/**
+ * The ATS whose embed container this page carries, or null. A page can say which
+ * vendor holds its openings without saying WHICH board — that is the whole point.
+ */
+export function detectAtsEmbed(html: string): string | null {
+  for (const [name, pattern] of ATS_EMBED_MARKERS) {
+    if (pattern.test(html)) return name;
+  }
+  return null;
+}
+
 // Path/subdomain segments that are never a real board token.
 const DENYLIST = new Set([
   "www", "embed", "job_board", "js", "api", "static", "assets", "widget",
@@ -898,7 +936,10 @@ export function detectAtsPlatform(html: string): string | null {
   for (const [name, pattern] of PASSIVE_PLATFORMS) {
     if (pattern.test(html)) return name;
   }
-  return null;
+  // Last: an embed container names its vendor without naming a board. Weakest of
+  // the three because it carries no token, but "greenhouse, board unread" is a
+  // different — and actionable — gap from "we could not name this career site".
+  return detectAtsEmbed(html);
 }
 
 /**

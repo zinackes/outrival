@@ -1,13 +1,80 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   detectAtsBoard,
+  detectAtsEmbed,
+  detectAtsPlatform,
   appendAtsJobsToHtml,
   parseAtsJobsFromHtml,
   parseAtsResponse,
   atsBoardFromKey,
   fetchAtsJobs,
+  isApiAdapter,
   type AtsJob,
 } from "../ats";
+
+describe("detectAtsEmbed — boards injected client-side", () => {
+  // Both shapes below are the real SSR markup, taken off the two competitors in
+  // the fleet whose board is embedded rather than linked.
+  it("names Ashby from an empty embed container (clickup.com)", () => {
+    const html = `<div class="jobBoardContainer"><div id="ashby_embed" class="ashbyEmbed"></div></div>`;
+    expect(detectAtsEmbed(html)).toBe("ashby");
+    // …and there is no board to find, which is exactly the problem it reports.
+    expect(detectAtsBoard(html)).toBeNull();
+    expect(detectAtsPlatform(html)).toBe("ashby");
+  });
+
+  it("names Greenhouse from an empty embed container (later.com)", () => {
+    const html = `<div class="gc-span-8 offset-4"><div id="grnhse_app"></div></div>`;
+    expect(detectAtsEmbed(html)).toBe("greenhouse");
+    expect(detectAtsBoard(html)).toBeNull();
+    expect(detectAtsPlatform(html)).toBe("greenhouse");
+  });
+
+  it("prefers the real board over the container when both are present", () => {
+    // Once the embed script has run, the token is there and it wins: a named
+    // board is a strictly stronger read than a vendor name with no board.
+    const html = `<div id="ashby_embed"></div>
+      <script src="https://jobs.ashbyhq.com/clickup/embed?version=2"></script>`;
+    expect(detectAtsPlatform(html)).toBe("ashby");
+    expect(detectAtsBoard(html)).toEqual({
+      provider: "ashby",
+      token: "clickup",
+      boardUrl: "https://jobs.ashbyhq.com/clickup",
+    });
+  });
+
+  it("only an API-adapter island key may be remembered as a board", () => {
+    // A jobs scrape writes the board it resolved onto competitors.platform_profile
+    // so the next run skips discovery (rememberAtsBoard). The island's `token` is
+    // only a board token on the API rungs — on the schema.org rung it is the HOST
+    // the listing was read from, and the two are indistinguishable in the key.
+    //
+    // `atsBoardFromKey` cannot tell them apart: teamtailor HAS a PROVIDERS entry
+    // (for its board URL) with no `api`, so the key round-trips happily into a URL
+    // that is pure nonsense. isApiAdapter is the guard that actually holds, which
+    // is why the memo checks it FIRST and does not rely on the round-trip alone.
+    expect(atsBoardFromKey("teamtailor:jobs.acme.com")?.boardUrl).toBe(
+      "https://jobs.acme.com.teamtailor.com/jobs",
+    );
+    expect(isApiAdapter("teamtailor")).toBe(false);
+    expect(isApiAdapter("generic")).toBe(false);
+    // The two embedded-board vendors, which are exactly what the memo exists for.
+    expect(isApiAdapter("ashby")).toBe(true);
+    expect(atsBoardFromKey("ashby:clickup")?.boardUrl).toBe("https://jobs.ashbyhq.com/clickup");
+    expect(isApiAdapter("greenhouse")).toBe(true);
+    expect(atsBoardFromKey("greenhouse:later")?.boardUrl).toBe("https://boards.greenhouse.io/later");
+  });
+
+  it("does not fire on a page that merely mentions the vendors", () => {
+    // The markers are the vendors' container ids, matched whole. A blog post about
+    // hiring tools must never be filed as a board in the coverage counter, and a
+    // loose marker is how that happens — `rt-widget` matched a shopping cart.
+    const html = `<p>We compared Ashby, Greenhouse and Lever before choosing one.</p>
+      <div data-shopping-cart-widget="true"></div><div id="grnhse_app_wrapper_v2"></div>`;
+    expect(detectAtsEmbed(html)).toBeNull();
+    expect(detectAtsPlatform(html)).toBeNull();
+  });
+});
 
 describe("detectAtsBoard", () => {
   it("detects a Greenhouse embed script and captures the token", () => {

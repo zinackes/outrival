@@ -196,14 +196,15 @@ applied automatically; edit on the box, mirror in the same commit).
 
 The queue Postgres, the light worker and the browser worker share one box, so the
 limits are what stop a Chromium spike from taking down the queue everything else
-depends on. They are set in `docker-compose.override.yml`
-(`deploy.resources.limits.memory`), not in any UI:
+depends on. They live in `docker-compose{,.override}.yml`
+(`deploy.resources.limits.memory`), not in any UI. Values below verified against
+the running containers on 2026-08-02:
 
-| Service | Memory limit | Notes |
-|---|---|---|
-| `queue-postgres` | 512 MB | Tiny working set (job rows only), but it must never be the one that gets OOM-killed — everything else is idle without it. |
-| `workers-light` | 1 GB | Crons, AI lane, extracts, digests, alerts. No browser. |
-| `workers-browser` | 4–5 GB | Chromium is out-of-process per page; `SCRAPE_CONCURRENCY=3` is sized for this ceiling. |
+| Compose service | Container | Memory limit | Notes |
+|---|---|---|---|
+| `postgres` | `outrival-pg` | 1536 MB | Small working set (job rows only), but it must never be the one that gets OOM-killed — everything else is idle without it. Headroom covers `shared_buffers=512MB` plus the autovacuum churn pg-boss creates. |
+| `worker-light` | `outrival-worker-light` | 1 GB | Crons, AI lane, extracts, digests, alerts. No browser. |
+| `worker-browser` | `outrival-worker-browser` | 4 GB | Chromium is out-of-process per page; `SCRAPE_CONCURRENCY=3` is sized for this ceiling. |
 
 Also on the **browser** service:
 - **`shm_size: 1g`**. Chromium's default 64 MB `/dev/shm` causes renderer crashes

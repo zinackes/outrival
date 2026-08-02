@@ -19,12 +19,13 @@ import { toast } from "sonner";
 import { EmptyState } from "./empty-state";
 import { toastApiError } from "@/lib/error-helpers";
 import { ListError } from "@/components/outrival/list-error";
-import { api, type Digest } from "@/lib/api";
+import { api, type Digest, type DigestInProgress } from "@/lib/api";
 import { feedItemMotion } from "@/lib/motion";
-import { competitorsQuery, digestsQuery } from "@/lib/queries";
+import { competitorsQuery, digestInProgressQuery, digestsQuery } from "@/lib/queries";
 import {
   digestHeadline,
   digestLabel,
+  digestRunLabel,
   digestStats,
   digestSupportingPoints,
   isQuietDigest,
@@ -89,6 +90,10 @@ export function DigestsView() {
   // Seeded on the same page. Only used to tint and link the competitors a brief
   // names, so a miss degrades to neutral dots and plain text.
   const competitorsQ = useQuery(competitorsQuery());
+  // The week still being collected. Null on a quiet window or once its brief exists,
+  // and the card is simply absent then — an empty "in progress" block would be worse
+  // than the silence it replaces.
+  const inProgressQ = useQuery(digestInProgressQuery());
   const digests = digestsQ.data ?? null;
   const err = digestsQ.error;
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -122,6 +127,9 @@ export function DigestsView() {
   const daily = digests?.filter((d) => d.period === "daily") ?? [];
   const rows = tab === "daily" ? daily : weekly;
   const [lead, ...earlier] = rows;
+  // Weekly only: the card names the window the WEEKLY cron is filling, and the daily
+  // tab has no equivalent gap to explain (a briefing lands every morning).
+  const inProgress = tab === "weekly" ? (inProgressQ.data ?? null) : null;
 
   async function handleGenerate(range: DateRange) {
     setGenerating(true);
@@ -207,7 +215,10 @@ export function DigestsView() {
 
       {digests === null && <DigestsSkeleton />}
 
-      {digests !== null && rows.length === 0 && (
+      {/* The empty state stands down when the week under construction is on screen:
+          the page is no longer empty, and "no weekly brief yet" next to a card
+          counting this week's moves reads as a contradiction. */}
+      {digests !== null && rows.length === 0 && !inProgress && (
         <EmptyState
           icon={EnvelopeIcon}
           title={tab === "daily" ? "No daily briefings yet" : "No weekly brief yet"}
@@ -216,6 +227,15 @@ export function DigestsView() {
               ? "A daily briefing lands here when urgent competitor activity is deferred to it."
               : "The next brief is written automatically every Monday morning."
           }
+        />
+      )}
+
+      {inProgress && (
+        <InProgressBrief
+          inProgress={inProgress}
+          colorOf={colorOf}
+          idOf={idOf}
+          urlOf={urlOf}
         />
       )}
 
@@ -244,6 +264,75 @@ export function DigestsView() {
         </section>
       )}
     </div>
+  );
+}
+
+/**
+ * The week still being collected, above the last one that shipped.
+ *
+ * A weekly product goes quiet for six days out of seven: the list held nothing but
+ * finished issues, so from Tuesday on the page looked stopped even while signals were
+ * landing. This names the window the cron is filling, on the same dates it will print
+ * on the brief, and shows what has accumulated in it.
+ *
+ * It is deliberately not a link and carries no call to action — there is nothing
+ * written yet to open. The hollow dot is the whole status: the finished brief below
+ * wears a filled one.
+ */
+function InProgressBrief({
+  inProgress,
+  colorOf,
+  idOf,
+  urlOf,
+}: {
+  inProgress: DigestInProgress;
+  colorOf: ColorOf;
+  idOf: (name: string) => string | null;
+  urlOf: UrlOf;
+}) {
+  const { moves, action, watch, fyi, movers } = inProgress;
+  const stats = { moves, action, watch, fyi, movers };
+
+  return (
+    <Card className="grid grid-cols-1 overflow-hidden rounded-lg border-dashed lg:grid-cols-[minmax(0,1fr)_236px]">
+      <div className="flex max-w-[78ch] flex-col p-5">
+        <div className="flex flex-wrap items-center gap-2.5 text-dense text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5 text-meta font-semibold uppercase tracking-wider">
+            <span aria-hidden className="size-1.5 rounded-full border border-border-strong" />
+            In progress
+          </span>
+          <span className="tabular-nums">
+            {digestLabel({ period: "weekly", weekStart: inProgress.weekStart, weekEnd: inProgress.weekEnd })}
+          </span>
+        </div>
+
+        <h2 className="mt-3 text-lg font-medium leading-snug tracking-tight text-balance">
+          <span className="tabular-nums">{moves}</span>{" "}
+          {moves === 1 ? "move" : "moves"} collected so far.
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          Outrival writes this brief on {digestRunLabel(inProgress.nextRunAt)} and sends
+          it to you. Anything that lands before then joins it.
+        </p>
+
+        <div className="mt-5 flex max-w-[260px] flex-col gap-1.5">
+          <SpreadBar stats={stats} />
+          <span className="text-xs text-muted-foreground">{spreadSentence(stats)}</span>
+        </div>
+      </div>
+
+      <aside className="flex flex-col gap-2.5 border-t border-dashed border-border p-5 lg:border-l lg:border-t-0">
+        <RailLabel>Who has moved</RailLabel>
+        <MoverList
+          movers={movers}
+          total={moves}
+          colorOf={colorOf}
+          idOf={idOf}
+          urlOf={urlOf}
+          max={4}
+        />
+      </aside>
+    </Card>
   );
 }
 

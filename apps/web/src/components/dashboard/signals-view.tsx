@@ -945,9 +945,10 @@ export function SignalsView() {
   // empty column): the checkbox overlays the row's competitor avatar, which fades
   // out underneath (SignalRow `selecting`), so the list is a clean single column at
   // rest and the box appears on row hover — or on every row once a selection is
-  // live. The severity gauge to its left stays lit throughout: it is why the row is
-  // worth reading, so hovering must not blank it. left-7/top-2.5 is that avatar's
-  // box (row px-3 + the 10px gauge + its 6px gap).
+  // live. The severity gauge UNDER it stays lit throughout: it is why the row is
+  // worth reading, so hovering must not blank it. left-3/top-2.5 is that avatar's
+  // box — it now leads the gutter (row px-3 + row py-2.5), with the gauge stacked
+  // beneath it rather than abreast of it.
   // The checkbox is a SIBLING of the row button (never nested — invalid HTML).
   const renderRow = (signal: Signal) => {
     const id = signal.id;
@@ -957,7 +958,7 @@ export function SignalsView() {
         <div className="group/row relative">
           <div
             className={cn(
-              "absolute left-7 top-2.5 z-10 transition-opacity",
+              "absolute left-3 top-2.5 z-10 transition-opacity",
               // Reveal-on-hover is gated to hover-capable devices. globals.css drops
               // the `@media (hover: hover)` gate from `hover:` project-wide (tap
               // feedback), but on touch that makes a tap reveal this interactive
@@ -1249,14 +1250,23 @@ function SelectCheckbox({
       aria-label={checked ? "Deselect signal" : "Select signal"}
       tabIndex={active || checked ? 0 : -1}
       onClick={onToggle}
-      className={cn(
-        "flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
-        checked
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border text-transparent hover:border-foreground/50",
-      )}
+      // -m-2/p-2 grows the press target to 32px while the drawn box stays 16px on
+      // the pixel it was on: a 16px target in a 37px row is a miss waiting to
+      // happen, and padding is the only way to widen a target without moving the
+      // mark it replaces. The hover that darkens the border follows the target
+      // (group/box), not the box, so the affordance matches what is clickable.
+      className="group/box -m-2 flex shrink-0 rounded-md p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
     >
-      <CheckIcon size={16} />
+      <span
+        className={cn(
+          "flex size-4 items-center justify-center rounded-sm border transition-colors",
+          checked
+            ? "border-primary bg-primary text-primary-foreground"
+            : "border-border text-transparent group-hover/box:border-foreground/50",
+        )}
+      >
+        <CheckIcon size={16} />
+      </span>
     </button>
   );
 }

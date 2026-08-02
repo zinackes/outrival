@@ -93,8 +93,9 @@ export function SeverityScale({
  * gutter owes the row it annotates. There is no label: the row has no width to
  * spare, and the gauge repeats every 44px, so the reader learns it once.
  *
- * Footprint matches the 15px icon set it replaced, so the selection checkbox still
- * overlays this slot on hover (see SignalRow `selecting`).
+ * In the signals list it sits UNDER the competitor's mark: identity first, then
+ * the verdict on it. The selection checkbox overlays the mark above, never this
+ * (see SignalRow `selecting`), so the band stays lit while a selection is live.
  */
 export function SeverityGauge({
   severity,

@@ -324,11 +324,13 @@ export async function getDigestsData(): Promise<Digest[] | null> {
  * "no brief to anticipate" is itself a null: the envelope tells a quiet week (seed the
  * null, render nothing) apart from a failed prefetch (don't seed, let the client try).
  */
-export async function getDigestInProgressData(): Promise<{
-  inProgress: DigestInProgress | null;
-} | null> {
+export async function getDigestInProgressData(
+  withSignals = false,
+): Promise<{ inProgress: DigestInProgress | null } | null> {
   try {
-    return await serverGet<{ inProgress: DigestInProgress | null }>("/api/digests/in-progress");
+    return await serverGet<{ inProgress: DigestInProgress | null }>(
+      `/api/digests/in-progress${withSignals ? "?signals=1" : ""}`,
+    );
   } catch {
     return null;
   }

@@ -126,10 +126,17 @@ export function DigestsView() {
   const weekly = digests?.filter((d) => d.period !== "daily") ?? [];
   const daily = digests?.filter((d) => d.period === "daily") ?? [];
   const rows = tab === "daily" ? daily : weekly;
-  const [lead, ...earlier] = rows;
   // Weekly only: the card names the window the WEEKLY cron is filling, and the daily
   // tab has no equivalent gap to explain (a briefing lands every morning).
   const inProgress = tab === "weekly" ? (inProgressQ.data ?? null) : null;
+  // Exactly one card leads the page. When a week is being collected it IS the current
+  // thing and the finished brief joins the list; two hero cards side by side made the
+  // reader pick which one the page was about. The rule needs no special case for the
+  // Monday morning after a send: the fresh window is empty, so `inProgress` is null and
+  // the brief that just shipped leads on its own.
+  const [newest, ...rest] = rows;
+  const lead = inProgress ? undefined : newest;
+  const earlier = inProgress ? rows : rest;
 
   async function handleGenerate(range: DateRange) {
     setGenerating(true);
@@ -246,7 +253,9 @@ export function DigestsView() {
       {earlier.length > 0 && (
         <section className="flex flex-col">
           <div className="flex items-baseline justify-between border-b border-border pb-2">
-            <h2 className="text-content font-semibold tracking-tight">Earlier briefs</h2>
+            <h2 className="text-content font-semibold tracking-tight">
+              {inProgress ? "Briefs already written" : "Earlier briefs"}
+            </h2>
             <span className="text-xs tabular-nums text-muted-foreground">
               {earlier.length}
             </span>
@@ -313,7 +322,25 @@ function InProgressBrief({
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Outrival writes this brief on {digestRunLabel(inProgress.nextRunAt)} and sends
           it to you. Anything that lands before then joins it.
+          {inProgress.cap.omitted > 0 && (
+            <>
+              {" "}
+              It covers the{" "}
+              <span className="tabular-nums">{inProgress.cap.max}</span> most severe, so{" "}
+              <span className="tabular-nums">{inProgress.cap.omitted}</span> will stay
+              in the app only.
+            </>
+          )}
         </p>
+
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/dashboard/digests/in-progress">
+              See what&apos;s in it
+              <ArrowRightIcon size={16} />
+            </Link>
+          </Button>
+        </div>
 
         <div className="mt-5 flex max-w-[260px] flex-col gap-1.5">
           <SpreadBar stats={stats} />

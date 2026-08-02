@@ -100,7 +100,15 @@ export type {
 } from "./tasks/standing-query-judge";
 export { generateRepositioningInsight } from "./tasks/pricing-repositioning";
 export type { RepositioningInput } from "./tasks/pricing-repositioning";
-export { generateDigest, digestSourceText, DigestSchema } from "./tasks/digest";
+export {
+  generateDigest,
+  digestSourceText,
+  DigestSchema,
+  // The API reads the cap so the "in progress" view can report the moves that will
+  // fall outside Monday's brief instead of promising a week the email won't carry.
+  capDigestSignals,
+  DIGEST_MAX_SIGNALS,
+} from "./tasks/digest";
 export type { Digest, DigestInputSignal } from "./tasks/digest";
 export {
   analyzeProduct,

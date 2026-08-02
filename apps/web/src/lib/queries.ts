@@ -131,6 +131,15 @@ export function digestInProgressQuery() {
   });
 }
 
+// The same week with its collected moves attached — its own key so the list page
+// never pays for the insights it does not render.
+export function digestInProgressDetailQuery() {
+  return queryOptions({
+    queryKey: ["digests", "inProgress", "detail"] as const,
+    queryFn: () => api.getDigestInProgress(true).then((r) => r.inProgress),
+  });
+}
+
 // Single digest — backs the /dashboard/digests/[id] reader route. Carries the
 // server-resolved section links (competitor + signal per move) and the period's
 // provenance alongside the row, so the reader can be a document with exits rather

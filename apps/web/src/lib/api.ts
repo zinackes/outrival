@@ -1727,6 +1727,30 @@ export interface DigestInProgress {
   watch: number;
   fyi: number;
   movers: Array<{ name: string; count: number }>;
+  /**
+   * The generator only reads `max` moves, top severity first. `omitted` is what a busy
+   * week collected beyond that and will NOT find in Monday's email.
+   */
+  cap: { max: number; omitted: number };
+  /** Only present on the detail fetch (`signals=1`). */
+  signals?: InProgressSignal[];
+}
+
+/** One move already collected for the next brief, before any of it has been written. */
+export interface InProgressSignal {
+  id: string;
+  competitor: string;
+  competitorId: string | null;
+  competitorColor: string | null;
+  competitorUrl: string | null;
+  category: string;
+  severity: string;
+  urgency: DigestSection["urgency"];
+  insight: string;
+  soWhat: string | null;
+  createdAt: string;
+  /** False once the week has collected more moves than the generator will read. */
+  inBrief: boolean;
 }
 
 /**
@@ -3780,8 +3804,10 @@ export const api = {
   deleteSignalComment: (id: string, commentId: string) =>
     request<{ ok: true }>(`/api/signals/${id}/comments/${commentId}`, { method: "DELETE" }),
   listDigests: () => request<{ digests: Digest[] }>("/api/digests"),
-  getDigestInProgress: () =>
-    request<{ inProgress: DigestInProgress | null }>("/api/digests/in-progress"),
+  getDigestInProgress: (withSignals = false) =>
+    request<{ inProgress: DigestInProgress | null }>(
+      `/api/digests/in-progress${withSignals ? "?signals=1" : ""}`,
+    ),
   getDigest: (id: string) => request<DigestDetail>(`/api/digests/${id}`),
   sendDigest: (id: string) =>
     request<{ ok: true; sentAt: string }>(`/api/digests/${id}/send`, {

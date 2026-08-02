@@ -2,7 +2,13 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { and, count, desc, eq, gte, isNull, lt, ne, notInArray, or } from "drizzle-orm";
 import { digests, signals, competitors, organizations, monitors, changes } from "@outrival/db";
-import { generateDigest, toMyProductContext, type DigestInputSignal } from "@outrival/ai";
+import {
+  capDigestSignals,
+  DIGEST_MAX_SIGNALS,
+  generateDigest,
+  toMyProductContext,
+  type DigestInputSignal,
+} from "@outrival/ai";
 import {
   renderDigestEmail,
   signDigestFeedbackToken,
@@ -81,10 +87,15 @@ function severityToUrgency(severity: string): "action_required" | "watch" | "fyi
  * Returns null (and renders nothing) when there is no brief to anticipate: the window
  * is empty, or its digest already exists because the cron ran or someone wrote one by
  * hand. An "in progress" card next to the finished article it describes is noise.
+ *
+ * `?signals=1` adds the collected moves themselves, for the detail page. They are left
+ * off the default response because the list page only needs the counts, and a busy org
+ * carries hundreds of insights the card would never render.
  */
 digestsRouter.get("/in-progress", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
+  const withSignals = c.req.query("signals") === "1";
 
   const now = new Date();
   const { start, end, nextRunAt } = inProgressWindow(now);
@@ -103,7 +114,18 @@ digestsRouter.get("/in-progress", async (c) => {
   // already passed `end`, and the cron will not carry those signals into this brief.
   const upper = now < end ? now : end;
   const rows = await db
-    .select({ competitor: competitors.name, severity: signals.severity })
+    .select({
+      id: signals.id,
+      competitor: competitors.name,
+      competitorId: competitors.id,
+      competitorColor: competitors.color,
+      competitorUrl: competitors.url,
+      category: signals.category,
+      severity: signals.severity,
+      insight: signals.insight,
+      soWhat: signals.soWhat,
+      createdAt: signals.createdAt,
+    })
     .from(signals)
     .innerJoin(competitors, eq(competitors.id, signals.competitorId))
     .where(
@@ -119,7 +141,8 @@ digestsRouter.get("/in-progress", async (c) => {
           ne(signals.filteredReason, "faithfulness_blocked"),
         ),
       ),
-    );
+    )
+    .orderBy(desc(signals.createdAt));
 
   if (rows.length === 0) return c.json({ inProgress: null });
 
@@ -140,16 +163,56 @@ digestsRouter.get("/in-progress", async (c) => {
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
+  // The generator only ever sees DIGEST_MAX_SIGNALS moves, top severity first. A week
+  // that collected more will ship a brief that silently leaves the tail out, so the
+  // overflow is reported rather than hidden — a page promising 34 moves and an email
+  // carrying 30 is the kind of gap nobody can debug from the outside.
+  const omitted = Math.max(0, rows.length - DIGEST_MAX_SIGNALS);
+
+  const base = {
+    weekStart: isoDate(start),
+    weekEnd: isoDate(end),
+    nextRunAt: nextRunAt.toISOString(),
+    moves: rows.length,
+    action,
+    watch,
+    fyi,
+    movers,
+    cap: { max: DIGEST_MAX_SIGNALS, omitted },
+  };
+  if (!withSignals) return c.json({ inProgress: base });
+
+  // Which moves survive the cap, decided by the generator's own ranking rather than a
+  // second implementation of it: `capDigestSignals` returns the very objects it was
+  // handed, so the ids ride along and cannot drift from what the brief will carry.
+  const ranked = rows.map((r) => ({
+    id: r.id,
+    competitor: r.competitor,
+    category: r.category,
+    severity: r.severity,
+    insight: r.insight,
+    so_what: r.soWhat,
+  }));
+  const kept = capDigestSignals(ranked).kept as Array<(typeof ranked)[number]>;
+  const keptIds = new Set(kept.map((k) => k.id));
+
   return c.json({
     inProgress: {
-      weekStart: isoDate(start),
-      weekEnd: isoDate(end),
-      nextRunAt: nextRunAt.toISOString(),
-      moves: rows.length,
-      action,
-      watch,
-      fyi,
-      movers,
+      ...base,
+      signals: rows.map((r) => ({
+        id: r.id,
+        competitor: r.competitor,
+        competitorId: r.competitorId,
+        competitorColor: r.competitorColor,
+        competitorUrl: r.competitorUrl,
+        category: r.category,
+        severity: r.severity,
+        urgency: severityToUrgency(r.severity),
+        insight: r.insight,
+        soWhat: r.soWhat,
+        createdAt: r.createdAt,
+        inBrief: keptIds.has(r.id),
+      })),
     },
   });
 });

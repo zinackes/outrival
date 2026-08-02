@@ -44,4 +44,25 @@ describe("capDigestSignals", () => {
     expect(indexOf(1)).toBe(-1);
     expect(indexOf(3)).toBe(-1);
   });
+
+  test("it returns the very objects it was given, extra fields and all", () => {
+    // The API's "in progress" view needs to know WHICH moves survive the cap, and it
+    // gets that by tagging its rows with an id before ranking them. That only works
+    // because this function selects objects rather than rebuilding them — a refactor
+    // that maps to fresh literals would silently drop the tag and mark every move as
+    // making the brief.
+    const tagged = Array.from({ length: DIGEST_MAX_SIGNALS + 5 }, (_, i) => ({
+      ...sig(i < 3 ? "critical" : "low", i),
+      id: `sig-${i}`,
+    }));
+    const { kept, omitted } = capDigestSignals(tagged);
+    expect(omitted).toBe(5);
+    expect(kept.length).toBe(DIGEST_MAX_SIGNALS);
+    // Identity, not just shape: every kept entry is one of the inputs.
+    for (const k of kept) expect(tagged).toContain(k as (typeof tagged)[number]);
+    const keptIds = new Set(kept.map((k) => (k as (typeof tagged)[number]).id));
+    expect(keptIds.size).toBe(DIGEST_MAX_SIGNALS);
+    // The three criticals outrank the lows, so they cannot be the ones dropped.
+    for (const id of ["sig-0", "sig-1", "sig-2"]) expect(keptIds.has(id)).toBe(true);
+  });
 });

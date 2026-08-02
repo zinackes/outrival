@@ -12,7 +12,7 @@ doctrine (arrêt sur refus). Cf. .claude/rules/scraping.md
 - Upload R2 géré HORS de ce package — retourner le résultat brut, uploader dans le job
 
 ## Sources disponibles
-Cf. l'enum `source_type` dans docs/architecture.md (source de vérité — la liste
+Cf. l'enum `source_type` dans docs/architecture/schema.md (source de vérité — la liste
 évolue, ne pas la dupliquer ici).
 
 ## Ajouter une source

@@ -13,13 +13,12 @@ S'applique à tous les fichiers du projet.
 
 - apps/web       → @outrival/web       (Next.js frontend)
 - apps/api       → @outrival/api       (Hono API)
-- apps/workers   → @outrival/workers   (Trigger.dev v4 jobs, exécution en cours de
-  migration vers pg-boss + scrapers Patchright)
+- apps/workers   → @outrival/workers   (handlers pg-boss dans `src/core/*`)
 - packages/db    → @outrival/db        (Drizzle + schema + migrations)
 - packages/ai    → @outrival/ai        (prompts + pipeline Claude/Groq)
 - packages/scrapers → @outrival/scrapers (scrapers par source)
 - packages/shared   → @outrival/shared  (types, utils, constantes partagés)
-- packages/queue    → @outrival/queue   (pg-boss : jobs registry + client, remplace Trigger.dev)
+- packages/queue    → @outrival/queue   (pg-boss : jobs registry + client)
 
 ## Imports cross-packages
 

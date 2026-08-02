@@ -2,9 +2,12 @@
 
 ## Routing par défaut
 
-- Tâches simples / répétitives (lire un fichier, grep, recherche) → claude-haiku-4-5
-- Implémentation standard, refactoring, tests → claude-sonnet-4-6 (défaut)
-- Décisions architecturales, revue de design, problèmes complexes → claude-opus-4-7
+- Tâches simples / répétitives (lire un fichier, grep, recherche) → `haiku`
+- Implémentation standard, refactoring, tests → `sonnet` (défaut)
+- Décisions architecturales, revue de design, problèmes complexes → `opus`
+
+Utiliser les alias (`haiku`/`sonnet`/`opus`), pas un id de modèle daté : un id
+épinglé se périme et route vers un modèle retiré.
 
 ## Ne pas utiliser Opus pour
 

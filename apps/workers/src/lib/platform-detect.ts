@@ -5,12 +5,13 @@ import {
   normalizeDomain,
   normalizeHostname,
   extractHostname,
+  PLATFORM_PROFILE_VERSION,
   type PlatformProfile,
   type PlatformConfidence,
 } from "@outrival/shared";
 import { detectPlatform, resolveCnames } from "@outrival/scrapers/platform";
 import { fetchTechStackEvidence, extractScriptUrls } from "@outrival/scrapers/tech-stack";
-import { detectAtsBoard } from "@outrival/scrapers/jobs-ats";
+import { atsBoardFromKey, detectAtsBoard, isApiAdapter } from "@outrival/scrapers/jobs-ats";
 import { findCareersLink } from "@outrival/scrapers/jobs-careers";
 import { logPlatformDetectionRun } from "./analytics";
 
@@ -27,6 +28,76 @@ const dnsEnabled = (): boolean => process.env.PLATFORM_DNS_ENABLED !== "false";
 const stepBEnabled = (): boolean => process.env.PLATFORM_STEP_B_ENABLED !== "false";
 
 const RANK: Record<PlatformConfidence, number> = { high: 3, medium: 2, low: 1 };
+
+/**
+ * Remember the board a jobs scrape actually READ, so the next run goes straight
+ * to its API instead of rediscovering it.
+ *
+ * Detection can only name a board the page NAMES. An embedded board is named
+ * nowhere in the SSR HTML — clickup.com/careers ships an empty `ashby_embed`
+ * container — so `enrichAtsFromCareersPage` will never resolve one, and those
+ * competitors would pay a browser render on every single jobs run forever. The
+ * scrape that did resolve it is the only place the token is ever observed, and
+ * it observes it as a fact rather than a guess.
+ *
+ * Three things this deliberately does NOT do:
+ *
+ *  - It does not stamp `platformDetectedAt`. That timestamp drives the periodic
+ *    30-day re-detection and the drift cooldown, and this is one observed field,
+ *    not a detection run. Moving it would silently defer the pass that refreshes
+ *    everything else on the profile.
+ *  - It does not clear a board on a run that resolved none. One failed fetch is
+ *    not a migration, and the existing drift self-heal already covers a board
+ *    that stays unreadable: the profile promises an ATS, the scrape doesn't serve
+ *    via it, re-detection runs and drops it. Leaving that path untouched is what
+ *    keeps a dead board from being preserved forever.
+ *  - It does not write a platform with no adapter. `generic` and `teamtailor`
+ *    reach the island through schema.org markup, and their "token" is a hostname:
+ *    stored as a board key it would send the next run to an API that cannot exist.
+ *    `atsBoardFromKey` has to round-trip the key before it is trusted.
+ */
+export async function rememberAtsBoard(
+  competitorId: string,
+  provider: string,
+  token: string,
+): Promise<void> {
+  try {
+    if (!provider || !token || !isApiAdapter(provider)) return;
+    const key = `${provider}:${token}`;
+    if (!atsBoardFromKey(key)) return;
+
+    const competitor = await db.query.competitors.findFirst({
+      where: eq(competitors.id, competitorId),
+      columns: { id: true, type: true, platformProfile: true },
+    });
+    if (!competitor || competitor.type === "self") return;
+
+    const profile = competitor.platformProfile;
+    // Already pointing at this board — the fast path is what fetched it.
+    if (profile?.ats?.value === key) return;
+
+    const next: PlatformProfile = {
+      ...(profile ?? { v: PLATFORM_PROFILE_VERSION, detectedAt: new Date().toISOString() }),
+      ats: {
+        value: key,
+        confidence: "high",
+        evidence: [`ats:${provider}:jobs-scrape`],
+      },
+    };
+    await db
+      .update(competitors)
+      .set({ platformProfile: next, updatedAt: new Date() })
+      .where(eq(competitors.id, competitorId));
+    logger.log("Learned ATS board from a jobs scrape", { competitorId, board: key });
+  } catch (err) {
+    // Best-effort like every other write on this path: a memo that fails costs a
+    // render next run, it must never cost the extraction that just succeeded.
+    logger.warn("ATS board memo skipped (non-fatal)", {
+      competitorId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
 
 export interface PlatformDetectResult {
   detected: boolean;

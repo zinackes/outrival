@@ -8,6 +8,7 @@ import {
   parseAtsResponse,
   atsBoardFromKey,
   fetchAtsJobs,
+  isApiAdapter,
   type AtsJob,
 } from "../ats";
 
@@ -40,6 +41,28 @@ describe("detectAtsEmbed — boards injected client-side", () => {
       token: "clickup",
       boardUrl: "https://jobs.ashbyhq.com/clickup",
     });
+  });
+
+  it("only an API-adapter island key may be remembered as a board", () => {
+    // A jobs scrape writes the board it resolved onto competitors.platform_profile
+    // so the next run skips discovery (rememberAtsBoard). The island's `token` is
+    // only a board token on the API rungs — on the schema.org rung it is the HOST
+    // the listing was read from, and the two are indistinguishable in the key.
+    //
+    // `atsBoardFromKey` cannot tell them apart: teamtailor HAS a PROVIDERS entry
+    // (for its board URL) with no `api`, so the key round-trips happily into a URL
+    // that is pure nonsense. isApiAdapter is the guard that actually holds, which
+    // is why the memo checks it FIRST and does not rely on the round-trip alone.
+    expect(atsBoardFromKey("teamtailor:jobs.acme.com")?.boardUrl).toBe(
+      "https://jobs.acme.com.teamtailor.com/jobs",
+    );
+    expect(isApiAdapter("teamtailor")).toBe(false);
+    expect(isApiAdapter("generic")).toBe(false);
+    // The two embedded-board vendors, which are exactly what the memo exists for.
+    expect(isApiAdapter("ashby")).toBe(true);
+    expect(atsBoardFromKey("ashby:clickup")?.boardUrl).toBe("https://jobs.ashbyhq.com/clickup");
+    expect(isApiAdapter("greenhouse")).toBe(true);
+    expect(atsBoardFromKey("greenhouse:later")?.boardUrl).toBe("https://boards.greenhouse.io/later");
   });
 
   it("does not fire on a page that merely mentions the vendors", () => {

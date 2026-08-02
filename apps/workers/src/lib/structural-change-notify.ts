@@ -10,7 +10,7 @@ import { sendEmail, ALERT_FROM } from "./resend";
 import { escapeHtml } from "./escape-html";
 import { emailShell, e } from "./email-shell";
 
-const WEB_URL = process.env.WEB_URL ?? "https://outrival.io";
+const WEB_URL = process.env.WEB_URL ?? "https://outrival.app";
 const EMAIL_THROTTLE_MS = 30 * 24 * 60 * 60 * 1000; // at most one email / competitor / month
 
 const TYPE_LABEL: Record<string, string> = {

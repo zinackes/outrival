@@ -6,7 +6,7 @@
 // "it arrived in 34s, in Spam" is.
 //
 //   bun scripts/poll-inbox.ts --subject "sign in" --timeout 120
-//   bun scripts/poll-inbox.ts --since-now --from auth@outrival.io
+//   bun scripts/poll-inbox.ts --since-now --from auth@outrival.app
 //
 // Env (never commit these — put them in .env.local, which is gitignored):
 //   AUDIT_IMAP_HOST      e.g. imap.gmail.com

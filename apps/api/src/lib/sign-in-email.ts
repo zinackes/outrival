@@ -18,7 +18,9 @@ function getResend(): Resend | null {
   return client;
 }
 
-const AUTH_FROM = process.env.RESEND_AUTH_FROM ?? "Outrival <auth@outrival.io>";
+// outrival.app is the only domain verified in Resend. This fallback carries the
+// sign-in code, so a wrong domain here does not degrade — it locks people out.
+const AUTH_FROM = process.env.RESEND_AUTH_FROM ?? "Outrival <auth@outrival.app>";
 
 // Auth emails are narrower than a digest — a code and one sentence.
 const renderShell = (inner: string): string => emailShell(inner, 440);

@@ -27,4 +27,6 @@ export async function sendEmail(payload: CreateEmailOptions): Promise<void> {
   if (error) throw new Error(`resend_send_failed: ${error.name}: ${error.message}`);
 }
 
-export const ALERT_FROM = process.env.RESEND_FROM ?? "Outrival <alerts@outrival.io>";
+// outrival.app is the only domain verified in Resend; outrival.io was never ours.
+// Mirrors the api helper.
+export const ALERT_FROM = process.env.RESEND_FROM ?? "Outrival <alerts@outrival.app>";

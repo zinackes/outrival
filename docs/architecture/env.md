@@ -25,12 +25,11 @@ TURNSTILE_SECRET_KEY=
 AUTH_RATE_LIMIT_EMAIL=3      # patch-19 — max attempts per email per window (Upstash; empty creds → no-op)
 AUTH_RATE_LIMIT_IP=10        # patch-19 — max attempts per IP per window
 AUTH_RATE_LIMIT_WINDOW_MIN=15 # patch-19 — window length in minutes
-RESEND_AUTH_FROM=            # patch-19 — À POSER EXPLICITEMENT, pas optionnel en prod : le
-                            # défaut du code est "Outrival <auth@outrival.io>" et outrival.io
-                            # N'EST PAS notre domaine (il résout vers 165.227.254.193, un tiers ;
-                            # tout le produit est sur outrival.app). Non posé = envoi depuis un
-                            # domaine non vérifié = Resend refuse = plus aucun code de connexion.
-                            # Même problème sur RESEND_FROM (alerts@outrival.io). cf. docs/deployment.md
+RESEND_AUTH_FROM=            # patch-19 — optionnel, défaut "Outrival <auth@outrival.app>".
+                            # Le défaut était sur outrival.io jusqu'au 2026-08-02 : domaine qui
+                            # n'est pas le nôtre et absent de Resend, donc un env qui oubliait
+                            # la var envoyait depuis un domaine non vérifié et Resend refusait
+                            # TOUT, codes de connexion compris. Idem RESEND_FROM (alerts@)
 INTERNAL_API_SECRET=         # standing queries — shared secret worker→API (POST /api/internal/ask/run),
                             # 16+ chars, MÊME valeur sur api ET workers. Vide → routes internes 404,
                             # queries sauvées mais jamais réévaluées (dégradation propre)

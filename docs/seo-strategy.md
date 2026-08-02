@@ -38,14 +38,16 @@ Google does not know the site exists. This is not a ranking problem, it is an
 fix (days after Search Console submission). Almost certainly the site was never
 verified/submitted to Google Search Console (`metadata.verification` is unset).
 
-### 1.3 Domain inconsistency: `outrival.app` vs `outrival.io`
+### 1.3 Domain inconsistency: `outrival.app` vs `outrival.io` — CLOSED 2026-08-02
 - The **web app** (canonicals, `metadataBase`, sitemap, robots, OG image text,
-  JSON-LD) is consistently on **`outrival.app`** — and `outrival.app` is the live
-  deploy (2026-06-14).
-- The **backend/config** references **`outrival.io`**: `WEB_URL`,
-  `BETTER_AUTH_URL`, `AUTH_COOKIE_DOMAIN`, Google OAuth redirect, Stripe URLs,
-  email from-addresses (`auth@outrival.io`, `alerts@outrival.io`), scraper bot UA
-  (`+https://outrival.io/bot`).
+  JSON-LD) was already consistently on **`outrival.app`**, the live deploy
+  (2026-06-14).
+- The **backend/config** used to reference **`outrival.io`** in `WEB_URL`,
+  `BETTER_AUTH_URL`, `AUTH_COOKIE_DOMAIN`, the email from-addresses and the
+  scraper bot UA. All code fallbacks and every doc/`.env.example` placeholder are
+  now `.app`; `outrival.io` was never ours (it resolves to `165.227.254.193`, an
+  unrelated host) and is absent from the Resend account, so the old email
+  fallbacks could only ever have been refused.
 
 For Google and LLMs, **entity consistency** (one domain everywhere) is a ranking
 and knowledge-graph signal. Two contradictory domains dilute it. Decision:
@@ -92,10 +94,10 @@ config, not code (and per prod rules needs an explicit go before any prod switch
 
 | Reference | Location | Action | Owner |
 |-----------|----------|--------|-------|
-| Bot UA `+https://outrival.io/bot` | `packages/scrapers/**` | → `outrival.app/bot` | `[code]` |
-| `WEB_URL ?? "https://outrival.io"` fallback | `apps/workers/src/lib/structural-change-notify.ts` | → `.app` fallback | `[code]` |
-| Email from `auth@outrival.io`, `alerts@outrival.io` | `apps/api`, `apps/workers` | Align to `@outrival.app` **iff** that domain is verified in Resend | `[code]` + `[infra]` |
-| `.env.example` placeholders (`WEB_URL`, `NEXT_PUBLIC_API_URL`, `BETTER_AUTH_URL`, `AUTH_COOKIE_DOMAIN`) | `.env.example` | Update comments to `.app` | `[code]` |
+| Bot UA `+https://outrival.io/bot` | `packages/scrapers/**` | ✅ done — `outrival.app/bot` | `[code]` |
+| `WEB_URL ?? "https://outrival.io"` fallback | `apps/workers/src/lib/structural-change-notify.ts` | ✅ done 2026-08-02 — the last `.io` fallback in the repo | `[code]` |
+| Email from `auth@outrival.io`, `alerts@outrival.io` | `apps/api`, `apps/workers` | ✅ done 2026-08-02 — `outrival.app` confirmed as the only domain in Resend, so the condition was met and the 5 fallbacks moved | `[code]` + `[infra]` |
+| `.env.example` placeholders (`WEB_URL`, `NEXT_PUBLIC_API_URL`, `BETTER_AUTH_URL`, `AUTH_COOKIE_DOMAIN`) | `.env.example` | ✅ done 2026-08-02 | `[code]` |
 | Live `WEB_URL`, `BETTER_AUTH_URL`, `AUTH_COOKIE_DOMAIN`, Google OAuth redirect, Stripe URLs | Coolify env / Google console / Stripe | Confirm they already use `.app` (site is live, so likely yes); if any still `.io`, switch deliberately | `[infra]` |
 | Resend sender domain | Resend dashboard | Verify `outrival.app` for deliverability + brand consistency | `[infra]` |
 

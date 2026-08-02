@@ -161,15 +161,13 @@ QUEUE_DATABASE_URL=                   # send-only: the api enqueues, never runs 
 SENTRY_DSN=                           # optional
 ```
 
-> ⚠️ **`RESEND_FROM` and `RESEND_AUTH_FROM` must both be set explicitly.** Their
-> code fallbacks still read `alerts@outrival.io` / `auth@outrival.io`
-> (`apps/api/src/lib/{resend,sign-in-email,contact-email}.ts`,
-> `apps/api/src/routes/notifications.ts`, `apps/workers/src/lib/resend.ts`), a
-> domain that is not ours: `outrival.io` resolves to `165.227.254.193`, unrelated
-> to this project, while everything real is on `outrival.app`. An env that forgets
-> either var sends from an unverified domain, which Resend rejects — so auth codes
-> and alerts fail silently on a fresh environment. The defaults should be moved to
-> `.app`, tracked separately since changing a From address is outward-facing.
+> `RESEND_FROM` / `RESEND_AUTH_FROM` now fall back to `alerts@outrival.app` /
+> `auth@outrival.app`. They used to fall back to `outrival.io`, a domain that is
+> not ours and is not in the Resend account, so a fresh environment that forgot
+> either var sent from an unverified domain and Resend refused every message —
+> including sign-in codes, which is a lockout, not a degradation. Setting them
+> explicitly is still preferred; the fallback is now merely correct rather than
+> load-bearing.
 
 > CORS is **not hardcoded**: `apps/api/src/index.ts:72` allows exactly
 > `[WEB_URL ?? "https://outrival.app"]` in production, i.e. ONE origin. So an

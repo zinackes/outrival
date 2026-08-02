@@ -72,18 +72,23 @@ export function SignalRow({
         selected ? "bg-accent" : "hover:bg-accent/50 focus-visible:bg-accent/50",
       )}
     >
-      {/* Gutter: the band, then whose move it is. The insight opens with the
+      {/* Gutter: whose move it is, then the band. The insight opens with the
           competitor's name, but that is prose — it starts at a different word on
           every row, so it never forms a column you can scan. The mark does, and
           it is the same one the roster, the compare view and the battle card use,
           so identity is learned once.
-          The checkbox now takes the AVATAR's slot, not the gauge's (see
-          signals-view renderRow): severity is the reason a row is worth reading,
-          and it used to blank out on plain hover — the one moment the reader is
-          aiming at that row. Identity is what yields instead, which is also the
-          swap every mail client makes when a list enters selection. */}
-      <span className="flex shrink-0 items-start gap-1.5">
-        <SeverityGauge severity={sev} className="mt-0.5 shrink-0" />
+          Stacked rather than side by side: the mark leads the row and the band
+          reads as the verdict UNDER it, which is the order the reader wants (who
+          moved, then how much to care). Abreast, the 10px gauge came first and
+          pushed the mark off the list's leading edge, so the one column worth
+          scanning didn't start where the eye lands. The stack is 37px, the same
+          height as the two lines of text beside it, so the row doesn't grow.
+          The checkbox takes the AVATAR's slot, not the gauge's (see signals-view
+          renderRow): severity is the reason a row is worth reading, and it used
+          to blank out on plain hover — the one moment the reader is aiming at
+          that row. Identity is what yields instead, which is also the swap every
+          mail client makes when a list enters selection. */}
+      <span className="flex shrink-0 flex-col items-center gap-1">
         <span
           className={cn(
             // Fade only on hover-capable devices — paired with the checkbox
@@ -99,6 +104,7 @@ export function SignalRow({
             size={18}
           />
         </span>
+        <SeverityGauge severity={sev} />
       </span>
 
       <span className="min-w-0">

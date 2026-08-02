@@ -2075,3 +2075,93 @@ présentes, valeurs d'enum `roadmap_shift` + `integration_catalog` présentes.
   entièrement — comportement voulu, pas une panne.
 
 **La card « Content — Intelligence v2 » est COMPLÈTE** (P1 → P5).
+
+---
+
+### 2026-08-02 — Positioning Intelligence v2, P1 (messaging & claims) — ~1 session
+
+**Objectif** : matérialiser la timeline messaging depuis les snapshots existants,
+surfacer enfin `numeric_claims`, enrichir le fact block homepage avec le h1
+before/after, câbler `claim_milestone` proprement. Bloc 4 du chantier « diff engine
+→ knowledge engine ». P1 sur 5 — P2 à P5 (market map, ICP, tab v2, Share of Model)
+NON touchées.
+
+**Le constat en une phrase** : ~80% de la donnée était déjà capturée, 0% assemblée.
+`parseHomepageStructure` lit le hero (h1 / subheadline / CTAs) depuis patch-16 et la
+seule chose qui l'a jamais relu dans le temps, c'est un endpoint qui recollapsait 400
+snapshots à chaque ouverture d'onglet. `numeric_claims` se remplit depuis patch-17 et
+n'a JAMAIS été affiché nulle part.
+
+**Réalisé** :
+- **Table `messaging_versions`** (migration 0071) : une ligne par WORDING DISTINCT,
+  datée de la capture où il est APPARU (pas de la dernière qui le portait — sinon deux
+  versions consécutives se datent du jour où on les a vues et la paire se lit comme
+  une réécriture qui n'a pas eu lieu). Unique `(competitor, captured_at)` : c'est ce
+  qui rend le backfill idempotent.
+- **La dérivation part dans `@outrival/shared`** (`positioning.ts`). Elle vivait dans
+  l'API et a maintenant TROIS appelants (fact sheet, writer live, backfill) ; son
+  propre commentaire disait déjà pourquoi : une dérive dans la dérivation se lit
+  comme une dérive dans LEUR messaging.
+- **Écriture live** dans `scrape-monitor`, sur la structure que la capture a déjà
+  parsée — zéro re-parse, zéro re-scrape. Gatée sur une capture COMPLÈTE : une SPA qui
+  sert son error boundary parse en une structure QUI A un hero, et l'enregistrer
+  daterait un repositionnement du jour où une capture a cassé.
+- **Backfill one-shot** (`pnpm backfill:messaging`, dry-run par défaut) : relit la
+  chaîne de snapshots, structure stockée d'abord, HTML R2 re-parsé pour les captures
+  d'avant patch-16 (capé). Le travail vit dans `lib/messaging-backfill.ts` pour être
+  testable contre un vrai Postgres.
+- **Fact block homepage** (nouveau `kind: "positioning"`) : h1 / subheadline
+  before→after + le mouvement de CTA + depuis quand l'ancien wording tenait, et les
+  claims qui ont bougé **dans les mots que la page a imprimés**, avec leur série.
+- **`claim_milestone` câblé, pas doublé** : le chemin d'émission EXISTE déjà
+  (`numeric_claim_changed`, |variation| > 20%). Il porte maintenant
+  `rawTextBefore`/`rawTextAfter` verbatim + le seuil rond franchi
+  (`crossesRoundMilestone`). Aucun signal nouveau.
+- **Endpoints** : `GET /:id/messaging-timeline` (paginé sur `capturedAt`, pas sur un
+  offset — les lignes ne s'ajoutent qu'en tête) et `GET /:id/claims` (dédup par
+  `(pattern, unit, context)`, dernière valeur + série). Consommés par la tab en P4.
+- **`positioning-history` bascule sur la table**, shape de réponse INCHANGÉE, avec
+  repli sur le walk de snapshots tant que la table porte moins de 2 versions.
+
+**Décisions à connaître** :
+1. **Le cosmétique est normalisé, pas ignoré** : casse, ponctuation et symboles sont
+   retirés de la clé de version. « Ship faster, together. » → « Ship Faster Together »
+   n'ouvre rien.
+2. **Les `valueProps` ne sont PAS dans la clé** (mais sont stockés). Les headings de
+   section sont renommés en permanence sur des pages dont le hero ne bouge pas.
+   Conséquence assumée : une édition de value-prop seule n'ouvre plus de version —
+   avant, elle en ouvrait une.
+3. **Pas de cooldown sur `claim_milestone`, et c'est délibéré** : le détecteur compare
+   à la DERNIÈRE VALEUR OBSERVÉE, donc un chiffre qui bouge une fois tire une fois et
+   la nouvelle valeur devient immédiatement la baseline. Un claim posé à 12 000 ne peut
+   pas re-annoncer le franchissement de 10 000.
+4. **Le premier claim observé d'un concurrent ne tire jamais** (`prev === undefined`
+   → skip) : c'était déjà le comportement, c'est maintenant testé et commenté.
+
+**Fichiers** : `packages/shared/src/positioning.ts` (+test) ·
+`packages/db/src/schema/messaging-versions.ts` + migration `0071` ·
+`apps/workers/src/lib/{messaging-versions,messaging-backfill,claim-milestone}.ts` (+2
+tests) · `apps/workers/src/scripts/backfill-messaging-versions.ts` ·
+`apps/workers/src/core/scrape-monitor.ts` · `apps/workers/src/lib/analytics.ts` ·
+`apps/api/src/lib/signal-facts.ts` · `apps/api/src/routes/competitors.ts` (+test) ·
+`apps/web/src/{lib/api.ts,components/outrival/signal-facts.tsx}`.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · shared 799 ✓ (+15) · scrapers 1013 ✓ ·
+workers 301 ✓ (+16) · api 312 ✓ (+14) · web 175 ✓. Les tests backfill et fact block
+tournent contre un vrai Postgres in-process (PGlite + migrations réelles). **Zéro appel
+IA ajouté** — toute la phase est déterministe, `ai_runs` inchangé.
+
+**Le test qui compte** : « le backfill n'écrit RIEN d'autre que `messaging_versions` » —
+compte de `changes`, `signals` et `snapshots` avant/après sur trois ans de captures
+reconstruites. Un timeline reconstruit depuis l'archive ne doit jamais annoncer, trois
+ans plus tard, qu'une boîte s'est repositionnée.
+
+**Reste côté humain** :
+- Migration 0071 : PAS appliquée (ni dev, ni prod). `when` = 1785684810244, au-dessus de
+  0070 — pas de skew de journal cette fois.
+- Lancer `pnpm --filter @outrival/workers backfill:messaging` (dry run d'abord) APRÈS la
+  migration : sans lui la timeline démarre vide et `positioning-history` reste sur son
+  repli snapshots.
+- Déployer api + web + workers.
+- P2 → P5 non entamées. P4 exige une maquette artifact avant tout câblage (décision 6
+  de la card).

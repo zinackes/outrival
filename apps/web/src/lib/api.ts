@@ -649,6 +649,15 @@ export type SignalFacts =
       evidenceUrl: string | null;
     }
   | {
+      /** How a competitor describes itself, before and after, and which of its
+       *  quantified claims moved (Positioning Intelligence v2 P1). Either half
+       *  can be absent: a hero rewrite with no claim move, or a claim move under
+       *  untouched copy, are both ordinary. */
+      kind: "positioning";
+      messaging: MessagingFact | null;
+      claims: ClaimFact[];
+    }
+  | {
       /** The two windows an editorial pivot compared (Content Intelligence v2 P4). */
       kind: "editorial";
       /** Jensen-Shannon, base 2 — a real 0-to-1 scale. */
@@ -692,6 +701,32 @@ export interface TechFact {
 export interface ComplaintFact {
   theme: string;
   prevalence: string;
+}
+
+/** The wording a competitor replaced, and what it replaced it with. */
+export interface MessagingFact {
+  h1Before: string | null;
+  h1After: string;
+  subheadlineBefore: string | null;
+  subheadlineAfter: string | null;
+  /** Both sides are set only when the CTA itself moved. */
+  ctaBefore: string | null;
+  ctaAfter: string | null;
+  /** "YYYY-MM-DD" the previous wording first appeared — how long it stood. */
+  previousSince: string | null;
+}
+
+/** One quantified claim that moved, in the words the page printed. */
+export interface ClaimFact {
+  context: string;
+  /** VERBATIM spans: "10,000+ customers" → "15,000+ customers". */
+  before: string;
+  after: string;
+  variation: number;
+  /** The round number this crossed, when it crossed one. */
+  milestone: number | null;
+  /** Oldest first — the trajectory behind the jump. */
+  series: Array<{ observedAt: string; value: number; rawText: string }>;
 }
 
 export interface RoadmapRequestFact {

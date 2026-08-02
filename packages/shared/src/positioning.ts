@@ -208,17 +208,35 @@ export function derivePositioningCopy(s: HomepageCopySource): PositioningCopy {
 }
 
 /**
- * The key two captures are compared on to decide whether the messaging moved.
+ * The key two captures are compared on to decide whether the messaging moved:
+ * the HEADLINE and the SUBHEADLINE, and nothing else.
  *
  * Case, punctuation and symbols are stripped: a marketing team fixing a stray
  * period or capitalising a word did not reposition the company, and a timeline
  * that opens a new "version" for it is a timeline nobody reads twice. What
  * survives is the WORDS, which is exactly the thing a repositioning changes.
  *
- * Value props are deliberately NOT part of the key. They come from section
- * headings, which get renamed constantly on a page whose hero is untouched; the
- * version they are stored on says what the page listed when this wording first
- * appeared, and that is all they are for.
+ * The PRIMARY CTA is stored on every version and is deliberately NOT in the key,
+ * which cost a measurement to settle. "Start free trial" becoming "Book a demo"
+ * is a real go-to-market move and it was the reason to key on it; run against the
+ * 913 stored homepage captures on prod (2026-08-02) it opened 37 extra versions
+ * across 19 competitors, and read one by one, essentially none of them were that
+ * move. Twelve were a single competitor whose hero button renders "Loading... Jul
+ * 1, 2026" - the capture date, so every scrape opened a version. The rest are our
+ * own extractor being unstable across captures: a CTA flipping between null and a
+ * value, "Server Auction" gaining and losing the icon's alt text, "Privacy Policy"
+ * and "View all features arrow_right_alt" being picked up as hero CTAs at all.
+ * `homepage-diff` reached the same conclusion from the other direction and already
+ * refuses to diff CTAs across parser generations.
+ *
+ * So a CTA move rides ALONG a rewrite instead of opening one. That gives up the
+ * standalone GTM signal; keeping it would have bought that signal at the price of
+ * a timeline whose busiest competitor churns daily on a loading state.
+ *
+ * Value props are out for a plainer reason: they come from section headings, which
+ * get renamed constantly on a page whose hero is untouched. The version they are
+ * stored on says what the page listed when this wording first appeared, and that
+ * is all they are for.
  */
 export function messagingFingerprint(copy: PositioningCopy): string {
   const norm = (s: string | null): string =>
@@ -227,7 +245,7 @@ export function messagingFingerprint(copy: PositioningCopy): string {
       .replace(/[\p{P}\p{S}]/gu, " ")
       .replace(/\s+/g, " ")
       .trim();
-  return [norm(copy.headline), norm(copy.subheadline), norm(copy.primaryCta)].join(" ");
+  return [norm(copy.headline), norm(copy.subheadline)].join(" ");
 }
 
 /** Whether two captures carry the same messaging, up to a copy edit. */

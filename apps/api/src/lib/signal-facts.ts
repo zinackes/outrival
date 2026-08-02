@@ -1261,6 +1261,10 @@ const MAX_CLAIM_FACTS = 6;
 // Enough of a claim's history to read it as a trajectory rather than a jump.
 const MAX_CLAIM_SERIES = 8;
 
+/** A CTA moved only when both captures HAVE one and they differ. */
+const ctaMoved = (before: string | null | undefined, after: string | null): boolean =>
+  Boolean(before) && Boolean(after) && before !== after;
+
 interface ClaimSeriesRow {
   pattern: string;
   unit: string;
@@ -1331,8 +1335,13 @@ async function positioningFacts(
           h1After: opened.h1,
           subheadlineBefore: previous?.subheadline ?? null,
           subheadlineAfter: opened.subheadline,
-          ctaBefore: previous && previous.primaryCta !== opened.primaryCta ? previous.primaryCta : null,
-          ctaAfter: previous && previous.primaryCta !== opened.primaryCta ? opened.primaryCta : null,
+          // Both sides must be PRESENT, not merely different. The hero-CTA
+          // extractor flips between null and a value across captures of an
+          // unchanged page (measured on prod: a CTA appearing or disappearing is
+          // by far the commonest way the two differ), so a pair with a null side
+          // would print our own instability as a go-to-market move.
+          ctaBefore: ctaMoved(previous?.primaryCta, opened.primaryCta) ? previous!.primaryCta : null,
+          ctaAfter: ctaMoved(previous?.primaryCta, opened.primaryCta) ? opened.primaryCta : null,
           previousSince: previous ? previous.capturedAt.toISOString().slice(0, 10) : null,
         }
       : null;

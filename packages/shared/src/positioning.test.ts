@@ -93,14 +93,28 @@ describe("messagingFingerprint", () => {
     expect(isSameMessaging(a, b)).toBe(false);
   });
 
-  test("the CTA is part of the key — a demo button replacing a signup button is a GTM move", () => {
+  test("the CTA is NOT part of the key — it is stored, it cannot open a version", () => {
+    // Measured on the 913 stored prod captures: keying on the CTA opened 37 extra
+    // versions and essentially none were a GTM move. Twelve came from one hero
+    // button that renders the capture date ("Loading... Jul 1, 2026"); most of the
+    // rest are our extractor flipping between null and a value on an unchanged page.
     const a = derivePositioningCopy({
       hero: { headline: "Same", primaryCta: { text: "Start free trial" } },
     });
     const b = derivePositioningCopy({
       hero: { headline: "Same", primaryCta: { text: "Book a demo" } },
     });
-    expect(isSameMessaging(a, b)).toBe(false);
+    expect(isSameMessaging(a, b)).toBe(true);
+    // Still derived and stored, so a CTA move riding along a rewrite can be shown.
+    expect(a.primaryCta).toBe("Start free trial");
+  });
+
+  test("a CTA that renders the capture date cannot churn the timeline", () => {
+    const day = (d: string) =>
+      derivePositioningCopy({
+        hero: { headline: "Trending Cards", primaryCta: { text: `Loading... ${d}, 2026` } },
+      });
+    expect(isSameMessaging(day("Jul 1"), day("Jul 2"))).toBe(true);
   });
 
   test("value props are NOT part of the key", () => {

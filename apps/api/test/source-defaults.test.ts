@@ -66,7 +66,9 @@ describe("GET /api/settings/sources", () => {
     const body = await res.json();
     expect(body.effectiveSources).toEqual(["homepage", "pricing", "blog"]);
     // The INTENT still covers the paid sources: the settings card shows them checked
-    // behind their lock badge, and saving a neighbour can't erase them.
+    // behind their lock badge, and saving a neighbour can't erase them. App Store
+    // reviews sits in that set too — it is seeded from detection, never blind, so it
+    // widens the intent without widening what a new competitor starts with.
     expect(body.intendedSources).toEqual([
       "homepage",
       "pricing",
@@ -74,6 +76,7 @@ describe("GET /api/settings/sources", () => {
       "jobs",
       "docs",
       "roadmap",
+      "appstore_reviews",
     ]);
     // Nothing to nag about: the banner must stay silent on free.
     expect(body.gaps).toEqual([]);
@@ -106,19 +109,23 @@ describe("PATCH /api/settings/sources", () => {
       "/api/settings/sources",
       asUser(FREE.userId, FREE.email, {
         method: "PATCH",
-        // github_repo needs a per-competitor URL → dropped. jobs is above free →
-        // stored anyway, so it starts applying the day they upgrade.
-        body: JSON.stringify({ defaultSources: ["homepage", "jobs", "github_repo"] }),
+        // github_repo needs a per-competitor URL nothing discovers → dropped. jobs is
+        // above free → stored anyway, so it starts applying the day they upgrade.
+        // appstore_reviews is kept too: detection resolves its URL, so the preference
+        // is read the first time we find an App Store link on a competitor's site.
+        body: JSON.stringify({
+          defaultSources: ["homepage", "jobs", "appstore_reviews", "github_repo"],
+        }),
       }),
     );
     expect(res.status).toBe(200);
-    expect((await res.json()).defaultSources).toEqual(["homepage", "jobs"]);
+    expect((await res.json()).defaultSources).toEqual(["homepage", "jobs", "appstore_reviews"]);
 
     const org = await testDb.query.organizations.findFirst({
       where: eq(organizations.id, FREE.orgId),
       columns: { defaultSources: true },
     });
-    expect(org?.defaultSources).toEqual(["homepage", "jobs"]);
+    expect(org?.defaultSources).toEqual(["homepage", "jobs", "appstore_reviews"]);
 
     // Reset so the free org keeps following the built-in default for later reads.
     await app.request(

@@ -85,8 +85,8 @@ touche pas. Confondre les deux fait chercher une var d'env dans la mauvaise UI.
 ```
 Boîte APP — OVH VPS, 4 vCPU / 8 Go / 80 Go — €8/mois
   151.80.58.65 · wg 10.10.0.2 · Coolify (PaaS self-hosted)
-    ├── @outrival/web  → outrival.io      (:3000) Next.js 16
-    └── @outrival/api  → api.outrival.io  (:3001) Hono + Bun
+    ├── @outrival/web  → outrival.app      (:3000) Next.js 16
+    └── @outrival/api  → api.outrival.app  (:3001) Hono + Bun
         (l'api enqueue seulement : QUEUE_DATABASE_URL y pointe via le tunnel,
          elle n'exécute jamais un handler et ne possède pas le cron)
               │

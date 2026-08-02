@@ -14,7 +14,9 @@ toutes via Better Auth :
   custom monté **avant** le wildcard `/api/auth/*`, sinon avalé). Le endpoint vérifie
   Turnstile + rate-limit + email (zod strict + anti-disposable) puis appelle
   `auth.api.sendVerificationOTP({ type:"sign-in" })` (plugin Better Auth **emailOTP**,
-  remplace `magicLink`). UN seul email Resend (`auth@outrival.io`, HTML inline
+  remplace `magicLink`). UN seul email Resend (`RESEND_AUTH_FROM` ; le défaut du
+  code, `auth@outrival.io`, pointe un domaine qui n'est pas le nôtre, cf.
+  `docs/architecture/env.md`), HTML inline
   dark+amber) porte **les deux** : un code 6 chiffres (saisi dans 6 cases sur `/auth`,
   marche cross-device) **et** un bouton « Sign in » → `GET /api/auth/otp-link?email&code`
   (vérifie le code server-side, pose le cookie, 302 `/dashboard` ; échec → 302
@@ -95,9 +97,11 @@ client/serveur (`packages/shared/src/validation/`).
 
 > **Setup manuel (hors code)** : créer les credentials Google OAuth (Console Google,
 > redirect URI = `{BETTER_AUTH_URL}/api/auth/callback/google` en dev **et** prod), le
-> site Turnstile (CF dashboard, mode Managed), et vérifier le domaine `auth@outrival.io`
-> dans Resend. Sans ces clés, le code dégrade proprement (Turnstile bypass, magic link
-> no-op, rate-limit no-op).
+> site Turnstile (CF dashboard, mode Managed), et vérifier le domaine d'envoi dans
+> Resend (`outrival.app`) PUIS poser `RESEND_AUTH_FROM`/`RESEND_FROM` : les défauts
+> du code sont sur `outrival.io`, qui ne nous appartient pas. Sans les clés
+> Google/Turnstile, le code dégrade proprement (Turnstile bypass, rate-limit no-op) ;
+> sans le bon expéditeur, l'envoi échoue au lieu de dégrader.
 
 ## Temps-réel : SSE DB-backed
 

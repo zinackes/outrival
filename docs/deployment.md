@@ -14,8 +14,8 @@ runbook: its rebuild procedure is `infra/queue-box/README.md`.
 
 - **OVH VPS** (`151.80.58.65`, wg `10.10.0.2`) — Coolify apps from this one repo,
   behind Cloudflare (proxied, Full strict):
-  - `web` → `https://outrival.io` (Next.js 16, Node, standalone)
-  - `api` → `https://api.outrival.io` (Hono on Bun)
+  - `web` → `https://outrival.app` (Next.js 16, Node, standalone)
+  - `api` → `https://api.outrival.app` (Hono on Bun)
 - **Netcup RS 1000 G12** (`outrival-queue-01`, `152.53.113.71`, wg `10.10.0.1`) —
   plain `docker compose` under `/opt/outrival`, **no Coolify**:
   - `outrival-pg` — the pg-boss queue Postgres (`QUEUE_DATABASE_URL`), bound to
@@ -109,7 +109,7 @@ on the `web` app, not just runtime env. Everything else is runtime.
 ### `web` (build args)
 ```
 NODE_ENV=production
-NEXT_PUBLIC_API_URL=https://api.outrival.io
+NEXT_PUBLIC_API_URL=https://api.outrival.app
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=...
 NEXT_PUBLIC_POSTHOG_KEY=...            # if analytics enabled
 NEXT_PUBLIC_POSTHOG_HOST=...
@@ -124,7 +124,7 @@ INTERNAL_API_URL=http://api:3001
 ```
 Runtime, **not** a build arg and **not** `NEXT_PUBLIC_`: it is the address the Next
 *server* uses to reach the API, and the browser must never see it. Without it, every
-server-side fetch goes to `https://api.outrival.io`, which is Cloudflare-proxied: it
+server-side fetch goes to `https://api.outrival.app`, which is Cloudflare-proxied: it
 leaves the VPS, crosses the edge and comes back in through Traefik to a container on
 the same host. A dashboard render makes 8 to 14 of those calls, so that hairpin is
 paid 8 to 14 times per navigation.
@@ -144,16 +144,16 @@ NODE_ENV=production
 PORT=3001
 DATABASE_URL=                         # Neon pooled, ?sslmode=require
 BETTER_AUTH_SECRET=                   # 32+ chars
-BETTER_AUTH_URL=https://api.outrival.io
-WEB_URL=https://outrival.io           # REQUIRED — else OAuth/magic-link redirects rejected
-AUTH_COOKIE_DOMAIN=outrival.io        # REQUIRED — cross-subdomain session cookie
+BETTER_AUTH_URL=https://api.outrival.app
+WEB_URL=https://outrival.app           # REQUIRED — else OAuth/magic-link redirects rejected
+AUTH_COOKIE_DOMAIN=outrival.app        # REQUIRED — cross-subdomain session cookie
 UPSTASH_REDIS_REST_URL= / UPSTASH_REDIS_REST_TOKEN=   # BLOCKING: api refuses to boot in prod without these
 GOOGLE_CLIENT_ID= / GOOGLE_CLIENT_SECRET=
 TURNSTILE_SECRET_KEY=
 AUTH_RATE_LIMIT_EMAIL=3 / AUTH_RATE_LIMIT_IP=10 / AUTH_RATE_LIMIT_WINDOW_MIN=15
 R2_ACCOUNT_ID= / R2_ACCESS_KEY_ID= / R2_SECRET_ACCESS_KEY= / R2_BUCKET_NAME=
 STRIPE_SECRET_KEY= / STRIPE_WEBHOOK_SECRET= / STRIPE_PRICE_*=
-RESEND_API_KEY= / RESEND_AUTH_FROM=
+RESEND_API_KEY= / RESEND_AUTH_FROM= / RESEND_FROM=   # BOTH required, see warning below
 GROQ_API_KEY= (or AI_PROVIDER_*) / ANTHROPIC_API_KEY=
 EXA_API_KEY=
 POSTHOG_API_KEY=
@@ -161,8 +161,21 @@ QUEUE_DATABASE_URL=                   # send-only: the api enqueues, never runs 
 SENTRY_DSN=                           # optional
 ```
 
-> If you ever serve marketing on `www.outrival.io`, widen the **hardcoded** CORS
-> origin in `apps/api/src/index.ts` (currently `["https://outrival.io"]` only).
+> ⚠️ **`RESEND_FROM` and `RESEND_AUTH_FROM` must both be set explicitly.** Their
+> code fallbacks still read `alerts@outrival.io` / `auth@outrival.io`
+> (`apps/api/src/lib/{resend,sign-in-email,contact-email}.ts`,
+> `apps/api/src/routes/notifications.ts`, `apps/workers/src/lib/resend.ts`), a
+> domain that is not ours: `outrival.io` resolves to `165.227.254.193`, unrelated
+> to this project, while everything real is on `outrival.app`. An env that forgets
+> either var sends from an unverified domain, which Resend rejects — so auth codes
+> and alerts fail silently on a fresh environment. The defaults should be moved to
+> `.app`, tracked separately since changing a From address is outward-facing.
+
+> CORS is **not hardcoded**: `apps/api/src/index.ts:72` allows exactly
+> `[WEB_URL ?? "https://outrival.app"]` in production, i.e. ONE origin. So an
+> unset or mistyped `WEB_URL` silently falls back to the canonical domain, and any
+> second origin you ever serve (`www.`, a marketing host, a preview domain) is
+> rejected until that list is widened in code.
 
 ### `workers` (Netcup queue box — NOT Coolify)
 The two workers and the queue Postgres run on a **separate server**
@@ -222,7 +235,7 @@ means the concurrency is the bottleneck; failures with no backlog means memory i
 
 ## Stripe webhook
 
-Add endpoint `https://api.outrival.io/api/stripe/webhook` in the Stripe dashboard
+Add endpoint `https://api.outrival.app/api/stripe/webhook` in the Stripe dashboard
 → set `STRIPE_WEBHOOK_SECRET`. The route is mounted before auth (verified by
 signature). The `stripe listen` in `pnpm dev` is dev-only.
 

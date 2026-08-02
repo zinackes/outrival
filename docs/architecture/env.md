@@ -17,7 +17,7 @@ R2_BUCKET_NAME=outrival-snapshots
 
 # Auth
 BETTER_AUTH_SECRET=          # 32+ chars random
-BETTER_AUTH_URL=             # https://api.outrival.io
+BETTER_AUTH_URL=             # https://api.outrival.app
 GOOGLE_CLIENT_ID=            # patch-19 — Google OAuth (callback = BETTER_AUTH_URL/api/auth/callback/google)
 GOOGLE_CLIENT_SECRET=
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=  # patch-19 — Cloudflare Turnstile (managed, invisible). Empty → backend bypass (dev)
@@ -25,7 +25,12 @@ TURNSTILE_SECRET_KEY=
 AUTH_RATE_LIMIT_EMAIL=3      # patch-19 — max attempts per email per window (Upstash; empty creds → no-op)
 AUTH_RATE_LIMIT_IP=10        # patch-19 — max attempts per IP per window
 AUTH_RATE_LIMIT_WINDOW_MIN=15 # patch-19 — window length in minutes
-RESEND_AUTH_FROM=            # patch-19 — optional, defaults to "Outrival <auth@outrival.io>"
+RESEND_AUTH_FROM=            # patch-19 — À POSER EXPLICITEMENT, pas optionnel en prod : le
+                            # défaut du code est "Outrival <auth@outrival.io>" et outrival.io
+                            # N'EST PAS notre domaine (il résout vers 165.227.254.193, un tiers ;
+                            # tout le produit est sur outrival.app). Non posé = envoi depuis un
+                            # domaine non vérifié = Resend refuse = plus aucun code de connexion.
+                            # Même problème sur RESEND_FROM (alerts@outrival.io). cf. docs/deployment.md
 INTERNAL_API_SECRET=         # standing queries — shared secret worker→API (POST /api/internal/ask/run),
                             # 16+ chars, MÊME valeur sur api ET workers. Vide → routes internes 404,
                             # queries sauvées mais jamais réévaluées (dégradation propre)
@@ -352,8 +357,8 @@ STRIPE_PRICE_BUSINESS_MONTHLY=
 STRIPE_PRICE_BUSINESS_YEARLY=
 
 # Public
-NEXT_PUBLIC_API_URL=         # https://api.outrival.io
-WEB_URL=                     # https://outrival.io (callbacks Stripe)
+NEXT_PUBLIC_API_URL=         # https://api.outrival.app
+WEB_URL=                     # https://outrival.app (callbacks Stripe)
 
 # Build provenance (Docker build args for @outrival/web, inlined at build time)
 GIT_SHA=                     # deploying commit sha → surfaced by GET /api/version (stale-deploy check)

@@ -21,6 +21,7 @@ import {
 import { typeContentItems, AI_CONFIG } from "@outrival/ai";
 import {
   parseChangelogItems,
+  parseDocsItems,
   parseRoadmapItems,
   typeChangelogEntry,
   buildMonthSeries,
@@ -37,7 +38,8 @@ import { isVerbatim } from "@outrival/scrapers/jobs-jd-facts";
 import { loggedAi } from "../lib/analytics";
 
 /**
- * Turn a captured changelog or roadmap into ROWS (Content Intelligence v2 P1).
+ * Turn a captured changelog, roadmap or docs surface into ROWS (Content
+ * Intelligence v2 P1).
  *
  * Event-triggered off scrape-monitor per capture — never a cron, never on the
  * archive backfill (which only replays homepage/pricing anyway). It writes
@@ -63,7 +65,13 @@ import { loggedAi } from "../lib/analytics";
 const InputSchema = z.object({
   snapshotId: z.string(),
   competitorId: z.string(),
-  sourceType: z.enum(["changelog", "roadmap"]),
+  sourceType: z.enum(["changelog", "roadmap", "docs"]),
+  /**
+   * The capture this one is diffed against. Docs only, and load-bearing there: a
+   * docs index carries no dates, so what a capture PUBLISHED is only knowable as
+   * the difference from the one before it (see `parseDocsItems`).
+   */
+  previousSnapshotId: z.string().optional(),
   /** The change row of the SAME capture, whose signal routing scrape-monitor
    * DEFERRED here: a deterministic entry type owns it, else it goes back to the
    * lexical classifier. Absent when the capture produced no change row. */
@@ -124,18 +132,32 @@ export async function runIngestContentItems(payload: z.input<typeof InputSchema>
   }
 
   const html = await getFromR2(`${snapshot.r2Key}.html`);
-  const parsed =
-    input.sourceType === "changelog" ? parseChangelogItems(html) : parseRoadmapItems(html);
+  const parsed = await parseCapture(input, html);
 
   if (parsed.length === 0) {
     // A changelog with no feed falls back to plain HTML change-detection, which
-    // carries no entries to read. That is the pre-existing path, not a failure.
+    // carries no entries to read. A docs surface on its first capture publishes
+    // nothing by design. Both are pre-existing paths, not failures.
     logger.log("No structured content items in this capture", {
       competitorId: input.competitorId,
       sourceType: input.sourceType,
     });
     await enqueueLexicalFallback();
     return { parsed: 0, inserted: 0, typed: 0, emitted: 0 };
+  }
+
+  if (input.sourceType === "docs") {
+    // Rows only. A newly documented page is a fact for the timeline and the cadence
+    // read; the SIGNAL a docs capture is worth already comes off its own diff, which
+    // runs untouched — a second one here would say the same thing twice.
+    const newIds = await upsertItems(input.competitorId, "docs", parsed);
+    await enqueueLexicalFallback();
+    logger.log("Completed ingest-content-items (docs)", {
+      competitorId: input.competitorId,
+      parsed: parsed.length,
+      inserted: newIds.length,
+    });
+    return { parsed: parsed.length, inserted: newIds.length, typed: 0, emitted: 0 };
   }
 
   if (input.sourceType === "roadmap") {
@@ -203,6 +225,40 @@ export async function runIngestContentItems(payload: z.input<typeof InputSchema>
 type CompetitorRow = typeof competitors.$inferSelect;
 
 /**
+ * The entries this capture carries, per source.
+ *
+ * Changelog and roadmap are self-contained: the scraper wrote the feed or the portal
+ * into the snapshot's island, and reading it is the whole job. Docs is not — its
+ * island is a complete listing with no dates on it, so what was PUBLISHED is only the
+ * difference from the capture before, and that one has to be fetched.
+ */
+async function parseCapture(
+  input: z.infer<typeof InputSchema>,
+  html: string,
+): Promise<ContentItemInput[]> {
+  if (input.sourceType === "changelog") return parseChangelogItems(html);
+  if (input.sourceType === "roadmap") return parseRoadmapItems(html);
+
+  if (!input.previousSnapshotId) return parseDocsItems(html, null);
+  const previous = await db.query.snapshots.findFirst({
+    where: eq(snapshots.id, input.previousSnapshotId),
+  });
+  if (!previous) return parseDocsItems(html, null);
+  try {
+    return parseDocsItems(html, await getFromR2(`${previous.r2Key}.html`));
+  } catch (err) {
+    // A capture whose predecessor we can no longer read is not a publication of
+    // every page on the site. Treating it as a baseline writes nothing, which is the
+    // only answer that cannot be wrong.
+    logger.error("Previous docs capture unreadable — treating this run as a baseline", {
+      snapshotId: input.previousSnapshotId,
+      err: String(err),
+    });
+    return parseDocsItems(html, null);
+  }
+}
+
+/**
  * Write what this capture published, and report back the ids of what was NEW.
  *
  * Uniqueness is (competitor, source, external_id), so re-reading the same feed
@@ -216,7 +272,7 @@ type CompetitorRow = typeof competitors.$inferSelect;
  */
 async function upsertItems(
   competitorId: string,
-  sourceType: "changelog",
+  sourceType: "changelog" | "docs",
   items: ContentItemInput[],
 ): Promise<string[]> {
   const values = items.map((it) => ({

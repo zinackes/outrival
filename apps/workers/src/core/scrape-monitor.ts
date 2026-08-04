@@ -2139,7 +2139,9 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       // exactly the change it produces today. On a feed-first changelog the job
       // also owns the deferred change's signal routing (see the lexical branch).
       extractionAllowed &&
-      (monitor.sourceType === "changelog" || monitor.sourceType === "roadmap")
+      (monitor.sourceType === "changelog" ||
+        monitor.sourceType === "roadmap" ||
+        monitor.sourceType === "docs")
     ) {
       await ingestContentItems.enqueue({
         snapshotId: newSnapshot.id,
@@ -2147,6 +2149,11 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         sourceType: monitor.sourceType,
         changeId: deferredContentChange?.id,
         lexicalWorth: deferredContentChange?.lexicalWorth,
+        // Docs only. A docs index lists every page the vendor has ever written and
+        // dates none of them, so "what did they document" is the difference between
+        // this capture and the one before — never the listing itself, which on a
+        // first capture would report a vendor who wrote their whole manual today.
+        previousSnapshotId: monitor.sourceType === "docs" ? lastSnapshot?.id : undefined,
       });
     } else if (
       // Content Intelligence v2 P2 — read the posts this capture published. Written

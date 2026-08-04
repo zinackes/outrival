@@ -20,6 +20,8 @@ import type { RoadmapEntry } from "../roadmap/types";
 export const CHANGELOG_ISLAND_ID = "outrival-changelog-feed";
 export const ROADMAP_ISLAND_ID = "outrival-roadmap";
 export const BLOG_ISLAND_ID = "outrival-blog-items";
+/** Written by the docs scraper (`docsIsland`), in either of its two modes. */
+export const DOCS_ISLAND_ID = "outrival-docs";
 
 /**
  * A capture with more entries than this is a feed we do not understand, not a
@@ -180,6 +182,111 @@ export function parseBlogItems(html: string): ContentItemInput[] {
 
 function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+/** `/docs/api/rate-limits` → "Rate limits". The docs index publishes no titles. */
+export function docsTitleFromUrl(url: string): string {
+  let path: string;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    path = url;
+  }
+  const slug = path.replace(/\/+$/, "").split("/").filter(Boolean).pop() ?? "";
+  const words = slug
+    .replace(/\.(html?|mdx?)$/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!words) return url;
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * What a docs capture DOCUMENTED that the one before it did not.
+ *
+ * Unlike a feed or a portal, a docs index is a complete listing with no dates on
+ * it: every page a vendor has ever written is on it, and none of them says when.
+ * So the first capture of a docs surface publishes NOTHING — there is no honest
+ * date to file three hundred existing pages under, and filing them under today
+ * would report a vendor who documented their whole product this afternoon.
+ *
+ * From the second capture on, the difference between the two page lists IS the
+ * publication, and `first_seen_at` is a true statement about it: we saw it appear.
+ *
+ * Both of the scraper's modes are read. A spec-published API has no pages at all,
+ * and its new operations are the same fact in a different shape — a capability that
+ * is documented now and was not before.
+ */
+export function parseDocsItems(html: string, previousHtml: string | null): ContentItemInput[] {
+  const current = readJsonIsland(html, DOCS_ISLAND_ID);
+  if (!current || typeof current !== "object") return [];
+  // No previous capture is the baseline: we hold the listing, we announce nothing.
+  if (previousHtml === null) return [];
+  const previous = readJsonIsland(previousHtml, DOCS_ISLAND_ID);
+  if (!previous || typeof previous !== "object") return [];
+
+  const mode = str((current as { mode?: unknown }).mode);
+  // A mode flip (a vendor publishing a spec for the first time) replaces the whole
+  // listing with a different KIND of listing. Every line of it would read as new,
+  // which is exactly the phantom the scraper's own mode-flip guard exists to stop.
+  if (mode !== str((previous as { mode?: unknown }).mode)) return [];
+
+  if (mode === "sitemap") {
+    const held = new Set(pagesOf(previous));
+    return normalize(
+      pagesOf(current)
+        .filter((url) => !held.has(url))
+        .map((url) => ({
+          externalId: url,
+          title: docsTitleFromUrl(url),
+          url,
+          publishedAt: null,
+          body: null,
+          status: null,
+          itemType: "doc_page",
+        })),
+    );
+  }
+
+  if (mode === "openapi") {
+    const held = new Set(operationsOf(previous));
+    return normalize(
+      operationsOf(current)
+        .filter((op) => !held.has(op))
+        .map((op) => ({
+          externalId: op,
+          title: op,
+          url: str((current as { specUrl?: unknown }).specUrl),
+          publishedAt: null,
+          body: null,
+          status: null,
+          itemType: "doc_endpoint",
+        })),
+    );
+  }
+
+  return [];
+}
+
+function pagesOf(island: object): string[] {
+  const pages = (island as { pages?: unknown }).pages;
+  if (!Array.isArray(pages)) return [];
+  return pages.map(str).filter((p): p is string => p !== null);
+}
+
+/** `POST /v1/charges` — method and path, which is what identifies an endpoint. */
+function operationsOf(island: object): string[] {
+  const operations = (island as { operations?: unknown }).operations;
+  if (!Array.isArray(operations)) return [];
+  const out: string[] = [];
+  for (const raw of operations) {
+    const op = (raw ?? {}) as Record<string, unknown>;
+    const method = str(op.method);
+    const path = str(op.path);
+    if (method && path) out.push(`${method.toUpperCase()} ${path}`);
+  }
+  return out;
 }
 
 /** Keep the first row per external id, drop the unusable ones, cap the rest. */

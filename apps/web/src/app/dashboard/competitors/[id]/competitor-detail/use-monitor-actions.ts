@@ -321,10 +321,24 @@ export function useMonitorActions(id: string) {
     void runMonitor(monitorId);
   }
 
-  async function runAllMonitors() {
+  /**
+   * Run every idle source, or only those of `only` when given.
+   *
+   * The scoped form is what a TAB's "Re-scan now" needs: a tab reads several
+   * sources at once, and running just the first of them re-scanned one surface
+   * while the reader watched a page fed by four. It also bypasses the staleness
+   * gate `requestRunMonitor` applies, which on a group would have turned one
+   * click into one dismissible toast per fresh source.
+   */
+  async function runAllMonitors(only?: readonly SourceType[]) {
     if (!data) return;
     // Skip paused sources — "Scrape all" shouldn't wake a source the user turned off.
-    const idle = data.monitors.filter((m) => !scrapingIds.has(m.id) && m.isActive !== false);
+    const idle = data.monitors.filter(
+      (m) =>
+        !scrapingIds.has(m.id) &&
+        m.isActive !== false &&
+        (!only || only.includes(m.sourceType)),
+    );
     if (idle.length === 0) return;
     setRunningAll(true);
     try {

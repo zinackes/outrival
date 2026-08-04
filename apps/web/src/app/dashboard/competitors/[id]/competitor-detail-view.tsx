@@ -830,6 +830,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 onRun={requestRunMonitor}
+                onRunAll={runAllMonitors}
                 onEnable={enableMonitor}
               />
             </TabsContent>

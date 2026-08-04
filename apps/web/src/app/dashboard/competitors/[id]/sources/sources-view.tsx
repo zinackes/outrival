@@ -399,7 +399,7 @@ export function SourcesView({ id }: { id: string }) {
           </div>
           <Button
             size="sm"
-            onClick={runAllMonitors}
+            onClick={() => void runAllMonitors()}
             disabled={runningAll}
             className="h-8 shrink-0 text-xs"
           >

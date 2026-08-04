@@ -642,11 +642,36 @@ export type SignalFacts =
       alsoMoved: RoadmapRequestFact[];
     }
   | {
+      /** Rivals a competitor started publishing comparison pages against
+       *  (Positioning Intelligence v2 P2). The reader's own product is never in
+       *  here — that case stays the comparison_page critical. */
+      kind: "comparison_targets";
+      targets: ComparisonTargetFact[];
+      targetsTotal: number;
+    }
+  | {
+      /** Persona / industry / use-case pages a competitor started publishing
+       *  (Positioning Intelligence v2 P3). Read off their sitemap and their own
+       *  audience hub — never a model. */
+      kind: "audience_pages";
+      pages: AudiencePageFact[];
+      pagesTotal: number;
+    }
+  | {
       /** Integrations newly listed in a catalog (Content Intelligence v2 P5). */
       kind: "integrations";
       integrations: IntegrationFact[];
       integrationsTotal: number;
       evidenceUrl: string | null;
+    }
+  | {
+      /** How a competitor describes itself, before and after, and which of its
+       *  quantified claims moved (Positioning Intelligence v2 P1). Either half
+       *  can be absent: a hero rewrite with no claim move, or a claim move under
+       *  untouched copy, are both ordinary. */
+      kind: "positioning";
+      messaging: MessagingFact | null;
+      claims: ClaimFact[];
     }
   | {
       /** The two windows an editorial pivot compared (Content Intelligence v2 P4). */
@@ -694,6 +719,32 @@ export interface ComplaintFact {
   prevalence: string;
 }
 
+/** The wording a competitor replaced, and what it replaced it with. */
+export interface MessagingFact {
+  h1Before: string | null;
+  h1After: string;
+  subheadlineBefore: string | null;
+  subheadlineAfter: string | null;
+  /** Both sides are set only when the CTA itself moved. */
+  ctaBefore: string | null;
+  ctaAfter: string | null;
+  /** "YYYY-MM-DD" the previous wording first appeared — how long it stood. */
+  previousSince: string | null;
+}
+
+/** One quantified claim that moved, in the words the page printed. */
+export interface ClaimFact {
+  context: string;
+  /** VERBATIM spans: "10,000+ customers" → "15,000+ customers". */
+  before: string;
+  after: string;
+  variation: number;
+  /** The round number this crossed, when it crossed one. */
+  milestone: number | null;
+  /** Oldest first — the trajectory behind the jump. */
+  series: Array<{ observedAt: string; value: number; rawText: string }>;
+}
+
 export interface RoadmapRequestFact {
   title: string;
   url: string | null;
@@ -703,6 +754,27 @@ export interface RoadmapRequestFact {
   /** The portal's OWN status words, both sides. Null before = it was not listed. */
   fromRaw: string | null;
   toRaw: string;
+}
+
+export interface ComparisonTargetFact {
+  /** Prettified from the slug they published — "klue" → "Klue". */
+  name: string;
+  /** The exact page that names them; null only for a mention with no permalink. */
+  evidenceUrl: string | null;
+  /** "YYYY-MM-DD" — when WE first saw them named; a sitemap carries no date. */
+  firstSeenAt: string | null;
+}
+
+/** One segment a competitor started publishing a page for (Positioning v2 P3). */
+export interface AudiencePageFact {
+  /** 'persona' | 'industry' | 'use_case' — a closed vocabulary of three. */
+  kind: string;
+  /** Prettified from the slug they published — "field-service" → "Field Service". */
+  displayName: string;
+  /** The exact page, so a claim about their ICP can be checked at its source. */
+  evidenceUrl: string | null;
+  /** "YYYY-MM-DD" — when WE first saw the page; a sitemap carries no date. */
+  firstSeenAt: string | null;
 }
 
 export interface IntegrationFact {
@@ -1678,6 +1750,47 @@ export interface Digest {
 }
 
 /**
+ * The week the Monday brief is still collecting. Not a Digest: it has no content and
+ * no id, because nothing has been written yet — only the window, when it closes, and
+ * what has landed in it so far. Null whenever there is nothing to anticipate.
+ */
+export interface DigestInProgress {
+  weekStart: string;
+  weekEnd: string;
+  /** When the cron writes and sends it, ISO. */
+  nextRunAt: string;
+  moves: number;
+  action: number;
+  watch: number;
+  fyi: number;
+  movers: Array<{ name: string; count: number }>;
+  /**
+   * The generator only reads `max` moves, top severity first. `omitted` is what a busy
+   * week collected beyond that and will NOT find in Monday's email.
+   */
+  cap: { max: number; omitted: number };
+  /** Only present on the detail fetch (`signals=1`). */
+  signals?: InProgressSignal[];
+}
+
+/** One move already collected for the next brief, before any of it has been written. */
+export interface InProgressSignal {
+  id: string;
+  competitor: string;
+  competitorId: string | null;
+  competitorColor: string | null;
+  competitorUrl: string | null;
+  category: string;
+  severity: string;
+  urgency: DigestSection["urgency"];
+  insight: string;
+  soWhat: string | null;
+  createdAt: string;
+  /** False once the week has collected more moves than the generator will read. */
+  inBrief: boolean;
+}
+
+/**
  * Where one digest section points, resolved server-side against the org's own data.
  * Positional: `links[i]` belongs to `content.sections[i]`. Every field is nullable
  * because resolution is deliberately strict — an ambiguous match yields no link
@@ -1785,7 +1898,8 @@ export interface SourceDefaults {
   intendedSources: SourceType[];
   effectiveSources: SourceType[];
   availableSources: SourceType[];
-  seedableSources: SourceType[];
+  /** Every source the card offers: seeded blind, or seeded once detection resolves it. */
+  selectableSources: SourceType[];
   competitorCount: number;
   gaps: { sourceType: SourceType; missingOn: number }[];
 }
@@ -3727,6 +3841,10 @@ export const api = {
   deleteSignalComment: (id: string, commentId: string) =>
     request<{ ok: true }>(`/api/signals/${id}/comments/${commentId}`, { method: "DELETE" }),
   listDigests: () => request<{ digests: Digest[] }>("/api/digests"),
+  getDigestInProgress: (withSignals = false) =>
+    request<{ inProgress: DigestInProgress | null }>(
+      `/api/digests/in-progress${withSignals ? "?signals=1" : ""}`,
+    ),
   getDigest: (id: string) => request<DigestDetail>(`/api/digests/${id}`),
   sendDigest: (id: string) =>
     request<{ ok: true; sentAt: string }>(`/api/digests/${id}/send`, {

@@ -134,7 +134,7 @@ import {
 import { competitorCoverage } from "./competitor-detail/helpers";
 import { PricingTab } from "./competitor-detail/pricing-tab";
 import { HiringTab } from "./competitor-detail/hiring-tab";
-import { ReviewsTab } from "./competitor-detail/reviews-tab";
+import { ReviewsTab, readShopifyApp } from "./competitor-detail/reviews-tab";
 import { OverviewTab } from "./competitor-detail/overview-tab";
 import { ActivityTab } from "./competitor-detail/activity-tab";
 import { ProductTab } from "./competitor-detail/product-tab";
@@ -170,7 +170,7 @@ const VISIBLE_TABS = TABS;
 const TAB_SOURCES: Partial<Record<TabKey, string[]>> = {
   pricing: ["pricing"],
   hiring: ["jobs"],
-  reviews: ["appstore_reviews", "trustpilot_public"],
+  reviews: ["appstore_reviews", "shopify_reviews", "trustpilot_public"],
   content: ["blog", "changelog", "roadmap", "docs"],
   product: [...PRODUCT_SOURCES],
 };
@@ -644,6 +644,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
   // Store listings the worker detected off captures we already take. Informational:
   // it never alerts, it just spares the user a trip to the App Store search box.
   const mobileApps = readMobileApps(competitor.metadata);
+  const shopifyApp = readShopifyApp(competitor.metadata);
   const lastRunMs = monitors
     .map((m) => (m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0))
     .reduce((a, b) => Math.max(a, b), 0);
@@ -821,6 +822,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                   setPaywall({ code: "plan_locked_source", source, plan })
                 }
                 detectedAppStoreUrl={mobileApps?.ios?.url ?? null}
+                detectedShopifyUrl={shopifyApp?.url ?? null}
               />
             </TabsContent>
             <TabsContent value="content" className={TAB_PANEL_CLASS}>
@@ -830,6 +832,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 onRun={requestRunMonitor}
+                onRunAll={runAllMonitors}
                 onEnable={enableMonitor}
               />
             </TabsContent>

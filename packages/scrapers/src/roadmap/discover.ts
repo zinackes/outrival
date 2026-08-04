@@ -2,6 +2,7 @@ import * as cheerio from "cheerio";
 import { normalizeHostname } from "@outrival/shared";
 import { safeFetch } from "../lib/guarded-fetch";
 import { cannyCompanyExists, isCannyHost } from "./canny";
+import { parseDomPortal } from "./dom";
 import { parseGenericPortal } from "./generic";
 import { matchProductboardPortal } from "./productboard";
 import type { RoadmapVendor } from "./types";
@@ -117,9 +118,14 @@ async function defaultReachable(url: string): Promise<boolean> {
 async function confirmPortal(url: string, fetchHtml: (u: string) => Promise<string | null>): Promise<boolean> {
   const html = await fetchHtml(url);
   if (html === null) return false;
-  // Canny custom domains are identified by their state island; everyone else by the
-  // vendor-agnostic shape. Neither costs an extra request.
-  return cannyCompanyExists(html) || parseGenericPortal(html, url).ok;
+  // Canny custom domains are identified by their state island, portals that embed
+  // JSON by their shape, and portals that embed nothing by their markup. None of the
+  // three costs an extra request. The DOM check matters here specifically: without
+  // it a `feedback.` subdomain serving a markup-only board (UserJot) failed to
+  // confirm, and finding it fell back to hoping the homepage links to it.
+  return (
+    cannyCompanyExists(html) || parseGenericPortal(html, url).ok || parseDomPortal(html, url).ok
+  );
 }
 
 /**

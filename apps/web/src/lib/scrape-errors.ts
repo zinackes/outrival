@@ -12,6 +12,7 @@ const PAGE_LABEL: Record<string, string> = {
   g2_reviews: "G2 reviews page",
   capterra_reviews: "Capterra reviews page",
   appstore_reviews: "App Store page",
+  shopify_reviews: "Shopify App Store page",
   linkedin: "LinkedIn page",
   twitter: "X / Twitter page",
 };

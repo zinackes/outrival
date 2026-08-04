@@ -1,10 +1,13 @@
 import { test, expect } from "bun:test";
 import { parseFeed } from "../feeds/rss";
 import { buildRoadmapDoc } from "../roadmap/snapshot";
+import { docsIsland } from "../docs/openapi";
 import { extractContent } from "../lib/extract-content";
 import {
   buildChangelogIsland,
+  docsTitleFromUrl,
   parseChangelogItems,
+  parseDocsItems,
   parseRoadmapItems,
 } from "./parse";
 import { typeChangelogEntry, partitionByHeuristic } from "./changelog-type";
@@ -271,4 +274,79 @@ test("the series rolls over a year boundary", () => {
 test("the evaluated month is the last one that ENDED", () => {
   expect(previousMonthKey(new Date("2026-08-01T00:30:00Z"))).toBe("2026-07");
   expect(previousMonthKey(new Date("2026-01-15T12:00:00Z"))).toBe("2025-12");
+});
+
+// ── Docs: a listing with no dates, read as the difference between two captures ─
+// The islands are built by the SAME function the docs scraper calls, so a renamed
+// field fails here rather than going quiet in production.
+
+function docsPage(payload: unknown): string {
+  return `<!doctype html><html><body><section><h2>Docs</h2></section>${docsIsland(
+    payload,
+  )}</body></html>`;
+}
+
+const sitemapCapture = (pages: string[]) =>
+  docsPage({ mode: "sitemap", docsRoot: "https://acme.com/docs", pages, hashes: [] });
+
+test("the first docs capture publishes nothing", () => {
+  // Three hundred pages that already existed are not three hundred things a vendor
+  // documented today, and a docs index states no date we could file them under.
+  const pages = ["https://acme.com/docs/intro", "https://acme.com/docs/api/rate-limits"];
+  expect(parseDocsItems(sitemapCapture(pages), null)).toEqual([]);
+});
+
+test("a page that was not in the previous capture is a publication", () => {
+  const before = sitemapCapture(["https://acme.com/docs/intro"]);
+  const after = sitemapCapture([
+    "https://acme.com/docs/intro",
+    "https://acme.com/docs/api/rate-limits",
+  ]);
+  const items = parseDocsItems(after, before);
+  expect(items).toHaveLength(1);
+  expect(items[0]).toMatchObject({
+    externalId: "https://acme.com/docs/api/rate-limits",
+    // The index publishes no titles, so the slug is the only honest one available.
+    title: "Rate limits",
+    itemType: "doc_page",
+    // Never invented: `first_seen_at` is the true statement about a page appearing.
+    publishedAt: null,
+  });
+});
+
+test("a page that disappeared is not a publication either way", () => {
+  const before = sitemapCapture(["https://acme.com/docs/a", "https://acme.com/docs/b"]);
+  expect(parseDocsItems(sitemapCapture(["https://acme.com/docs/a"]), before)).toEqual([]);
+});
+
+test("a new operation in a published spec is the same fact in another shape", () => {
+  const spec = (operations: { method: string; path: string }[]) =>
+    docsPage({ mode: "openapi", specUrl: "https://acme.com/openapi.json", operations, schemas: [] });
+  const items = parseDocsItems(
+    spec([
+      { method: "GET", path: "/v1/charges" },
+      { method: "POST", path: "/v1/refunds" },
+    ]),
+    spec([{ method: "GET", path: "/v1/charges" }]),
+  );
+  expect(items).toHaveLength(1);
+  expect(items[0]).toMatchObject({ externalId: "POST /v1/refunds", itemType: "doc_endpoint" });
+});
+
+test("a vendor publishing a spec for the first time announces nothing", () => {
+  // The mode flip replaces a page list with an operation list. Every line reads as
+  // new, which is the phantom the scraper's own mode-flip guard exists to prevent.
+  const after = docsPage({
+    mode: "openapi",
+    specUrl: "https://acme.com/openapi.json",
+    operations: [{ method: "GET", path: "/v1/charges" }],
+    schemas: [],
+  });
+  expect(parseDocsItems(after, sitemapCapture(["https://acme.com/docs/intro"]))).toEqual([]);
+});
+
+test("a docs title falls back to the URL when the slug says nothing", () => {
+  expect(docsTitleFromUrl("https://acme.com/docs/api/rate-limits")).toBe("Rate limits");
+  expect(docsTitleFromUrl("https://acme.com/docs/getting_started.html")).toBe("Getting started");
+  expect(docsTitleFromUrl("https://acme.com/")).toBe("https://acme.com/");
 });

@@ -249,6 +249,132 @@ describe("jobs scraper — careers discovery routing", () => {
     expect(res.metadata.careersFollowed).toBeUndefined();
     expect(res.text).toContain("Founding Engineer - Auth");
   });
+
+  it("detects an EMBEDDED board on the rendered careers page", async () => {
+    // Regression (clickup.com): the board is not LINKED, it is EMBEDDED. The SSR
+    // HTML ships an empty `<div id="ashby_embed">` and nothing anywhere spells out
+    // `jobs.ashbyhq.com/acme` — the script tag that does is appended after
+    // hydration. Detection only ever ran on the L0 probe, so the board was
+    // invisible and the AI floor extracted the two roles the marketing page
+    // hard-codes as if they were the whole board (2 stored against 64 open).
+    //
+    // Two things had to change for this to resolve, and both are exercised here:
+    // "Explore the role" must not be mistaken for the listing link (or the run
+    // hops into one job's page and never renders), and the render must be
+    // re-detected on — its iframe adds no TEXT, so the old "did the render add
+    // anything?" gate discarded the one capture that names the board.
+    const ssrHtml = `<html><body>
+      <h1>Careers at Acme</h1>
+      <p>Life at Acme: join our team of builders and help us shape the product.</p>
+      <article><h3>100x Operator, Chief Of Staff</h3>
+        <a href="/careers/100x-cos">Explore the role</a></article>
+      <article><h3>100x Marketer, Chief Marketing Officer</h3>
+        <a href="/careers/100x-cmo">Explore the role</a></article>
+      <h2>Open positions</h2><div id="ashby_embed"></div>
+    </body></html>`;
+    // What the DOM looks like once the embed script has run. The board itself
+    // renders in a cross-origin iframe, so the page gains no text at all.
+    const renderedHtml = ssrHtml.replace(
+      "</body>",
+      `<script src="https://jobs.ashbyhq.com/acme/embed?version=2"></script></body>`,
+    );
+    const careersUrl = "https://acme.com/careers";
+    const fetched: string[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (u: string) => {
+      fetched.push(String(u));
+      return new Response(
+        JSON.stringify({
+          jobs: [
+            {
+              title: "Staff Backend Engineer, Hierarchy",
+              department: "Engineering",
+              location: "United States",
+              jobUrl: "https://jobs.ashbyhq.com/acme/1",
+            },
+            {
+              title: "Technical Account Manager",
+              department: "Customer Experience",
+              location: "Philippines",
+              jobUrl: "https://jobs.ashbyhq.com/acme/2",
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+    // The discovery probe is L0 (SSR); the later render goes through scrapePage.
+    scrapeFirstSuccess.mockImplementationOnce(async () => outcome(ssrHtml, careersUrl));
+    scrapePage.mockImplementation(async (u: string) => outcome(renderedHtml, u));
+    try {
+      const res = await scrape("comp-embed", HOMEPAGE);
+      expect(res.metadata.careersFollowed).toBeUndefined();
+      expect(res.metadata.atsDetected).toBe("ashby");
+      expect(res.metadata.atsJobs).toBe(2);
+      expect(res.text).toContain("Staff Backend Engineer, Hierarchy");
+      expect(fetched.some((u) => u.includes("posting-api/job-board/acme"))).toBe(true);
+    } finally {
+      globalThis.fetch = realFetch;
+      scrapePage.mockImplementation(async (u: string) => {
+        if (u.includes("/jobs-with-links")) return outcome(listingWithNavHtml, u);
+        if (u.includes("/careers/all-jobs")) return outcome(listingHtml, u);
+        if (u.includes("/careers")) return outcome(hubHtml, u);
+        if (u.includes("/about-us")) return outcome(listingHtml, u);
+        if (u.includes("jobs.wttj.com")) return outcome(listingHtml, u);
+        return outcome(homepageHtml, HOMEPAGE);
+      });
+    }
+  });
+
+  it("renders for an embed container even off the homepage fallback", async () => {
+    // The other vendor of the same class (later.com is `grnhse_app`), on the path
+    // that used to render NOTHING: every standard careers path 404s, so we hold the
+    // homepage — which here embeds the board inline, the one-page-site shape. The
+    // container is the page telling us it is holding a board back, and it is the
+    // only reason to spend a render on a page that isn't a careers page.
+    const ssrHtml = `<html><body>
+      <h1>Acme</h1><p>Serverless Postgres, built for developers who ship.</p>
+      <h2>Open positions</h2><div id="grnhse_app"></div>
+    </body></html>`;
+    const renderedHtml = ssrHtml.replace(
+      "</body>",
+      `<script src="https://boards.greenhouse.io/embed/job_board/js?for=acme"></script></body>`,
+    );
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          jobs: [
+            {
+              title: "Founding Engineer",
+              departments: [{ name: "Engineering" }],
+              location: { name: "Remote" },
+              absolute_url: "https://boards.greenhouse.io/acme/jobs/1",
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as unknown as typeof fetch;
+    // First call is the L0 homepage probe; the render that follows returns the DOM.
+    scrapePage.mockImplementationOnce(async () => outcome(ssrHtml, HOMEPAGE));
+    scrapePage.mockImplementation(async (u: string) => outcome(renderedHtml, u));
+    try {
+      const res = await scrape("comp-embed-home", HOMEPAGE);
+      expect(res.metadata.atsDetected).toBe("greenhouse");
+      expect(res.metadata.atsJobs).toBe(1);
+      expect(res.text).toContain("Founding Engineer");
+    } finally {
+      globalThis.fetch = realFetch;
+      scrapePage.mockImplementation(async (u: string) => {
+        if (u.includes("/jobs-with-links")) return outcome(listingWithNavHtml, u);
+        if (u.includes("/careers/all-jobs")) return outcome(listingHtml, u);
+        if (u.includes("/careers")) return outcome(hubHtml, u);
+        if (u.includes("/about-us")) return outcome(listingHtml, u);
+        if (u.includes("jobs.wttj.com")) return outcome(listingHtml, u);
+        return outcome(homepageHtml, HOMEPAGE);
+      });
+    }
+  });
 });
 
 // ── Generic JSON-LD rung (Hiring Intelligence v2 P4) ─────────────────────────

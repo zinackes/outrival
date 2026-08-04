@@ -360,9 +360,16 @@ plan              free | starter | pro | business
 billing_period    monthly | yearly
 source_type       homepage | pricing | blog | changelog | jobs |
                   g2_reviews | capterra_reviews | appstore_reviews |
-                  trustpilot_reviews | trustradius_reviews | gartner_reviews |
-                  playstore_reviews | linkedin | twitter | github_repo |
-                  tech_stack | status | sitemap | news | custom
+                  shopify_reviews | trustpilot_reviews | trustradius_reviews |
+                  gartner_reviews | playstore_reviews | linkedin | twitter |
+                  github_repo | tech_stack | status | sitemap | news | custom
+                  — shopify_reviews (2026-08-04, migration 0071) : reviews marchands du
+                    Shopify App Store, user-selectable pro+, URL requise
+                    (apps.shopify.com/{handle}). Page SSR lue en L0 via scrapeStatic —
+                    robots.txt d'apps.shopify.com ne déclare aucun groupe `User-agent: *`,
+                    donc aucune exception à la collection doctrine. Score + total viennent
+                    du JSON-LD AggregateRating de la page, jamais de la moyenne de la
+                    fenêtre capturée. Valeur `shopify` ajoutée à review_source.
                   — reviews+ (trustpilot/trustradius/gartner/playstore) : patch-32, enable
                     on-demand pro+, même chemin que g2/capterra. reddit : RETIRÉ (2026-07-14,
                     migration 0043) — Public Content Policy Reddit (usage commercial sans licence

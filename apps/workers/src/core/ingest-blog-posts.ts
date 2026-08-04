@@ -30,13 +30,14 @@ import {
   applyBlogGuards,
   planBlogRun,
   resolveSelfMatch,
-  hostOf,
   type ContentItemInput,
   type KeptMention,
   type SelfIdentity,
 } from "@outrival/scrapers/content";
 import { fetchPostTexts, POST_FETCH_CAP, POST_FETCH_MAX_ATTEMPTS } from "@outrival/scrapers/content-fetch";
 import { loggedAi } from "../lib/analytics";
+import { resolveSelfIdentity } from "../lib/self-identity";
+import { mergeNamedFromMentions } from "../lib/named-competitors";
 
 /**
  * Turn a captured blog into POSTS THAT HAVE BEEN READ (Content Intelligence v2 P2).
@@ -187,9 +188,11 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
   // A post on our own blog naming a competitor is us, not news about them: no
   // identity is resolved and no signal is emitted, but the rows are still written
   // (P4's editorial reads compare the two).
-  const self: SelfIdentity | null =
-    competitor.type === "self" ? null : await resolveSelfIdentity(competitor.orgId);
+  const identity = await resolveSelfIdentity(competitor.orgId);
+  const self: SelfIdentity | null = competitor.type === "self" ? null : identity;
   const named: Array<{ id: string; url: string; title: string; snippet: string }> = [];
+  /** Rivals these posts named (Positioning v2 P2), handed to the market map. */
+  const mentioned: Array<{ sourceType: string; url: string | null; mentions: string[] }> = [];
   /** Posts this run read as customer stories (P3), handed to the customers path. */
   const caseStudyItemIds: string[] = [];
   let enrichedCount = 0;
@@ -256,6 +259,13 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
         .where(eq(contentItems.id, post.id));
 
       enrichedCount++;
+      // Positioning Intelligence v2 P2 — the rivals this post named go into the
+      // market map. Already extracted and already paid for above: until now they
+      // sat in an array column nothing queried. Registry only, never a signal.
+      const mentions = guarded.mentions.slice(0, MAX_MENTIONS_PER_POST).map((m) => m.name);
+      if (mentions.length > 0) {
+        mentioned.push({ sourceType: "blog", url: post.url, mentions });
+      }
       // Content Intelligence v2 P3 — a post the model just read as a customer story
       // is one, and the customers path knows what to do with it. The URL goes over,
       // not the text: that job re-reads the page itself, so what it stores as a
@@ -283,6 +293,14 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
     });
   }
 
+  // Positioning Intelligence v2 P2 — merge those mentions into the market map.
+  // Before the signals, because it emits none of its own: who a company writes
+  // about is a fact about their positioning, not an event.
+  const mapped = await mergeNamedFromMentions(competitor.id, mentioned, {
+    self: identity,
+    owner: { name: competitor.name, url: competitor.url },
+  });
+
   // ── Signal ──────────────────────────────────────────────────────────────────
   let emitted = 0;
   for (const post of named) {
@@ -300,6 +318,7 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
     fetched: fetched.length,
     enriched: enrichedCount,
     caseStudies: caseStudyItemIds.length,
+    mapped,
     emitted,
     pivoted,
   });
@@ -308,6 +327,7 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
     inserted,
     fetched: fetched.length,
     enriched: enrichedCount,
+    mapped,
     emitted,
     pivoted,
   };
@@ -362,39 +382,6 @@ export async function insertItems(
     // date is not reported as a publication.
     .returning({ id: contentItems.id, isNew: sql<boolean>`xmax = 0` });
   return rows.filter((r) => r.isNew).length;
-}
-
-/**
- * Who this workspace is, as a competitor's post could refer to it: the names it
- * goes by and the domains it owns. Multi-SKU workspaces carry one self-competitor
- * per product, so all of them count — a post naming the second SKU is naming the
- * user just as much as one naming the first.
- */
-async function resolveSelfIdentity(orgId: string): Promise<SelfIdentity> {
-  const [org, selves] = await Promise.all([
-    db.query.organizations.findFirst({
-      where: eq(organizations.id, orgId),
-      columns: { name: true, productUrl: true },
-    }),
-    db
-      .select({ name: competitors.name, url: competitors.url })
-      .from(competitors)
-      .where(
-        and(
-          eq(competitors.orgId, orgId),
-          eq(competitors.type, "self"),
-          isNull(competitors.deletedAt),
-        ),
-      ),
-  ]);
-
-  const brands = [org?.name, ...selves.map((s) => s.name)].filter(
-    (b): b is string => Boolean(b?.trim()),
-  );
-  const domains = [org?.productUrl, ...selves.map((s) => s.url)]
-    .map((u) => hostOf(u))
-    .filter((d): d is string => Boolean(d));
-  return { brands, domains };
 }
 
 /**

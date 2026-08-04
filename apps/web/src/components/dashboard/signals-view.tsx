@@ -45,7 +45,8 @@ import {
   SignalsBriefRow,
   SignalsBriefPanel,
 } from "./signals-brief";
-import { SignalRow } from "./signal-row";
+import { SignalRow, FoldRow } from "./signal-row";
+import { CatchUpBanner } from "./signals-catch-up";
 import { EmptyState } from "./empty-state";
 import { SampleBanner } from "./sample-banner";
 import { ShortcutsHelp } from "./shortcuts-help";
@@ -53,6 +54,7 @@ import { ListRowsSkeleton } from "./skeletons";
 import { ListError } from "@/components/outrival/list-error";
 import { useListKeyboardNav } from "@/hooks/use-list-keyboard-nav";
 import { useSampleMode } from "@/hooks/use-sample-mode";
+import { useSignalsGroup } from "@/hooks/use-signals-group";
 import { getSampleData, getSampleSignalDetail } from "@/lib/sample-data";
 
 // The synthetic list row for the AI brief. It sits above the feed and opens in
@@ -67,6 +69,80 @@ function dayGroup(iso: string): { key: string; label: string } {
     label: isToday(d) ? "Today" : isYesterday(d) ? "Yesterday" : format(d, "MMM d"),
   };
 }
+
+// Folding near-duplicates ("Fold similar"). Two rules keep it honest, and they are
+// the reason the first attempt at this (patch-26, collapsed by `batchedIntoId` in
+// the list) had to be turned off:
+//   1. a fold NEVER spans two competitors — it has to read as one sentence;
+//   2. an urgent signal is never folded away — critical/high always get their row.
+// The trigger is redundancy, not volume: a big feed of distinct signals is a big
+// read either way, and folding it would hide information rather than compress it.
+const FOLD_MIN = 3;
+const FOLD_WINDOW_MS = 7 * 24 * 3600_000;
+
+type FeedRow =
+  | { kind: "signal"; signal: Signal }
+  | { kind: "fold"; key: string; summary: string | null; signals: Signal[] };
+
+// A server batch (same key across every page) wins over the client key, so a fold
+// survives pagination: a member landing on page 3 joins the fold already on screen.
+function foldKeyOf(s: Signal): string {
+  return s.batchedIntoId
+    ? `batch:${s.batchedIntoId}`
+    : `sim:${s.competitorId}:${s.category}`;
+}
+
+function buildFeedRows(items: Signal[]): FeedRow[] {
+  const rows: FeedRow[] = [];
+  // The fold currently open for a key, plus the time it is anchored on. A run that
+  // outgrows the window starts a new fold instead of stretching across a quarter.
+  const open = new Map<string, { row: Extract<FeedRow, { kind: "fold" }>; anchor: number }>();
+
+  for (const signal of items) {
+    const sev = signal.severityOverride ?? signal.severity;
+    if (sev === "critical" || sev === "high") {
+      rows.push({ kind: "signal", signal });
+      continue;
+    }
+    const key = foldKeyOf(signal);
+    const at = new Date(signal.createdAt).getTime();
+    const current = open.get(key);
+    if (current && Math.abs(at - current.anchor) <= FOLD_WINDOW_MS) {
+      current.row.signals.push(signal);
+      continue;
+    }
+    // The anchor's id keys the fold, so two runs of the same competitor+category
+    // can't collide on one React key.
+    const row: Extract<FeedRow, { kind: "fold" }> = {
+      kind: "fold",
+      key: `${key}:${signal.id}`,
+      summary: null,
+      signals: [signal],
+    };
+    rows.push(row);
+    open.set(key, { row, anchor: at });
+  }
+
+  // A fold of two claims a grouping over rows the reader could have just read.
+  // Below the threshold it unfolds back into plain rows, in place.
+  const out: FeedRow[] = [];
+  for (const row of rows) {
+    if (row.kind !== "fold") {
+      out.push(row);
+    } else if (row.signals.length < FOLD_MIN) {
+      for (const signal of row.signals) out.push({ kind: "signal", signal });
+    } else {
+      out.push({
+        ...row,
+        summary: row.signals.find((s) => s.batchSummary)?.batchSummary ?? null,
+      });
+    }
+  }
+  return out;
+}
+
+// Backlog past which the list leads with the catch-up strip instead of row 1.
+const CATCH_UP_UNREAD = 15;
 
 function parseSet(s: string | null): Set<string> {
   if (!s) return new Set();
@@ -96,14 +172,22 @@ export function SignalsView() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const lastSelectedRef = useRef<string | null>(null);
+  // Folds are closed by default (that is the point) and their open state is
+  // client-only, like `collapsed`. Dismissing the catch-up strip lasts the visit.
+  const [expandedFolds, setExpandedFolds] = useState<Set<string>>(new Set());
+  const [catchUpDismissed, setCatchUpDismissed] = useState(false);
 
   const focusId = searchParams.get("focus");
   const quickView = (searchParams.get("view") as QuickView) || "all";
+  // Grouping is a display preference the reader keeps between visits (?group=
+  // alone died the moment they navigated away). A mode named in the URL still
+  // wins, so deep links and shared links render what they say.
+  const [storedGroup, setStoredGroup] = useSignalsGroup();
   const group = (GROUP_MODES as readonly string[]).includes(
     searchParams.get("group") ?? "",
   )
     ? (searchParams.get("group") as GroupMode)
-    : "none";
+    : storedGroup;
   const sev = useMemo(() => parseSet(searchParams.get("severity")) as Set<Sev>, [searchParams]);
   const cat = useMemo(() => parseSet(searchParams.get("category")), [searchParams]);
   const comp = useMemo(() => parseSet(searchParams.get("competitor")), [searchParams]);
@@ -120,6 +204,16 @@ export function SignalsView() {
       router.replace(qs ? `?${qs}` : "?", { scroll: false });
     },
     [router, searchParams],
+  );
+
+  // Picking a grouping writes both: storage (so it survives leaving the page) and
+  // the URL (so the current link still describes what is on screen).
+  const setGroup = useCallback(
+    (mode: GroupMode) => {
+      setStoredGroup(mode);
+      setParam({ group: mode === "none" ? null : mode });
+    },
+    [setStoredGroup, setParam],
   );
 
   // Debounced search: type into local state for instant feedback, but write the URL
@@ -237,7 +331,15 @@ export function SignalsView() {
   async function markRead(id: string) {
     mutateSignals((prev) => prev.map((s) => (s.id === id ? { ...s, isRead: true } : s)));
     if (sample) return;
-    await api.markSignalRead(id);
+    try {
+      await api.markSignalRead(id);
+    } catch {
+      // Revert, or the row reads "read" until the next poll contradicts it — and
+      // selectRow fires this without awaiting, so an uncaught rejection would be
+      // silent. Mark-unread below has always done this.
+      mutateSignals((prev) => prev.map((s) => (s.id === id ? { ...s, isRead: false } : s)));
+      toast.error("Couldn't mark read. Try again.");
+    }
   }
 
   async function markUnread(id: string) {
@@ -340,13 +442,11 @@ export function SignalsView() {
     });
   }, [signals, sample, sev, cat, comp, quickView, query]);
 
-  // One signal per row and exactly ONE signal in the detail — batch collapsing is
-  // intentionally disabled. It grouped signals by `batchedIntoId`, which could pile
-  // several (even unrelated, cross-competitor) signals into the detail pane; the feed
-  // must always open a single signal. `BatchRow` stays in signal-row.tsx for the day
-  // batching is re-enabled, but nothing renders it today.
+  // Sectioned grouping (competitor / day). "similar" doesn't section the list, it
+  // folds rows inside it (feedRows below), so it takes the flat single-group shape.
   const groups = useMemo<{ key: string; label: string; items: Signal[] }[]>(() => {
-    if (group === "none") return [{ key: "__all", label: "", items: filtered }];
+    if (group === "none" || group === "similar")
+      return [{ key: "__all", label: "", items: filtered }];
     const map = new Map<string, { key: string; label: string; items: Signal[] }>();
     const order: string[] = [];
     for (const sig of filtered) {
@@ -365,18 +465,51 @@ export function SignalsView() {
     return order.map((k) => map.get(k)!);
   }, [filtered, group]);
 
+  // The list as rendered in "Fold similar": signal rows, with runs of near-duplicates
+  // collapsed into one fold row. Computed in every mode, because `foldedAway` is what
+  // tells the catch-up strip whether folding would buy the reader anything.
+  const feedRows = useMemo(() => buildFeedRows(filtered), [filtered]);
+  const foldedAway = useMemo(
+    () =>
+      feedRows.reduce(
+        (n, r) => (r.kind === "fold" ? n + r.signals.length - 1 : n),
+        0,
+      ),
+    [feedRows],
+  );
+
+  function toggleFold(key: string) {
+    setExpandedFolds((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   // Master-detail nav order. Selection (j/k or click) drives the right pane; no
   // inline expansion to traverse. Runs over the VISIBLE rows only, so j/k skips
-  // rows hidden inside a collapsed group. The brief leads when there is one.
+  // rows hidden inside a collapsed group or a closed fold. The brief leads when
+  // there is one. A fold row is NOT in here: it's a disclosure, not a signal, and
+  // landing on it would empty the detail pane. It stays reachable by Tab (a plain
+  // button in the list, like the group headers).
   const navIds = useMemo(() => {
     const out: string[] = [];
     if (brief) out.push(BRIEF_ID);
+    if (group === "similar") {
+      for (const row of feedRows) {
+        if (row.kind === "signal") out.push(row.signal.id);
+        else if (expandedFolds.has(row.key))
+          for (const sig of row.signals) out.push(sig.id);
+      }
+      return out;
+    }
     for (const g of groups) {
       if (group !== "none" && collapsed.has(g.key)) continue;
       for (const sig of g.items) out.push(sig.id);
     }
     return out;
-  }, [groups, collapsed, group, brief]);
+  }, [groups, collapsed, group, brief, feedRows, expandedFolds]);
 
   // Selectable ids = visible signal rows (the brief isn't a signal to act on).
   const selectableIds = useMemo(
@@ -984,7 +1117,15 @@ export function SignalsView() {
             selecting={selectionActive || isChecked}
             selected={selectedId === id}
             tabStop={tabStopId === id}
-            onFocus={() => setFocusedId(id)}
+            // Selecting on FOCUS, not only on click: on mobile the detail opens as
+            // `fixed inset-0` over the list, so the row under the finger is covered
+            // between mousedown and mouseup and the browser retargets the click to a
+            // common ancestor — onSelect never fired, and the signal was never marked
+            // read. Focus lands before that reflow. Both handlers stay: WebKit does
+            // not focus a <button> on tap (so click is the one that fires there, and
+            // nothing moves to swallow it), and selectRow is idempotent — the second
+            // pass sees isRead and skips the PATCH.
+            onFocus={() => selectRow(id)}
             onSelect={() => selectRow(id)}
           />
         </div>
@@ -1064,6 +1205,7 @@ export function SignalsView() {
             searchInput={searchInput}
             onSearchInput={setSearchInput}
             setParam={setParam}
+            onGroupChange={setGroup}
             onToggleFilter={toggleInSet}
             onClearFilters={clearFilters}
             currentFilters={currentFilters}
@@ -1072,6 +1214,24 @@ export function SignalsView() {
             onMarkAllRead={markAllRead}
             onShowShortcuts={() => setHelpOpen(true)}
           />
+
+          {/* Catch-up: a backlog is a volume problem, not a redundancy one, so it
+              gets its own answer above the list rather than more grouping inside
+              it. Only where an unread count is what the reader came for. */}
+          {signals !== null &&
+            !catchUpDismissed &&
+            quickCounts.unread >= CATCH_UP_UNREAD &&
+            (quickView === "all" || quickView === "unread") && (
+              <CatchUpBanner
+                unread={quickCounts.unread}
+                brief={brief}
+                foldable={group === "similar" ? 0 : foldedAway}
+                onReadBrief={() => selectRow(BRIEF_ID)}
+                onFold={() => setGroup("similar")}
+                onMarkAllRead={markAllRead}
+                onDismiss={() => setCatchUpDismissed(true)}
+              />
+            )}
 
           <div
             role="listbox"
@@ -1111,7 +1271,35 @@ export function SignalsView() {
                     onSelect={() => selectRow(BRIEF_ID)}
                   />
                 )}
-                {group === "none" ? (
+                {group === "similar" ? (
+                  <AnimatePresence initial={false} mode="popLayout">
+                    {feedRows.map((row) =>
+                      row.kind === "signal" ? (
+                        renderRow(row.signal)
+                      ) : (
+                        <motion.div
+                          key={row.key}
+                          role="presentation"
+                          {...feedItemMotion}
+                        >
+                          <FoldRow
+                            signals={row.signals}
+                            summary={row.summary}
+                            expanded={expandedFolds.has(row.key)}
+                            onToggle={() => toggleFold(row.key)}
+                          />
+                          {/* Expansion is INLINE: the members become ordinary rows,
+                              each opening on its own in the detail pane. */}
+                          {expandedFolds.has(row.key) && (
+                            <div className="ml-4 mt-0.5 flex flex-col gap-0.5 border-l border-border pl-1.5">
+                              {row.signals.map(renderRow)}
+                            </div>
+                          )}
+                        </motion.div>
+                      ),
+                    )}
+                  </AnimatePresence>
+                ) : group === "none" ? (
                   <AnimatePresence initial={false} mode="popLayout">
                     {groups[0]?.items.map(renderRow)}
                   </AnimatePresence>

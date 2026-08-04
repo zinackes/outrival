@@ -2075,3 +2075,316 @@ présentes, valeurs d'enum `roadmap_shift` + `integration_catalog` présentes.
   entièrement — comportement voulu, pas une panne.
 
 **La card « Content — Intelligence v2 » est COMPLÈTE** (P1 → P5).
+
+---
+
+### 2026-08-02 — Positioning Intelligence v2, P1 (messaging & claims) — ~1 session
+
+**Objectif** : matérialiser la timeline messaging depuis les snapshots existants,
+surfacer enfin `numeric_claims`, enrichir le fact block homepage avec le h1
+before/after, câbler `claim_milestone` proprement. Bloc 4 du chantier « diff engine
+→ knowledge engine ». P1 sur 5 — P2 à P5 (market map, ICP, tab v2, Share of Model)
+NON touchées.
+
+**Le constat en une phrase** : ~80% de la donnée était déjà capturée, 0% assemblée.
+`parseHomepageStructure` lit le hero (h1 / subheadline / CTAs) depuis patch-16 et la
+seule chose qui l'a jamais relu dans le temps, c'est un endpoint qui recollapsait 400
+snapshots à chaque ouverture d'onglet. `numeric_claims` se remplit depuis patch-17 et
+n'a JAMAIS été affiché nulle part.
+
+**Réalisé** :
+- **Table `messaging_versions`** (migration 0071) : une ligne par WORDING DISTINCT,
+  datée de la capture où il est APPARU (pas de la dernière qui le portait — sinon deux
+  versions consécutives se datent du jour où on les a vues et la paire se lit comme
+  une réécriture qui n'a pas eu lieu). Unique `(competitor, captured_at)` : c'est ce
+  qui rend le backfill idempotent.
+- **La dérivation part dans `@outrival/shared`** (`positioning.ts`). Elle vivait dans
+  l'API et a maintenant TROIS appelants (fact sheet, writer live, backfill) ; son
+  propre commentaire disait déjà pourquoi : une dérive dans la dérivation se lit
+  comme une dérive dans LEUR messaging.
+- **Écriture live** dans `scrape-monitor`, sur la structure que la capture a déjà
+  parsée — zéro re-parse, zéro re-scrape. Gatée sur une capture COMPLÈTE : une SPA qui
+  sert son error boundary parse en une structure QUI A un hero, et l'enregistrer
+  daterait un repositionnement du jour où une capture a cassé.
+- **Backfill one-shot** (`pnpm backfill:messaging`, dry-run par défaut) : relit la
+  chaîne de snapshots, structure stockée d'abord, HTML R2 re-parsé pour les captures
+  d'avant patch-16 (capé). Le travail vit dans `lib/messaging-backfill.ts` pour être
+  testable contre un vrai Postgres.
+- **Fact block homepage** (nouveau `kind: "positioning"`) : h1 / subheadline
+  before→after + le mouvement de CTA + depuis quand l'ancien wording tenait, et les
+  claims qui ont bougé **dans les mots que la page a imprimés**, avec leur série.
+- **`claim_milestone` câblé, pas doublé** : le chemin d'émission EXISTE déjà
+  (`numeric_claim_changed`, |variation| > 20%). Il porte maintenant
+  `rawTextBefore`/`rawTextAfter` verbatim + le seuil rond franchi
+  (`crossesRoundMilestone`). Aucun signal nouveau.
+- **Endpoints** : `GET /:id/messaging-timeline` (paginé sur `capturedAt`, pas sur un
+  offset — les lignes ne s'ajoutent qu'en tête) et `GET /:id/claims` (dédup par
+  `(pattern, unit, context)`, dernière valeur + série). Consommés par la tab en P4.
+- **`positioning-history` bascule sur la table**, shape de réponse INCHANGÉE, avec
+  repli sur le walk de snapshots tant que la table porte moins de 2 versions.
+
+**Décisions à connaître** :
+1. **Le cosmétique est normalisé, pas ignoré** : casse, ponctuation et symboles sont
+   retirés de la clé de version. « Ship faster, together. » → « Ship Faster Together »
+   n'ouvre rien.
+2. **Les `valueProps` ne sont PAS dans la clé** (mais sont stockés). Les headings de
+   section sont renommés en permanence sur des pages dont le hero ne bouge pas.
+   Conséquence assumée : une édition de value-prop seule n'ouvre plus de version —
+   avant, elle en ouvrait une.
+3. **Pas de cooldown sur `claim_milestone`, et c'est délibéré** : le détecteur compare
+   à la DERNIÈRE VALEUR OBSERVÉE, donc un chiffre qui bouge une fois tire une fois et
+   la nouvelle valeur devient immédiatement la baseline. Un claim posé à 12 000 ne peut
+   pas re-annoncer le franchissement de 10 000.
+4. **Le premier claim observé d'un concurrent ne tire jamais** (`prev === undefined`
+   → skip) : c'était déjà le comportement, c'est maintenant testé et commenté.
+
+**Fichiers** : `packages/shared/src/positioning.ts` (+test) ·
+`packages/db/src/schema/messaging-versions.ts` + migration `0071` ·
+`apps/workers/src/lib/{messaging-versions,messaging-backfill,claim-milestone}.ts` (+2
+tests) · `apps/workers/src/scripts/backfill-messaging-versions.ts` ·
+`apps/workers/src/core/scrape-monitor.ts` · `apps/workers/src/lib/analytics.ts` ·
+`apps/api/src/lib/signal-facts.ts` · `apps/api/src/routes/competitors.ts` (+test) ·
+`apps/web/src/{lib/api.ts,components/outrival/signal-facts.tsx}`.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · shared 799 ✓ (+15) · scrapers 1013 ✓ ·
+workers 301 ✓ (+16) · api 312 ✓ (+14) · web 175 ✓. Les tests backfill et fact block
+tournent contre un vrai Postgres in-process (PGlite + migrations réelles). **Zéro appel
+IA ajouté** — toute la phase est déterministe, `ai_runs` inchangé.
+
+**Le test qui compte** : « le backfill n'écrit RIEN d'autre que `messaging_versions` » —
+compte de `changes`, `signals` et `snapshots` avant/après sur trois ans de captures
+reconstruites. Un timeline reconstruit depuis l'archive ne doit jamais annoncer, trois
+ans plus tard, qu'une boîte s'est repositionnée.
+
+**Reste côté humain** :
+- Migration 0071 : PAS appliquée (ni dev, ni prod). `when` = 1785684810244, au-dessus de
+  0070 — pas de skew de journal cette fois.
+- Lancer `pnpm --filter @outrival/workers backfill:messaging` (dry run d'abord) APRÈS la
+  migration : sans lui la timeline démarre vide et `positioning-history` reste sur son
+  repli snapshots.
+- Déployer api + web + workers.
+- P2 → P5 non entamées. P4 exige une maquette artifact avant tout câblage (décision 6
+  de la card).
+
+---
+
+### 2026-08-04 — Positioning Intelligence v2 — **P2 : market map** (`named_competitors`, `new_comparison_target`, croisement « qui les nomme »)
+
+**Objectif** : le registre « qui ils attaquent ». Le détecteur sitemap savait depuis
+sitemap v2 qu'une page `/vs/` était apparue et ne posait qu'une question dessus — est-ce
+que le slug nomme le LECTEUR. Ce cas-là est un critical et reste intact. Tout le reste
+était jeté, alors que `/vs/klue` est une boîte qui dit en public, et exprès, contre qui
+elle pense perdre ses deals. Content P2 stockait la même matière depuis les posts
+(`content_items.competitors_named`) sans rien pour la ranger.
+
+**Réalisé** :
+- **`named_competitors`** (migration `0072`) — le 3e membre de la famille
+  `known_customers` / `known_integrations` : même normaliseur conservateur, même règle
+  insert-only, même premier passage muet. Clé `(competitor, name_normalized, source)` ;
+  `named_domain` rempli UNIQUEMENT si le slug EST un domaine, jamais deviné.
+- **Lecture sitemap, zéro fetch** (`@outrival/scrapers/positioning`) : `/vs/X`,
+  `/versus/X`, `/compare/X`, `/comparison/X`, `/alternatives/X`, `/X-alternative(s)`,
+  et le segment terminal `A-vs-B` qui nomme **les deux** côtés. Slug prettifié, mots de
+  ≤2 lettres en majuscules (« hr » → « HR »).
+- **Probe hub, ≤3 GET** : `/vs`, `/compare`, `/alternatives`, sondés une fois puis
+  cachés — **le MISS aussi**, sinon un concurrent sans hub paie la sonde chaque semaine.
+  Seuls les LIENS sont lus, via les mêmes patterns d'URL. Jamais la prose : une page de
+  comparaison est un mur de noms de produits dans des phrases, et le registre est
+  permanent.
+- **Merge `content_items.competitors_named`** → sources `blog` / `docs`, **display
+  only, jamais de signal**. Ces mentions étaient déjà extraites et déjà payées par
+  Content P2 : coût marginal nul. + rattrapage one-shot
+  `pnpm backfill:named-competitors` (dry-run par défaut, zéro réseau, zéro signal).
+- **`new_comparison_target`** — `content` / **medium**, groupé par run, ancré sur le
+  monitor `comparison_page` existant. Fact block `comparison_targets` : cibles, URLs
+  exactes, dates. Renderer web inclus.
+- **Croisement « qui les nomme »** : `namedBy()` + `GET /:id/market-map`.
+  **AUCUNE UI** — la tab arrive en P4.
+
+**Décisions à connaître** :
+1. **Pour X ≠ user, le medium REMPLACE le high.** Une nouvelle `/vs/klue` déclenchait
+   déjà un `content/high` par URL (« a comparison page appeared »). Émettre les deux,
+   c'était la même nouvelle deux fois sur la route la plus fréquente. `routeComparisonUrl`
+   partage les pages : **`attacks_you`** → le critical déterministe, INCHANGÉ ·
+   **`market_map`** → le medium nommé · **`unnamed_page`** (un hub `/compare` nu, un slug
+   générique) → garde le high générique, sinon il sortirait en silence.
+2. **Le marqueur de baseline est un STAMP, pas un compte de lignes.** Un concurrent qui
+   ne publie aucune page de comparaison garde un registre vide pour toujours : avec un
+   compte, chaque run serait « le premier », et le jour où ils publient leur toute
+   première `/vs/` — la plus intéressante qu'ils publieront jamais — elle passerait pour
+   du back catalogue. (`competitors.metadata.namedCompetitorsBaselinedAt`.)
+3. **La dédup du signal est par NOM, à vie, et en deux moitiés** : `pageNamesHeld()` lu
+   AVANT l'écriture (une cible qui gagne une 2e forme d'URL est une 2e ligne, pas une 2e
+   nouvelle) + `signalledAt` estampillé sur toutes les lignes du nom. Une mention blog
+   laisse `signalledAt` null **exprès** : le post a dit leur nom, il n'a pas construit
+   une page pour les affronter, donc il ne consomme pas l'annonce que le front mérite.
+4. **Deux exclusions, deux tests différents.** Le LECTEUR est vérifié largement
+   (`targetIsSelf`, avec le `slugMentionsBrand` du chemin critical, sans stoplist) : un
+   raté y filerait le produit du user comme rival de la boîte qui l'attaque. Le PUBLIEUR
+   est vérifié étroitement (`targetIsOwner`, nom exact ou domaine) : un substring ferait
+   qu'un concurrent nommé « Rival » avale toutes ses pages contre « Rivalytics ».
+   `/compare/crayon-vs-klue` sur crayon.co nomme son propre auteur — sans ça la map dit
+   « Crayon concurrence Crayon ».
+5. **Le stoplist mots-courants s'applique au CROISEMENT, pas au slug.** Sur `/vs/linear`
+   le slug EST un nom de produit par construction ; dans `matchTrackedCompetitor` en
+   revanche, sans lui, chaque `/compare/flow` du web serait rapporté comme nommant le
+   rival « Flow » du workspace.
+
+**Fichiers** : `packages/scrapers/src/positioning/{comparison-targets,target-identity,index}.ts`
+(+test) · `packages/db/src/schema/named-competitors.ts` + migration `0072` ·
+`apps/workers/src/lib/{named-competitors,self-identity}.ts` ·
+`apps/workers/src/core/{ingest-named-competitors,scrape-monitor,ingest-blog-posts}.ts` (+test) ·
+`apps/workers/src/scripts/backfill-named-competitors.ts` · `packages/queue/src/jobs.ts` ·
+`apps/workers/src/queue/handlers.ts` · `apps/api/src/lib/{market-map,signal-facts}.ts` ·
+`apps/api/src/routes/competitors.ts` (+test) ·
+`apps/web/src/{lib/api.ts,components/outrival/signal-facts.tsx}`.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · scrapers 1044 ✓ (+31) · workers 337 ✓ (+19) ·
+api 345 ✓ (+8) · shared 808 ✓ · ai 214 ✓ · web 187 ✓ · db 5 ✓. **Zéro appel IA ajouté** —
+aucun de ces fichiers n'importe `@outrival/ai`, `ai_runs` inchangé.
+
+**Le test qui compte** : « une ligne appartenant à un AUTRE workspace ne sort jamais »
+(décision 2 de la card). Deux workspaces suivent le même rival, l'autre a une page contre
+lui ; le test vérifie que `namedBy` renvoie vide **et** que la ligne est bien là quand
+c'est l'autre org qui demande. Le filtre org est un `WHERE` sur le PROPRIÉTAIRE de la
+ligne, jamais un post-filtre : un post-filtre est à un refactor de disparaître, et
+l'échec est silencieux — la forme de la réponse ne change pas, seulement à qui
+appartiennent les données.
+
+**Vérifié en dev sur fixture réelle** (PGlite, enqueues interceptés, formes d'URL
+réellement publiées par les vendeurs de competitive intelligence) : semaine 1 → 4 cibles
+au registre, **0 signal** ; semaine 2 → `content/medium` « New comparison target —
+/vs/contify », `/alternatives/klue` muet (déjà connu par page), `/vs/outrival` et
+`/compare/crayon-vs-klue` correctement hors registre.
+
+**Appliqué en PROD le 2026-08-04** (go explicite) :
+- Pré-flight ledger d'abord — nouveau `pnpm --filter @outrival/db db:preflight`,
+  read-only, qui compare le ledger prod au journal committé **en hachant chaque `.sql`**
+  et sort APPLIED / DRIFT / PENDING. Un compte de lignes a l'air sain pendant qu'un hash
+  a dérivé, et un hash dérivé fait rejouer une migration ou sauter silencieusement celle
+  d'avant. Verdict avant : `0 drift, 1 pending (0072)`. Après : `73/73, 0 pending`.
+- Migration `0072` appliquée via le migrator runtime (`src/migrate.ts`, le même que le
+  pré-deploy Coolify) sur l'endpoint **direct** — jamais `-pooler`, qui fait pendre le
+  migrator sur du DDL. Vérifié structurellement : 10 colonnes, 4 index, la FK cascade.
+- `backfill:named-competitors` : dry run puis `--apply`. 243 concurrents scannés,
+  **1 item, 5 mentions, 5 lignes écrites, 0 signal** — toutes `source=blog`,
+  `signalled_at` null. C'est le volume honnête : le lecteur blog de Content P2 n'a encore
+  enrichi qu'un post en prod.
+
+**Attention — la PROD est en avance sur le DEV sur 0072** (même inversion que 0067 en
+Content P3) : lancer `pnpm db:migrate` en local avant de retoucher au schéma, sinon le
+prochain `db:generate` diffe contre un snapshot qui n'a pas la table.
+
+**Reste côté humain** :
+- Déployer api + web + workers (le code n'est pas encore en prod ; la table est là, rien
+  ne l'écrit tant que les workers tournent l'ancien code).
+- Relancer le backfill après le déploiement des workers : le lecteur blog enrichira
+  d'autres posts, et leurs mentions n'entrent dans la map qu'au run suivant.
+- P3 (ICP / `audience_pages`), P4 (tab — maquette artifact obligatoire, décision 6) et
+  P5 (Share of Model) non entamées.
+
+---
+
+### 2026-08-04 — Positioning Intelligence v2 — **P3 : ICP** (`audience_pages`, `new_persona_page`, « déclaré vs prouvé »)
+
+**Objectif** : le registre ICP. Une boîte publie son ICP sous forme d'URLs —
+`/for/agencies` nomme un persona, `/industries/fintech` une verticale,
+`/use-cases/onboarding` un job — et jusqu'ici ces pages tombaient dans le tas générique
+« de nouvelles pages sont apparues » du sitemap, où « 12 URLs ajoutées » ne dit rien du
+marché qui vient de s'ouvrir. Ces pages coûtent cher à écrire et ne sont jamais publiées
+par accident : une nouvelle, c'est un segment que quelqu'un a décidé d'attaquer ce
+trimestre. Phase 100% déterministe — zéro appel IA ajouté.
+
+**Réalisé** :
+- **`audience_pages`** (migration `0074`) — `kind` fermé à trois
+  (`persona`|`industry`|`use_case`), `slug`, `display_name`, `is_canonical`,
+  `evidence_url`, `first_seen_at`, UNIQUE `(competitor_id, kind, slug)`. Insert-only,
+  baseline d'abord, une suppression n'écrit rien. Nouveau `source_type` `audience_page`
+  (ancre infra, `isActive=false`).
+- **Lecture sitemap, zéro fetch** (`packages/scrapers/src/positioning/audience-pages.ts`)
+  — table de mapping section → kind, EN/FR/DE, fermée : `/for` `/pour` → persona ·
+  `/industries` `/industry` `/secteurs` `/branchen` → industry · `/use-cases`
+  `/usecases` `/cas-d-usage` → use_case · `/solutions` `/solution` `/loesungen` →
+  use_case. Stoplist de chrome, un seul niveau de profondeur, prettify de P2.
+- **Probe index courte** — `/solutions`, `/use-cases`, `/industries`, `/for`, une fois
+  par concurrent, URL cachée sur `competitors.metadata` — le MISS aussi. Seuls les
+  LIENS sont lus, jamais la prose.
+- **`new_persona_page`** (`content`/medium) — groupé par run, TOUS KINDS CONFONDUS,
+  dédup à vie par `(competitor_id, kind, slug)`. Ancre `audience_page` dédiée.
+- **Endpoint `GET /competitors/:id/audience-profile`** — `personas[]`, `useCases[]`,
+  `industries.{declared,proven,both}`, badges `new` (< 30 j). Agrégation SQL.
+- **Fact block** `audience_pages` (kind + URL exacte + date) côté API et son rendu web.
+
+**Ce que l'écriture a révélé** :
+1. **`/solutions` est un USE CASE, pas un persona — choix assumé, tenu par un test.**
+   Les pages solutions sont nommées d'après un job à faire bien plus souvent que d'après
+   un acheteur (`/solutions/incident-response`, `/solutions/expense-management`). Une
+   page dans le mauvais des trois seaux connus est l'échec qu'on accepte ; une page dans
+   un seau que personne n'a défini, non — d'où le kind FERMÉ et le rejet pur des
+   sections inconnues (`/roles/`, `/verticals/`).
+2. **Le slug n'a pas la même forme selon le kind, et c'est le cœur de la phase.** Pour
+   persona/use_case c'est le slug d'URL — il n'y a rien à quoi le comparer. Pour
+   industry c'est la sortie de `resolveIndustry` (`@outrival/shared` industry-catalog),
+   le MÊME résolveur que `case_studies.customer_industry` de Content P3. Sans ça
+   `/industries/fin-tech` et une case study « Fintech » sont deux chaînes indépendantes
+   et l'intersection `both` est vide en permanence, en silence.
+3. **Un seul niveau de profondeur, exprimé dans la regex.** La capture s'arrête au slash
+   suivant, donc `/solutions/finance/banking` est la page FINANCE et pas un second
+   segment. Un préfixe de locale (`/en/industries/fintech`) ne cache pas la section
+   parce que la regex n'est pas ancrée au début.
+4. **Pas de colonne `signalled_at`, contrairement à P2 — et c'est démontrable.** La clé
+   du market map porte une dimension SOURCE (un rival vu sur une page `/vs/` puis dans
+   un post = deux lignes, une seule news), donc il lui fallait un tampon par nom. Ici la
+   clé EST `(kind, slug)` : `returning()` sur `onConflictDoNothing` est déjà la dédup à
+   vie, une deuxième ligne pour le même segment est impossible.
+5. **Les URLs d'audience quittent le tas du classifier**, comme les case studies et les
+   integrations avant elles. Routées vers les deux, elles seraient signalées une fois
+   comme « le sitemap a grossi de 12 pages » et une fois comme l'expansion ICP qu'elles
+   sont vraiment.
+
+**Fichiers** : `packages/scrapers/src/positioning/{audience-pages,index}.ts` (+test) ·
+`packages/db/src/schema/{audience-pages,monitors,index}.ts` + migration `0074` ·
+`packages/shared/src/{constants/sources,sources/catalog}.ts` ·
+`apps/workers/src/lib/audience-pages.ts` ·
+`apps/workers/src/core/{ingest-audience-pages,scrape-monitor}.ts` (+test) ·
+`packages/queue/src/jobs.ts` · `apps/workers/src/queue/handlers.ts` ·
+`apps/api/src/lib/{audience-profile,signal-facts}.ts` ·
+`apps/api/src/routes/competitors.ts` (+test) ·
+`apps/web/src/{lib/api.ts,lib/source-labels.ts,components/outrival/signal-facts.tsx}`.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · scrapers 1092 ✓ (+22) · workers 352 ✓ (+15) ·
+api 353 ✓ (+8) · shared 813 ✓ · ai 214 ✓ · web 187 ✓ · db 5 ✓. **Zéro appel IA ajouté** —
+aucun fichier de la phase n'importe `@outrival/ai`, `ai_runs` inchangé.
+
+**Le test qui compte** : « un slug de sitemap et un label de case study atterrissent sur
+le MÊME slug canonique ». `/industries/fin-tech` → `fintech`, `resolveIndustry("Fintech")`
+→ `fintech`. C'est la seule raison pour laquelle `both` peut contenir quoi que ce soit ;
+si l'un des deux côtés cesse de passer par le catalogue, l'échec ne change pas la forme
+de la réponse — l'intersection revient simplement vide.
+
+**Vérifié en dev sur fixture réelle** (PGlite, enqueues interceptés, formes d'URL
+réellement publiées par un vendeur de competitive intelligence) : semaine 1 → 7 segments
+au registre, **0 signal** (`/solutions` racine, `/for/index`,
+`/solutions/battlecards/templates`, `/vs/crayon` et `/customers/acme` tous correctement
+hors registre) ; semaine 2 → un seul `content/medium` « 2 new audience pages —
+/industries/fin-tech, /for/revenue-operations », fact block avec les URLs exactes, et
+`both = [fintech]` (page déclarée + 2 case studies) là où `software` reste déclaré-seul
+et `saas` prouvé-seul.
+
+**Ancre — interprétation à valider** : la consigne disait « change sitemap de la fenêtre
+sinon synthétique ». C'est l'ancre `audience_page` SYNTHÉTIQUE qui a été retenue, jamais
+le change du sitemap : celui-ci appartient déjà au classifier lexical et
+`signals.change_id` est unique, donc l'un des deux signaux disparaîtrait en silence
+(c'est la raison écrite noir sur blanc dans `editorial_shift`). Le repli « change réel de
+la fenêtre » de `roadmap_shift` ne s'applique pas ici : scrape-monitor défère le classify
+pour le roadmap, pas pour le sitemap.
+
+**Reste côté humain** :
+- Appliquer `0074` (pré-flight `pnpm --filter @outrival/db db:preflight` D'ABORD).
+  **Attention** : le DEV local n'a ni `0071`, ni `0072`, ni `0073`, ni `0074` — la PROD
+  est en avance sur `0072`.
+- Déployer api + web + workers.
+- Rien à rattraper côté sitemap : le premier run fait baseline. Les `case_studies`
+  existantes sont lues telles quelles par l'endpoint, zéro écriture nouvelle.
+- P4 (tab — maquette artifact obligatoire, décision 6) et P5 (Share of Model) non
+  entamées.

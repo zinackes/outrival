@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { computeTextDiff } from "@outrival/shared";
 import { extractContent } from "../lib/extract-content";
 import { extractStateIsland, isCannyHost, parseCannyPortal } from "./canny";
+import { parseCount, parseDomPortal } from "./dom";
 import { parseGenericPortal } from "./generic";
 import { matchProductboardPortal, parseProductboardPortal } from "./productboard";
 import { buildRoadmapDoc, entryLine, sortEntries, voteBand } from "./snapshot";
@@ -538,6 +539,148 @@ describe("vendor-agnostic portals", () => {
     // Never claims to know the size of a roadmap it read one page of.
     expect(out.text).toContain("entries listed on the page we can read");
     expect(out.text).toContain("[in review] Heap integration — votes 13+");
+  });
+});
+
+// --- the DOM adapter --------------------------------------------------------
+
+/**
+ * The portals that embed no payload at all. Both fixtures are REAL captures reduced
+ * to a few entries, and they cover the two layouts this adapter has to read:
+ *   userjot-board.html    — rows, status printed ON each card, zero <script> on the page
+ *   featureos-roadmap.html — columns, status printed ONCE as the column header
+ */
+const USERJOT_HTML = fixture("userjot-board.html");
+const USERJOT_URL = "https://feedback.nuelink.com/";
+const FEATUREOS_HTML = fixture("featureos-roadmap.html");
+const FEATUREOS_URL = "https://suggestions.buffer.com/roadmap";
+
+/**
+ * What that same portal serves at L0: its own nav, and a column of placeholders where
+ * the board goes. Reduced from the real capture, which repeats the placeholder 36
+ * times inside 212 KB of HTML.
+ */
+const FEATUREOS_SHELL = `<!doctype html><html><head><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(
+  { props: { props: { subdomain: "suggestions.buffer.com" } } },
+)}</script></head><body><nav><a href="/">Buffer</a><a href="/roadmap">Roadmap</a></nav>
+<div id="__next"><div>Exploring<span>0</span>${"<div>Loading content, please wait...</div>".repeat(
+  12,
+)}</div></div><script src="/_next/static/chunks/main.js"></script></body></html>`;
+
+describe("markup-only portals", () => {
+  test("reads a row board whose status sits on each card", () => {
+    const portal = portalOf(parseDomPortal(USERJOT_HTML, USERJOT_URL));
+    expect(portal.vendor).toBe("dom");
+    expect(portal.entries).toHaveLength(4);
+    expect(new Set(portal.entries.map((e) => e.status))).toEqual(
+      new Set(["planned", "in progress", "pending"]),
+    );
+    const top = portal.entries.find((e) => e.title === "Unified Inbox");
+    expect(top?.votes).toBe(75);
+    // The permalink is the identity, so the snapshot sorts on something the vendor owns.
+    expect(top?.id).toBe("https://feedback.nuelink.com/board/p/unified-inbox");
+  });
+
+  test("reads a column board whose status is only ever the column header", () => {
+    const portal = portalOf(parseDomPortal(FEATUREOS_HTML, FEATUREOS_URL));
+    expect(new Set(portal.entries.map((e) => e.status))).toEqual(
+      new Set(["exploring", "planned", "in progress", "beta", "released"]),
+    );
+    // "2.6K" is what the card prints; a vote band computed off 2 would be a lie.
+    expect(portal.entries.find((e) => e.title === "reddit")?.votes).toBe(2600);
+  });
+
+  test("an abbreviated count is read at its real magnitude", () => {
+    expect(parseCount("2.6K")).toBe(2600);
+    expect(parseCount("1,234")).toBe(1234);
+    expect(parseCount("3M")).toBe(3_000_000);
+    expect(parseCount("18")).toBe(18);
+    expect(parseCount("Planned")).toBeNull();
+  });
+
+  test("a listing with repeated links and no status is refused", () => {
+    // A blog index is this exact shape: same-shaped permalinks, a heading each. What
+    // it never carries is "Planned" on every row, and that is the whole distinction.
+    const blog = `<html><body><main>
+      ${["how-we-ship", "scaling-to-10k", "hiring-a-designer", "june-recap"]
+        .map((s) => `<article><a href="/blog/${s}"><h3>Post about ${s}</h3></a><span>Jun 3rd</span></article>`)
+        .join("")}
+    </main></body></html>`;
+    expect(parseDomPortal(blog, "https://acme.com/blog")).toEqual({
+      ok: false,
+      reason: "unparsable",
+    });
+  });
+
+  test("one heading above a list of links is not a board", () => {
+    // The column fallback reads the nearest label printed outside the cards. Applied
+    // to a page with a single "Roadmap" heading it would stamp every link "roadmap",
+    // which is why a header-derived status needs at least two distinct values.
+    const page = `<html><body><h2>Roadmap</h2><ul>
+      ${["alpha", "beta", "gamma", "delta"]
+        .map((s) => `<li><a href="/features/${s}"><h3>The ${s} feature page</h3></a></li>`)
+        .join("")}
+    </ul></body></html>`;
+    expect(parseDomPortal(page, "https://acme.com/")).toEqual({ ok: false, reason: "unparsable" });
+  });
+});
+
+describe("rendering a portal that served us its shell", () => {
+  const shellDeps = (over: Partial<RoadmapDeps> = {}): RoadmapDeps => ({
+    reachable: async () => true,
+    // Discovery reads the page, finds its own nav link to /roadmap, and stops there.
+    fetchHtml: async () => FEATUREOS_SHELL,
+    fetchPortalHtml: async () => ({ kind: "body", text: FEATUREOS_SHELL }),
+    fetchPortalApi: async () => ({ kind: "transient" }),
+    fetchRenderedHtml: async () => FEATUREOS_HTML,
+    ...over,
+  });
+
+  test("a shell the site calls its roadmap is re-read after a render", async () => {
+    const out = await scrape("c1", FEATUREOS_URL, {}, shellDeps());
+    expect(out.metadata.vendor).toBe("dom");
+    expect(out.metadata.entries).toBe(15);
+    expect(out.text).toContain("Publish to Meta Threads");
+  });
+
+  test("a refusal is never rendered — it is a refusal", async () => {
+    let rendered = 0;
+    const promise = scrape(
+      "c1",
+      FEATUREOS_URL,
+      {},
+      shellDeps({
+        fetchPortalHtml: async () => ({ kind: "denied" }),
+        fetchRenderedHtml: async () => {
+          rendered += 1;
+          return FEATUREOS_HTML;
+        },
+      }),
+    );
+    await expect(promise).rejects.toThrow("roadmap: portal_private");
+    expect(rendered).toBe(0);
+  });
+
+  test("a page carrying its own text is not rendered, whatever else it is", async () => {
+    // The guard that keeps a browser off every competitor without a portal: a
+    // marketing page reached through a "Roadmap" nav link is not a shell.
+    let rendered = 0;
+    const wordy = `<html><body><script>0</script><nav><a href="/roadmap">Roadmap</a></nav><main>${"Our product philosophy. ".repeat(400)}</main></body></html>`;
+    const promise = scrape(
+      "c1",
+      "https://acme.com/roadmap",
+      {},
+      shellDeps({
+        fetchHtml: async () => wordy,
+        fetchPortalHtml: async () => ({ kind: "body", text: wordy }),
+        fetchRenderedHtml: async () => {
+          rendered += 1;
+          return FEATUREOS_HTML;
+        },
+      }),
+    );
+    await expect(promise).rejects.toThrow("roadmap: no_roadmap_portal");
+    expect(rendered).toBe(0);
   });
 });
 

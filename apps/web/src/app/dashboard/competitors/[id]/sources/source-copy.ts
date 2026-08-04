@@ -38,6 +38,7 @@ const NOT_AVAILABLE: Partial<Record<SourceType, string>> = {
   changelog: "They don't publish a changelog.",
   trustpilot_public: "No Trustpilot profile for this domain.",
   appstore_reviews: "No App Store listing for this competitor.",
+  shopify_reviews: "No Shopify App Store listing for this competitor.",
   docs: "They don't publish public developer docs.",
 };
 

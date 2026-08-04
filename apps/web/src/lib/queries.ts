@@ -120,6 +120,26 @@ export function digestsQuery() {
   });
 }
 
+// The Monday brief still being collected. Its own query because it answers a
+// different question from the list ("what is coming" vs "what was written") and it
+// goes stale on its own clock — the list only changes once a week, this one moves
+// every time a signal lands.
+export function digestInProgressQuery() {
+  return queryOptions({
+    queryKey: ["digests", "inProgress"] as const,
+    queryFn: () => api.getDigestInProgress().then((r) => r.inProgress),
+  });
+}
+
+// The same week with its collected moves attached — its own key so the list page
+// never pays for the insights it does not render.
+export function digestInProgressDetailQuery() {
+  return queryOptions({
+    queryKey: ["digests", "inProgress", "detail"] as const,
+    queryFn: () => api.getDigestInProgress(true).then((r) => r.inProgress),
+  });
+}
+
 // Single digest — backs the /dashboard/digests/[id] reader route. Carries the
 // server-resolved section links (competitor + signal per move) and the period's
 // provenance alongside the row, so the reader can be a document with exits rather

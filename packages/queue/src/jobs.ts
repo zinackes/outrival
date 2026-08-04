@@ -64,7 +64,7 @@ export type ExtractJobsPayload = { snapshotId: string; competitorId: string };
 export type IngestContentItemsPayload = {
   snapshotId: string;
   competitorId: string;
-  sourceType: "changelog" | "roadmap";
+  sourceType: "changelog" | "roadmap" | "docs";
   /** Content Intelligence v2 P1 — the change row of the SAME capture, whose signal
    * routing scrape-monitor DEFERRED to this job: a deterministic breaking /
    * deprecation type owns the signal, otherwise the lexical classifier is the
@@ -73,6 +73,10 @@ export type IngestContentItemsPayload = {
   /** Whether the deferred change passed evaluateSignificance — i.e. worth a
    * lexical classify when no deterministic type turns up. */
   lexicalWorth?: boolean;
+  /** Docs only: the capture this one is compared against. A docs index states no
+   * dates, so a newly documented page is only knowable as the difference between
+   * two captures — with no predecessor the run is a baseline and writes nothing. */
+  previousSnapshotId?: string;
 };
 /** Content Intelligence v2 P2. No `changeId`: unlike the changelog, a blog capture
  * does NOT defer its signal routing — the lexical classifier keeps emitting its own
@@ -103,6 +107,29 @@ export type IngestCaseStudiesPayload = {
  * since /integrations/<slug> names an integration without any fetch at all.
  */
 export type IngestIntegrationsPayload = {
+  snapshotId: string;
+  competitorId: string;
+  urls?: string[];
+};
+/**
+ * Market-map reading (Positioning Intelligence v2 P2), enqueued off the sitemap
+ * branch. `urls` are EVERY comparison URL of the capture, not only the ones the diff
+ * added: a competitor added today has a back catalogue of `/vs/` pages, and the map
+ * is meant to show it from the first run.
+ */
+export type IngestNamedCompetitorsPayload = {
+  snapshotId: string;
+  competitorId: string;
+  urls?: string[];
+};
+/**
+ * ICP reading (Positioning Intelligence v2 P3), enqueued off the sitemap branch.
+ * `urls` are EVERY audience URL of the capture (persona / industry / use-case), not
+ * only the ones the diff added, for the reason the market map takes all of its own: a
+ * competitor added today has a back catalogue, and the ICP grid is meant to show it
+ * from the first run.
+ */
+export type IngestAudiencePagesPayload = {
   snapshotId: string;
   competitorId: string;
   urls?: string[];
@@ -306,8 +333,8 @@ export const mineJobFacts = defineJob<CompetitorRefPayload>("mine-job-facts", {
   expireInSeconds: 300,
 });
 // Content-item ingestion (Content Intelligence v2 P1), event-triggered per capture
-// off scrape-monitor for changelog / roadmap. Up to four batched model calls per
-// run, so it gets the same window mine-job-facts has rather than the 60s its
+// off scrape-monitor for changelog / roadmap / docs. Up to four batched model calls
+// per run, so it gets the same window mine-job-facts has rather than the 60s its
 // zero-AI siblings use.
 export const ingestContentItems = defineJob<IngestContentItemsPayload>("ingest-content-items", {
   expireInSeconds: 300,
@@ -333,6 +360,22 @@ export const ingestCaseStudies = defineJob<IngestCaseStudiesPayload>("ingest-cas
 export const ingestIntegrations = defineJob<IngestIntegrationsPayload>("ingest-integrations", {
   expireInSeconds: 300,
 });
+// Market-map reading (Positioning Intelligence v2 P2), event-triggered off the
+// sitemap branch. Zero AI and at most three GETs — the probe that finds the
+// comparison hub runs once per competitor and caches its answer, hit or miss — so it
+// gets the same short window its deterministic sibling uses.
+export const ingestNamedCompetitors = defineJob<IngestNamedCompetitorsPayload>(
+  "ingest-named-competitors",
+  { expireInSeconds: 300 },
+);
+// ICP reading (Positioning Intelligence v2 P3), event-triggered off the sitemap
+// branch. Zero AI and at most four GETs — the probe that finds the audience hub runs
+// once per competitor and caches its answer, hit or miss — so it gets the same short
+// window its deterministic siblings use.
+export const ingestAudiencePages = defineJob<IngestAudiencePagesPayload>(
+  "ingest-audience-pages",
+  { expireInSeconds: 300 },
+);
 // Hiring footprint detectors (Hiring Intelligence v2 P2), event-triggered per
 // competitor off extract-jobs. Pure SQL + pure functions, zero AI — same window as
 // its two deterministic siblings.

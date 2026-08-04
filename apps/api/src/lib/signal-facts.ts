@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, inArray, lte, sql as dsql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, lte, sql as dsql, type SQL } from "drizzle-orm";
 import {
   caseStudies,
   changes,
@@ -6,6 +6,9 @@ import {
   jobPostings,
   knownCustomers,
   knownIntegrations,
+  messagingVersions,
+  namedCompetitors,
+  audiencePages,
   postingFacts,
   techStackEntries,
 } from "@outrival/db";
@@ -149,6 +152,28 @@ export interface RoadmapRequestFact {
   toRaw: string;
 }
 
+/** One rival a competitor started pointing at (Positioning v2 P2). */
+export interface ComparisonTargetFact {
+  /** Prettified from the slug they published — "klue" → "Klue". */
+  name: string;
+  /** The exact page that names them. Null only for a mention with no permalink. */
+  evidenceUrl: string | null;
+  /** "YYYY-MM-DD" — when WE first saw them named, the only date a slug gives us. */
+  firstSeenAt: string | null;
+}
+
+/** One segment a competitor started publishing a page for (Positioning v2 P3). */
+export interface AudiencePageFact {
+  /** 'persona' | 'industry' | 'use_case' — a closed vocabulary of three. */
+  kind: string;
+  /** Prettified from the slug they published — "field-service" → "Field Service". */
+  displayName: string;
+  /** The exact page, so a claim about their ICP can be checked at its source. */
+  evidenceUrl: string | null;
+  /** "YYYY-MM-DD" — when WE first saw the page; a sitemap carries no date. */
+  firstSeenAt: string | null;
+}
+
 /** One integration a competitor lists that we had never seen it claim (P5). */
 export interface IntegrationFact {
   /** As the catalog wrote it, or its own listing slug title-cased. */
@@ -180,6 +205,36 @@ export interface VelocityFact {
   baselineAvg: number;
   direction: "accelerating" | "slowing";
   baseline: Array<{ month: string; count: number }>;
+}
+
+/** How a competitor described itself, before and after (Positioning v2 P1). */
+export interface MessagingFact {
+  h1Before: string | null;
+  h1After: string;
+  subheadlineBefore: string | null;
+  subheadlineAfter: string | null;
+  /** Both sides only when the CTA itself moved — an unchanged CTA is noise here. */
+  ctaBefore: string | null;
+  ctaAfter: string | null;
+  /** "YYYY-MM-DD" the previous wording first appeared, so the reader knows how
+   *  long it stood. Null when this is the first wording we ever recorded. */
+  previousSince: string | null;
+}
+
+/** One quantified claim that moved, in the words the page printed. */
+export interface ClaimFact {
+  /** "customers", "uptime" — the thing being counted. */
+  context: string;
+  /** VERBATIM spans, both sides: "10,000+ customers" → "15,000+ customers". */
+  before: string;
+  after: string;
+  /** Signed fractional move, as the detector computed it. */
+  variation: number;
+  /** The round number this crossed (10000, 1000000…), when it crossed one. */
+  milestone: number | null;
+  /** Every value we hold for this claim, oldest first — the mini timeline that
+   *  turns one jump into a trajectory. */
+  series: Array<{ observedAt: string; value: number; rawText: string }>;
 }
 
 /** One open role behind a salary band, with the range its own posting states. */
@@ -274,6 +329,20 @@ export type SignalFacts =
       alsoMoved: RoadmapRequestFact[];
     }
   | {
+      /** Rivals a competitor started publishing against (Positioning v2 P2). */
+      kind: "comparison_targets";
+      targets: ComparisonTargetFact[];
+      /** Names before the cap, so a truncated list can say what it is hiding. */
+      targetsTotal: number;
+    }
+  | {
+      /** Segments a competitor started publishing pages for (Positioning v2 P3). */
+      kind: "audience_pages";
+      pages: AudiencePageFact[];
+      /** Pages before the cap, so a truncated list can say what it is hiding. */
+      pagesTotal: number;
+    }
+  | {
       /** Integrations newly listed in a catalog (Content Intelligence v2 P5). */
       kind: "integrations";
       integrations: IntegrationFact[];
@@ -281,6 +350,15 @@ export type SignalFacts =
       integrationsTotal: number;
       /** The catalog page they were read off. */
       evidenceUrl: string | null;
+    }
+  | {
+      /** How a homepage signal's competitor describes itself, before and after,
+       *  and which of its quantified claims moved (Positioning v2 P1). Either
+       *  half can be absent — a hero rewrite with no claim move, or a claim move
+       *  under untouched copy, are both ordinary. */
+      kind: "positioning";
+      messaging: MessagingFact | null;
+      claims: ClaimFact[];
     }
   | {
       /** The two windows an `editorial_pivot` compared (Content Intelligence v2 P4). */
@@ -349,6 +427,12 @@ const MAX_CONTENT_ENTRIES = 12;
 // A wall refresh can add a dozen logos at once; the block names the win, it does
 // not reproduce the customers page.
 const MAX_CUSTOMER_FACTS = 12;
+// A push can open a front against several rivals at once; the block names them, it
+// does not reproduce their comparison hub.
+const MAX_COMPARISON_TARGET_FACTS = 10;
+// An ICP push can ship a whole vertical's worth of pages at once; the block names
+// the segments, it does not reproduce their solutions hub.
+const MAX_AUDIENCE_PAGE_FACTS = 12;
 // A catalog release can list a batch of connectors; the block names them, it does
 // not reproduce the catalog.
 const MAX_INTEGRATION_FACTS = 12;
@@ -638,7 +722,11 @@ async function editorialFacts(monitorId: string, detectedAt: Date): Promise<Sign
  * The sitemap source writes onto this same anchor with no `kind`, so those changes
  * fall through to null and render exactly as they do today.
  */
-async function namedYouFacts(monitorId: string, detectedAt: Date): Promise<SignalFacts> {
+async function comparisonAnchorFacts(
+  competitorId: string,
+  monitorId: string,
+  detectedAt: Date,
+): Promise<SignalFacts> {
   const [change] = await db
     .select({ rawDiff: changes.rawDiff })
     .from(changes)
@@ -646,6 +734,12 @@ async function namedYouFacts(monitorId: string, detectedAt: Date): Promise<Signa
     .limit(1);
 
   const raw = change?.rawDiff as Record<string, unknown> | null | undefined;
+  // Positioning v2 P2 shares this anchor: the same monitor now carries "they named
+  // YOU" and "they started naming Klue", which are the same subject seen from
+  // either side. The `kind` on the change is what tells the two apart.
+  if (raw?.kind === "new_comparison_target") {
+    return await comparisonTargetFacts(competitorId, raw);
+  }
   if (!raw || raw.kind !== "competitor_named_you") return null;
   const itemId = typeof raw.contentItemId === "string" ? raw.contentItemId : null;
   if (!itemId) return null;
@@ -664,6 +758,134 @@ async function namedYouFacts(monitorId: string, detectedAt: Date): Promise<Signa
   if (!row) return null;
 
   return { kind: "content", entries: [row], entriesTotal: 1, velocity: null };
+}
+
+/**
+ * The rivals behind a `new_comparison_target` signal (Positioning v2 P2).
+ *
+ * Read off the change's OWN rawDiff — the names the emitter already decided —
+ * rather than a time window. A window over `named_competitors` would sweep in
+ * whatever else the same capture recorded, so a one-target front would render as
+ * six. The row is what carries the URL and the date, so the block can print the
+ * page a claim came from rather than asserting it.
+ */
+async function comparisonTargetFacts(
+  competitorId: string,
+  raw: Record<string, unknown>,
+): Promise<SignalFacts> {
+  const names = Array.isArray(raw.targets)
+    ? raw.targets.filter((n): n is string => typeof n === "string")
+    : [];
+  if (names.length === 0) return null;
+
+  const rows = await db
+    .select({
+      name: namedCompetitors.displayName,
+      evidenceUrl: namedCompetitors.evidenceUrl,
+      firstSeenAt: dsql<string | null>`to_char(${namedCompetitors.firstSeenAt}, 'YYYY-MM-DD')`,
+      nameNormalized: namedCompetitors.nameNormalized,
+    })
+    .from(namedCompetitors)
+    .where(
+      and(
+        eq(namedCompetitors.competitorId, competitorId),
+        inArray(namedCompetitors.nameNormalized, names),
+      ),
+    )
+    .orderBy(namedCompetitors.firstSeenAt);
+  if (rows.length === 0) return null;
+
+  // A target can hold a row per source; the block names each rival once, on the
+  // evidence we saw first.
+  const byName = new Map<string, ComparisonTargetFact>();
+  for (const row of rows) {
+    if (byName.has(row.nameNormalized)) continue;
+    byName.set(row.nameNormalized, {
+      name: row.name,
+      evidenceUrl: row.evidenceUrl,
+      firstSeenAt: row.firstSeenAt,
+    });
+  }
+  const targets = [...byName.values()];
+  return {
+    kind: "comparison_targets",
+    targets: targets.slice(0, MAX_COMPARISON_TARGET_FACTS),
+    targetsTotal: targets.length,
+  };
+}
+
+/**
+ * The segments behind a `new_persona_page` signal (Positioning v2 P3).
+ *
+ * Read off the change's OWN rawDiff — the (kind, slug) pairs the emitter already
+ * decided — rather than a time window. A window over `audience_pages` would sweep in
+ * whatever else the same capture recorded, so a one-segment expansion would render as
+ * nine. The row is what carries the URL and the date, so the block can print the page
+ * a claim came from rather than asserting it.
+ */
+async function audiencePageFacts(
+  competitorId: string,
+  monitorId: string,
+  detectedAt: Date,
+): Promise<SignalFacts> {
+  const [change] = await db
+    .select({ rawDiff: changes.rawDiff })
+    .from(changes)
+    .where(and(eq(changes.monitorId, monitorId), eq(changes.detectedAt, detectedAt)))
+    .limit(1);
+
+  const raw = change?.rawDiff as Record<string, unknown> | null | undefined;
+  if (!raw || raw.kind !== "new_persona_page") return null;
+  const wanted = Array.isArray(raw.pages)
+    ? raw.pages.filter(
+        (p): p is { kind: string; slug: string } =>
+          typeof p === "object" &&
+          p !== null &&
+          typeof (p as { kind?: unknown }).kind === "string" &&
+          typeof (p as { slug?: unknown }).slug === "string",
+      )
+    : [];
+  if (wanted.length === 0) return null;
+
+  const rows = await db
+    .select({
+      kind: audiencePages.kind,
+      slug: audiencePages.slug,
+      displayName: audiencePages.displayName,
+      evidenceUrl: audiencePages.evidenceUrl,
+      firstSeenAt: dsql<string | null>`to_char(${audiencePages.firstSeenAt}, 'YYYY-MM-DD')`,
+    })
+    .from(audiencePages)
+    .where(
+      and(
+        eq(audiencePages.competitorId, competitorId),
+        // Narrowed on the SLUGS the emitter named; the (kind, slug) pair is then
+        // matched exactly below, because one slug can legitimately exist under two
+        // kinds (`/industries/fintech` and `/solutions/fintech`).
+        inArray(
+          audiencePages.slug,
+          wanted.map((p) => p.slug),
+        ),
+      ),
+    )
+    .orderBy(audiencePages.firstSeenAt);
+
+  const keys = new Set(wanted.map((p) => `${p.kind} ${p.slug}`));
+  const pages: AudiencePageFact[] = rows
+    .filter((r) => keys.has(`${r.kind} ${r.slug}`))
+    .map((r) => ({
+      kind: r.kind,
+      displayName: r.displayName,
+      evidenceUrl: r.evidenceUrl,
+      firstSeenAt: r.firstSeenAt,
+    }));
+  if (pages.length === 0) return null;
+
+  return {
+    kind: "audience_pages",
+    pages: pages.slice(0, MAX_AUDIENCE_PAGE_FACTS),
+    pagesTotal: pages.length,
+  };
 }
 
 /**
@@ -1215,6 +1437,132 @@ async function salaryFacts(
   };
 }
 
+// A homepage can print a dozen quantified brags; the block names what moved, it
+// does not reproduce the page.
+const MAX_CLAIM_FACTS = 6;
+// Enough of a claim's history to read it as a trajectory rather than a jump.
+const MAX_CLAIM_SERIES = 8;
+
+interface ClaimSeriesRow {
+  pattern: string;
+  unit: string;
+  context: string;
+  value: number;
+  raw_text: string;
+  observed_at: string;
+}
+
+/**
+ * What a homepage signal's competitor now says about itself, against what it said
+ * before, plus the quantified claims that moved with it (Positioning v2 P1).
+ *
+ * Deliberately NOT a second signal. A hero rewrite already reaches the reader
+ * through the homepage classifier — what it could never say was what the copy
+ * changed FROM, because the previous wording lived only inside a snapshot nobody
+ * read. The materialised timeline holds it, so the signal that already exists
+ * gains its other half instead of gaining a duplicate.
+ *
+ * The claims are read off the change's OWN structured diff rather than recomputed:
+ * the detector already decided which claim moved and against which prior value,
+ * and re-deriving it from a table that has since taken new observations would
+ * print numbers that contradict the sentence above them. The verbatim spans it
+ * carries are what the competitor PUBLISHED — "10,000+ customers", not our
+ * rendering of the integer we parsed out of it.
+ */
+async function positioningFacts(
+  competitorId: string,
+  monitorId: string,
+  detectedAt: Date,
+  window: { lower: Date; upper: Date },
+): Promise<SignalFacts> {
+  const [change] = await db
+    .select({ structuredDiff: changes.structuredDiff })
+    .from(changes)
+    .where(and(eq(changes.monitorId, monitorId), eq(changes.detectedAt, detectedAt)))
+    .limit(1);
+
+  // The two most recent versions at or before this capture: the one this capture
+  // opened (when it opened one) and the wording it replaced.
+  const versions = await db
+    .select({
+      h1: messagingVersions.h1,
+      subheadline: messagingVersions.subheadline,
+      primaryCta: messagingVersions.primaryCta,
+      capturedAt: messagingVersions.capturedAt,
+    })
+    .from(messagingVersions)
+    .where(
+      and(
+        eq(messagingVersions.competitorId, competitorId),
+        lte(messagingVersions.capturedAt, window.upper),
+      ),
+    )
+    .orderBy(desc(messagingVersions.capturedAt))
+    .limit(2);
+
+  const [current, previous] = versions;
+  // A version only counts as THIS signal's when the capture that opened it falls
+  // in the window. Otherwise the copy stood still and the signal is about
+  // something else on the page — printing the standing wording as a "change"
+  // would invent a rewrite.
+  const opened = current && current.capturedAt >= window.lower ? current : null;
+  const messaging: MessagingFact | null =
+    opened && opened.h1
+      ? {
+          h1Before: previous?.h1 ?? null,
+          h1After: opened.h1,
+          subheadlineBefore: previous?.subheadline ?? null,
+          subheadlineAfter: opened.subheadline,
+          ctaBefore: previous && previous.primaryCta !== opened.primaryCta ? previous.primaryCta : null,
+          ctaAfter: previous && previous.primaryCta !== opened.primaryCta ? opened.primaryCta : null,
+          previousSince: previous ? previous.capturedAt.toISOString().slice(0, 10) : null,
+        }
+      : null;
+
+  const diff = Array.isArray(change?.structuredDiff)
+    ? (change.structuredDiff as Array<{ kind?: string; metadata?: Record<string, unknown> | null }>)
+    : [];
+  const moved = diff
+    .filter((c) => c.kind === "numeric_claim_changed")
+    .slice(0, MAX_CLAIM_FACTS)
+    .map((c) => c.metadata ?? {})
+    .filter((m) => typeof m.rawTextBefore === "string" && typeof m.rawTextAfter === "string");
+
+  let claims: ClaimFact[] = [];
+  if (moved.length > 0) {
+    // One read for every claim in the block: the series is the same table, keyed
+    // by the same triple the detector compared on.
+    const rows =
+      (await analyticsQuery<ClaimSeriesRow>(sql`
+        SELECT pattern, unit, context, value, raw_text, observed_at::text AS observed_at
+        FROM numeric_claims
+        WHERE competitor_id = ${competitorId}
+        ORDER BY observed_at DESC
+        LIMIT 400
+      `)) ?? [];
+
+    claims = moved.map((m) => {
+      const key = `${String(m.pattern ?? "")}|${String(m.unit ?? "")}|${String(m.context ?? "")}`;
+      const series = rows
+        .filter((r) => `${r.pattern}|${r.unit ?? ""}|${r.context}` === key)
+        .slice(0, MAX_CLAIM_SERIES)
+        .reverse()
+        .map((r) => ({ observedAt: r.observed_at, value: r.value, rawText: r.raw_text }));
+      return {
+        context: String(m.context ?? ""),
+        before: String(m.rawTextBefore),
+        after: String(m.rawTextAfter),
+        variation: typeof m.variation === "number" ? m.variation : 0,
+        milestone: typeof m.milestone === "number" ? m.milestone : null,
+        series,
+      };
+    });
+  }
+
+  if (!messaging && claims.length === 0) return null;
+  return { kind: "positioning", messaging, claims };
+}
+
 /**
  * The structured facts behind one signal, or null when its source has none.
  *
@@ -1359,6 +1707,7 @@ async function reviewFacts(
 /** Review source types whose scrape writes a `review_scores` row. */
 const REVIEW_SOURCES = new Set([
   "appstore_reviews",
+  "shopify_reviews",
   "trustpilot_public",
   "g2_reviews",
   "capterra_reviews",
@@ -1386,7 +1735,9 @@ export async function buildSignalFacts(args: {
     sourceType !== "roadmap" &&
     sourceType !== "roadmap_shift" &&
     sourceType !== "integration_catalog" &&
+    sourceType !== "audience_page" &&
     sourceType !== "tech_stack" &&
+    sourceType !== "homepage" &&
     !REVIEW_SOURCES.has(sourceType ?? "")
   ) {
     return null;
@@ -1404,7 +1755,7 @@ export async function buildSignalFacts(args: {
       return await velocityFacts(competitorId, monitorId, new Date(detectedAt));
     }
     if (sourceType === "comparison_page") {
-      return await namedYouFacts(monitorId, new Date(detectedAt));
+      return await comparisonAnchorFacts(competitorId, monitorId, new Date(detectedAt));
     }
     if (sourceType === "customer_proof") {
       return await customerFacts(competitorId, monitorId, new Date(detectedAt));
@@ -1422,12 +1773,20 @@ export async function buildSignalFacts(args: {
     if (sourceType === "integration_catalog") {
       return await integrationFacts(competitorId, monitorId, new Date(detectedAt));
     }
+    // Reads the change's own rawDiff for the same reason: one capture can record a
+    // whole vertical's worth of pages, so a window would name them all.
+    if (sourceType === "audience_page") {
+      return await audiencePageFacts(competitorId, monitorId, new Date(detectedAt));
+    }
     // Reads the change's own rawDiff for the same reason integrations do: the
     // monthly scan records every tech at once, so a window would name them all.
     if (sourceType === "tech_stack") {
       return await techStackFacts(competitorId, monitorId, new Date(detectedAt));
     }
     const window = await attributionWindow(monitorId, new Date(detectedAt));
+    if (sourceType === "homepage") {
+      return await positioningFacts(competitorId, monitorId, new Date(detectedAt), window);
+    }
     if (sourceType === "jobs") return await hiringFacts(competitorId, window);
     if (sourceType === "job_facts") return await jobFactsFacts(competitorId, window);
     if (sourceType === "changelog") return await changelogFacts(competitorId, window);

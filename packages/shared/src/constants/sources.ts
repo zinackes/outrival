@@ -4,6 +4,15 @@ export const SOURCE_TYPES = [
   // "propre" — competitor data, keyless, no scraping). The one review platform we
   // read directly. See appstore-reviews.scraper.ts.
   "appstore_reviews",
+  // Shopify App Store merchant reviews (2026-08-04). The second review platform read
+  // directly, and the first one that is a WEB PAGE rather than a feed: the listing
+  // server-renders its reviews (no JS, no anti-bot), and `apps.shopify.com/robots.txt`
+  // declares no `User-agent: *` group at all, so OutrivalBot is allowed by the same
+  // isAllowed() every other L0 capture goes through. No exception to the collection
+  // doctrine, and unlike G2/Capterra Shopify does not license this data as a product.
+  // Score + total come from the page's own JSON-LD AggregateRating, never from the
+  // mean of the recent sample. See shopify-reviews.scraper.ts.
+  "shopify_reviews",
   // Trustpilot public SURFACE (Reviews v2, 2026-07-15): score, review count, star
   // distribution, trend via Trustpilot's OFFICIAL API (TRUSTPILOT_API_KEY) — never
   // third-party verbatims, never scraped (their ToS targets screen scrapers). The
@@ -161,6 +170,14 @@ export const SOURCE_TYPES = [
   // that we had never seen it claim. Kept off the `sitemap` monitor, whose snapshot
   // chain carries its own dedup. Kept in sync with the DB source_type enum.
   "integration_catalog",
+  // Audience-page anchor (Positioning Intelligence v2 P3). INTERNAL, never seeded /
+  // scraped / user-selectable — it anchors the change → signal chain for
+  // `new_persona_page`, the persona (/for/…), industry (/industries/…) and use-case
+  // (/use-cases/…, /solutions/…) pages a competitor publishes that we had never seen.
+  // Kept off the `sitemap` monitor, whose snapshot chain carries its own dedup and
+  // whose change row already belongs to the lexical classifier. Kept in sync with the
+  // DB source_type enum.
+  "audience_page",
   // Developer documentation — the competitor's technical roadmap surface. USER-
   // SELECTABLE (pro+), enabled through the standard enable route with an optional
   // URL override. Structured-first, two modes: (1) an OpenAPI/Swagger spec is found

@@ -14,6 +14,7 @@ const SOURCE_LABELS: Record<string, string> = {
   g2_reviews: "G2 reviews",
   capterra_reviews: "Capterra reviews",
   appstore_reviews: "App Store page",
+  shopify_reviews: "Shopify App Store page",
   // Reviews v2: Trustpilot public surface (score + trend via the official API, no
   // scraped verbatims).
   trustpilot_public: "Trustpilot rating",
@@ -66,6 +67,8 @@ const SOURCE_LABELS: Record<string, string> = {
   roadmap_shift: "Roadmap move",
   // Internal anchor for integrations a competitor newly lists in its catalog.
   integration_catalog: "Integrations",
+  // Internal anchor for persona / industry / use-case pages newly published.
+  audience_page: "Audience pages",
   // Developer documentation (pro+): OpenAPI spec diff, else docs page list.
   docs: "Developer docs",
   // User-watched arbitrary page on the competitor's domain ("Watch a custom page").
@@ -91,6 +94,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   g2_reviews: "G2 reviews",
   capterra_reviews: "Capterra reviews",
   appstore_reviews: "App Store reviews",
+  shopify_reviews: "Shopify App Store reviews",
   trustpilot_public: "Trustpilot rating",
   trustpilot_reviews: "Trustpilot reviews",
   trustradius_reviews: "TrustRadius reviews",
@@ -120,6 +124,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   editorial_shift: "Editorial shift",
   roadmap_shift: "Roadmap move",
   integration_catalog: "Integrations",
+  audience_page: "Audience pages",
   docs: "Developer docs",
   custom: "Custom page",
   roadmap: "Roadmap portal",

@@ -13,6 +13,7 @@ import type {
   TrendsMarket,
   Digest,
   DigestDetail,
+  DigestInProgress,
   SectoralSignal,
   SectoralEligibility,
   ActivitySource,
@@ -313,6 +314,23 @@ export async function getDigestsData(): Promise<Digest[] | null> {
   try {
     const r = await serverGet<{ digests: Digest[] }>("/api/digests");
     return r.digests;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the week still being collected. Wrapped rather than returned bare because
+ * "no brief to anticipate" is itself a null: the envelope tells a quiet week (seed the
+ * null, render nothing) apart from a failed prefetch (don't seed, let the client try).
+ */
+export async function getDigestInProgressData(
+  withSignals = false,
+): Promise<{ inProgress: DigestInProgress | null } | null> {
+  try {
+    return await serverGet<{ inProgress: DigestInProgress | null }>(
+      `/api/digests/in-progress${withSignals ? "?signals=1" : ""}`,
+    );
   } catch {
     return null;
   }

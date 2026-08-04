@@ -8,6 +8,7 @@ import {
   gte,
   isNull,
   isNotNull,
+  lt,
   ne,
   or,
   inArray,
@@ -38,6 +39,7 @@ import {
   knownCustomers,
   contentItems,
   roadmapStatusEvents,
+  messagingVersions,
 } from "@outrival/db";
 import { db } from "../lib/db";
 import { scoreCompetitorOverlap, scoreCompetitorsOverlap } from "../lib/overlap";
@@ -61,6 +63,8 @@ import { translateToEnglish } from "../lib/translate";
 import { detectContentLanguage } from "../lib/detect-language";
 import { readGtm, productNavItems, type GtmRead } from "../lib/homepage-gtm";
 import { dedupeVerbatims } from "../lib/review-verbatims";
+import { namedBy, namedTargets } from "../lib/market-map";
+import { audienceProfile } from "../lib/audience-profile";
 import {
   checkCompetitorQuota,
   getOrgPlan,
@@ -89,6 +93,7 @@ import {
   isStoreBadgeSrc,
   isLanguageFlagSrc,
   resolveCurrentPricing,
+  derivePositioningCopy,
   normalizePlanKey,
   DEPARTMENT_BUCKETS,
   DEPARTMENT_BUCKET_LABELS,
@@ -295,70 +300,9 @@ type HomepageFacts = {
 const POSITIONING_HISTORY_SCAN_LIMIT = 400;
 // Distinct rewrites returned. Past a handful the list stops being a story.
 const POSITIONING_HISTORY_MAX_VERSIONS = 12;
-
-// Text a site builder writes into <head> on your behalf, and the parked/stopped
-// page a dead host serves in place of the site. Neither is the competitor saying
-// anything about itself, and both were measured in production as the only junk the
-// fallback below would otherwise surface as a headline ("Made with Framer" as an
-// og:description, "Sorry, the website has been stopped" as a title).
-const HEAD_BOILERPLATE_RE =
-  /^(made|built|created|designed)\s+(with|in|on|using)\s+\S+|^powered\s+by\s+\S+$|website\s+has\s+been\s+stopped|site\s+not\s+found/i;
-
-// A <head> line is only usable as positioning copy when it is a PHRASE. A bare
-// brand token ("API360") names the company and claims nothing, so it would fill the
-// section with the one thing the reader already knows.
-//
-// The length ceiling is measured, not guessed: across the 157 stored titles in
-// production the longest is 158 chars, so it never fires on a title at all. It
-// exists for descriptions, where the tail is auto-generated rather than written
-// (asista.com publishes a 522-char og:description that is its own page text dumped
-// twice and cut off at "[…]"). Over the ceiling the line is DROPPED, never
-// truncated: cutting it would hand the reader a sentence nobody wrote.
-function usableHeadCopy(value: string | null | undefined): string | null {
-  const v = value?.trim() ?? "";
-  if (!v || v.length > 200) return null;
-  if (!/\s/.test(v)) return null;
-  if (HEAD_BOILERPLATE_RE.test(v)) return null;
-  return v;
-}
-
-// Highlights shown at a glance. More than this stops being a glance.
-const MAX_VALUE_PROPS = 8;
-
-// The section types the parser decides on a cue that cannot be mistaken for a
-// product claim: a currency-and-period pattern, a blockquote, stacked <details>, a
-// button under a closing line. These verdicts are worth trusting outright.
-const NEVER_A_VALUE_PROP = new Set(["pricing", "faq", "testimonials", "cta"]);
-
-// `logos` is deliberately NOT in that set. The parser awards it to any section with
-// five or more images and little text, whatever the heading says, and that shape is
-// far more often a product grid than a customer wall: of the 50 stored `logos`
-// sections on prod 2026-08-01, 31 are not customer walls at all, and excluding them
-// wholesale threw away real highlights ("130+ connectors or build your own",
-// "Wide list of trending social media channels", "Fits Right Into Your Hiring
-// Stack"). So the heading decides, and only for this one type.
-//
-// French included because the roster is: "Ils parlent de nous" is a press wall and
-// reads as a claim to any English-only pattern.
-const CUSTOMER_WALL_RE =
-  /\b(trusted by|used by|loved by|backed by|powering|join(ed)? \d|our (customers|clients|partners)|(companies|brands|teams|developers) (that|who))\b|\b(ils (parlent de nous|nous font confiance)|nos (clients|partenaires|références))\b/i;
-
-// Two more families that are not a claim about the product: the closing call to
-// action, and the blog/press teaser strip near the footer. Anchored at the start,
-// where that phrasing opens a section, so a genuine claim carrying the same verb
-// ("Start shipping on day one") is untouched.
-const NOT_A_CLAIM_RE =
-  /^(ready to|get started|start (free|now|your|building)|try |book a |contact (us|sales)|sign up|request a )|^(latest|recent|more from|from the blog|blog|news|press|resources|events|webinars|case stud|customer stor)/i;
-
-// A highlight is a PHRASE the competitor wrote about its product. One word is a tab
-// label ("Solo", "Teams", "Pricing"), and past ~120 chars the heading is a whole
-// paragraph the section walk glued together, not a heading anyone designed.
-function isClaimLike(heading: string | undefined): boolean {
-  const h = heading?.trim() ?? "";
-  if (!h || h.length > 120) return false;
-  if (h.split(/\s+/).filter(Boolean).length < 2) return false;
-  return !NOT_A_CLAIM_RE.test(h) && !CUSTOMER_WALL_RE.test(h);
-}
+// Observations kept per claim on the claims endpoint. Enough to read a
+// trajectory; a daily scrape would otherwise return a year of identical points.
+const CLAIM_SERIES_MAX = 24;
 
 /**
  * The copy a competitor positions itself with, derived from one stored homepage
@@ -366,104 +310,18 @@ function isClaimLike(heading: string | undefined): boolean {
  * capture and a "now" capture are always derived the same way. Re-implementing
  * this for the history would make any drift in the derivation look like drift in
  * their messaging, which is the one thing an over-time view must never invent.
+ *
+ * The derivation itself moved to @outrival/shared (Positioning v2 P1): the worker
+ * that materialises the timeline and the backfill that reconstructs it from R2
+ * have to read a hero exactly the way this does, and three copies of the rule
+ * would drift into three different accounts of the same page.
  */
 function positioningCopyOf(s: StoredHomepage): {
   headline: string | null;
   subheadline: string | null;
   valueProps: string[];
 } {
-  const headingsWhere = (pred: (sec: { heading?: string; type?: string }) => boolean) =>
-    (s.sections ?? [])
-      .filter(pred)
-      .map((sec) => sec.heading?.trim() ?? "")
-      .filter((h) => h.length > 0);
-
-  // Section headings carrying the value proposition, in document order, capped for
-  // the glance. Scroll-driven "stepped" layouts repeat a mockup label (e.g. an H3
-  // "Product Brief") across every panel, so dedupe case-insensitively and drop any
-  // heading recurring 3+ times (a template/UI label, never a distinct highlight).
-  //
-  // The count is per POOL, never across the two below. Sharing one tally would let a
-  // heading the page states once as a feature be dropped because it also appears
-  // twice elsewhere, which would REMOVE a highlight that renders today.
-  const distinct = (headings: string[]): string[] => {
-    const counts = new Map<string, number>();
-    for (const h of headings) {
-      const k = h.toLowerCase();
-      counts.set(k, (counts.get(k) ?? 0) + 1);
-    }
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const h of headings) {
-      const k = h.toLowerCase();
-      if ((counts.get(k) ?? 0) >= 3) continue; // template/UI label, not a highlight
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push(h);
-    }
-    return out.slice(0, MAX_VALUE_PROPS);
-  };
-
-  // What the classifier is confident about, exactly as before.
-  const typed = distinct(
-    headingsWhere((sec) => sec.type === "features" || sec.type === "integrations"),
-  );
-
-  // Then everything it typed `other`, which is where the value props actually are.
-  // `classifySection` only calls a section `features` when its HEADING contains one
-  // of a handful of words (features, why, how it works, capabilities, product), and
-  // homepages name their sections after the benefit rather than after the word
-  // "features": measured on prod 2026-08-01, 2572 of 2943 stored sections (87%) fall
-  // through to `other`, and 95 of 158 competitors had no highlight to show at all.
-  // The ones it drops are the actual pitch, verbatim: "Stop choosing between speed
-  // and control", "PostgreSQL re-engineered for multi-tenant apps".
-  //
-  // So the selection is inverted. What the classifier is genuinely reliable at is
-  // recognising what ISN'T a claim, because those verdicts rest on structure rather
-  // than vocabulary: a price pattern, a blockquote, stacked <details>, a button
-  // under a closing line. Everything it did not rule out that way is a candidate,
-  // `logos` included, since counting images cannot tell a customer wall from a
-  // product grid and only the heading can (see CUSTOMER_WALL_RE).
-  //
-  // Typed hits come FIRST and the cap is applied after, so this can only ever ADD:
-  // no competitor loses a highlight that renders today. Verified against all 158
-  // stored structures (0 lost, 80 empty sections filled, 62 one-liners completed);
-  // 34 of the 63 that "worked" were rendering a single bullet.
-  const rest = distinct(
-    headingsWhere((sec) => !NEVER_A_VALUE_PROP.has(sec.type ?? "") && isClaimLike(sec.heading)),
-  ).filter((h) => !typed.some((t) => t.toLowerCase() === h.toLowerCase()));
-
-  const valueProps = [...typed, ...rest].slice(0, MAX_VALUE_PROPS);
-  let headline = s.hero?.headline ?? null;
-  let subheadline = s.hero?.subheadline ?? null;
-
-  // The parser reads the hero off `$("h1").first()` and nothing else, and the
-  // subheadline branch is itself gated on that H1 existing, so a page with no <h1>
-  // loses BOTH at once. That is not a broken capture: Framer, Webflow and hand-built
-  // React landing pages routinely title in an <h2> or a styled <div>. Measured on
-  // prod 2026-08-01, 9 of 158 stored structures, every one of them a live page whose
-  // sections, nav and customer logos parsed fine (asista.com: 150 KB, 37 sections,
-  // 16 logos, no H1 anywhere). "How they position" is the section the whole tab
-  // opens on, so those competitors read as if we had captured nothing.
-  //
-  // Their own <title> and og: tags sit in the SAME structure we already stored, so
-  // this recovers them at read time and every capture ever taken fixes itself with no
-  // re-scrape (same discipline as the logo refiner above). It stays in this shared
-  // function rather than in the fact-sheet builder so the positioning HISTORY derives
-  // a "then" capture exactly like a "now" one; splitting them would make the fallback
-  // itself look like a rewrite on the day it shipped.
-  //
-  // Only when both are null. A headline with no subheadline already renders the
-  // section and is the state of 66 of those 158, so filling their subheadline from a
-  // meta description would rewrite copy for 42% of the roster to reach 6% of it.
-  if (!headline && !subheadline) {
-    headline = usableHeadCopy(s.openGraph?.title) ?? usableHeadCopy(s.title);
-    const sub = usableHeadCopy(s.openGraph?.description) ?? usableHeadCopy(s.metaDescription);
-    // <title> and meta description are frequently the same string. Printing it twice,
-    // once as the headline and once as the line under it, reads as a rendering bug.
-    subheadline = sub && sub.toLowerCase() !== headline?.toLowerCase() ? sub : null;
-  }
-
+  const { headline, subheadline, valueProps } = derivePositioningCopy(s);
   return { headline, subheadline, valueProps };
 }
 
@@ -2379,6 +2237,37 @@ competitorsRouter.get("/:id/positioning-history", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
+  // Materialised first (Positioning v2 P1): the timeline is now a table, written
+  // on every live homepage capture and reconstructed from R2 by a one-shot
+  // backfill, so answering this costs one indexed read instead of collapsing 400
+  // snapshots on every open.
+  const stored = await db
+    .select({
+      capturedAt: messagingVersions.capturedAt,
+      headline: messagingVersions.h1,
+      subheadline: messagingVersions.subheadline,
+      valueProps: messagingVersions.valueProps,
+    })
+    .from(messagingVersions)
+    .where(eq(messagingVersions.competitorId, id))
+    .orderBy(desc(messagingVersions.capturedAt))
+    .limit(POSITIONING_HISTORY_MAX_VERSIONS);
+
+  // One version is not a history — the tab needs a "now" AND a "before" to show
+  // anything at all. Until the backfill has run for this competitor the table
+  // holds only what has been captured since the writer shipped, so fall through
+  // to the snapshot walk rather than blanking a panel that used to work.
+  if (stored.length >= 2) {
+    return c.json({
+      versions: stored.map((v) => ({
+        capturedAt: v.capturedAt.toISOString(),
+        headline: v.headline,
+        subheadline: v.subheadline,
+        valueProps: v.valueProps ?? [],
+      })),
+    });
+  }
+
   const [homepageMonitor] = await db
     .select({ id: monitors.id })
     .from(monitors)
@@ -2402,6 +2291,139 @@ competitorsRouter.get("/:id/positioning-history", async (c) => {
     .limit(POSITIONING_HISTORY_SCAN_LIMIT);
 
   return c.json({ versions: collapsePositioningVersions(rows) });
+});
+
+/**
+ * The messaging timeline itself (Positioning v2 P1) — every distinct wording,
+ * newest first, with the CTA the positioning-history shape has no room for.
+ *
+ * Paginated on `capturedAt` rather than an offset: rows are only ever appended
+ * at the top, so an offset page would shift under a reader the moment a scrape
+ * landed mid-scroll. `cursor` is the `capturedAt` of the last row seen.
+ */
+competitorsRouter.get("/:id/messaging-timeline", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const limit = Math.min(Number(c.req.query("limit") ?? 25) || 25, 100);
+  const cursorRaw = c.req.query("cursor");
+  const cursor = cursorRaw ? new Date(cursorRaw) : null;
+
+  const rows = await db
+    .select({
+      capturedAt: messagingVersions.capturedAt,
+      h1: messagingVersions.h1,
+      subheadline: messagingVersions.subheadline,
+      primaryCta: messagingVersions.primaryCta,
+      valueProps: messagingVersions.valueProps,
+      snapshotKey: messagingVersions.snapshotKey,
+    })
+    .from(messagingVersions)
+    .where(
+      cursor && !Number.isNaN(cursor.getTime())
+        ? and(
+            eq(messagingVersions.competitorId, id),
+            lt(messagingVersions.capturedAt, cursor),
+          )
+        : eq(messagingVersions.competitorId, id),
+    )
+    .orderBy(desc(messagingVersions.capturedAt))
+    .limit(limit + 1);
+
+  const page = rows.slice(0, limit);
+  return c.json({
+    versions: page.map((v) => ({
+      capturedAt: v.capturedAt.toISOString(),
+      h1: v.h1,
+      subheadline: v.subheadline,
+      primaryCta: v.primaryCta,
+      valueProps: v.valueProps ?? [],
+      snapshotKey: v.snapshotKey,
+    })),
+    // The next cursor, or null when this page is the end of the history.
+    nextCursor:
+      rows.length > limit ? (page[page.length - 1]?.capturedAt.toISOString() ?? null) : null,
+  });
+});
+
+/**
+ * The quantified claims a competitor makes about itself, and how each has moved.
+ *
+ * `numeric_claims` has been filling since patch-17 and nothing has ever read it:
+ * "15,000 teams", "99.9% uptime", "2 billion requests" were parsed off every
+ * homepage capture, compared against their last value to flag a jump, and then
+ * never shown anywhere. One row per (pattern, unit, context) — the same triple
+ * the detector compares on — carrying the latest value and the series behind it,
+ * so a claim reads as a trajectory instead of a number.
+ *
+ * `rawText` is what the page PRINTED. The parsed value is what makes the series
+ * comparable; the span is what a reader checks against the site.
+ */
+competitorsRouter.get("/:id/claims", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const rows =
+    (await analyticsQuery<{
+      pattern: string;
+      unit: string;
+      context: string;
+      value: number;
+      raw_text: string;
+      observed_at: string;
+    }>(sql`
+      SELECT pattern, unit, context, value, raw_text, observed_at::text AS observed_at
+      FROM numeric_claims
+      WHERE competitor_id = ${id}
+      ORDER BY observed_at DESC
+      LIMIT 600
+    `)) ?? [];
+
+  // Grouped in order, so the first row of each key is its latest observation.
+  const byKey = new Map<
+    string,
+    {
+      pattern: string;
+      unit: string | null;
+      context: string;
+      value: number;
+      rawText: string;
+      observedAt: string;
+      series: Array<{ observedAt: string; value: number; rawText: string }>;
+    }
+  >();
+  for (const r of rows) {
+    const key = `${r.pattern}|${r.unit ?? ""}|${r.context}`;
+    const point = { observedAt: r.observed_at, value: r.value, rawText: r.raw_text };
+    const claim = byKey.get(key);
+    if (claim) {
+      if (claim.series.length < CLAIM_SERIES_MAX) claim.series.push(point);
+      continue;
+    }
+    byKey.set(key, {
+      pattern: r.pattern,
+      unit: r.unit || null,
+      context: r.context,
+      value: r.value,
+      rawText: r.raw_text,
+      observedAt: r.observed_at,
+      series: [point],
+    });
+  }
+
+  return c.json({
+    claims: [...byKey.values()].map((claim) => ({
+      ...claim,
+      // Oldest first, so it plots as a timeline rather than backwards.
+      series: [...claim.series].reverse(),
+    })),
+  });
 });
 
 // The price TIMELINE — and the one pricing read in the product that keeps
@@ -2755,6 +2777,62 @@ competitorsRouter.get("/:id/customers", async (c) => {
     customersTotal: registry.length,
     windowDays: CUSTOMER_WIN_WINDOW_DAYS,
   });
+});
+
+/**
+ * The market map: who this competitor attacks, and who in THIS workspace attacks
+ * them (Positioning Intelligence v2 P2).
+ *
+ * Both halves are deterministic reads of `named_competitors` — comparison-page
+ * slugs and the mentions Content P2 already extracted from posts. Nothing here is
+ * written by a model, so the map can never claim a rivalry the competitor has not
+ * published.
+ *
+ * The cross reference is intra-workspace STRICT (decision 2 of the card): the org
+ * filter is a WHERE clause on the row's OWNER inside `namedBy`, never a filter
+ * applied to the result. The tab that renders this arrives in P4.
+ */
+competitorsRouter.get("/:id/market-map", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const [targets, namers] = await Promise.all([
+    namedTargets(competitor.id),
+    namedBy({ competitorId: competitor.id, orgId, name: competitor.name, url: competitor.url }),
+  ]);
+
+  return c.json({
+    // Newest first: who they turned on recently is the read, not who they have
+    // been comparing against since 2021.
+    targets: [...targets].sort((a, b) => (b.firstSeenAt ?? "").localeCompare(a.firstSeenAt ?? "")),
+    namedBy: namers,
+    targetsTotal: targets.length,
+  });
+});
+
+/**
+ * The ICP profile: who this competitor SAYS it sells to, and who its own case
+ * studies PROVE it sells to (Positioning Intelligence v2 P3).
+ *
+ * Deterministic on both sides — persona / industry / use-case pages read off their
+ * sitemap, verticals read off the stories they published. The `both` list is the
+ * point: it only exists because `audience_pages.slug` for kind=industry and
+ * `case_studies.customer_industry` are the SAME industry-catalog vocabulary, so a
+ * `/industries/fin-tech` page and a case study about "Fintech" meet on one slug.
+ *
+ * The tab that renders this arrives in P4.
+ */
+competitorsRouter.get("/:id/audience-profile", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  return c.json(await audienceProfile(competitor.id));
 });
 
 /** How recent a first sighting has to be to still read as a win. */

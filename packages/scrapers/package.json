@@ -51,6 +51,10 @@
       "types": "./src/mobile/mobile-apps.ts",
       "default": "./src/mobile/mobile-apps.ts"
     },
+    "./shopify-app": {
+      "types": "./src/shopify-reviews/detect.ts",
+      "default": "./src/shopify-reviews/detect.ts"
+    },
     "./phash": {
       "types": "./src/lib/phash.ts",
       "default": "./src/lib/phash.ts"
@@ -147,6 +151,10 @@
       "types": "./src/sitemap/index.ts",
       "default": "./src/sitemap/index.ts"
     },
+    "./positioning": {
+      "types": "./src/positioning/index.ts",
+      "default": "./src/positioning/index.ts"
+    },
     "./docs": {
       "types": "./src/docs/index.ts",
       "default": "./src/docs/index.ts"
@@ -169,6 +177,7 @@
   "dependencies": {
     "@outrival/shared": "workspace:*",
     "cheerio": "^1.2.0",
+    "domhandler": "^5.0.3",
     "exa-js": "^2.13.0",
     "playwright": "^1.60.0",
     "sharp": "^0.34.5",

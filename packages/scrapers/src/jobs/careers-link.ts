@@ -45,7 +45,13 @@ const TEXT_SIGNALS: RegExp[] = [
 // the page's own "Careers" nav entry.
 const LISTING_TEXT_SIGNALS: RegExp[] = [
   // "Browse jobs", "View all jobs", "See our open roles", "Search openings", …
-  /\b(all|browse|view|see|explore|search|find)\b[^.]{0,20}\b(jobs?|roles?|positions?|openings?|vacanc(?:y|ies))\b/i,
+  // The noun must be PLURAL, or introduced by "all". A SINGULAR one names ONE
+  // posting, not the board: clickup.com/careers prints "Explore the role" under
+  // each of its two featured openings, that CTA outscored every other link on the
+  // page, and the scraper hopped to a single role's page — so a 64-role Ashby
+  // board was read as the two roles the marketing page happens to hard-code.
+  /\ball\b[^.]{0,20}\b(jobs?|roles?|positions?|openings?|vacanc(?:y|ies))\b/i,
+  /\b(browse|view|see|explore|search|find)\b[^.]{0,20}\b(jobs|roles|positions|openings|vacancies)\b/i,
   /\b(open|current|available)\s+(jobs?|roles?|positions?|openings?|vacanc(?:y|ies))\b/i,
   /\bjob\s+(search|board|openings?|listings?)\b/i,
   // FR

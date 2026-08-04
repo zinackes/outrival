@@ -19,10 +19,10 @@ import {
 import { ProductProfileSchema } from "@outrival/ai";
 import {
   SOURCE_TYPES,
-  SEEDABLE_SOURCES,
+  SELECTABLE_DEFAULT_SOURCES,
   DEFAULT_SEED_SOURCES,
   resolveSeedSources,
-  seedableSourcesForPlan,
+  defaultSourcesForPlan,
   resolveMeterUnit,
   meterUnitLabel,
   CANONICAL_METER_UNITS,
@@ -282,9 +282,11 @@ settingsRouter.get("/sources", async (c) => {
     intendedSources: stored ?? [...DEFAULT_SEED_SOURCES],
     effectiveSources: resolveSeedSources(plan, stored),
     // Everything offerable at this plan, plus the whole catalogue so the screen can
-    // show what an upgrade would add rather than hiding it.
-    availableSources: seedableSourcesForPlan(plan),
-    seedableSources: SEEDABLE_SOURCES,
+    // show what an upgrade would add rather than hiding it. Both cover the
+    // detection-seeded sources (App Store reviews) too: they are the same stored
+    // preference, they just wait for detection to hand over the URL.
+    availableSources: defaultSourcesForPlan(plan),
+    selectableSources: SELECTABLE_DEFAULT_SOURCES,
     competitorCount: competitorIds.length,
     gaps,
   });
@@ -300,14 +302,15 @@ settingsRouter.patch("/sources", async (c) => {
     return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
   }
 
-  // Store only sources that can actually be seeded blind. A source above the plan is
-  // KEPT on purpose (it starts applying the day the org upgrades); one that needs a
-  // per-competitor URL, or that detection seeds with evidence, is dropped — a stored
-  // value nothing ever reads is a lie the settings screen would keep showing.
+  // Store only sources something actually reads: what can be seeded blind, plus what
+  // detection seeds once it has resolved the URL (App Store reviews). A source above
+  // the plan is KEPT on purpose (it starts applying the day the org upgrades); a
+  // source nothing ever seeds is dropped — a stored value nothing reads is a lie the
+  // settings screen would keep showing.
   const next =
     parsed.data.defaultSources === null
       ? null
-      : parsed.data.defaultSources.filter((s) => SEEDABLE_SOURCES.includes(s));
+      : parsed.data.defaultSources.filter((s) => SELECTABLE_DEFAULT_SOURCES.includes(s));
 
   await db
     .update(organizations)

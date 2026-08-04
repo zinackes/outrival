@@ -111,10 +111,12 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     maxCompetitors: 15,
     allowedFrequencies: ["realtime", "daily", "weekly"],
     allowedChannels: ["email", "slack", "webhook"],
-    // Reviews v2 (2026-07-15): scraped aggregators retired. App Store (public RSS) +
-    // Trustpilot (`trustpilot_public`, official-API surface: score + trend) are the
-    // review sources; G2 may return later via a connected vendor account.
-    allowedSources: ["homepage", "pricing", "blog", "jobs", "appstore_reviews", "trustpilot_public", "status", "docs", "roadmap"],
+    // Reviews v2 (2026-07-15) + Shopify (2026-08-04): scraped aggregators retired.
+    // App Store (public RSS), the Shopify App Store listing (public page, robots-
+    // allowed) and Trustpilot (`trustpilot_public`, official-API surface: score +
+    // trend) are the review sources; G2 may return later via a connected vendor
+    // account.
+    allowedSources: ["homepage", "pricing", "blog", "jobs", "appstore_reviews", "shopify_reviews", "trustpilot_public", "status", "docs", "roadmap"],
     scrapeFrequency: "daily_adaptive",
     forcedRescansPerDay: 20,
     aiActionsPerHour: 120,
@@ -133,12 +135,13 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     maxCompetitors: 50,
     allowedFrequencies: ["realtime", "daily", "weekly"],
     allowedChannels: ["email", "slack", "webhook"],
-    // Reviews v2 (2026-07-15): scraped aggregators (g2/capterra/trustradius/gartner/
-    // playstore) retired for legal reasons. App Store (public RSS) + Trustpilot
+    // Reviews v2 (2026-07-15) + Shopify (2026-08-04): scraped aggregators
+    // (g2/capterra/trustradius/gartner/playstore) retired for legal reasons. App
+    // Store (public RSS), the Shopify App Store listing and Trustpilot
     // (`trustpilot_public`, official-API surface) are the review sources.
     allowedSources: [
       "homepage", "pricing", "blog", "jobs",
-      "appstore_reviews", "trustpilot_public", "status", "docs", "roadmap",
+      "appstore_reviews", "shopify_reviews", "trustpilot_public", "status", "docs", "roadmap",
     ],
     scrapeFrequency: "daily_priority",
     // Anti-abuse ceilings, far above normal use; a fair-use clause (TOS) covers the

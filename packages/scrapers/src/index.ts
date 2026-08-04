@@ -4,6 +4,7 @@ import * as blog from "./blog/blog.scraper";
 import * as changelog from "./changelog/changelog.scraper";
 import * as jobs from "./jobs/jobs.scraper";
 import * as appstoreReviews from "./appstore-reviews/appstore-reviews.scraper";
+import * as shopifyReviews from "./shopify-reviews/shopify-reviews.scraper";
 import * as trustpilot from "./trustpilot/trustpilot.scraper";
 import * as github from "./github/github.scraper";
 import * as status from "./status/status.scraper";
@@ -36,6 +37,10 @@ const scrapers: Partial<Record<SourceType, ScraperFn>> = {
   // trustradius/gartner/playstore) are retired — no scraper binding, so getScraper
   // throws if a dormant, marked_unscrapable monitor were ever scheduled (it never is).
   appstore_reviews: appstoreReviews.scrape,
+  // Shopify App Store (2026-08-04): a public server-rendered listing read at L0
+  // through scrapeStatic, so robots.txt + the per-domain gap apply like anywhere
+  // else. Score + count come from the page's own JSON-LD AggregateRating.
+  shopify_reviews: shopifyReviews.scrape,
   // Trustpilot public surface — official API (TRUSTPILOT_API_KEY): score + count +
   // distribution only, never scraped verbatims. Throws cleanly if the key is unset.
   trustpilot_public: trustpilot.scrape,

@@ -38,6 +38,7 @@ import {
   logExtractionRun,
   type JobsResolution,
 } from "../lib/analytics";
+import { rememberAtsBoard } from "../lib/platform-detect";
 import { stagedExtract } from "../lib/staged-extract";
 import { computeJobsDelta } from "../lib/jobs-delta";
 import { stampGeo, stampMissingGeo, tallyResolutions } from "../lib/posting-geo";
@@ -150,6 +151,11 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
         platform: island?.provider,
         resolution,
       });
+      // Remember the board so the next run hits its API directly. This is the only
+      // moment the token is ever observed for a board the careers page EMBEDS
+      // rather than links — detection reads SSR HTML, where such a board is named
+      // nowhere, so without this those competitors pay a browser render every run.
+      if (island) await rememberAtsBoard(input.competitorId, island.provider, island.token);
     } else {
       // No ATS: staged extraction — schema.org JobPosting → cached parser → AI
       // self-heal → direct AI extraction (the floor). stagedExtract logs the run.

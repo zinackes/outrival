@@ -2,6 +2,7 @@ import { scrapePage, scrapeFirstSuccess } from "../lib/crawler";
 import type { ScrapeOutcome, ScrapeOptions, KnownJob } from "../types";
 import {
   detectAtsBoard,
+  detectAtsEmbed,
   detectAtsPlatform,
   fetchAtsJobs,
   appendAtsJobsToHtml,
@@ -41,6 +42,10 @@ const GENERIC_PLATFORM = "generic";
 // there. Fail-open on the ATS side: detectAtsBoard reads the same HTML cheaply.
 function looksLikeCareers(res: ScrapeOutcome): boolean {
   if (hasCareersSignals(res.html) || detectAtsBoard(res.html) !== null) return true;
+  // An embed CONTAINER counts too. A page whose openings are injected client-side
+  // can be a near-empty shell with no hiring vocabulary of its own to match on —
+  // the container is then the only thing on it that says "the roles are here".
+  if (detectAtsEmbed(res.html) !== null) return true;
   // A page pointing at several job-detail pages of its OWN host is a listing,
   // whatever vocabulary it uses. Teamtailor's hosted sites are the case in point:
   // they name no ATS, and their listing carries no JobPosting markup (that lives on
@@ -277,6 +282,13 @@ export async function scrape(
     if (renderJobs) {
       try {
         const full = await renderPage(target);
+        // Detect AGAIN on the rendered DOM: an EMBEDDED board names itself only in
+        // the markup its own script writes, so this is the first HTML in the hop
+        // that can carry it — see the careers-page render below for the full case.
+        const renderedAts = await resolveAts(full.html);
+        if (renderedAts.kind === "jobs") {
+          return withAtsJobs(full, renderedAts.board, renderedAts.jobs, { [via]: target });
+        }
         const kept = keep(full);
         if (kept) return kept;
       } catch {
@@ -445,9 +457,9 @@ export async function scrape(
   }
 
   // Most competitors host their openings on an ATS (Greenhouse, Lever, Ashby, …)
-  // linked/embedded from the careers page — scraping the page alone misses them.
-  // The board link lives in the SSR HTML, so the cheap L0 probe already surfaces it
-  // (no render needed to reach the structured API).
+  // linked from the careers page — scraping the page alone misses them. A LINKED
+  // board is named in the SSR HTML, so the cheap L0 probe reaches the structured
+  // API without a render. An EMBEDDED one is not: see the render below.
   const ats = await resolveAts(result.html);
   if (ats.kind === "jobs") return withAtsJobs(result, ats.board, ats.jobs);
 
@@ -508,9 +520,27 @@ export async function scrape(
   // openings client-side (a "Loading positions…" placeholder). The probe fetched
   // it cheaply at L0, so render it once now to surface the roles. Fail-soft and
   // only kept when the render yields more text than the L0 capture.
-  if (renderJobs && onCareersPage && !rendered) {
+  //
+  // An embed container earns the render on its own, even off the homepage
+  // fallback that renders nothing today: the page has TOLD us it is holding a
+  // board back, and the token only exists once its script has run.
+  if (renderJobs && (onCareersPage || detectAtsEmbed(result.html) !== null) && !rendered) {
     try {
       const full = await renderPage(finalUrl);
+      // An EMBEDDED board writes its own reference at runtime: ClickUp's careers
+      // page ships `<div id="ashby_embed">` empty and its script tag — the only
+      // place `jobs.ashbyhq.com/clickup` is ever spelled out — is appended after
+      // hydration. So no amount of L0 probing can name that board, and the AI
+      // floor read a 64-role Ashby board as 2 roles. This is the first HTML in
+      // the run that carries the token, and the pattern already matches it.
+      //
+      // Checked BEFORE the text gate: the board renders in a CROSS-ORIGIN iframe,
+      // so the parent page gains no text from it, and "did the render add
+      // anything?" would throw away the exact capture that reveals the board.
+      const renderedAts = await resolveAts(full.html);
+      if (renderedAts.kind === "jobs") {
+        return withAtsJobs(full, renderedAts.board, renderedAts.jobs, { jobsRendered: true });
+      }
       if (full.text.length > result.text.length) {
         return finish({ ...full, metadata: { ...full.metadata, jobsRendered: true } }, detectedBoard);
       }

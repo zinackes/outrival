@@ -23,6 +23,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   g2_reviews: "G2 reviews page",
   capterra_reviews: "Capterra reviews page",
   appstore_reviews: "App Store reviews page",
+  shopify_reviews: "Shopify App Store reviews page",
   github_repo: "GitHub repository",
   linkedin: "LinkedIn page",
   twitter: "X / Twitter profile",

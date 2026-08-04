@@ -498,6 +498,34 @@
       "when": 1785614303244,
       "tag": "0070_adorable_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1785684810244,
+      "tag": "0071_lush_franklin_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1785862019761,
+      "tag": "0072_last_gressill",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1785864815970,
+      "tag": "0073_brainy_sauron",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1785865610883,
+      "tag": "0074_mature_vengeance",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,8 @@ import {
   ingestBlogPosts,
   ingestCaseStudies,
   ingestIntegrations,
+  ingestNamedCompetitors,
+  ingestAudiencePages,
   backfillHistory,
 } from "@outrival/queue";
 import { z } from "zod";
@@ -33,6 +35,9 @@ import {
 } from "@outrival/db";
 import { stampFirstScrape } from "../lib/onboarding-funnel";
 import { recordMobileApps } from "../lib/mobile-apps";
+import { recordShopifyApp } from "../lib/shopify-app";
+import { recordMessagingVersion } from "../lib/messaging-versions";
+import { crossesRoundMilestone } from "../lib/claim-milestone";
 import {
   clampFrequencyToPlan,
   computeHash,
@@ -89,6 +94,11 @@ import {
 // Pure subpath — Content Intelligence v2 P3: which of the sitemap's new URLs are
 // customer proof (a customers index, or one customer's story).
 import { isCustomerPageUrl, integrationFromUrl } from "@outrival/scrapers/content";
+// Pure subpath — Positioning Intelligence v2 P2: which of the two comparison
+// signals owns a page. The registry itself is written by ingest-named-competitors.
+// P3 adds `isAudienceUrl`: which of the sitemap's URLs name a persona / industry /
+// use-case segment. The registry is written by ingest-audience-pages.
+import { routeComparisonUrl, isAudienceUrl } from "@outrival/scrapers/positioning";
 // Pure subpath — no deps. Wellknown v2: /.well-known + llms.txt fingerprint diff.
 import { parseWellKnownDoc, wellKnownDelta } from "@outrival/scrapers/wellknown";
 // Pure subpath — sharp only. Perceptual hash for visual-redesign detection (patch-17).
@@ -168,6 +178,16 @@ const SIZE_VARIABLE_SOURCES = new Set(["blog", "changelog", "news", "sitemap", "
 // sitemap that publishes forty case studies at once is a site migration or a first
 // full index, not forty wins; the rest are read by the runs that follow.
 const SITEMAP_CUSTOMER_URL_CAP = 10;
+// Positioning Intelligence v2 P2 — comparison URLs handed to one market-map run.
+// Higher than its customer sibling because this one is sent the WHOLE catalogue on
+// every capture, not a delta: reading them is pure string work with no fetch, and a
+// site with 200 `/vs/` pages is a programmatic-SEO shop whose map we want in full.
+const SITEMAP_COMPARISON_URL_CAP = 200;
+// Positioning Intelligence v2 P3 — audience URLs handed to one ICP run. Same cap and
+// the same reason as its market-map sibling: the WHOLE catalogue goes over on every
+// capture, it is pure string work with no fetch, and a site with 200 `/industries/`
+// pages is a programmatic-SEO shop whose ICP grid we want in full.
+const SITEMAP_AUDIENCE_URL_CAP = 200;
 // Sources whose capture is ALWAYS a scraper-synthesized document (built from parsed
 // structured data — no HTML fetch path at all), so the deny-page copy heuristic is
 // meaningless on them: deny-shaped strings in a sitemap/feed listing are content, not
@@ -1168,6 +1188,44 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       logger.warn("Mobile-app detection failed (non-fatal)", { error: String(err) });
     }
 
+    // Shopify App Store presence: same contract as the mobile-app fact above. It
+    // writes competitors.metadata.shopifyApp off the homepage capture so the Reviews
+    // tab can prefill the listing URL, and emits NO change and NO signal.
+    try {
+      await recordShopifyApp({
+        competitorId: competitor.id,
+        metadata: competitor.metadata,
+        sourceType: monitor.sourceType,
+        html: result.html,
+      });
+    } catch (err) {
+      logger.warn("Shopify-app detection failed (non-fatal)", { error: String(err) });
+    }
+
+    // Messaging timeline (Positioning Intelligence v2 P1): materialise how this
+    // competitor describes itself, off the structure this capture already parsed.
+    // Like the mobile-app read above it emits NO change and NO signal — the
+    // homepage classifier already carries a hero rewrite to the reader, and the
+    // fact block reads this table to say what the copy went FROM.
+    //
+    // Gated on a COMPLETE capture: an SPA that served its error boundary parses
+    // into a structure with a hero, and recording it would print "Something went
+    // wrong" as the day they repositioned. Only this path (a live scrape) writes
+    // versions — an archive snapshot is reconstructed by the one-shot backfill,
+    // which never runs from here.
+    if (monitor.sourceType === "homepage" && homepageStructure && graded.complete) {
+      try {
+        await recordMessagingVersion({
+          competitorId: competitor.id,
+          structure: homepageStructure,
+          capturedAt: newSnapshot.scrapedAt,
+          snapshotKey: r2Key,
+        });
+      } catch (err) {
+        logger.warn("Messaging version write failed (non-fatal)", { error: String(err) });
+      }
+    }
+
     // Pricing taxonomy (patch-11): analyse the page we just captured, store the
     // latest status on the competitor (unless the user took manual control), and
     // remember the prior status to detect a repositioning when routing the change.
@@ -1291,21 +1349,45 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       const currentClaims = extractNumericClaims(claimText);
       if (currentClaims.length > 0) {
         const lastClaims = await getLastNumericClaims(monitor.competitorId);
-        const lastByKey = new Map<string, number>();
+        const lastByKey = new Map<string, { value: number; rawText: string }>();
         for (const lc of lastClaims ?? []) {
-          lastByKey.set(`${lc.pattern}|${lc.unit}|${lc.context}`, lc.value);
+          lastByKey.set(`${lc.pattern}|${lc.unit}|${lc.context}`, {
+            value: lc.value,
+            rawText: lc.rawText,
+          });
         }
         for (const claim of currentClaims) {
-          const prev = lastByKey.get(`${claim.pattern}|${claim.unit ?? ""}|${claim.context}`);
-          if (prev === undefined || prev <= 0) continue;
+          const last = lastByKey.get(`${claim.pattern}|${claim.unit ?? ""}|${claim.context}`);
+          // No prior observation = the first time we have seen this competitor make
+          // this claim. It is a baseline, not a move, and announcing it would open
+          // every competitor's first homepage capture with a wall of "business
+          // claims changed".
+          if (last === undefined || last.value <= 0) continue;
+          const prev = last.value;
           const variation = (claim.value - prev) / prev;
           if (Math.abs(variation) > CLAIM_VARIATION_THRESHOLD) {
+            const milestone = crossesRoundMilestone(prev, claim.value, claim.unit);
             structuredChanges.push({
               kind: "numeric_claim_changed",
               field: "numeric_claim_changed",
               before: formatClaim(prev, claim.unit, claim.context),
               after: formatClaim(claim.value, claim.unit, claim.context),
-              metadata: { variation, pattern: claim.pattern, context: claim.context },
+              metadata: {
+                variation,
+                pattern: claim.pattern,
+                context: claim.context,
+                unit: claim.unit,
+                // The spans the page actually printed, both sides. The before/after
+                // above are OUR rendering of the parsed numbers, which is what the
+                // classifier needs; a reader checking the claim against the page
+                // needs the words the page used. Positioning Intelligence v2 P1.
+                rawTextBefore: last.rawText,
+                rawTextAfter: claim.rawText,
+                // The round number this move crossed, when it crossed one — the
+                // difference between a company drifting upward and a company
+                // reaching the figure it will put in a press release.
+                ...(milestone !== null ? { milestone } : {}),
+              },
             });
           }
         }
@@ -1620,7 +1702,15 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
           .filter((u) => !isComparisonUrl(u) && integrationFromUrl(u) !== null)
           .slice(0, SITEMAP_CUSTOMER_URL_CAP);
         const otherAdded = added.filter(
-          (u) => !isComparisonUrl(u) && !isCustomerPageUrl(u) && integrationFromUrl(u) === null,
+          (u) =>
+            !isComparisonUrl(u) &&
+            !isCustomerPageUrl(u) &&
+            integrationFromUrl(u) === null &&
+            // Positioning Intelligence v2 P3 — a /for/, /industries/ or /use-cases/
+            // URL NAMES a segment, so it leaves the lump for the same reason a case
+            // study does: routed to both, it would be signalled once as "the sitemap
+            // grew by 12 pages" and once as the ICP expansion it actually is.
+            !isAudienceUrl(u),
         );
 
         if (comparisonAdded.length > 0) {
@@ -1657,6 +1747,19 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
             for (const url of comparisonAdded) {
               const decision = classifyComparisonUrl(url, orgBrands);
               if (!decision) continue;
+              // Positioning Intelligence v2 P2 — a page that NAMES a rival is now
+              // carried by `new_comparison_target`: grouped per run, deduped per
+              // target for life, and it says WHO ("a front against Klue") where
+              // this one could only say "a comparison page appeared". Emitting both
+              // would be the same news twice on the most common route there is.
+              //
+              // Two pages keep this path, and they are the two that matter:
+              //  - the page naming the READER, which is the deterministic critical
+              //    and is not what the market map is about;
+              //  - the page whose slug names nobody we can read (`/compare`, a hub),
+              //    which the market map has nothing to say about — so without this
+              //    it would go out silently.
+              if (routeComparisonUrl(url, orgBrands) === "market_map") continue;
               const line = decision.targetsOrg
                 ? `${competitor.name} published a comparison page targeting you BY NAME: ${url} — a competitor is attacking your product directly in SEO. Immediate competitive action.`
                 : `${competitor.name} published a new comparison / alternative page: ${url} — a deliberate GTM/SEO move positioning against a rival.`;
@@ -1716,6 +1819,37 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
           snapshotId: newSnapshot.id,
           competitorId: competitor.id,
           urls: integrationAdded,
+        });
+
+        // Positioning Intelligence v2 P2 — read who they attack. EVERY comparison
+        // URL of this capture goes over, not only the ones the diff just added: a
+        // competitor added to the workspace last week has a back catalogue of
+        // `/vs/` pages, and the market map is meant to show it from the first run.
+        // Re-sending a URL costs nothing — the registry's unique index absorbs it.
+        //
+        // The self product is included: their own `/vs/` pages are how "you already
+        // compete with X and they do not" can ever be said. Only the SIGNAL is
+        // skipped, inside the job.
+        await ingestNamedCompetitors.enqueue({
+          snapshotId: newSnapshot.id,
+          competitorId: competitor.id,
+          urls: currentUrls.filter(isComparisonUrl).slice(0, SITEMAP_COMPARISON_URL_CAP),
+        });
+
+        // Positioning Intelligence v2 P3 — read who they say they sell to. EVERY
+        // audience URL of this capture goes over, not only the ones the diff added,
+        // for the reason the market map takes its whole catalogue: a competitor added
+        // to the workspace last week already has `/industries/` pages, and the ICP
+        // grid is meant to show them from the first run. Re-sending a URL costs
+        // nothing — the registry's unique index absorbs it.
+        //
+        // The self product is included: their own segment pages are how "they cover a
+        // vertical you do not" can ever be said. Only the SIGNAL is skipped, inside
+        // the job.
+        await ingestAudiencePages.enqueue({
+          snapshotId: newSnapshot.id,
+          competitorId: competitor.id,
+          urls: currentUrls.filter(isAudienceUrl).slice(0, SITEMAP_AUDIENCE_URL_CAP),
         });
 
         // General expansion (non-comparison adds + removes) → one lumped change → the
@@ -2089,7 +2223,9 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       // exactly the change it produces today. On a feed-first changelog the job
       // also owns the deferred change's signal routing (see the lexical branch).
       extractionAllowed &&
-      (monitor.sourceType === "changelog" || monitor.sourceType === "roadmap")
+      (monitor.sourceType === "changelog" ||
+        monitor.sourceType === "roadmap" ||
+        monitor.sourceType === "docs")
     ) {
       await ingestContentItems.enqueue({
         snapshotId: newSnapshot.id,
@@ -2097,6 +2233,11 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         sourceType: monitor.sourceType,
         changeId: deferredContentChange?.id,
         lexicalWorth: deferredContentChange?.lexicalWorth,
+        // Docs only. A docs index lists every page the vendor has ever written and
+        // dates none of them, so "what did they document" is the difference between
+        // this capture and the one before — never the listing itself, which on a
+        // first capture would report a vendor who wrote their whole manual today.
+        previousSnapshotId: monitor.sourceType === "docs" ? lastSnapshot?.id : undefined,
       });
     } else if (
       // Content Intelligence v2 P2 — read the posts this capture published. Written

@@ -61,12 +61,15 @@ export const SEV_DOT: Record<Sev, string> = {
 
 // Master-list grouping (client-only — pure presentation, never touches feedParams
 // so it costs no refetch). Persisted in ?group= so a refresh keeps the view.
-export const GROUP_MODES = ["none", "competitor", "day"] as const;
+// "similar" is the odd one out: it doesn't cut the list into labelled sections, it
+// folds near-duplicate rows into one (see buildFeedRows in signals-view).
+export const GROUP_MODES = ["none", "competitor", "day", "similar"] as const;
 export type GroupMode = (typeof GROUP_MODES)[number];
 export const GROUP_LABEL: Record<GroupMode, string> = {
   none: "No grouping",
   competitor: "By competitor",
   day: "By day",
+  similar: "Fold similar",
 };
 
 export type FilterKey = "severity" | "category" | "competitor";

@@ -94,6 +94,7 @@ const TYPE_LABEL: Record<string, string> = {
   company_news: "Company news",
   roadmap_entry: "Roadmap entry",
   doc_page: "New page",
+  doc_endpoint: "New endpoint",
 };
 
 /**

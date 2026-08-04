@@ -64,7 +64,7 @@ export type ExtractJobsPayload = { snapshotId: string; competitorId: string };
 export type IngestContentItemsPayload = {
   snapshotId: string;
   competitorId: string;
-  sourceType: "changelog" | "roadmap";
+  sourceType: "changelog" | "roadmap" | "docs";
   /** Content Intelligence v2 P1 — the change row of the SAME capture, whose signal
    * routing scrape-monitor DEFERRED to this job: a deterministic breaking /
    * deprecation type owns the signal, otherwise the lexical classifier is the
@@ -73,6 +73,10 @@ export type IngestContentItemsPayload = {
   /** Whether the deferred change passed evaluateSignificance — i.e. worth a
    * lexical classify when no deterministic type turns up. */
   lexicalWorth?: boolean;
+  /** Docs only: the capture this one is compared against. A docs index states no
+   * dates, so a newly documented page is only knowable as the difference between
+   * two captures — with no predecessor the run is a baseline and writes nothing. */
+  previousSnapshotId?: string;
 };
 /** Content Intelligence v2 P2. No `changeId`: unlike the changelog, a blog capture
  * does NOT defer its signal routing — the lexical classifier keeps emitting its own
@@ -306,8 +310,8 @@ export const mineJobFacts = defineJob<CompetitorRefPayload>("mine-job-facts", {
   expireInSeconds: 300,
 });
 // Content-item ingestion (Content Intelligence v2 P1), event-triggered per capture
-// off scrape-monitor for changelog / roadmap. Up to four batched model calls per
-// run, so it gets the same window mine-job-facts has rather than the 60s its
+// off scrape-monitor for changelog / roadmap / docs. Up to four batched model calls
+// per run, so it gets the same window mine-job-facts has rather than the 60s its
 // zero-AI siblings use.
 export const ingestContentItems = defineJob<IngestContentItemsPayload>("ingest-content-items", {
   expireInSeconds: 300,

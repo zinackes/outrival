@@ -59,7 +59,10 @@ export const contentItems = pgTable(
     firstSeenAt: timestamp("first_seen_at").notNull().defaultNow(),
     /**
      * changelog: feature | improvement | fix | breaking | deprecation | security
-     * roadmap: roadmap_entry · docs: doc_page · blog: (P2)
+     * roadmap: roadmap_entry · blog: (P2)
+     * docs: doc_page (a page appeared in the docs index) | doc_endpoint (an
+     *   operation appeared in the published spec — the same fact for a vendor
+     *   whose docs surface is a spec rather than a set of pages)
      *
      * Null means "not typed yet". The loud types (breaking / deprecation /
      * security / fix) are assigned by a deterministic keyword pass, so no signal

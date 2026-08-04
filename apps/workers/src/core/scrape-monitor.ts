@@ -15,6 +15,7 @@ import {
   ingestCaseStudies,
   ingestIntegrations,
   ingestNamedCompetitors,
+  ingestAudiencePages,
   backfillHistory,
 } from "@outrival/queue";
 import { z } from "zod";
@@ -95,7 +96,9 @@ import {
 import { isCustomerPageUrl, integrationFromUrl } from "@outrival/scrapers/content";
 // Pure subpath — Positioning Intelligence v2 P2: which of the two comparison
 // signals owns a page. The registry itself is written by ingest-named-competitors.
-import { routeComparisonUrl } from "@outrival/scrapers/positioning";
+// P3 adds `isAudienceUrl`: which of the sitemap's URLs name a persona / industry /
+// use-case segment. The registry is written by ingest-audience-pages.
+import { routeComparisonUrl, isAudienceUrl } from "@outrival/scrapers/positioning";
 // Pure subpath — no deps. Wellknown v2: /.well-known + llms.txt fingerprint diff.
 import { parseWellKnownDoc, wellKnownDelta } from "@outrival/scrapers/wellknown";
 // Pure subpath — sharp only. Perceptual hash for visual-redesign detection (patch-17).
@@ -180,6 +183,11 @@ const SITEMAP_CUSTOMER_URL_CAP = 10;
 // every capture, not a delta: reading them is pure string work with no fetch, and a
 // site with 200 `/vs/` pages is a programmatic-SEO shop whose map we want in full.
 const SITEMAP_COMPARISON_URL_CAP = 200;
+// Positioning Intelligence v2 P3 — audience URLs handed to one ICP run. Same cap and
+// the same reason as its market-map sibling: the WHOLE catalogue goes over on every
+// capture, it is pure string work with no fetch, and a site with 200 `/industries/`
+// pages is a programmatic-SEO shop whose ICP grid we want in full.
+const SITEMAP_AUDIENCE_URL_CAP = 200;
 // Sources whose capture is ALWAYS a scraper-synthesized document (built from parsed
 // structured data — no HTML fetch path at all), so the deny-page copy heuristic is
 // meaningless on them: deny-shaped strings in a sitemap/feed listing are content, not
@@ -1694,7 +1702,15 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
           .filter((u) => !isComparisonUrl(u) && integrationFromUrl(u) !== null)
           .slice(0, SITEMAP_CUSTOMER_URL_CAP);
         const otherAdded = added.filter(
-          (u) => !isComparisonUrl(u) && !isCustomerPageUrl(u) && integrationFromUrl(u) === null,
+          (u) =>
+            !isComparisonUrl(u) &&
+            !isCustomerPageUrl(u) &&
+            integrationFromUrl(u) === null &&
+            // Positioning Intelligence v2 P3 — a /for/, /industries/ or /use-cases/
+            // URL NAMES a segment, so it leaves the lump for the same reason a case
+            // study does: routed to both, it would be signalled once as "the sitemap
+            // grew by 12 pages" and once as the ICP expansion it actually is.
+            !isAudienceUrl(u),
         );
 
         if (comparisonAdded.length > 0) {
@@ -1818,6 +1834,22 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
           snapshotId: newSnapshot.id,
           competitorId: competitor.id,
           urls: currentUrls.filter(isComparisonUrl).slice(0, SITEMAP_COMPARISON_URL_CAP),
+        });
+
+        // Positioning Intelligence v2 P3 — read who they say they sell to. EVERY
+        // audience URL of this capture goes over, not only the ones the diff added,
+        // for the reason the market map takes its whole catalogue: a competitor added
+        // to the workspace last week already has `/industries/` pages, and the ICP
+        // grid is meant to show them from the first run. Re-sending a URL costs
+        // nothing — the registry's unique index absorbs it.
+        //
+        // The self product is included: their own segment pages are how "they cover a
+        // vertical you do not" can ever be said. Only the SIGNAL is skipped, inside
+        // the job.
+        await ingestAudiencePages.enqueue({
+          snapshotId: newSnapshot.id,
+          competitorId: competitor.id,
+          urls: currentUrls.filter(isAudienceUrl).slice(0, SITEMAP_AUDIENCE_URL_CAP),
         });
 
         // General expansion (non-comparison adds + removes) → one lumped change → the

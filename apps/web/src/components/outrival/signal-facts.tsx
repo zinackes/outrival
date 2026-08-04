@@ -49,6 +49,7 @@ export function SignalFacts({ facts }: { facts: Facts }) {
   if (facts.kind === "roadmap_request") return <RoadmapRequestFacts facts={facts} />;
   if (facts.kind === "integrations") return <IntegrationFacts facts={facts} />;
   if (facts.kind === "comparison_targets") return <ComparisonTargetFacts facts={facts} />;
+  if (facts.kind === "audience_pages") return <AudiencePageFacts facts={facts} />;
   if (facts.kind === "editorial") return <EditorialFacts facts={facts} />;
   if (facts.kind === "tech_stack") return <TechStackFacts facts={facts} />;
   if (facts.kind === "reviews") return <ReviewFacts facts={facts} />;
@@ -676,6 +677,74 @@ function ComparisonTargetFacts({
             {t.firstSeenAt && (
               <span className="text-xs text-muted-foreground tabular-nums">
                 first seen {t.firstSeenAt}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      {hidden > 0 && !expanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <CaretDownIcon size={14} aria-hidden />
+          <span className="tabular-nums">{hidden}</span> more
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** What a segment's kind is called out loud. The vocabulary is closed at three. */
+const AUDIENCE_KIND_LABELS: Record<string, string> = {
+  persona: "persona",
+  industry: "industry",
+  use_case: "use case",
+};
+
+/**
+ * Segments a competitor started publishing pages for.
+ *
+ * The page itself is the evidence, so every segment links to the exact URL its slug
+ * came from — a claim about who somebody sells to should be checkable in one click.
+ * The date is when WE first saw the page: a sitemap carries none.
+ */
+function AudiencePageFacts({ facts }: { facts: Extract<Facts, { kind: "audience_pages" }> }) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? facts.pages : facts.pages.slice(0, CUSTOMERS_COLLAPSED);
+  const hidden = facts.pagesTotal - shown.length;
+
+  return (
+    <div>
+      <p className="text-dense text-muted-foreground">
+        <span className="font-medium text-foreground tabular-nums">{facts.pagesTotal}</span>{" "}
+        {facts.pagesTotal === 1 ? "segment" : "segments"} they had never published a page for
+      </p>
+
+      <ul className="mt-2 space-y-1.5">
+        {shown.map((p) => (
+          <li key={`${p.kind}-${p.displayName}`} className="flex flex-wrap items-baseline gap-x-2">
+            {p.evidenceUrl ? (
+              <a
+                href={p.evidenceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+              >
+                {p.displayName}
+                <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
+              </a>
+            ) : (
+              <span className="text-sm text-foreground">{p.displayName}</span>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {AUDIENCE_KIND_LABELS[p.kind] ?? p.kind}
+            </span>
+            {p.firstSeenAt && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                first seen {p.firstSeenAt}
               </span>
             )}
           </li>

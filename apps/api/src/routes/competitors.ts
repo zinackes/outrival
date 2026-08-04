@@ -64,6 +64,7 @@ import { detectContentLanguage } from "../lib/detect-language";
 import { readGtm, productNavItems, type GtmRead } from "../lib/homepage-gtm";
 import { dedupeVerbatims } from "../lib/review-verbatims";
 import { namedBy, namedTargets } from "../lib/market-map";
+import { audienceProfile } from "../lib/audience-profile";
 import {
   checkCompetitorQuota,
   getOrgPlan,
@@ -2810,6 +2811,28 @@ competitorsRouter.get("/:id/market-map", async (c) => {
     namedBy: namers,
     targetsTotal: targets.length,
   });
+});
+
+/**
+ * The ICP profile: who this competitor SAYS it sells to, and who its own case
+ * studies PROVE it sells to (Positioning Intelligence v2 P3).
+ *
+ * Deterministic on both sides — persona / industry / use-case pages read off their
+ * sitemap, verticals read off the stories they published. The `both` list is the
+ * point: it only exists because `audience_pages.slug` for kind=industry and
+ * `case_studies.customer_industry` are the SAME industry-catalog vocabulary, so a
+ * `/industries/fin-tech` page and a case study about "Fintech" meet on one slug.
+ *
+ * The tab that renders this arrives in P4.
+ */
+competitorsRouter.get("/:id/audience-profile", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  return c.json(await audienceProfile(competitor.id));
 });
 
 /** How recent a first sighting has to be to still read as a win. */

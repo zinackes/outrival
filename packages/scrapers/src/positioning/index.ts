@@ -2,3 +2,4 @@
 // by workers and the API via the "@outrival/scrapers/positioning" subpath.
 export * from "./comparison-targets";
 export * from "./target-identity";
+export * from "./audience-pages";

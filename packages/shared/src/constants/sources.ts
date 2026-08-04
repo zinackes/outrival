@@ -170,6 +170,14 @@ export const SOURCE_TYPES = [
   // that we had never seen it claim. Kept off the `sitemap` monitor, whose snapshot
   // chain carries its own dedup. Kept in sync with the DB source_type enum.
   "integration_catalog",
+  // Audience-page anchor (Positioning Intelligence v2 P3). INTERNAL, never seeded /
+  // scraped / user-selectable — it anchors the change → signal chain for
+  // `new_persona_page`, the persona (/for/…), industry (/industries/…) and use-case
+  // (/use-cases/…, /solutions/…) pages a competitor publishes that we had never seen.
+  // Kept off the `sitemap` monitor, whose snapshot chain carries its own dedup and
+  // whose change row already belongs to the lexical classifier. Kept in sync with the
+  // DB source_type enum.
+  "audience_page",
   // Developer documentation — the competitor's technical roadmap surface. USER-
   // SELECTABLE (pro+), enabled through the standard enable route with an optional
   // URL override. Structured-first, two modes: (1) an OpenAPI/Swagger spec is found

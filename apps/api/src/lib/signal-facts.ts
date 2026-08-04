@@ -8,6 +8,7 @@ import {
   knownIntegrations,
   messagingVersions,
   namedCompetitors,
+  audiencePages,
   postingFacts,
   techStackEntries,
 } from "@outrival/db";
@@ -158,6 +159,18 @@ export interface ComparisonTargetFact {
   /** The exact page that names them. Null only for a mention with no permalink. */
   evidenceUrl: string | null;
   /** "YYYY-MM-DD" — when WE first saw them named, the only date a slug gives us. */
+  firstSeenAt: string | null;
+}
+
+/** One segment a competitor started publishing a page for (Positioning v2 P3). */
+export interface AudiencePageFact {
+  /** 'persona' | 'industry' | 'use_case' — a closed vocabulary of three. */
+  kind: string;
+  /** Prettified from the slug they published — "field-service" → "Field Service". */
+  displayName: string;
+  /** The exact page, so a claim about their ICP can be checked at its source. */
+  evidenceUrl: string | null;
+  /** "YYYY-MM-DD" — when WE first saw the page; a sitemap carries no date. */
   firstSeenAt: string | null;
 }
 
@@ -323,6 +336,13 @@ export type SignalFacts =
       targetsTotal: number;
     }
   | {
+      /** Segments a competitor started publishing pages for (Positioning v2 P3). */
+      kind: "audience_pages";
+      pages: AudiencePageFact[];
+      /** Pages before the cap, so a truncated list can say what it is hiding. */
+      pagesTotal: number;
+    }
+  | {
       /** Integrations newly listed in a catalog (Content Intelligence v2 P5). */
       kind: "integrations";
       integrations: IntegrationFact[];
@@ -410,6 +430,9 @@ const MAX_CUSTOMER_FACTS = 12;
 // A push can open a front against several rivals at once; the block names them, it
 // does not reproduce their comparison hub.
 const MAX_COMPARISON_TARGET_FACTS = 10;
+// An ICP push can ship a whole vertical's worth of pages at once; the block names
+// the segments, it does not reproduce their solutions hub.
+const MAX_AUDIENCE_PAGE_FACTS = 12;
 // A catalog release can list a batch of connectors; the block names them, it does
 // not reproduce the catalog.
 const MAX_INTEGRATION_FACTS = 12;
@@ -788,6 +811,80 @@ async function comparisonTargetFacts(
     kind: "comparison_targets",
     targets: targets.slice(0, MAX_COMPARISON_TARGET_FACTS),
     targetsTotal: targets.length,
+  };
+}
+
+/**
+ * The segments behind a `new_persona_page` signal (Positioning v2 P3).
+ *
+ * Read off the change's OWN rawDiff — the (kind, slug) pairs the emitter already
+ * decided — rather than a time window. A window over `audience_pages` would sweep in
+ * whatever else the same capture recorded, so a one-segment expansion would render as
+ * nine. The row is what carries the URL and the date, so the block can print the page
+ * a claim came from rather than asserting it.
+ */
+async function audiencePageFacts(
+  competitorId: string,
+  monitorId: string,
+  detectedAt: Date,
+): Promise<SignalFacts> {
+  const [change] = await db
+    .select({ rawDiff: changes.rawDiff })
+    .from(changes)
+    .where(and(eq(changes.monitorId, monitorId), eq(changes.detectedAt, detectedAt)))
+    .limit(1);
+
+  const raw = change?.rawDiff as Record<string, unknown> | null | undefined;
+  if (!raw || raw.kind !== "new_persona_page") return null;
+  const wanted = Array.isArray(raw.pages)
+    ? raw.pages.filter(
+        (p): p is { kind: string; slug: string } =>
+          typeof p === "object" &&
+          p !== null &&
+          typeof (p as { kind?: unknown }).kind === "string" &&
+          typeof (p as { slug?: unknown }).slug === "string",
+      )
+    : [];
+  if (wanted.length === 0) return null;
+
+  const rows = await db
+    .select({
+      kind: audiencePages.kind,
+      slug: audiencePages.slug,
+      displayName: audiencePages.displayName,
+      evidenceUrl: audiencePages.evidenceUrl,
+      firstSeenAt: dsql<string | null>`to_char(${audiencePages.firstSeenAt}, 'YYYY-MM-DD')`,
+    })
+    .from(audiencePages)
+    .where(
+      and(
+        eq(audiencePages.competitorId, competitorId),
+        // Narrowed on the SLUGS the emitter named; the (kind, slug) pair is then
+        // matched exactly below, because one slug can legitimately exist under two
+        // kinds (`/industries/fintech` and `/solutions/fintech`).
+        inArray(
+          audiencePages.slug,
+          wanted.map((p) => p.slug),
+        ),
+      ),
+    )
+    .orderBy(audiencePages.firstSeenAt);
+
+  const keys = new Set(wanted.map((p) => `${p.kind} ${p.slug}`));
+  const pages: AudiencePageFact[] = rows
+    .filter((r) => keys.has(`${r.kind} ${r.slug}`))
+    .map((r) => ({
+      kind: r.kind,
+      displayName: r.displayName,
+      evidenceUrl: r.evidenceUrl,
+      firstSeenAt: r.firstSeenAt,
+    }));
+  if (pages.length === 0) return null;
+
+  return {
+    kind: "audience_pages",
+    pages: pages.slice(0, MAX_AUDIENCE_PAGE_FACTS),
+    pagesTotal: pages.length,
   };
 }
 
@@ -1638,6 +1735,7 @@ export async function buildSignalFacts(args: {
     sourceType !== "roadmap" &&
     sourceType !== "roadmap_shift" &&
     sourceType !== "integration_catalog" &&
+    sourceType !== "audience_page" &&
     sourceType !== "tech_stack" &&
     sourceType !== "homepage" &&
     !REVIEW_SOURCES.has(sourceType ?? "")
@@ -1674,6 +1772,11 @@ export async function buildSignalFacts(args: {
     }
     if (sourceType === "integration_catalog") {
       return await integrationFacts(competitorId, monitorId, new Date(detectedAt));
+    }
+    // Reads the change's own rawDiff for the same reason: one capture can record a
+    // whole vertical's worth of pages, so a window would name them all.
+    if (sourceType === "audience_page") {
+      return await audiencePageFacts(competitorId, monitorId, new Date(detectedAt));
     }
     // Reads the change's own rawDiff for the same reason integrations do: the
     // monthly scan records every tech at once, so a window would name them all.

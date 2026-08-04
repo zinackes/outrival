@@ -2282,3 +2282,109 @@ prochain `db:generate` diffe contre un snapshot qui n'a pas la table.
   d'autres posts, et leurs mentions n'entrent dans la map qu'au run suivant.
 - P3 (ICP / `audience_pages`), P4 (tab — maquette artifact obligatoire, décision 6) et
   P5 (Share of Model) non entamées.
+
+---
+
+### 2026-08-04 — Positioning Intelligence v2 — **P3 : ICP** (`audience_pages`, `new_persona_page`, « déclaré vs prouvé »)
+
+**Objectif** : le registre ICP. Une boîte publie son ICP sous forme d'URLs —
+`/for/agencies` nomme un persona, `/industries/fintech` une verticale,
+`/use-cases/onboarding` un job — et jusqu'ici ces pages tombaient dans le tas générique
+« de nouvelles pages sont apparues » du sitemap, où « 12 URLs ajoutées » ne dit rien du
+marché qui vient de s'ouvrir. Ces pages coûtent cher à écrire et ne sont jamais publiées
+par accident : une nouvelle, c'est un segment que quelqu'un a décidé d'attaquer ce
+trimestre. Phase 100% déterministe — zéro appel IA ajouté.
+
+**Réalisé** :
+- **`audience_pages`** (migration `0074`) — `kind` fermé à trois
+  (`persona`|`industry`|`use_case`), `slug`, `display_name`, `is_canonical`,
+  `evidence_url`, `first_seen_at`, UNIQUE `(competitor_id, kind, slug)`. Insert-only,
+  baseline d'abord, une suppression n'écrit rien. Nouveau `source_type` `audience_page`
+  (ancre infra, `isActive=false`).
+- **Lecture sitemap, zéro fetch** (`packages/scrapers/src/positioning/audience-pages.ts`)
+  — table de mapping section → kind, EN/FR/DE, fermée : `/for` `/pour` → persona ·
+  `/industries` `/industry` `/secteurs` `/branchen` → industry · `/use-cases`
+  `/usecases` `/cas-d-usage` → use_case · `/solutions` `/solution` `/loesungen` →
+  use_case. Stoplist de chrome, un seul niveau de profondeur, prettify de P2.
+- **Probe index courte** — `/solutions`, `/use-cases`, `/industries`, `/for`, une fois
+  par concurrent, URL cachée sur `competitors.metadata` — le MISS aussi. Seuls les
+  LIENS sont lus, jamais la prose.
+- **`new_persona_page`** (`content`/medium) — groupé par run, TOUS KINDS CONFONDUS,
+  dédup à vie par `(competitor_id, kind, slug)`. Ancre `audience_page` dédiée.
+- **Endpoint `GET /competitors/:id/audience-profile`** — `personas[]`, `useCases[]`,
+  `industries.{declared,proven,both}`, badges `new` (< 30 j). Agrégation SQL.
+- **Fact block** `audience_pages` (kind + URL exacte + date) côté API et son rendu web.
+
+**Ce que l'écriture a révélé** :
+1. **`/solutions` est un USE CASE, pas un persona — choix assumé, tenu par un test.**
+   Les pages solutions sont nommées d'après un job à faire bien plus souvent que d'après
+   un acheteur (`/solutions/incident-response`, `/solutions/expense-management`). Une
+   page dans le mauvais des trois seaux connus est l'échec qu'on accepte ; une page dans
+   un seau que personne n'a défini, non — d'où le kind FERMÉ et le rejet pur des
+   sections inconnues (`/roles/`, `/verticals/`).
+2. **Le slug n'a pas la même forme selon le kind, et c'est le cœur de la phase.** Pour
+   persona/use_case c'est le slug d'URL — il n'y a rien à quoi le comparer. Pour
+   industry c'est la sortie de `resolveIndustry` (`@outrival/shared` industry-catalog),
+   le MÊME résolveur que `case_studies.customer_industry` de Content P3. Sans ça
+   `/industries/fin-tech` et une case study « Fintech » sont deux chaînes indépendantes
+   et l'intersection `both` est vide en permanence, en silence.
+3. **Un seul niveau de profondeur, exprimé dans la regex.** La capture s'arrête au slash
+   suivant, donc `/solutions/finance/banking` est la page FINANCE et pas un second
+   segment. Un préfixe de locale (`/en/industries/fintech`) ne cache pas la section
+   parce que la regex n'est pas ancrée au début.
+4. **Pas de colonne `signalled_at`, contrairement à P2 — et c'est démontrable.** La clé
+   du market map porte une dimension SOURCE (un rival vu sur une page `/vs/` puis dans
+   un post = deux lignes, une seule news), donc il lui fallait un tampon par nom. Ici la
+   clé EST `(kind, slug)` : `returning()` sur `onConflictDoNothing` est déjà la dédup à
+   vie, une deuxième ligne pour le même segment est impossible.
+5. **Les URLs d'audience quittent le tas du classifier**, comme les case studies et les
+   integrations avant elles. Routées vers les deux, elles seraient signalées une fois
+   comme « le sitemap a grossi de 12 pages » et une fois comme l'expansion ICP qu'elles
+   sont vraiment.
+
+**Fichiers** : `packages/scrapers/src/positioning/{audience-pages,index}.ts` (+test) ·
+`packages/db/src/schema/{audience-pages,monitors,index}.ts` + migration `0074` ·
+`packages/shared/src/{constants/sources,sources/catalog}.ts` ·
+`apps/workers/src/lib/audience-pages.ts` ·
+`apps/workers/src/core/{ingest-audience-pages,scrape-monitor}.ts` (+test) ·
+`packages/queue/src/jobs.ts` · `apps/workers/src/queue/handlers.ts` ·
+`apps/api/src/lib/{audience-profile,signal-facts}.ts` ·
+`apps/api/src/routes/competitors.ts` (+test) ·
+`apps/web/src/{lib/api.ts,lib/source-labels.ts,components/outrival/signal-facts.tsx}`.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · scrapers 1092 ✓ (+22) · workers 352 ✓ (+15) ·
+api 353 ✓ (+8) · shared 813 ✓ · ai 214 ✓ · web 187 ✓ · db 5 ✓. **Zéro appel IA ajouté** —
+aucun fichier de la phase n'importe `@outrival/ai`, `ai_runs` inchangé.
+
+**Le test qui compte** : « un slug de sitemap et un label de case study atterrissent sur
+le MÊME slug canonique ». `/industries/fin-tech` → `fintech`, `resolveIndustry("Fintech")`
+→ `fintech`. C'est la seule raison pour laquelle `both` peut contenir quoi que ce soit ;
+si l'un des deux côtés cesse de passer par le catalogue, l'échec ne change pas la forme
+de la réponse — l'intersection revient simplement vide.
+
+**Vérifié en dev sur fixture réelle** (PGlite, enqueues interceptés, formes d'URL
+réellement publiées par un vendeur de competitive intelligence) : semaine 1 → 7 segments
+au registre, **0 signal** (`/solutions` racine, `/for/index`,
+`/solutions/battlecards/templates`, `/vs/crayon` et `/customers/acme` tous correctement
+hors registre) ; semaine 2 → un seul `content/medium` « 2 new audience pages —
+/industries/fin-tech, /for/revenue-operations », fact block avec les URLs exactes, et
+`both = [fintech]` (page déclarée + 2 case studies) là où `software` reste déclaré-seul
+et `saas` prouvé-seul.
+
+**Ancre — interprétation à valider** : la consigne disait « change sitemap de la fenêtre
+sinon synthétique ». C'est l'ancre `audience_page` SYNTHÉTIQUE qui a été retenue, jamais
+le change du sitemap : celui-ci appartient déjà au classifier lexical et
+`signals.change_id` est unique, donc l'un des deux signaux disparaîtrait en silence
+(c'est la raison écrite noir sur blanc dans `editorial_shift`). Le repli « change réel de
+la fenêtre » de `roadmap_shift` ne s'applique pas ici : scrape-monitor défère le classify
+pour le roadmap, pas pour le sitemap.
+
+**Reste côté humain** :
+- Appliquer `0074` (pré-flight `pnpm --filter @outrival/db db:preflight` D'ABORD).
+  **Attention** : le DEV local n'a ni `0071`, ni `0072`, ni `0073`, ni `0074` — la PROD
+  est en avance sur `0072`.
+- Déployer api + web + workers.
+- Rien à rattraper côté sitemap : le premier run fait baseline. Les `case_studies`
+  existantes sont lues telles quelles par l'endpoint, zéro écriture nouvelle.
+- P4 (tab — maquette artifact obligatoire, décision 6) et P5 (Share of Model) non
+  entamées.

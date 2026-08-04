@@ -54,6 +54,7 @@ import { ListRowsSkeleton } from "./skeletons";
 import { ListError } from "@/components/outrival/list-error";
 import { useListKeyboardNav } from "@/hooks/use-list-keyboard-nav";
 import { useSampleMode } from "@/hooks/use-sample-mode";
+import { useSignalsGroup } from "@/hooks/use-signals-group";
 import { getSampleData, getSampleSignalDetail } from "@/lib/sample-data";
 
 // The synthetic list row for the AI brief. It sits above the feed and opens in
@@ -178,11 +179,15 @@ export function SignalsView() {
 
   const focusId = searchParams.get("focus");
   const quickView = (searchParams.get("view") as QuickView) || "all";
+  // Grouping is a display preference the reader keeps between visits (?group=
+  // alone died the moment they navigated away). A mode named in the URL still
+  // wins, so deep links and shared links render what they say.
+  const [storedGroup, setStoredGroup] = useSignalsGroup();
   const group = (GROUP_MODES as readonly string[]).includes(
     searchParams.get("group") ?? "",
   )
     ? (searchParams.get("group") as GroupMode)
-    : "none";
+    : storedGroup;
   const sev = useMemo(() => parseSet(searchParams.get("severity")) as Set<Sev>, [searchParams]);
   const cat = useMemo(() => parseSet(searchParams.get("category")), [searchParams]);
   const comp = useMemo(() => parseSet(searchParams.get("competitor")), [searchParams]);
@@ -199,6 +204,16 @@ export function SignalsView() {
       router.replace(qs ? `?${qs}` : "?", { scroll: false });
     },
     [router, searchParams],
+  );
+
+  // Picking a grouping writes both: storage (so it survives leaving the page) and
+  // the URL (so the current link still describes what is on screen).
+  const setGroup = useCallback(
+    (mode: GroupMode) => {
+      setStoredGroup(mode);
+      setParam({ group: mode === "none" ? null : mode });
+    },
+    [setStoredGroup, setParam],
   );
 
   // Debounced search: type into local state for instant feedback, but write the URL
@@ -1190,6 +1205,7 @@ export function SignalsView() {
             searchInput={searchInput}
             onSearchInput={setSearchInput}
             setParam={setParam}
+            onGroupChange={setGroup}
             onToggleFilter={toggleInSet}
             onClearFilters={clearFilters}
             currentFilters={currentFilters}
@@ -1211,7 +1227,7 @@ export function SignalsView() {
                 brief={brief}
                 foldable={group === "similar" ? 0 : foldedAway}
                 onReadBrief={() => selectRow(BRIEF_ID)}
-                onFold={() => setParam({ group: "similar" })}
+                onFold={() => setGroup("similar")}
                 onMarkAllRead={markAllRead}
                 onDismiss={() => setCatchUpDismissed(true)}
               />

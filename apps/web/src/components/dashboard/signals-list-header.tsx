@@ -95,6 +95,7 @@ export function SignalsListHeader({
   searchInput,
   onSearchInput,
   setParam,
+  onGroupChange,
   onToggleFilter,
   onClearFilters,
   currentFilters,
@@ -118,6 +119,9 @@ export function SignalsListHeader({
   searchInput: string;
   onSearchInput: (value: string) => void;
   setParam: (updates: Record<string, string | null>) => void;
+  // Grouping has its own setter: unlike the other controls it is remembered
+  // between visits, so it writes storage as well as the URL.
+  onGroupChange: (mode: GroupMode) => void;
   onToggleFilter: (key: FilterKey, value: string) => void;
   onClearFilters: () => void;
   currentFilters: SavedViewFilters;
@@ -319,7 +323,7 @@ export function SignalsListHeader({
               <DropdownMenuCheckboxItem
                 key={m}
                 checked={group === m}
-                onCheckedChange={() => setParam({ group: m === "none" ? null : m })}
+                onCheckedChange={() => onGroupChange(m)}
               >
                 {GROUP_LABEL[m]}
               </DropdownMenuCheckboxItem>

@@ -25,6 +25,7 @@ import {
   kindLabel,
   PERIOD_SHORT,
   sectionName,
+  skipCopy,
   STATIC_PHRASE,
   type Outcome,
 } from "./format";
@@ -46,7 +47,8 @@ function whatHappened(e: ActivityEvent, outcome: Outcome): string {
   if (outcome === "change") return e.changeSummary ?? "Something changed on this page";
   if (outcome === "first_capture") return "First capture, saved as the baseline";
   if (outcome === "failed") return "We couldn't reach the page, nothing was captured";
-  return "Nothing new";
+  // A skip is quiet, but it is not "nothing new": no page was opened at all.
+  return skipCopy(e)?.short ?? "Nothing new";
 }
 
 // The right-hand cell: what the run holds. A change row shows what MOVED (a total
@@ -181,22 +183,33 @@ function RunPanel({
       {hasCapturedDetail(event.captured) && <CapturedDetail captured={event.captured!} />}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-dense text-muted-foreground">
         <span className="tabular-nums">Checked in {duration(event.durationMs)}</span>
-        {event.url && (
-          <a
-            href={event.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-link hover:underline"
-          >
-            <ArrowSquareOutIcon className="size-3.5" aria-hidden />
-            View the page we read
-          </a>
-        )}
+        <PageLink event={event} outcome={outcome} />
         <Link href={entityHref} className="text-link hover:underline">
           Open {event.isSelf ? "your product" : event.competitorName}
         </Link>
       </div>
     </div>
+  );
+}
+
+// The way out of the panel, named for what the run actually did. A capture links
+// to the page it read; a failed run links to the page it tried, which is still
+// the useful thing to open. A skip links nowhere — the whole point of it is that
+// there was no such page, and the old fallback to the competitor's homepage put
+// "View the page we read" on a URL nothing had ever opened.
+function PageLink({ event, outcome }: { event: ActivityEvent; outcome: Outcome }) {
+  const href = event.readUrl ?? (outcome === "failed" ? event.targetUrl : null);
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 text-link hover:underline"
+    >
+      <ArrowSquareOutIcon className="size-3.5" aria-hidden />
+      {event.readUrl ? "View the page we read" : "View the page we tried"}
+    </a>
   );
 }
 
@@ -269,16 +282,19 @@ function ChangeDetail({ event }: { event: ActivityEvent }) {
 // A quiet run is not a dead end: it says what it means and, for a no-change run,
 // when the page last actually moved.
 function QuietDetail({ event, outcome }: { event: ActivityEvent; outcome: Outcome }) {
+  const skip = skipCopy(event);
   return (
     <div className="flex flex-col gap-1.5 text-muted-foreground">
       <p>
-        {outcome === "first_capture"
-          ? "The first time we captured this page. It is the baseline now: every later check is compared against it, and anything that moves shows up here."
-          : outcome === "failed"
-            ? "The site did not serve the page. We stop rather than push, so nothing was captured and the source will be tried again on its next check."
-            : "We read this page and it matches our last capture, so nothing changed."}
+        {skip
+          ? skip.detail
+          : outcome === "first_capture"
+            ? "The first time we captured this page. It is the baseline now: every later check is compared against it, and anything that moves shows up here."
+            : outcome === "failed"
+              ? "The site did not serve the page. We stop rather than push, so nothing was captured and the source will be tried again on its next check."
+              : "We read this page and it matches our last capture, so nothing changed."}
       </p>
-      {outcome === "no_change" && event.lastChangedAt && (
+      {!skip && outcome === "no_change" && event.lastChangedAt && (
         <p>
           Last actual change{" "}
           <span className="tabular-nums">

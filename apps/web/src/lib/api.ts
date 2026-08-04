@@ -1270,7 +1270,11 @@ export interface ActivityEvent {
   // products page rather than a competitor detail page.
   isSelf?: boolean;
   sourceType: string;
-  status: "success" | "no_change" | "failed";
+  // `skipped` is a run that found no surface to read at all (the competitor
+  // publishes no roadmap portal, links no YouTube channel…). It is neither a
+  // failure nor a quiet check, and folding it into either one is what made the
+  // feed say "Nothing new" about a page it had never opened.
+  status: "success" | "no_change" | "failed" | "skipped";
   durationMs: number;
   recordedAt: string;
   // What the "Change detected" run actually found (null for no-change/failed runs
@@ -1286,10 +1290,16 @@ export interface ActivityEvent {
   // True only for a monitor's baseline capture (first snapshot, no diff possible).
   // Distinguishes the first scrape from an actual "change detected" in the feed.
   isFirstCapture?: boolean;
-  // The live page this run inspected (snapshot's resolved URL, else the
-  // competitor site). Lets a no-change / first-capture row link out to what was
-  // checked, instead of being a dead end.
+  // Why a failed / skipped run produced no capture — the scraper's own marker
+  // (`no_roadmap_portal`, `portal_private`, `no_docs_surface`…).
+  failureReason?: string | null;
+  // The competitor's own site. Identity only (the row's favicon), never "the
+  // page we read".
   url?: string | null;
+  // The page this run actually read, null when it read nothing.
+  readUrl?: string | null;
+  // The page the monitor watches, whether or not this run reached it.
+  targetUrl?: string | null;
   // When the monitor last truly detected a change — context for a no-change row
   // ("unchanged since …"). Null if it has never changed.
   lastChangedAt?: string | null;

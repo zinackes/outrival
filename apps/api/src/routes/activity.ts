@@ -218,6 +218,14 @@ interface RawRun {
   // monitor last truly changed — context for a no-change / first-capture row so it
   // isn't a dead end: link out to the live page, say "unchanged since …".
   resolvedUrl: string | null;
+  // The page the monitor is pointed at (its config override), whether or not this
+  // run reached it. Distinct from resolvedUrl on every run that captured nothing.
+  monitorUrl: string | null;
+  // Why a `failed` / `skipped` run produced no capture. A benign skip carries a
+  // stable marker (no_roadmap_portal, no_docs_surface…) that names an ABSENT
+  // surface, which is the only thing that keeps such a run from reading as
+  // "nothing changed" — see whatHappened() in the web feed.
+  failureReason: string | null;
   lastChangedAt: string | null;
   // What a data source captured on this run, matched to the analytics batch
   // nearest the run (see the LATERAL joins below). Only one family is populated
@@ -718,6 +726,8 @@ activityRouter.get("/timeline", async (c) => {
            (r.status = 'success' AND ch.id IS NULL AND NOT ${earlierSnapshot}) AS "isFirstCapture",
            (m.last_changed_at AT TIME ZONE 'UTC') AS "lastChangedAt",
            snap.resolved_url AS "resolvedUrl",
+           m.config->>'url' AS "monitorUrl",
+           nullif(r.failure_reason, '') AS "failureReason",
            jobcap.total AS "jobsTotal", jobcap.teams AS "jobsTeams",
            jobcap.by_dept AS "jobsByDept", jobcap.prev_total AS "jobsPrevTotal",
            pricecap.plan_count AS "pricingPlanCount", pricecap.min_price AS "pricingMinPrice",
@@ -882,9 +892,20 @@ activityRouter.get("/timeline", async (c) => {
     humanChangeBefore: r.humanChangeBefore,
     humanChangeAfter: r.humanChangeAfter,
     isFirstCapture: r.isFirstCapture === true,
-    // Live page to link out to: the resolved URL of the captured snapshot, else
-    // the competitor's site as a fallback (old/failed runs have no snapshot).
-    url: r.resolvedUrl ?? urlById.get(r.competitorId) ?? null,
+    failureReason: r.failureReason,
+    // The competitor's own site — identity only (the row draws its favicon from
+    // this). It used to double as the "page we read" link, which is why a jobs run
+    // captured off an ATS drew Greenhouse's mark next to the competitor's name.
+    url: urlById.get(r.competitorId) ?? null,
+    // The page this run actually READ. Null unless the run captured something: a
+    // failed run reached nothing, and a benign skip (no public roadmap portal, no
+    // docs surface) had nothing to reach. The old fallback to the competitor's
+    // homepage put a page we never opened behind "View the page we read" — on prod
+    // that was every one of 145 roadmap skips in a week.
+    readUrl: r.status === "success" || r.status === "no_change" ? r.resolvedUrl : null,
+    // The page this monitor watches, whether or not this run got to it. What a
+    // failed row links out to, so it stays actionable without claiming a read.
+    targetUrl: r.monitorUrl ?? r.resolvedUrl ?? urlById.get(r.competitorId) ?? null,
     lastChangedAt: r.lastChangedAt,
     captured: shapeCaptured(r),
     // On a change row, what moved vs the previous capture (delta); null elsewhere,

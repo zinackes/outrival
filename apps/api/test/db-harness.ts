@@ -21,23 +21,52 @@ export interface TestHarness {
 
 const MIGRATIONS = resolve(import.meta.dir, "../../../packages/db/migrations");
 
-// Migrating the full schema (the 40KB 0000 baseline) costs a few seconds, and the
-// suite calls makeTestDb once per test file. Run the migration ONCE, snapshot the
-// migrated data dir, and hydrate every later instance from that snapshot — each
-// file still gets its own isolated (empty-but-migrated) PGlite, no cross-file id
-// collisions, but only the first pays the migration cost. Keeps the suite fast and
-// off the WSL2 thrash cliff as route coverage grows.
-let migratedTemplate: Blob | File | null = null;
+// ONE PGlite for the whole process, migrated once.
+//
+// bun test runs every file of a package in a SINGLE process, and a PGlite instance is
+// a WebAssembly linear memory that close() cannot hand back to the OS — and each test
+// file's module scope keeps its own instance reachable for the whole run, so the GC
+// cannot collect it either. One instance per file therefore accumulated: these 38
+// files peaked at 7.3 GB, which is what saturated an 8 GB WSL2 VM and pushed it into
+// swap.
+//
+// Isolation is preserved by truncating instead of re-instantiating: every caller gets
+// the same empty-but-migrated database the old per-file instance handed out. The reset
+// runs on ACQUIRE, not on close, so a file that dies before its afterAll still cannot
+// leak rows into the next one.
+let shared: { client: PGlite; db: TestDb } | null = null;
+
+// Migrations live in the `drizzle` schema, so wiping `public` keeps them applied.
+const TRUNCATE_PUBLIC = `
+  DO $$
+  DECLARE stmt text;
+  BEGIN
+    SELECT 'TRUNCATE TABLE ' || string_agg(format('%I.%I', schemaname, tablename), ', ')
+           || ' RESTART IDENTITY CASCADE'
+      INTO stmt
+      FROM pg_tables WHERE schemaname = 'public';
+    IF stmt IS NOT NULL THEN EXECUTE stmt; END IF;
+  END $$;
+`;
 
 export async function makeTestDb(): Promise<TestHarness> {
-  let client: PGlite;
-  if (migratedTemplate) {
-    client = new PGlite({ loadDataDir: migratedTemplate });
-  } else {
-    client = new PGlite();
+  if (!shared) {
+    const client = new PGlite();
     await migrate(drizzle(client), { migrationsFolder: MIGRATIONS });
-    migratedTemplate = await client.dumpDataDir();
+    shared = { client, db: drizzle(client, { schema }) };
+  } else {
+    await shared.client.exec(TRUNCATE_PUBLIC);
   }
-  const db = drizzle(client, { schema });
-  return { db, close: () => client.close() };
+  // Files keep their afterAll close(): closing the shared instance would pull the DB
+  // out from under the next file, so teardown is a no-op. test/setup.ts (preloaded
+  // via bunfig.toml) closes it once when the whole run ends — an open WASM client
+  // makes bun exit 99 even with every test passing.
+  return { db: shared.db, close: async () => {} };
+}
+
+/** Called once per process by the preloaded test/setup.ts, never by a test file. */
+export async function closeSharedDb(): Promise<void> {
+  const open = shared;
+  shared = null;
+  await open?.client.close();
 }

@@ -1,0 +1,28 @@
+# Repo-root bun config.
+#
+# Why there is no parallelism knob here: bun test has no `maxWorkers`. It runs one
+# process per package and every file inside it sequentially, and each flag that
+# changes that was measured WORSE on this repo (apps/api, 8 DB-backed files):
+#
+#   default                2.64 GB   13.2 s
+#   --isolate              5.22 GB   40.6 s   fresh global per file => reloads everything
+#   --parallel=1           5.22 GB   42.9 s   implies --isolate
+#   --parallel=2           3.00 GB   27.3 s   N accumulating workers, live at once
+#   [test] smol = true     2.63 GB   15.8 s   caps the JS heap; the cost was WASM
+#
+# The memory was never JS. Each test file built its own PGlite (WebAssembly Postgres),
+# and a WASM linear memory is never handed back to the OS — while the file's module
+# scope keeps it reachable, so the GC cannot take it either. apps/api peaked at 7.3 GB
+# and apps/workers at 3.3 GB, and `turbo test` ran all seven packages at once: ~12 GB
+# demanded on an 8 GB WSL2 VM, hence the swap thrash.
+#
+# The fix lives in apps/api/test/db-harness.ts and apps/workers/test/db-harness.ts:
+# ONE migrated PGlite per process, truncated on acquire so each file still starts from
+# an empty-but-migrated database. Each app's own bunfig.toml preloads the run-scoped
+# afterAll that closes it (an open WASM client makes bun exit 99 on a green suite).
+#
+#   apps/api      7.28 GB / 76.6 s  ->  1.02 GB / 13.8 s   (353 pass)
+#   apps/workers  3.35 GB / 17.1 s  ->  1.09 GB /  7.6 s   (352 pass)
+
+[test]
+preload = ["./scripts/no-root-bun-test.ts"]

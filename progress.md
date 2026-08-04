@@ -2257,11 +2257,28 @@ au registre, **0 signal** ; semaine 2 → `content/medium` « New comparison tar
 /vs/contify », `/alternatives/klue` muet (déjà connu par page), `/vs/outrival` et
 `/compare/crayon-vs-klue` correctement hors registre.
 
+**Appliqué en PROD le 2026-08-04** (go explicite) :
+- Pré-flight ledger d'abord — nouveau `pnpm --filter @outrival/db db:preflight`,
+  read-only, qui compare le ledger prod au journal committé **en hachant chaque `.sql`**
+  et sort APPLIED / DRIFT / PENDING. Un compte de lignes a l'air sain pendant qu'un hash
+  a dérivé, et un hash dérivé fait rejouer une migration ou sauter silencieusement celle
+  d'avant. Verdict avant : `0 drift, 1 pending (0072)`. Après : `73/73, 0 pending`.
+- Migration `0072` appliquée via le migrator runtime (`src/migrate.ts`, le même que le
+  pré-deploy Coolify) sur l'endpoint **direct** — jamais `-pooler`, qui fait pendre le
+  migrator sur du DDL. Vérifié structurellement : 10 colonnes, 4 index, la FK cascade.
+- `backfill:named-competitors` : dry run puis `--apply`. 243 concurrents scannés,
+  **1 item, 5 mentions, 5 lignes écrites, 0 signal** — toutes `source=blog`,
+  `signalled_at` null. C'est le volume honnête : le lecteur blog de Content P2 n'a encore
+  enrichi qu'un post en prod.
+
+**Attention — la PROD est en avance sur le DEV sur 0072** (même inversion que 0067 en
+Content P3) : lancer `pnpm db:migrate` en local avant de retoucher au schéma, sinon le
+prochain `db:generate` diffe contre un snapshot qui n'a pas la table.
+
 **Reste côté humain** :
-- Migration `0072` : PAS appliquée (ni dev, ni prod). `when` = 1785861881224, au-dessus
-  de 0071 — pas de skew de journal.
-- Lancer `pnpm --filter @outrival/workers backfill:named-competitors` (dry run d'abord)
-  APRÈS la migration : sans lui la map démarre vide côté blog/docs.
-- Déployer api + web + workers.
+- Déployer api + web + workers (le code n'est pas encore en prod ; la table est là, rien
+  ne l'écrit tant que les workers tournent l'ancien code).
+- Relancer le backfill après le déploiement des workers : le lecteur blog enrichira
+  d'autres posts, et leurs mentions n'entrent dans la map qu'au run suivant.
 - P3 (ICP / `audience_pages`), P4 (tab — maquette artifact obligatoire, décision 6) et
   P5 (Share of Model) non entamées.

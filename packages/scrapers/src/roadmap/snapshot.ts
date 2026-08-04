@@ -81,9 +81,12 @@ export function sortEntries(entries: RoadmapEntry[]): RoadmapEntry[] {
 
 export function buildRoadmapDoc(portal: RoadmapPortal): RoadmapDocument {
   const entries = sortEntries(portal.entries);
-  // "generic" is an internal routing word, not something to hand a reader (or the
-  // classifier) as the name of a product.
-  const vendorLabel = portal.vendor === "generic" ? "vendor unidentified" : portal.vendor;
+  // Two adapters read a portal without knowing whose it is: `generic` off an embedded
+  // payload, `dom` off the markup. Both are internal routing words, not something to
+  // hand a reader (or the classifier) as the name of a product — and neither vendor
+  // ever told us whether it served one page of several.
+  const unidentified = portal.vendor === "generic" || portal.vendor === "dom";
+  const vendorLabel = unidentified ? "vendor unidentified" : portal.vendor;
   const intro =
     `Public roadmap and feedback portal (${vendorLabel}) — what this vendor has ` +
     `committed to build, and how many of their own customers are asking for each item. ` +
@@ -91,10 +94,9 @@ export function buildRoadmapDoc(portal: RoadmapPortal): RoadmapDocument {
     `band is customer demand building up behind a request.`;
   // An unidentified vendor cannot tell us whether it paginated, so the count is
   // reported as what we could read rather than as the size of their roadmap.
-  const countLabel =
-    portal.vendor === "generic"
-      ? `${entries.length} entries listed on the page we can read`
-      : `${entries.length} entries`;
+  const countLabel = unidentified
+    ? `${entries.length} entries listed on the page we can read`
+    : `${entries.length} entries`;
   const header =
     `Roadmap at ${portal.url} — ${statusCounts(entries)} (${countLabel}` +
     (portal.truncated ? ", partial: the portal serves more than one page" : "") +

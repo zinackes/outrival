@@ -76,7 +76,7 @@ const VOTE_FUZZY = /vote/;
  * publishing vocabulary ("published", "draft") and the issue-tracker vocabulary
  * ("open", "closed") — those are what the false positives are made of.
  */
-const ROADMAP_STATUS_WORDS = [
+export const ROADMAP_STATUS_WORDS = [
   "planned",
   "planning",
   "progress",
@@ -193,7 +193,7 @@ function toCandidate(o: Record<string, unknown>, base: string): Candidate | null
   };
 }
 
-function statusesLookLikeRoadmap(statuses: Set<string>): boolean {
+export function statusesLookLikeRoadmap(statuses: Set<string>): boolean {
   for (const s of statuses) {
     if (ROADMAP_STATUS_WORDS.some((w) => s.includes(w))) return true;
   }

@@ -1,11 +1,14 @@
 /**
  * Shared shape of a public roadmap / feedback portal, whatever vendor serves it.
- * Both adapters (Canny, ProductBoard) normalise onto this so the snapshot builder —
- * and therefore the diff the pipeline reads — is vendor-agnostic.
+ * Every adapter (Canny, ProductBoard, generic, DOM) normalises onto this so the
+ * snapshot builder — and therefore the diff the pipeline reads — is vendor-agnostic.
  */
 
-/** `generic` = read by shape from an embedded JSON island, vendor unidentified. */
-export type RoadmapVendor = "canny" | "productboard" | "generic";
+/**
+ * `generic` = read by shape from an embedded JSON island, vendor unidentified.
+ * `dom`     = read out of the markup itself, for portals that embed no payload.
+ */
+export type RoadmapVendor = "canny" | "productboard" | "generic" | "dom";
 
 export interface RoadmapEntry {
   /**

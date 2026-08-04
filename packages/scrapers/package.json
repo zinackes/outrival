@@ -169,6 +169,7 @@
   "dependencies": {
     "@outrival/shared": "workspace:*",
     "cheerio": "^1.2.0",
+    "domhandler": "^5.0.3",
     "exa-js": "^2.13.0",
     "playwright": "^1.60.0",
     "sharp": "^0.34.5",

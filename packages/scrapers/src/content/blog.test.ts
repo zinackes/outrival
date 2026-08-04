@@ -127,6 +127,25 @@ test("reads posts off a listing and skips everything that is not one", () => {
   expect(links[0]!.publishedAt).toBe(new Date("2024-05-01").toISOString());
 });
 
+test("a 'recent posts' sidebar does not strip a post of its date", () => {
+  // Docusaurus (and most blog themes) render an undated "Recent posts" nav BEFORE
+  // the listing. Its anchors used to win the dedup, so the newest posts landed
+  // with no publishedAt and were then dated from the day we scraped them.
+  const html = `<!doctype html><html><body>
+    <aside><nav aria-label="Blog recent posts navigation"><ul>
+      <li><a href="/blog/release/4.0">Release: Yarn 4.0</a></li>
+    </ul></nav></aside>
+    <main><article>
+      <h2><a href="/blog/release/4.0">Release: Yarn 4.0</a></h2>
+      <time datetime="2023-10-23T00:00:00.000Z">October 23, 2023</time>
+    </article></main>
+  </body></html>`;
+
+  const links = extractPostLinks(html, "https://yarnpkg.com/blog");
+  expect(links).toHaveLength(1);
+  expect(links[0]!.publishedAt).toBe("2023-10-23T00:00:00.000Z");
+});
+
 test("canonicalisation drops query, fragment and trailing slash", () => {
   expect(canonicalizeUrl("https://Acme.com/blog/post/?utm=x#top")).toBe(
     "https://acme.com/blog/post",

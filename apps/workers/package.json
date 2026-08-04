@@ -11,6 +11,7 @@
     "queue:start": "bun run src/queue/worker.ts",
     "backfill:hiring-geo": "bun run src/scripts/backfill-hiring-geo.ts",
     "backfill:salary-bands": "bun run src/scripts/backfill-salary-bands.ts",
+    "backfill:content-dates": "bun run src/scripts/backfill-content-dates.ts",
     "ats:coverage": "bun run src/scripts/ats-coverage.ts"
   },
   "dependencies": {

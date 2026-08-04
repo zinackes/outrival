@@ -2874,7 +2874,16 @@ const ContentQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).optional(),
 });
 
-/** `published_at ?? first_seen_at` — the date an item is placed on, everywhere. */
+/**
+ * `published_at ?? first_seen_at` — the date an item FALLS IN, for every window
+ * this file cuts (the timeline period, the cadence months).
+ *
+ * It is deliberately NOT the sort key. An undated item coalesces to the day we
+ * scraped it, which on a fresh competitor is today — so sorting on it puts a post
+ * from 2021 at the top of the timeline under this month's heading. Ordering keeps
+ * dated items on their own date and sends the undated ones to the end, where the
+ * tab labels them as undated instead of dating them for the publisher.
+ */
 const itemDateSql = sql`coalesce(${contentItems.publishedAt}, ${contentItems.firstSeenAt})`;
 
 /**
@@ -2934,7 +2943,7 @@ competitorsRouter.get("/:id/content", async (c) => {
       })
       .from(contentItems)
       .where(where)
-      .orderBy(sql`${itemDateSql} desc`)
+      .orderBy(sql`${contentItems.publishedAt} desc nulls last`, desc(contentItems.firstSeenAt))
       .limit(limit)
       .offset(offset),
     db.select({ n: sql<number>`count(*)::int` }).from(contentItems).where(where),

@@ -119,7 +119,7 @@ export function extractPostLinks(html: string, indexUrl: string): BlogPostLink[]
     .toArray()
     .slice(0, MAX_CANDIDATES);
 
-  const seen = new Set<string>();
+  const byUrl = new Map<string, BlogPostLink>();
   const out: BlogPostLink[] = [];
   const indexCanonical = canonicalizeUrl(indexUrl);
 
@@ -136,14 +136,6 @@ export function extractPostLinks(html: string, indexUrl: string): BlogPostLink[]
     }
     if (EXCLUDED_RE.some((re) => re.test(url))) continue;
     if (!isDeeperThan(url, indexUrl) && !POST_PATH_RE.test(pathOf(url))) continue;
-    if (seen.has(url)) continue;
-
-    // The anchor's own words are the title. An image-only card carries it in the
-    // alt text; an anchor with neither says nothing, and a row needs a title.
-    const title = ($(el).text().replace(/\s+/g, " ").trim() ||
-      $(el).find("img[alt]").first().attr("alt")?.trim() ||
-      "") as string;
-    if (title.length < MIN_TITLE_CHARS) continue;
 
     // The date the listing printed next to this post, when it printed a
     // machine-readable one. Inside the anchor first, then the card around it.
@@ -158,8 +150,28 @@ export function extractPostLinks(html: string, indexUrl: string): BlogPostLink[]
           .attr("datetime"),
       );
 
-    seen.add(url);
-    out.push({ url, title, publishedAt });
+    // The same post, linked twice. A "Recent posts" sidebar carries the NEWEST
+    // posts as bare list items with no date beside them, and it is rendered
+    // BEFORE the listing — so the first anchor for a recent post is routinely
+    // the undated one, and keeping it dated the post from the day we scraped.
+    // Whichever anchor came first, the dated one is the one that knows when the
+    // post was published.
+    const known = byUrl.get(url);
+    if (known) {
+      if (!known.publishedAt && publishedAt) known.publishedAt = publishedAt;
+      continue;
+    }
+
+    // The anchor's own words are the title. An image-only card carries it in the
+    // alt text; an anchor with neither says nothing, and a row needs a title.
+    const title = ($(el).text().replace(/\s+/g, " ").trim() ||
+      $(el).find("img[alt]").first().attr("alt")?.trim() ||
+      "") as string;
+    if (title.length < MIN_TITLE_CHARS) continue;
+
+    const link: BlogPostLink = { url, title, publishedAt };
+    byUrl.set(url, link);
+    out.push(link);
     if (out.length >= MAX_POSTS) break;
   }
 

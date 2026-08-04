@@ -6,7 +6,7 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { ArrowUpIcon, ArrowDownIcon, ArrowSquareOutIcon } from "@/components/icons";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
-import type { SourceType } from "@outrival/shared";
+import { hasNoTargetError, type SourceType } from "@outrival/shared";
 import {
   api,
   type ContentItemRow,
@@ -359,6 +359,14 @@ export function ContentTab({
         </span>
       </div>
 
+      <QuietSources
+        counts={timeline.sourceCounts}
+        cadence={summary.cadence}
+        monitors={monitors}
+        scrapingIds={scrapingIds}
+        onEnable={onEnable}
+      />
+
       <Timeline items={timeline.items} />
 
       {timeline.hasMore && (
@@ -593,6 +601,109 @@ function Themes({
   );
 }
 
+/**
+ * Why the sources that filed nothing filed nothing.
+ *
+ * The toggles above only show a source that produced rows, so a tab fed by the blog
+ * alone looked like a competitor who only blogs — the other three vanished with no
+ * account of themselves. Each one is named here with its own state, because "we
+ * watch it and it has published nothing", "they have no public portal" and "this is
+ * switched off" are three different facts and only some of them are actionable.
+ *
+ * State comes from the monitor, never from a guess: a source we watched successfully
+ * and hold nothing for is reported as exactly that.
+ */
+function QuietSources({
+  counts,
+  cadence,
+  monitors,
+  scrapingIds,
+  onEnable,
+}: {
+  /** Rows in the SELECTED PERIOD, per source. */
+  counts: Record<string, number>;
+  /** The full cadence window, so a source silent only in this period says so. */
+  cadence: ContentSummary["cadence"];
+  monitors: Monitor[];
+  scrapingIds: Set<string>;
+  onEnable?: MonitorSourceProps["onEnable"];
+}) {
+  const [enabling, setEnabling] = useState<string | null>(null);
+  const quiet = SOURCES.filter((s) => (counts[s.key] ?? 0) === 0);
+  if (quiet.length === 0) return null;
+
+  // A source that HAS filed things, just not inside the period on screen, is not a
+  // source we cannot read. Saying "nothing filed yet" about it would be false.
+  const filedEver = new Set(
+    SOURCES.filter((s) => cadence.some((m) => (m.bySource[s.key] ?? 0) > 0)).map((s) => s.key),
+  );
+
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-border px-5 py-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        {quiet.map((s) => {
+          const monitor = monitors.find((m) => m.sourceType === s.key);
+          return (
+            <span key={s.key} className="inline-flex items-center gap-1.5 text-xs">
+              <span
+                aria-hidden
+                className="size-1.5 shrink-0 rounded-full opacity-45"
+                style={{ background: s.color }}
+              />
+              <span className="text-muted-foreground">
+                {s.label}:{" "}
+                {filedEver.has(s.key) ? "nothing in this period" : quietState(monitor, scrapingIds)}
+              </span>
+              {!monitor && onEnable && (
+                <button
+                  type="button"
+                  disabled={enabling === s.key}
+                  onClick={async () => {
+                    setEnabling(s.key);
+                    try {
+                      await onEnable(s.key as SourceType);
+                    } finally {
+                      setEnabling(null);
+                    }
+                  }}
+                  className="rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-60"
+                >
+                  {enabling === s.key ? "Turning on…" : "Turn on"}
+                </button>
+              )}
+            </span>
+          );
+        })}
+      </div>
+      <p className="max-w-[74ch] text-xs text-muted-foreground">
+        A source files entries only where it can read them one by one: a changelog
+        needs a feed, a roadmap needs a public portal, and documentation files the
+        pages that appear after we start watching. Everything else these sources
+        publish is still captured, and still reaches the signals feed as a change.
+      </p>
+    </div>
+  );
+}
+
+/** One short phrase per source, from the monitor and nothing else. */
+function quietState(monitor: Monitor | undefined, scrapingIds: Set<string>): string {
+  if (!monitor) return "not monitored";
+  if (monitor.isActive === false) return "paused";
+  const activity = scrapeActivity(monitor, scrapingIds.has(monitor.id));
+  if (activity === "scraping") return "reading it now";
+  if (activity === "queued") return "queued";
+  if (monitor.markedUnscrapable) {
+    // The neutral outcomes ("they publish no portal") read as a fact about the
+    // competitor; anything else is a failure of ours, and the Sources page carries
+    // the detail. Neither belongs in a strip this size at full length.
+    return hasNoTargetError(monitor.sourceType, monitor.lastError)
+      ? "nothing public to read"
+      : "we could not read it";
+  }
+  if (!monitor.lastRunAt) return "not read yet";
+  return "watched, nothing filed yet";
+}
+
 /** The items themselves, grouped by the month they were published in. */
 function Timeline({ items }: { items: ContentItemRow[] }) {
   const groups = useMemo(() => {
@@ -745,7 +856,6 @@ function NothingPublished({
         <ul className="mt-1.5 flex w-full max-w-[34rem] flex-col">
           {SOURCES.map((s) => {
             const monitor = monitors.find((m) => m.sourceType === s.key);
-            const activity = monitor ? scrapeActivity(monitor, scrapingIds.has(monitor.id)) : null;
             return (
               <li
                 key={s.key}
@@ -778,16 +888,10 @@ function NothingPublished({
                     ) : (
                       "not monitored"
                     )
-                  ) : monitor.markedUnscrapable ? (
-                    "no such surface found on their site"
-                  ) : activity === "scraping" ? (
-                    "reading it now"
-                  ) : activity === "queued" ? (
-                    "queued"
-                  ) : monitor.lastRunAt ? (
-                    "watched · no entries yet"
                   ) : (
-                    "watched · not read yet"
+                    // The same phrase this source gets when the tab HAS content
+                    // (`QuietSources`): one state, told one way, on both surfaces.
+                    quietState(monitor, scrapingIds)
                   )}
                 </span>
               </li>

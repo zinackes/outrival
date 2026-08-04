@@ -46,7 +46,6 @@ beforeAll(async () => {
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/db", () => ({ ...schema, db: harness.db }));
   mock.module("@outrival/queue", () => ({
     ...realQueue,
     NonRetriable: realQueue.NonRetriable,

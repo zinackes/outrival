@@ -1,10 +1,9 @@
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
-import { resolve } from "node:path";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { competitors, monitors, productCompetitors, products } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
-import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
+import { asUser, installAppMocks, installQueueMock, mountApp, seedOrg } from "./app-harness";
 
 // The roster's bulk actions. What must hold for every one of them: it resolves the
 // selection org-scoped (another tenant's id is simply absent, never an error), it
@@ -14,23 +13,24 @@ import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 let app: Hono;
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 let A: { orgId: string; userId: string; email: string };
 let B: { orgId: string; userId: string; email: string };
 
 afterAll(() => closeDb());
 
 beforeAll(async () => {
-  ({ db: testDb, close: closeDb } = await makeTestDb());
+  ({ db: testDb, close: closeDb, reset: resetDb } = await makeTestDb());
   await installAppMocks(testDb);
-  mock.module(resolve(import.meta.dir, "../src/lib/queue"), () => ({
-    enqueueJob: async () => "run_test",
-    enqueueByName: async () => "run_test",
-    ensureQueue: async () => {},
-    USER_SCRAPE_PRIORITY: 10,
-  }));
+  installQueueMock();
   const { competitorsRouter } = await import("../src/routes/competitors");
   app = mountApp("/api/competitors", competitorsRouter);
+});
 
+// Per test, not per file: every bulk action here writes the rows the next assertion
+// counts (a source added, a product moved, an alert muted).
+beforeEach(async () => {
+  await resetDb();
   A = await seedOrg(testDb, { plan: "pro" });
   B = await seedOrg(testDb, { plan: "pro" });
 

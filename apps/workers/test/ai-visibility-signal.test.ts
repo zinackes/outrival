@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
+import { clearSharedOverrides, setSharedOverrides } from "./shared-mock";
 
 /**
  * `ai_visibility_shift`, end to end — Positioning Intelligence v2 P5.
@@ -47,7 +48,6 @@ const DAY = 86_400_000;
 
 beforeAll(async () => {
   const realQueue = await import("@outrival/queue");
-  const realShared = await import("@outrival/shared");
   const realAi = await import("@outrival/ai");
   const realAnalytics = await import("../src/lib/analytics");
   const realEngines = await import("../src/lib/ai-visibility/engines");
@@ -55,7 +55,6 @@ beforeAll(async () => {
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/db", () => ({ ...schema, db: harness.db }));
   mock.module("@outrival/queue", () => ({
     ...realQueue,
     NonRetriable: realQueue.NonRetriable,
@@ -72,10 +71,6 @@ beforeAll(async () => {
   // dropped export, depending only on the order bun picked. Stubbing `engines`
   // without the spread is what turned this suite red on CI and green locally —
   // `ai-visibility-quota.test.ts` imports `retryAfterMs` from it.
-  mock.module("@outrival/shared", () => ({
-    ...realShared,
-    uploadToR2: async () => undefined,
-  }));
   mock.module("@outrival/ai", () => ({
     ...realAi,
     // Names every roster subject present in the answer text. The job re-checks
@@ -104,10 +99,14 @@ beforeAll(async () => {
   ({ runScrapeAiVisibility } = await import("../src/core/scrape-ai-visibility"));
 });
 
-afterAll(() => closeDb());
+afterAll(() => {
+  clearSharedOverrides();
+  return closeDb();
+});
 beforeEach(() => {
   enqueued = [];
   engineAnswer = "";
+  setSharedOverrides({ uploadToR2: async () => undefined });
 });
 
 let seq = 0;

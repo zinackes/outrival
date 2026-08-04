@@ -16,7 +16,9 @@ pnpm dev --filter @outrival/web # Web uniquement
 pnpm dev --filter @outrival/api # API uniquement
 pnpm build                      # Build tous les packages
 pnpm typecheck                  # Typecheck tous les packages
-pnpm test                       # Tests
+pnpm test                       # Tests — tous les packages en parallèle (parité CI, ~3,4 Go)
+pnpm test:local                 # Tests un package à la fois (~1,1 Go) — à préférer en local
+pnpm test:fast                  # Tests des seuls packages touchés vs origin/main
 pnpm db:generate                # Génère une migration versionnée depuis le schéma
 pnpm db:migrate                 # Applique les migrations en attente (dev + déploiement)
 pnpm db:baseline                # One-shot : marque les migrations existantes appliquées (env déjà créé via push)

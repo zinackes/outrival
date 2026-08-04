@@ -7,6 +7,8 @@
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
+    "test:local": "turbo test --concurrency=1",
+    "test:fast": "turbo test --concurrency=1 --filter=...[origin/main]",
     "check:metadata": "bun scripts/check-metadata.ts",
     "backfill:hiring-geo": "pnpm --filter @outrival/workers backfill:hiring-geo",
     "backfill:salary-bands": "pnpm --filter @outrival/workers backfill:salary-bands",

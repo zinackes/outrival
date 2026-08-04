@@ -1,10 +1,10 @@
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resolve } from "node:path";
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { competitors, monitors, forcedRescanLog } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
-import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
+import { asUser, installAppMocks, installQueueMock, mountApp, seedOrg } from "./app-harness";
 
 // POST /monitors/:id/force-rescan (patch-27) is a tenant-scoped, tier-limited
 // trigger. Its two security gates — ownership (the monitor's competitor must be in
@@ -14,6 +14,7 @@ import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 let app: Hono;
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 let A: { orgId: string; userId: string; email: string };
 let B: { orgId: string; userId: string; email: string };
 let C: { orgId: string; userId: string; email: string };
@@ -24,14 +25,10 @@ let aiBudgetRefuses = false;
 afterAll(() => closeDb());
 
 beforeAll(async () => {
-  ({ db: testDb, close: closeDb } = await makeTestDb());
+  ({ db: testDb, close: closeDb, reset: resetDb } = await makeTestDb());
   await installAppMocks(testDb);
   // Keep the job queue out of the test: a fixed job id, never a queue connection.
-  mock.module(resolve(import.meta.dir, "../src/lib/queue"), () => ({
-    enqueueJob: async () => "run_test",
-    enqueueByName: async () => "run_test",
-    ensureQueue: async () => {},
-  }));
+  installQueueMock();
   // The hourly AI-action budget lives in Upstash, which the tests don't run. Stand in
   // a counter so the route's OWN decision — charge a re-scan, never a first scrape —
   // is observable; `aiBudgetRefuses` flips it to a spent budget on demand.
@@ -47,6 +44,15 @@ beforeAll(async () => {
   }));
   const { monitorsRouter } = await import("../src/routes/monitors");
   app = mountApp("/api/monitors", monitorsRouter);
+});
+
+// Per test, not per file: the /run and force-rescan tests spend a per-day rescan cap
+// and move lastRunAt, and the AI-budget stand-in counts charges — all state a later
+// test reads as its own starting point.
+beforeEach(async () => {
+  await resetDb();
+  aiCharges = 0;
+  aiBudgetRefuses = false;
 
   A = await seedOrg(testDb, { plan: "free" });
   B = await seedOrg(testDb, { plan: "free" });
@@ -136,7 +142,7 @@ beforeAll(async () => {
     { id: "m-e-gated", competitorId: "c-e", sourceType: "jobs", lastRunAt: new Date(Date.now() - 60_000) },
     { id: "m-e-ungated", competitorId: "c-e", sourceType: "homepage", lastRunAt: new Date(Date.now() - 60_000) },
   ]);
-});
+}, 30_000);
 
 const patchMonitor = (
   u: { userId: string; email: string },
@@ -290,6 +296,8 @@ describe("PATCH url change resets freshness so the next run is a first scrape", 
   });
 
   test("the subsequent run is unmetered (no forced_rescan_log row)", async () => {
+    await patchMonitor(C, "m-d-retarget", { url: "https://rival-d.com/new-home" });
+
     const res = await run(C, "m-d-retarget");
     expect(res.status).toBe(200);
     const logs = await testDb
@@ -341,6 +349,8 @@ describe("PATCH url change clears the OLD page's failure state", () => {
   });
 
   test("the next scrape targets the new URL", async () => {
+    await patchMonitor(C, "m-d-broken", { url: "https://rival-d.com/blog" });
+
     const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-d-broken"));
     expect(m?.config).toEqual({ url: "https://rival-d.com/blog" });
   });

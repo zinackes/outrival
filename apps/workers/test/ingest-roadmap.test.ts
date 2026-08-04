@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
+import { clearSharedOverrides, setSharedOverrides } from "./shared-mock";
 
 /**
  * Content Intelligence v2 P5 — roadmap intelligence, end to end against a real
@@ -76,14 +77,12 @@ function capture(entries: Entry[]): string {
 
 beforeAll(async () => {
   const realQueue = await import("@outrival/queue");
-  const realShared = await import("@outrival/shared");
-  const realAi = await import("@outrival/ai");
+    const realAi = await import("@outrival/ai");
   const realAnalytics = await import("../src/lib/analytics");
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/db", () => ({ ...schema, db: harness.db }));
   mock.module("@outrival/queue", () => ({
     ...realQueue,
     NonRetriable: realQueue.NonRetriable,
@@ -101,11 +100,6 @@ beforeAll(async () => {
         return "job-id";
       },
     },
-  }));
-  mock.module("@outrival/shared", () => ({
-    ...realShared,
-    getFromR2: async (key: string) => objects.get(key) ?? "",
-    uploadToR2: async () => undefined,
   }));
   mock.module("@outrival/ai", () => ({
     ...realAi,
@@ -126,12 +120,19 @@ beforeAll(async () => {
   ({ runIngestContentItems: runIngest } = await import("../src/core/ingest-content-items"));
 });
 
-afterAll(() => closeDb());
+afterAll(() => {
+  clearSharedOverrides();
+  return closeDb();
+});
 beforeEach(() => {
   enqueued = [];
   classified = [];
   aiCalls = 0;
   objects = new Map();
+  setSharedOverrides({
+    getFromR2: async (key: string) => objects.get(key) ?? "",
+    uploadToR2: async () => undefined,
+  });
 });
 
 let seq = 0;

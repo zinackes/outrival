@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
+import { clearSharedOverrides, setSharedOverrides } from "./shared-mock";
 
 // send-alert's webhook channel used to call a second, unguarded sender
 // (apps/workers/src/lib/webhook.ts, deleted) that threw on a non-ok response.
@@ -16,25 +17,19 @@ let closeDb: () => Promise<void>;
 let runSendAlert: typeof import("../src/core/send-alert").runSendAlert;
 
 beforeAll(async () => {
-  // Capture the real @outrival/shared before mocking it — mock.module is
-  // global, so PLAN_LIMITS (and everything else send-alert imports from
-  // there) must still come from the real module.
-  const realShared = await import("@outrival/shared");
-
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/db", () => ({ ...schema, db: harness.db }));
-  mock.module("@outrival/shared", () => ({
-    ...realShared,
-    sendWebhook: async () => false,
-  }));
 
   ({ runSendAlert } = await import("../src/core/send-alert"));
 });
 
+// Set per test, so this file owns sendWebhook while it runs whatever ran before it.
+beforeEach(() => setSharedOverrides({ sendWebhook: async () => false }));
+
 afterAll(async () => {
+  clearSharedOverrides();
   if (closeDb) await closeDb();
 });
 

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
 
@@ -22,6 +22,7 @@ import { makeTestDb, schema, type TestDb } from "./db-harness";
 
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 let insertItems: (
   competitorId: string,
   items: ReadonlyArray<{
@@ -64,8 +65,8 @@ beforeAll(async () => {
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
+  resetDb = harness.reset;
   const { mock } = await import("bun:test");
-  mock.module("@outrival/db", () => ({ ...schema, db: harness.db }));
   // Restore the real content-fetch before importing the job. A sibling file that
   // stubbed only `fetchPostHtml` leaves a process-global mock with no
   // POST_FETCH_CAP on it, and this file's import of ingest-blog-posts then dies
@@ -74,6 +75,13 @@ beforeAll(async () => {
   const realContentFetch = await import("../../../packages/scrapers/src/content/fetch");
   mock.module("@outrival/scrapers/content-fetch", () => ({ ...realContentFetch }));
 
+  ({ insertItems } = await import("../src/core/ingest-blog-posts"));
+});
+
+// Per test: both tests below drive the same post through repeated captures, so each
+// needs the row to start absent.
+beforeEach(async () => {
+  await resetDb();
   await testDb
     .insert(schema.organizations)
     .values({ id: ORG_ID, name: "Org", slug: "org-blog-dates" });
@@ -84,8 +92,6 @@ beforeAll(async () => {
     url: "https://rival.com",
     type: "competitor",
   });
-
-  ({ insertItems } = await import("../src/core/ingest-blog-posts"));
 });
 
 afterAll(() => closeDb());
@@ -102,6 +108,9 @@ test("a date the listing withheld is filled in by a later capture", async () => 
 });
 
 test("a date we already hold is never rewritten", async () => {
+  await insertItems(COMPETITOR_ID, [post("2023-10-23T00:00:00.000Z")]);
+
+  // An older date on a later capture does not win.
   await insertItems(COMPETITOR_ID, [post("2020-01-01T00:00:00.000Z")]);
   expect((await storedDate())?.toISOString()).toBe("2023-10-23T00:00:00.000Z");
 

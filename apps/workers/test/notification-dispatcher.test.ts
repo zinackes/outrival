@@ -1,4 +1,14 @@
-import { afterEach, beforeAll, describe, expect, mock, setSystemTime, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  setSystemTime,
+  test,
+} from "bun:test";
+import { clearDbOverride, setDbOverride } from "./db-harness";
 
 // decideDispatch (patch-26) is the org-scoped moderation gate every freshly
 // generated signal passes through. Its layered ordering — critical bypass →
@@ -14,22 +24,17 @@ const state: { prefs: unknown; threshold: unknown; emailCount: number } = {
   emailCount: 0,
 };
 
-// Table objects are only fed to drizzle's eq/gte to build a WHERE our fake db
-// discards, so an inert stub is enough.
-const tableStub = new Proxy({}, { get: () => ({}) });
-
-mock.module("@outrival/db", () => ({
-  db: {
-    query: {
-      orgNotificationPreferences: { findFirst: async () => state.prefs },
-      orgRelevanceThreshold: { findFirst: async () => state.threshold },
-    },
-    select: () => ({ from: () => ({ where: async () => [{ value: state.emailCount }] }) }),
+// This file tests decision logic, not SQL, so `db` is hand-written. It is installed
+// as an OVERRIDE rather than by replacing @outrival/db: mock.module is process-global
+// and this stand-in carries three tables, so registering it left every file loaded
+// afterwards importing a three-table version of the whole schema.
+const fakeDb = {
+  query: {
+    orgNotificationPreferences: { findFirst: async () => state.prefs },
+    orgRelevanceThreshold: { findFirst: async () => state.threshold },
   },
-  orgNotificationPreferences: tableStub,
-  orgRelevanceThreshold: tableStub,
-  alerts: tableStub,
-}));
+  select: () => ({ from: () => ({ where: async () => [{ value: state.emailCount }] }) }),
+};
 
 type ChannelMode =
   | "email_immediate"
@@ -65,6 +70,10 @@ beforeAll(async () => {
   process.env.RELEVANCE_THRESHOLD_DEFAULT = "0.5";
   ({ decideDispatch } = await import("../src/lib/notification-dispatcher"));
 });
+
+beforeEach(() => setDbOverride(fakeDb));
+
+afterAll(() => clearDbOverride());
 
 afterEach(() => {
   state.prefs = null;

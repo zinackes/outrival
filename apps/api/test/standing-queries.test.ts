@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { competitors } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
@@ -11,16 +11,23 @@ import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 let app: Hono;
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 let A: { orgId: string; userId: string; email: string };
 let B: { orgId: string; userId: string; email: string };
 
 afterAll(() => closeDb());
 
 beforeAll(async () => {
-  ({ db: testDb, close: closeDb } = await makeTestDb());
+  ({ db: testDb, close: closeDb, reset: resetDb } = await makeTestDb());
   await installAppMocks(testDb);
   const { standingQueriesRouter } = await import("../src/routes/standing-queries");
   app = mountApp("/api/standing-queries", standingQueriesRouter);
+});
+
+// Per test: the plan-cap scenario fills org A's three free slots, which every later
+// creation would then be refused by.
+beforeEach(async () => {
+  await resetDb();
   A = await seedOrg(testDb, { plan: "free" });
   B = await seedOrg(testDb, { plan: "free" });
   await testDb.insert(competitors).values({ id: "comp-a", orgId: A.orgId, name: "Acme" });
@@ -56,6 +63,8 @@ describe("standing queries — backend plan gating (d)", () => {
   });
 
   test("re-watching an existing question is idempotent, not a duplicate slot", async () => {
+    expect((await create(A, "Watched question number 1?")).status).toBe(200);
+
     const res = await create(A, "Watched question number 1?");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { existed?: boolean };
@@ -63,6 +72,8 @@ describe("standing queries — backend plan gating (d)", () => {
   });
 
   test("reactivating a paused query re-enters the cap", async () => {
+    for (let i = 1; i <= 3; i++) await create(A, `Watched question number ${i}?`);
+
     // Pause one → a new create fits again → reactivating the paused one is refused.
     const list = (await (
       await app.request("/api/standing-queries", asUser(A.userId, A.email))
@@ -109,6 +120,8 @@ describe("standing queries — org-scoped entity extraction", () => {
   });
 
   test("a foreign org cannot delete another org's query", async () => {
+    expect((await create(B, "What is everyone doing on pricing?")).status).toBe(200);
+
     const list = (await (
       await app.request("/api/standing-queries", asUser(B.userId, B.email))
     ).json()) as { queries: Array<{ id: string }> };

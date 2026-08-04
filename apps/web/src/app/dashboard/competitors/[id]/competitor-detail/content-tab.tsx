@@ -241,6 +241,13 @@ export function ContentTab({
     const at = new Date(m.lastRunAt);
     return !oldest || at < oldest ? at : oldest;
   }, null);
+  // The sources that actually put rows on this page. An enabled monitor can have
+  // handed us nothing — never captured, or a page that lists no entries — and
+  // naming it as somewhere this was "read from" credits the reading to pages we
+  // never opened. Counted off the cadence rather than the timeline so the list
+  // holds still when the period toggle moves.
+  const published = totalsBySource(summary.cadence);
+  const readMonitors = contentMonitors.filter((m) => (published[m.sourceType] ?? 0) > 0);
 
   return (
     <TabCard>
@@ -379,10 +386,10 @@ export function ContentTab({
       )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 text-xs text-muted-foreground">
-        {contentMonitors.length > 0 && (
+        {readMonitors.length > 0 && (
           <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5">
             Read from
-            {contentMonitors.map((m, i) => (
+            {readMonitors.map((m, i) => (
               <span key={m.id} className="inline-flex min-w-0 items-center">
                 {i > 0 && <span className="mr-1.5">,</span>}
                 {m.pageUrl ? (
@@ -417,6 +424,15 @@ export function ContentTab({
 
 function sumCounts(counts: Record<string, number>): number {
   return Object.values(counts).reduce((n, v) => n + v, 0);
+}
+
+/** source_type → items over the whole cadence, the rows the tab's own totals count. */
+function totalsBySource(cadence: ContentSummary["cadence"]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const month of cadence) {
+    for (const [key, n] of Object.entries(month.bySource)) out[key] = (out[key] ?? 0) + n;
+  }
+  return out;
 }
 
 /**

@@ -6,7 +6,14 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { ArrowUpIcon, ArrowDownIcon, ArrowSquareOutIcon } from "@/components/icons";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
-import { api, type ContentItemRow, type ContentSummary, type CompetitorSignal } from "@/lib/api";
+import type { SourceType } from "@outrival/shared";
+import {
+  api,
+  type ContentItemRow,
+  type ContentSummary,
+  type CompetitorSignal,
+  type Monitor,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { Badge } from "@/components/ui/badge";
@@ -64,6 +71,9 @@ const SOURCES = [
   { key: "roadmap", label: "Roadmap", color: "var(--chart-3)" },
   { key: "docs", label: "Docs", color: "var(--chart-4)" },
 ] as const;
+
+/** What "Re-scan now" on this tab has to run: all four, not whichever came first. */
+const SOURCE_KEYS = SOURCES.map((s) => s.key);
 
 const SOURCE_COLOR: Record<string, string> = Object.fromEntries(
   SOURCES.map((s) => [s.key, s.color]),
@@ -135,11 +145,14 @@ export function ContentTab({
   monitors,
   scrapingIds,
   onRun,
+  onRunAll,
   onEnable,
 }: {
   competitorId: string;
   /** Already on the page; carries the editorial_shift signal the callout renders. */
   signals: CompetitorSignal[];
+  /** Runs the four content sources together — see {@link SOURCE_KEYS}. */
+  onRunAll: (only: readonly SourceType[]) => void;
 } & MonitorSourceProps) {
   const [source, setSource] = useState<string>("all");
   const [type, setType] = useState<string>("all");
@@ -179,7 +192,12 @@ export function ContentTab({
   const everPublished = summary.cadence.reduce((n, m) => n + m.total, 0);
   if (everPublished === 0) {
     return (
-      <NothingPublished monitors={monitors} scrapingIds={scrapingIds} onRun={onRun} onEnable={onEnable} />
+      <NothingPublished
+        monitors={monitors}
+        scrapingIds={scrapingIds}
+        onRunAll={onRunAll}
+        onEnable={onEnable}
+      />
     );
   }
 
@@ -215,6 +233,13 @@ export function ContentTab({
   })();
 
   const contentMonitors = monitors.filter((m) => SOURCES.some((s) => s.key === m.sourceType));
+  // The freshness FLOOR of the tab, not the first source's stamp: this timeline is
+  // fed by four sources, so it is only as current as the one checked longest ago.
+  const oldestCheck = contentMonitors.reduce<Date | null>((oldest, m) => {
+    if (!m.lastRunAt) return oldest;
+    const at = new Date(m.lastRunAt);
+    return !oldest || at < oldest ? at : oldest;
+  }, null);
 
   return (
     <TabCard>
@@ -367,19 +392,13 @@ export function ContentTab({
             ))}
           </span>
         )}
-        {contentMonitors[0]?.lastRunAt && (
-          <span>
-            last check{" "}
-            {formatDistanceToNow(new Date(contentMonitors[0].lastRunAt), { addSuffix: true })}
-          </span>
+        {oldestCheck && (
+          <span>last check {formatDistanceToNow(oldestCheck, { addSuffix: true })}</span>
         )}
-        {contentMonitors[0] && (
+        {contentMonitors.length > 0 && (
           <RescanLink
-            activity={scrapeActivity(
-              contentMonitors[0],
-              scrapingIds.has(contentMonitors[0].id),
-            )}
-            onRun={() => onRun(contentMonitors[0]!.id)}
+            activity={groupActivity(contentMonitors, scrapingIds)}
+            onRun={() => onRunAll(SOURCE_KEYS)}
           />
         )}
       </div>
@@ -701,7 +720,14 @@ function TimelineRow({ item }: { item: ContentItemRow }) {
  * "we watch it and it has published nothing" and "they have no changelog" and "this
  * is switched off" are three different facts, and only the third is actionable.
  */
-function NothingPublished({ monitors, scrapingIds, onRun, onEnable }: MonitorSourceProps) {
+function NothingPublished({
+  monitors,
+  scrapingIds,
+  onRunAll,
+  onEnable,
+}: Omit<MonitorSourceProps, "onRun"> & {
+  onRunAll: (only: readonly SourceType[]) => void;
+}) {
   const [enabling, setEnabling] = useState<string | null>(null);
 
   return (
@@ -770,13 +796,7 @@ function NothingPublished({ monitors, scrapingIds, onRun, onEnable }: MonitorSou
 
         {monitors.some((m) => SOURCES.some((s) => s.key === m.sourceType)) && (
           <div className="mt-2">
-            <Button
-              size="sm"
-              onClick={() => {
-                const first = monitors.find((m) => SOURCES.some((s) => s.key === m.sourceType));
-                if (first) onRun(first.id);
-              }}
-            >
+            <Button size="sm" onClick={() => onRunAll(SOURCE_KEYS)}>
               Re-scan now
             </Button>
           </div>
@@ -784,6 +804,18 @@ function NothingPublished({ monitors, scrapingIds, onRun, onEnable }: MonitorSou
       </div>
     </TabCard>
   );
+}
+
+/**
+ * How a GROUP of sources reads: scanning while any is being read, queued while any
+ * is waiting, idle only when none of them is in flight. A per-source state would
+ * leave the link clickable while three of the four were already running.
+ */
+function groupActivity(monitors: Monitor[], scrapingIds: Set<string>): ScrapeActivity {
+  const states = monitors.map((m) => scrapeActivity(m, scrapingIds.has(m.id)));
+  if (states.includes("scraping")) return "scraping";
+  if (states.includes("queued")) return "queued";
+  return null;
 }
 
 /** Three states, because "Scanning…" over a job still waiting for a scanner lies. */

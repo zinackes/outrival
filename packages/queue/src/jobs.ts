@@ -122,6 +122,18 @@ export type IngestNamedCompetitorsPayload = {
   competitorId: string;
   urls?: string[];
 };
+/**
+ * ICP reading (Positioning Intelligence v2 P3), enqueued off the sitemap branch.
+ * `urls` are EVERY audience URL of the capture (persona / industry / use-case), not
+ * only the ones the diff added, for the reason the market map takes all of its own: a
+ * competitor added today has a back catalogue, and the ICP grid is meant to show it
+ * from the first run.
+ */
+export type IngestAudiencePagesPayload = {
+  snapshotId: string;
+  competitorId: string;
+  urls?: string[];
+};
 export type ExtractReviewsPayload = { snapshotId: string; competitorId: string; source: string };
 export type ScrapeAiVisibilityPayload = {
   orgId: string;
@@ -354,6 +366,14 @@ export const ingestIntegrations = defineJob<IngestIntegrationsPayload>("ingest-i
 // gets the same short window its deterministic sibling uses.
 export const ingestNamedCompetitors = defineJob<IngestNamedCompetitorsPayload>(
   "ingest-named-competitors",
+  { expireInSeconds: 300 },
+);
+// ICP reading (Positioning Intelligence v2 P3), event-triggered off the sitemap
+// branch. Zero AI and at most four GETs — the probe that finds the audience hub runs
+// once per competitor and caches its answer, hit or miss — so it gets the same short
+// window its deterministic siblings use.
+export const ingestAudiencePages = defineJob<IngestAudiencePagesPayload>(
+  "ingest-audience-pages",
   { expireInSeconds: 300 },
 );
 // Hiring footprint detectors (Hiring Intelligence v2 P2), event-triggered per

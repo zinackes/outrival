@@ -124,6 +124,7 @@ export const ANCHOR_SOURCES: readonly SourceType[] = [
   "editorial_shift",
   "roadmap_shift",
   "integration_catalog",
+  "audience_page",
 ];
 
 /**

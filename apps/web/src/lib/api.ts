@@ -650,6 +650,14 @@ export type SignalFacts =
       targetsTotal: number;
     }
   | {
+      /** Persona / industry / use-case pages a competitor started publishing
+       *  (Positioning Intelligence v2 P3). Read off their sitemap and their own
+       *  audience hub — never a model. */
+      kind: "audience_pages";
+      pages: AudiencePageFact[];
+      pagesTotal: number;
+    }
+  | {
       /** Integrations newly listed in a catalog (Content Intelligence v2 P5). */
       kind: "integrations";
       integrations: IntegrationFact[];
@@ -754,6 +762,18 @@ export interface ComparisonTargetFact {
   /** The exact page that names them; null only for a mention with no permalink. */
   evidenceUrl: string | null;
   /** "YYYY-MM-DD" — when WE first saw them named; a sitemap carries no date. */
+  firstSeenAt: string | null;
+}
+
+/** One segment a competitor started publishing a page for (Positioning v2 P3). */
+export interface AudiencePageFact {
+  /** 'persona' | 'industry' | 'use_case' — a closed vocabulary of three. */
+  kind: string;
+  /** Prettified from the slug they published — "field-service" → "Field Service". */
+  displayName: string;
+  /** The exact page, so a claim about their ICP can be checked at its source. */
+  evidenceUrl: string | null;
+  /** "YYYY-MM-DD" — when WE first saw the page; a sitemap carries no date. */
   firstSeenAt: string | null;
 }
 

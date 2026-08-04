@@ -161,6 +161,14 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // integrations we have never seen them claim. Kept off `sitemap`, whose snapshot
   // chain carries its own dedup. Always isActive=false.
   "integration_catalog",
+  // Audience-page anchor (Positioning Intelligence v2 P3). Infra-only, same shape as
+  // integration_catalog: it anchors the change → signal chain for `new_persona_page`,
+  // the persona / industry / use-case pages a competitor publishes that we had never
+  // seen. Kept off the `sitemap` monitor for the reason every anchor in this family
+  // is: that chain carries its own content-hash dedup, and the sitemap's own change
+  // row already belongs to the lexical classifier (signals.changeId is unique — one
+  // of the two would silently lose). Always isActive=false.
+  "audience_page",
   // Developer documentation (user-selectable, pro+). Structured-first: an OpenAPI /
   // Swagger spec becomes a canonical sorted operation+schema listing (so the generic
   // lexical diff reads as a structural diff), else the docs sitemap's page list plus

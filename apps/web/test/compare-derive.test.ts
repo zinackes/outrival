@@ -33,7 +33,9 @@ const ago = (days: number) => new Date(NOW - days * 86_400_000).toISOString();
 function col(over: Partial<CompareColumn> & { id: string; name: string }): CompareColumn {
   return {
     url: `https://${over.name.toLowerCase()}.example`,
-    positioning: { category: null, summary: null },
+    // P4 — the lens reads h1 + personas alongside the category; `derive` itself
+    // does not, so the default stays empty and only the lens tests fill it.
+    positioning: { category: null, summary: null, h1: null, personas: [] },
     pricing: null,
     hiring: null,
     shipping: null,

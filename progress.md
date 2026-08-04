@@ -2388,3 +2388,85 @@ pour le roadmap, pas pour le sitemap.
   existantes sont lues telles quelles par l'endpoint, zéro écriture nouvelle.
 - P4 (tab — maquette artifact obligatoire, décision 6) et P5 (Share of Model) non
   entamées.
+
+---
+
+### 2026-08-04 — Positioning Intelligence v2 — P4 (tab v2 + lens + battle card) — ~1 session
+
+**Objectif** : assembler les quatre lectures capturées par P1/P2/P3 en une surface —
+la Positioning tab v2, la lens compare qui remplace l'ancienne, la section battle card
+déterministe. Phase d'ASSEMBLAGE : zéro appel IA ajouté.
+
+**GO maquette** : décision 6 de la card respectée — un artifact React a été produit et
+présenté AVANT toute ligne de code app (tab complète, lens dans la grille compare,
+section battle card, empty states, Share of Model en placeholder ET en réel). Mathys a
+répondu « Go » sans demander d'ajustement ; le câblage suit la maquette validée.
+
+**La branche du worktree était 10 commits en retard** — elle sortait de `cbc1c231`,
+donc `messaging_versions`, `named_competitors` et `audience_pages` n'existaient pas.
+`git reset --hard origin/main` avant toute lecture. Exactement le piège de P3 : le
+prompt dit « P1/P2/P3 mergées » et le worktree peut dire le contraire.
+
+**Réalisé** :
+- `apps/api/src/lib/positioning.ts` — deux lectures que RIEN d'autre ne répondait :
+  `positioningSummary` (badge modèle pricing via le `pricingModelOf` partagé, date du
+  dernier repositionnement, état Share of Model) et `positioningFacts` (le jeu de faits
+  déterministe de la battle card). Les quatre endpoints de section (P1/P2/P3) ne sont
+  PAS ré-emballés.
+- Routes `GET /competitors/:id/positioning` et `/positioning-facts`.
+- `positioning-tab.tsx` remplace `product-tab.tsx` : head strip (catégorie + badge
+  modèle + dernier repositionnement) puis les cinq sections. Les lectures
+  chronologiques qui n'ont pas d'autre maison (ce qu'ils ont shippé, où on parle
+  d'eux, ce qu'ils ont publié, la page de comparaison qui vise le LECTEUR) sont
+  conservées sous les sections — c'est le tiers « narratif » de l'ancien feed que la
+  v2 remplace, pas les deux autres.
+- Timeline messaging paginée en `useInfiniteQuery` sur le curseur `capturedAt` : les
+  lignes ne sont ajoutées qu'en tête, un offset décalerait sous le lecteur.
+- Lens compare v2 : catégorie + h1 actuel + badge modèle + top 2 personas.
+  `compare.ts` porte `positioning.h1` et `positioning.personas` (deux batch reads).
+- Section battle card « Positioning » (patron Their customers / Top requested) +
+  `competitorPositioning` dans le contexte grounded de `battle-card.ts`, rempli par
+  `loadPositioningProof` côté worker.
+
+**Supprimé** : `product-tab.tsx`, `positioning-drift.tsx`, le `buildVerdict` calculé,
+`PositioningVersion` + `getCompetitorPositioningHistory` côté web. L'ancienne lens
+positioning (catégorie + résumé IA) n'existe plus.
+
+**Fichiers** : `apps/api/src/lib/positioning.ts` (+test `positioning-tab.test.ts`) ·
+`apps/api/src/routes/{competitors,compare}.ts` ·
+`apps/web/src/app/dashboard/competitors/[id]/competitor-detail/positioning-tab.tsx` ·
+`apps/web/src/app/dashboard/competitors/[id]/competitor-detail-view.tsx` ·
+`apps/web/src/components/dashboard/compare/lenses.tsx` ·
+`apps/web/src/components/outrival/battle-card/{positioning.tsx,battle-card-page.tsx}` ·
+`apps/web/src/lib/api.ts` · `packages/ai/src/tasks/battle-card.ts` ·
+`apps/workers/src/core/generate-battle-card.ts`.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · api 364 ✓ (+11) · web 204 ✓ (+17) ·
+workers 352 ✓ · scrapers 1092 ✓ · shared 813 ✓ · ai 214 ✓ · db 5 ✓.
+**Zéro appel IA ajouté** — aucun fichier de la phase n'importe `@outrival/ai`,
+`ai_runs` inchangé, le seul fichier touché dans `packages/ai` ajoute un bloc
+d'évidence déterministe.
+
+**Le test qui compte** : « une seule version capturée n'est PAS un repositionnement ».
+`lastRepositionedAt` reste `null` tant qu'une version ANTÉRIEURE n'existe pas —
+sinon chaque concurrent ajouté cette semaine porterait un badge « changed 3 days ago »,
+qui daterait leur histoire du jour où on a commencé à les regarder. Second garde-fou :
+`namedByCount` seedé depuis DEUX workspaces détenant le même rival, il en compte un.
+
+**Diff de snapshot assumé** : `compare-derive.test.ts` — la fixture `col()` porte
+maintenant `h1: null, personas: []`. C'est le seul diff attendu sur les lenses ; les
+autres lenses ne bougent pas.
+
+**Écart assumé vs la maquette** : le badge modèle pricing vit dans le head strip et
+non en sixième section (un badge ne remplit pas une section) — c'était l'une des
+quatre décisions listées dans l'artifact, validées par le GO.
+
+**Reste côté humain** :
+- `/competitors/:id/positioning-history` n'a plus AUCUN consommateur (son seul appelant
+  était `PositioningDrift`). Route + `collapsePositioningVersions` + son fichier de test
+  laissés en place volontairement (P1 avait promis la compat) — à supprimer sur un mot.
+- Migrations : le DEV local n'a toujours ni `0071`→`0074`. P4 n'ajoute AUCUNE migration.
+- Déployer api + web + workers.
+- P5 (Share of Model) non entamée : la section rend le placeholder honnête (nombre de
+  prompts actifs, réponses détenues, date du dernier run) et l'union
+  `ShareOfModel` n'a qu'un membre `not_ready` — P5 ajoute `ready` et câble le réel.

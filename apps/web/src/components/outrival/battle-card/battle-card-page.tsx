@@ -52,6 +52,7 @@ import { ConfidenceBadge } from "./evidence";
 import { BattleCardSections, flattenCardLines } from "./sections";
 import { useWriteIn } from "./write-in";
 import { PackagingSection } from "./packaging";
+import { PositioningSection } from "./positioning";
 import { TheirCustomersSection } from "./their-customers";
 import { TopRequestedSection } from "./top-requested";
 
@@ -802,6 +803,19 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
               competitorId={competitorId}
               competitorName={competitor.name}
               productId={resolvedProductId ?? undefined}
+            />
+          )}
+
+          {/* Positioning (Positioning v2 P4): deterministic lines from the
+              messaging timeline, the claim log, the market map and the ICP
+              registry. Same contract as the two sections below — hidden while
+              editing, absent entirely when we hold none of the five facts. No
+              product scope: how a competitor positions ITSELF is a fact about
+              them, not about which of our SKUs the card compares. */}
+          {!editing && card && competitor && (
+            <PositioningSection
+              competitorId={competitorId}
+              competitorName={competitor.name}
             />
           )}
 

@@ -113,6 +113,26 @@ export const lensHasContent: Record<
   },
 };
 
+/**
+ * Whether the positioning lens has anything to draw (P4).
+ *
+ * Not in `lensHasContent`: that map drives the MEASURE grid's column layout, and
+ * positioning is a prose lens that runs full width. Exported on its own so the
+ * per-metric rule can be tested — a roster where one competitor has only a
+ * category and another only a pricing model must still render the lens, because
+ * each of those is a reading the other column does not have.
+ */
+export function positioningLensHasContent(entities: CompareEntity[]): boolean {
+  if (anyPending(entities)) return true;
+  return loaded(entities).some(
+    (c) =>
+      c.positioning.category != null ||
+      c.positioning.h1 != null ||
+      c.positioning.personas.length > 0 ||
+      c.pricing?.model != null,
+  );
+}
+
 /** A number without its currency symbol, for the far end of a band ("$29–149"). */
 function plain(value: number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
@@ -879,18 +899,33 @@ export function StackLens({ entities }: Omit<LensProps, "expanded" | "onToggle">
 
 // ── Positioning ─────────────────────────────────────────────────────────────
 
+/**
+ * How each competitor positions itself — v2 (Positioning Intelligence v2 P4).
+ *
+ * The lens used to render two strings, one of which was AI prose: a category and
+ * the profile summary. Set side by side, four generated paragraphs compare badly
+ * — they are written in the same voice, at the same length, about four different
+ * companies, and none of them can be checked against anything.
+ *
+ * It now reads four CAPTURED facts, all of them checkable on the competitor's own
+ * site: the market they are filed under, the words on their homepage today, how
+ * they charge, and the two buyers their sitemap says they sell to.
+ *
+ * Self-hiding is PER METRIC, not per lens. A competitor with no persona pages
+ * keeps its category and headline; one whose homepage has never been captured
+ * keeps its pricing model. The lens itself disappears only when no column holds
+ * any of the four — the one case where all it would draw is a row of dashes.
+ */
 export function PositioningLens({ entities }: Omit<LensProps, "expanded" | "onToggle">) {
-  const cols = loaded(entities);
-  const hasAny = cols.some((c) => c.positioning.category || c.positioning.summary);
-  if (!hasAny && !anyPending(entities)) return null;
+  if (!positioningLensHasContent(entities)) return null;
 
   return (
-    // A grid, not a list: each reading is a paragraph, and six full-width paragraphs
-    // stacked is a page of scrolling to compare two sentences.
+    // A grid, not a list: each reading is a headline plus two badges, and six
+    // full-width rows stacked is a page of scrolling to compare two sentences.
     <Lens
       id="positioning"
       title="Positioning"
-      sub="How each one describes itself, in its own words"
+      sub="What each one says on its homepage today"
       layout="grid"
     >
       {entities.map((e) => {
@@ -901,18 +936,41 @@ export function PositioningLens({ entities }: Omit<LensProps, "expanded" | "onTo
             </CardRow>
           );
         }
-        const { category, summary } = e.data.positioning;
+        const { category, h1, personas } = e.data.positioning;
+        const model = e.data.pricing?.model ?? null;
         return (
           <CardRow key={e.id} entity={e}>
-            {category && (
-              <Badge variant="outline" className="mb-1.5 max-w-full text-meta font-normal">
-                <span className="line-clamp-1">{category}</span>
-              </Badge>
+            {(category || model) && (
+              <div className="mb-1.5 flex flex-wrap gap-1.5">
+                {category && (
+                  <Badge variant="outline" className="max-w-full text-meta font-normal">
+                    <span className="line-clamp-1">{category}</span>
+                  </Badge>
+                )}
+                {model && (
+                  <Badge variant="outline" className="text-meta font-normal">
+                    {PRICING_MODEL_LABELS[model]}
+                  </Badge>
+                )}
+              </div>
             )}
-            {summary ? (
-              <p className="m-0 text-sm leading-normal">{summary}</p>
+            {h1 ? (
+              <p className="m-0 text-sm leading-snug">{h1}</p>
             ) : (
-              !category && <NoReading>Nothing captured yet</NoReading>
+              <NoReading>Homepage not captured yet</NoReading>
+            )}
+            {personas.length > 0 ? (
+              <p className="text-muted-foreground m-0 mt-1 text-meta">
+                {personas.join(" · ")}
+              </p>
+            ) : (
+              // Stated rather than left blank: "we found none" and "we have not
+              // looked" are different answers, and only the row knows which.
+              h1 != null && (
+                <p className="text-muted-foreground m-0 mt-1 text-meta">
+                  No persona pages found
+                </p>
+              )
             )}
           </CardRow>
         );

@@ -7,6 +7,8 @@ import {
   REVIEW_SOURCE_TYPES,
   parseTrustpilotSnapshot,
   parseAppStoreSnapshot,
+  parseShopifyAppUrl,
+  parseShopifyReviewsSnapshot,
 } from "./reviews";
 
 // ─── Reviews v2 (2026-07-15) ─────────────────────────────────────────────────
@@ -101,8 +103,71 @@ test("parseAppStoreSnapshot: falls back to the recent-sample mean when the aggre
   expect(out.reviewCount).toBe(2);
 });
 
-test("isReviewSource: App Store is a review source, retired aggregators are not", () => {
+// ─── Shopify App Store (2026-08-04) ──────────────────────────────────────────
+
+test("shopify: a listing URL passes, with or without the /reviews path", () => {
+  expect(validateReviewUrl("shopify_reviews", "https://apps.shopify.com/klaviyo").ok).toBe(true);
+  expect(parseShopifyAppUrl("https://apps.shopify.com/klaviyo/reviews?page=2")).toEqual({
+    handle: "klaviyo",
+  });
+});
+
+test("shopify: another host, a store path or no handle at all are rejected", () => {
+  // Brand mismatch (SSRF + wrong-site guard).
+  expect(validateReviewUrl("shopify_reviews", "https://acme.com/klaviyo").ok).toBe(false);
+  expect(validateReviewUrl("shopify_reviews", "https://apps.shopify.com/").ok).toBe(false);
+  // The store's own furniture: a category page is a listing of listings, and
+  // monitoring it would report its rating as a competitor's.
+  expect(parseShopifyAppUrl("https://apps.shopify.com/categories/marketing")).toBeNull();
+  // Handles are lowercase kebab slugs; anything else is a path we don't know.
+  expect(parseShopifyAppUrl("https://apps.shopify.com/Klaviyo_App")).toBeNull();
+});
+
+test("shopify: the listing-wide aggregate wins over the mean of the captured window", () => {
+  // `sort_by=newest` returns whoever wrote in last, so its mean is not the rating the
+  // store displays — the same skew the App Store parser guards against.
+  const snap = JSON.stringify({
+    source: "shopify",
+    handle: "klaviyo",
+    averageRating: 4.7,
+    ratingCount: 2940,
+    distribution: [{ stars: 5, count: 2599 }],
+    reviews: [
+      { id: "2", rating: 1, content: "billed twice", author: "a", country: "US", updated: "", tenure: "" },
+      { id: "1", rating: 1, content: "slow editor", author: "b", country: "DE", updated: "", tenure: "" },
+    ],
+  });
+  const out = parseShopifyReviewsSnapshot(snap)!;
+  expect(out.averageScore).toBe(4.7);
+  expect(out.reviewCount).toBe(2940);
+  expect(out.text).toContain("billed twice");
+});
+
+test("shopify: a star-only window still carries the rating the tab is built on", () => {
+  const snap = JSON.stringify({
+    source: "shopify",
+    handle: "acme",
+    averageRating: 4.2,
+    ratingCount: 130,
+    distribution: [],
+    reviews: [],
+  });
+  expect(parseShopifyReviewsSnapshot(snap)).toEqual({
+    averageScore: 4.2,
+    reviewCount: 130,
+    text: "",
+  });
+});
+
+test("shopify: another source's snapshot is not parsed as one of ours", () => {
+  const appStore = JSON.stringify({ source: "appstore", appId: "1", countries: [], reviews: [] });
+  expect(parseShopifyReviewsSnapshot(appStore)).toBeNull();
+  expect(parseShopifyReviewsSnapshot("not json")).toBeNull();
+});
+
+test("isReviewSource: App Store and Shopify are review sources, retired aggregators are not", () => {
   expect(isReviewSource("appstore_reviews")).toBe(true);
+  expect(isReviewSource("shopify_reviews")).toBe(true);
   for (const s of [
     "g2_reviews",
     "capterra_reviews",

@@ -5,6 +5,10 @@ export const reviewSourceEnum = pgEnum("review_source", [
   "g2", "capterra", "appstore", "playstore",
   // patch-32 — multi-platform review coverage.
   "trustpilot", "trustradius", "gartner",
+  // 2026-08-04 — Shopify App Store. The value the `shopify_reviews` source_type maps
+  // to (scrape-monitor strips the `_reviews` suffix), kept in sync with the
+  // extract-reviews SourceEnum.
+  "shopify",
 ]);
 
 export const reviews = pgTable("reviews", {

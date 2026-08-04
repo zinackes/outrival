@@ -4,7 +4,12 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, snapshots, reviews, monitors } from "@outrival/db";
 import { extractReviews, summarizeSource, AI_CONFIG } from "@outrival/ai";
-import { getFromR2, parseAppStoreSnapshot, parseTrustpilotSnapshot } from "@outrival/shared";
+import {
+  getFromR2,
+  parseAppStoreSnapshot,
+  parseShopifyReviewsSnapshot,
+  parseTrustpilotSnapshot,
+} from "@outrival/shared";
 import { reviewScoresFromStructured } from "@outrival/scrapers/structured-data";
 import { isCloudflareChallenge } from "@outrival/scrapers/block-detection";
 import { htmlToText } from "../lib/html-to-text";
@@ -14,6 +19,9 @@ const SourceEnum = z.enum([
   "g2", "capterra", "appstore", "playstore",
   // patch-32 — additional review platforms (web pages, structured-first score path).
   "trustpilot", "trustradius", "gartner",
+  // 2026-08-04 — Shopify App Store. Like appstore, its snapshot is our normalized
+  // JSON (not HTML), so it takes the structured branch below rather than htmlToText.
+  "shopify",
 ]);
 type ReviewSource = z.infer<typeof SourceEnum>;
 
@@ -133,38 +141,45 @@ export async function runExtractReviews(payload: z.input<typeof InputSchema>) {
       return { ok: true, verbatimsInserted: 0 };
     }
 
-    // App Store snapshots are our normalized JSON (Apple RSS), not HTML. Score
-    // and review_count come straight from the structured data; the AI is used
-    // only to synthesize qualitative praises/complaints.
+    // App Store and Shopify snapshots are our normalized JSON (Apple's RSS feed, the
+    // Shopify listing's own markup), not HTML. Score and review_count come straight
+    // from the structured data — Apple's Lookup aggregate, Shopify's JSON-LD
+    // AggregateRating — and the AI is used only to synthesize qualitative
+    // praises/complaints out of the verbatims.
     let text: string;
     let structured: { averageScore: number | null; reviewCount: number | null } | null = null;
-    if (input.source === "appstore") {
-      const summary = parseAppStoreSnapshot(html);
+    if (input.source === "appstore" || input.source === "shopify") {
+      const label = input.source === "appstore" ? "App Store" : "Shopify";
+      const summary =
+        input.source === "appstore"
+          ? parseAppStoreSnapshot(html)
+          : parseShopifyReviewsSnapshot(html);
       if (!summary) {
-        logger.warn("App Store snapshot parse failed");
+        logger.warn(`${label} snapshot parse failed`);
         return { ok: false, reason: "parse_failed" };
       }
       if (summary.reviewCount === 0 || summary.text.length === 0) {
-        // Apple's RSS returns the recent VERBATIM window; the Lookup aggregate is a
-        // separate call on the same capture. An entry-less feed (observed in prod:
-        // 124-byte snapshots carrying a valid 4.5/2506 aggregate) therefore still
-        // holds the rating the tab is built on — record it instead of dropping the
-        // whole capture on the floor.
+        // Both sources carry the aggregate separately from the verbatims: Apple's
+        // Lookup call, Shopify's JSON-LD block. So a capture with no verbatim text
+        // (an entry-less Apple feed — observed in prod as 124-byte snapshots holding
+        // a valid 4.5/2506 aggregate — or a Shopify window of star-only reviews)
+        // still holds the rating the tab is built on. Record it instead of dropping
+        // the whole capture on the floor.
         if (summary.averageScore != null) {
           await persistAggregateOnly({
             competitorId: input.competitorId,
-            source: "appstore",
+            source: input.source,
             score: summary.averageScore,
             reviewCount: summary.reviewCount,
           });
-          logger.log("Completed extract-reviews (App Store aggregate, no verbatims)", {
+          logger.log(`Completed extract-reviews (${label} aggregate, no verbatims)`, {
             competitorId: input.competitorId,
             score: summary.averageScore,
             reviewCount: summary.reviewCount,
           });
           return { ok: true, verbatimsInserted: 0 };
         }
-        logger.warn("App Store snapshot has no reviews");
+        logger.warn(`${label} snapshot has no reviews`);
         return { ok: false, reason: "no_reviews" };
       }
       text = summary.text;

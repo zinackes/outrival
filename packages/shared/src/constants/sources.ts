@@ -4,6 +4,15 @@ export const SOURCE_TYPES = [
   // "propre" — competitor data, keyless, no scraping). The one review platform we
   // read directly. See appstore-reviews.scraper.ts.
   "appstore_reviews",
+  // Shopify App Store merchant reviews (2026-08-04). The second review platform read
+  // directly, and the first one that is a WEB PAGE rather than a feed: the listing
+  // server-renders its reviews (no JS, no anti-bot), and `apps.shopify.com/robots.txt`
+  // declares no `User-agent: *` group at all, so OutrivalBot is allowed by the same
+  // isAllowed() every other L0 capture goes through. No exception to the collection
+  // doctrine, and unlike G2/Capterra Shopify does not license this data as a product.
+  // Score + total come from the page's own JSON-LD AggregateRating, never from the
+  // mean of the recent sample. See shopify-reviews.scraper.ts.
+  "shopify_reviews",
   // Trustpilot public SURFACE (Reviews v2, 2026-07-15): score, review count, star
   // distribution, trend via Trustpilot's OFFICIAL API (TRUSTPILOT_API_KEY) — never
   // third-party verbatims, never scraped (their ToS targets screen scrapers). The

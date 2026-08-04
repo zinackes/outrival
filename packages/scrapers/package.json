@@ -51,6 +51,10 @@
       "types": "./src/mobile/mobile-apps.ts",
       "default": "./src/mobile/mobile-apps.ts"
     },
+    "./shopify-app": {
+      "types": "./src/shopify-reviews/detect.ts",
+      "default": "./src/shopify-reviews/detect.ts"
+    },
     "./phash": {
       "types": "./src/lib/phash.ts",
       "default": "./src/lib/phash.ts"

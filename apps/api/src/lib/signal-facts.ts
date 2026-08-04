@@ -1610,6 +1610,7 @@ async function reviewFacts(
 /** Review source types whose scrape writes a `review_scores` row. */
 const REVIEW_SOURCES = new Set([
   "appstore_reviews",
+  "shopify_reviews",
   "trustpilot_public",
   "g2_reviews",
   "capterra_reviews",

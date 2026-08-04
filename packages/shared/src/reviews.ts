@@ -1,13 +1,15 @@
 import { extractBrand } from "./url";
 import { SOURCE_TYPES, type SourceType } from "./constants/sources";
 
-// Reviews v2 (2026-07-15): the ONLY user-selectable review source read directly is
-// App Store, via Apple's public RSS feed (competitor data, keyless, no scraping).
+// Reviews v2 (2026-07-15) + Shopify (2026-08-04): the user-selectable review sources
+// read directly are App Store, via Apple's public RSS feed (competitor data, keyless,
+// no scraping), and the Shopify App Store listing, a public server-rendered page that
+// `apps.shopify.com/robots.txt` leaves open to us (no `User-agent: *` group at all).
 // The scraped aggregators (g2/capterra/trustpilot/trustradius/gartner/playstore) are
 // RETIRED for legal reasons — see sources.ts. Trustpilot survives as `trustpilot_public`
 // (official-API surface: score + trend, no verbatims), which is NOT a REVIEW_SOURCE_TYPE:
 // it needs no user URL (derived from the competitor domain) and no verbatim extraction.
-export const REVIEW_SOURCE_TYPES = ["appstore_reviews"] as const;
+export const REVIEW_SOURCE_TYPES = ["appstore_reviews", "shopify_reviews"] as const;
 export type ReviewSourceType = (typeof REVIEW_SOURCE_TYPES)[number];
 
 export function isReviewSource(source: SourceType): source is ReviewSourceType {
@@ -48,6 +50,7 @@ export function isRotatingListSource(source: SourceType): boolean {
  */
 const REVIEW_SOURCE_BRAND: Record<ReviewSourceType, string> = {
   appstore_reviews: "apple",
+  shopify_reviews: "shopify",
 };
 
 export type ReviewUrlValidation =
@@ -57,7 +60,8 @@ export type ReviewUrlValidation =
 /**
  * Validate a user-supplied review-page URL against the expected source.
  * Enforces https, no embedded credentials, standard port, and a brand match
- * with the review site. App Store URLs must additionally carry an app id.
+ * with the review site. App Store URLs must additionally carry an app id, and
+ * Shopify URLs an app handle.
  */
 export function validateReviewUrl(source: ReviewSourceType, raw: string): ReviewUrlValidation {
   let parsed: URL;
@@ -75,6 +79,9 @@ export function validateReviewUrl(source: ReviewSourceType, raw: string): Review
   }
   if (source === "appstore_reviews" && !parseAppStoreUrl(parsed.toString())) {
     return { ok: false, error: "appstore_id_missing" };
+  }
+  if (source === "shopify_reviews" && !parseShopifyAppUrl(parsed.toString())) {
+    return { ok: false, error: "shopify_handle_missing" };
   }
   return { ok: true, url: parsed.toString() };
 }
@@ -193,6 +200,139 @@ export function parseAppStoreSnapshot(json: string): AppStoreSummary | null {
     ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 100) / 100
     : null;
   const text = reviews.map((r) => `[${r.rating}/5] ${r.title}\n${r.content}`).join("\n\n");
+  return {
+    averageScore: aggScore ?? sampleAverage,
+    reviewCount: aggCount ?? reviews.length,
+    text,
+  };
+}
+
+// ─── Shopify App Store reviews (2026-08-04) ──────────────────────────────────
+// The listing at apps.shopify.com/{handle} server-renders its merchant reviews and
+// its own JSON-LD AggregateRating. Unlike the retired aggregators, Shopify neither
+// forbids us in robots.txt (no `User-agent: *` group) nor sells this data as a
+// product, so it is captured through the standard L0 path (robots + rate limit).
+
+export interface ShopifyAppRef {
+  /** The listing slug: `klaviyo-email-marketing` in apps.shopify.com/klaviyo-…. */
+  handle: string;
+}
+
+/**
+ * Paths under apps.shopify.com that are the store's own furniture, not an app.
+ * A user pasting a category page would otherwise produce a monitor that scrapes a
+ * listing of listings and reports its rating as a competitor's.
+ */
+const SHOPIFY_RESERVED_SEGMENTS = new Set([
+  "categories", "collections", "search", "browse", "partners", "stores",
+  "compare", "blog", "best", "trending", "recommended",
+]);
+
+/** Extract the app handle from an apps.shopify.com URL. Null when it isn't one. */
+export function parseShopifyAppUrl(raw: string): ShopifyAppRef | null {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (u.hostname.toLowerCase() !== "apps.shopify.com") return null;
+  const handle = u.pathname.split("/").filter(Boolean)[0];
+  if (!handle) return null;
+  // Handles are lowercase kebab slugs; anything else is a store path we don't know.
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(handle)) return null;
+  if (SHOPIFY_RESERVED_SEGMENTS.has(handle)) return null;
+  return { handle };
+}
+
+/** Canonical listing URL for a handle (what the source's monitor points at). */
+export function shopifyAppUrl(handle: string): string {
+  return `https://apps.shopify.com/${handle}`;
+}
+
+/**
+ * Reviews page for a handle, newest first. `sort_by=newest` is what makes the
+ * capture a moving window of the most recent reviews rather than Shopify's default
+ * relevance order, which reshuffles without anything being written.
+ */
+export function shopifyReviewsUrl(handle: string, page = 1): string {
+  return `https://apps.shopify.com/${handle}/reviews?sort_by=newest&page=${page}`;
+}
+
+export interface ShopifyReview {
+  /** `data-review-content-id` — Shopify's stable per-review id. Dedup + sort key. */
+  id: string;
+  rating: number;
+  content: string;
+  /** The merchant's store name, as shown on the review. */
+  author: string;
+  /** Merchant country, when the listing shows one ("United States"). */
+  country: string;
+  /** Review date as printed ("August 1, 2026"). Empty when absent. */
+  updated: string;
+  /** How long they had been using the app ("About 2 years using the app"). */
+  tenure: string;
+}
+
+/**
+ * Normalized Shopify snapshot stored as the snapshot content. Like the App Store
+ * snapshot it deliberately carries no timestamp, so the content hash stays stable
+ * when nothing moved, and reviews are deduped by id and sorted so the generic diff
+ * maps +/- lines to added/removed reviews.
+ */
+export interface ShopifyReviewsSnapshot {
+  source: "shopify";
+  handle: string;
+  /** Listing-wide average from the page's JSON-LD AggregateRating; null if absent. */
+  averageRating: number | null;
+  /** Listing-wide review total from the same block; null if absent. */
+  ratingCount: number | null;
+  /** Star histogram, sorted by star descending. Empty when the page shows none. */
+  distribution: { stars: number; count: number }[];
+  reviews: ShopifyReview[];
+}
+
+export interface ShopifyReviewsSummary {
+  averageScore: number | null;
+  reviewCount: number;
+  /** The verbatims, one block per review, for the qualitative AI pass. */
+  text: string;
+}
+
+/** Parse a stored Shopify snapshot into structured score/count + a text blob. */
+export function parseShopifyReviewsSnapshot(json: string): ShopifyReviewsSummary | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== "object") return null;
+  const snap = data as Partial<ShopifyReviewsSnapshot>;
+  if (snap.source !== "shopify") return null;
+  const reviews = snap.reviews;
+  if (!Array.isArray(reviews)) return null;
+
+  // Score + count come from the listing-wide aggregate, never from the mean of the
+  // captured window: `sort_by=newest` returns the most recent 30, which skew with
+  // whatever the app just shipped (same reason the App Store parser ignores its
+  // sample mean). Fall back to the sample only when the aggregate is missing.
+  const aggScore =
+    typeof snap.averageRating === "number" && snap.averageRating > 0
+      ? Math.round(snap.averageRating * 100) / 100
+      : null;
+  const aggCount =
+    typeof snap.ratingCount === "number" && snap.ratingCount >= 0 ? snap.ratingCount : null;
+
+  if (reviews.length === 0) return { averageScore: aggScore, reviewCount: aggCount ?? 0, text: "" };
+
+  const ratings = reviews
+    .map((r) => r.rating)
+    .filter((n): n is number => typeof n === "number" && n > 0);
+  const sampleAverage = ratings.length
+    ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 100) / 100
+    : null;
+  const text = reviews.map((r) => `[${r.rating}/5] ${r.content}`).join("\n\n");
   return {
     averageScore: aggScore ?? sampleAverage,
     reviewCount: aggCount ?? reviews.length,

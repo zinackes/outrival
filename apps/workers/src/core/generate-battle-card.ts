@@ -17,6 +17,10 @@ import {
   knownCustomers,
   contentItems,
   roadmapStatusEvents,
+  messagingVersions,
+  namedCompetitors,
+  audiencePages,
+  numericClaims,
   selfProfileLastEditedAt,
   insertAiQualityCheck,
   type SelfProfile,
@@ -113,6 +117,107 @@ async function loadCustomerProof(competitorId: string) {
     storiesTotal: stories.length,
     customersTotal: Number(total?.n ?? registry.length),
   };
+}
+
+/** Claims and comparison targets carried into the evidence. Enough to characterise
+ *  a position; a full inventory would be a page the model has to summarise. */
+const POSITIONING_CLAIMS = 4;
+const POSITIONING_TARGETS = 5;
+const POSITIONING_SEGMENTS = 5;
+
+/**
+ * How a competitor positions itself, in its own words (Positioning Intelligence v2 P4).
+ *
+ * Same contract as the two loaders below it: read here so the GENERATED sections can
+ * reason over their story ("they lead with speed, you lead with coverage"), while the
+ * card's own Positioning section renders from the same rows via the API without a
+ * model touching them.
+ *
+ * The headline and the claims travel VERBATIM. Their value is that a seller can be
+ * shown the page they came from, and a paraphrased headline cannot be checked — which
+ * is the same reason the customer block carries names rather than a description of them.
+ */
+async function loadPositioningProof(competitorId: string) {
+  const [versions, claims, targets, segments] = await Promise.all([
+    db
+      .select({
+        h1: messagingVersions.h1,
+        capturedAt: messagingVersions.capturedAt,
+      })
+      .from(messagingVersions)
+      .where(eq(messagingVersions.competitorId, competitorId))
+      .orderBy(desc(messagingVersions.capturedAt))
+      .limit(2),
+    // One observation per claim key: the same claim re-captured every week is one
+    // claim, and a list of forty identical rows would crowd out every other block.
+    db
+      .selectDistinctOn([numericClaims.pattern, numericClaims.unit, numericClaims.context], {
+        rawText: numericClaims.rawText,
+        observedAt: numericClaims.observedAt,
+      })
+      .from(numericClaims)
+      .where(eq(numericClaims.competitorId, competitorId))
+      .orderBy(
+        numericClaims.pattern,
+        numericClaims.unit,
+        numericClaims.context,
+        desc(numericClaims.observedAt),
+      ),
+    db
+      .selectDistinctOn([namedCompetitors.nameNormalized], {
+        name: namedCompetitors.displayName,
+        firstSeenAt: namedCompetitors.firstSeenAt,
+      })
+      .from(namedCompetitors)
+      .where(eq(namedCompetitors.competitorId, competitorId))
+      .orderBy(namedCompetitors.nameNormalized, desc(namedCompetitors.firstSeenAt)),
+    db
+      .select({ kind: audiencePages.kind, displayName: audiencePages.displayName })
+      .from(audiencePages)
+      .where(eq(audiencePages.competitorId, competitorId))
+      .orderBy(desc(audiencePages.firstSeenAt)),
+  ]);
+
+  const current = versions[0];
+  const tagline = current?.h1
+    ? {
+        h1: current.h1,
+        capturedAt: current.capturedAt.toISOString(),
+        previousH1: versions[1]?.h1 ?? null,
+      }
+    : null;
+
+  const comparisonTargets = [...targets]
+    .sort((a, b) => b.firstSeenAt.getTime() - a.firstSeenAt.getTime())
+    .map((t) => t.name);
+
+  const positioning = {
+    tagline,
+    claims: [...claims]
+      .sort((a, b) => b.observedAt.getTime() - a.observedAt.getTime())
+      .slice(0, POSITIONING_CLAIMS)
+      .map((c) => c.rawText),
+    comparisonTargets: comparisonTargets.slice(0, POSITIONING_TARGETS),
+    comparisonTotal: comparisonTargets.length,
+    personas: segments
+      .filter((s) => s.kind === "persona")
+      .slice(0, POSITIONING_SEGMENTS)
+      .map((s) => s.displayName),
+    industries: segments
+      .filter((s) => s.kind === "industry")
+      .slice(0, POSITIONING_SEGMENTS)
+      .map((s) => s.displayName),
+  };
+
+  // Null rather than an object of empty lists: the evidence blocks omit an absent
+  // dimension entirely, and an empty one would reach the model as a data gap.
+  return positioning.tagline === null &&
+    positioning.claims.length === 0 &&
+    positioning.comparisonTotal === 0 &&
+    positioning.personas.length === 0 &&
+    positioning.industries.length === 0
+    ? null
+    : positioning;
 }
 
 /**
@@ -418,6 +523,10 @@ async function generate(payload: z.input<typeof InputSchema>) {
     // sections can use it, while the "Top requested, not delivered" section renders
     // from the same rows without a model touching them.
     const competitorRoadmap = await loadRoadmapProof(competitor.id);
+    // How they describe themselves (Positioning Intelligence v2 P4) — same
+    // contract again: evidence for the generated sections, while the card's
+    // Positioning section renders the facts deterministically.
+    const competitorPositioning = await loadPositioningProof(competitor.id);
 
     // Our own product's evidence — features / tech / pricing come from the self
     // profile (extract-self-profile keeps them current), homepage from its snapshot.
@@ -462,6 +571,7 @@ async function generate(payload: z.input<typeof InputSchema>) {
       competitorReviews,
       competitorCustomers,
       competitorRoadmap,
+      competitorPositioning,
       reviewPraises: praisesRows.map((r) => r.content ?? "").filter(Boolean),
       reviewComplaints: complaintsRows.map((r) => r.content ?? "").filter(Boolean),
       recentSignals: recentSignals.map((s) => ({

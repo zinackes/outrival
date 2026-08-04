@@ -1525,7 +1525,16 @@ export interface CompareColumn {
   id: string;
   name: string;
   url: string | null;
-  positioning: { category: string | null; summary: string | null };
+  // Positioning v2 P4 — `summary` is the AI profile line, kept for the picker's
+  // completeness score. The lens reads the two fields under it, both captured
+  // rather than written: the words on their homepage today, and the buyers their
+  // own sitemap says they sell to.
+  positioning: {
+    category: string | null;
+    summary: string | null;
+    h1: string | null;
+    personas: string[];
+  };
   pricing: {
     // null when only quote-based tiers were captured (no public number).
     entry: number | null;
@@ -2797,14 +2806,125 @@ export type TechStackData = {
   platformProfile: PlatformProfile | null;
 };
 
-// One version of a competitor's homepage positioning copy. `capturedAt` is when
+// ── Positioning Intelligence v2 ────────────────────────────────────────────
+
+// One distinct wording of a competitor's homepage hero (P1). `capturedAt` is when
 // this wording FIRST appeared, not when it was last seen, so two consecutive
 // versions read as "they changed this on that date".
-export interface PositioningVersion {
+export interface MessagingVersion {
   capturedAt: string;
-  headline: string | null;
+  h1: string | null;
   subheadline: string | null;
+  primaryCta: string | null;
   valueProps: string[];
+  snapshotKey: string | null;
+}
+
+// A quantified claim and how it has moved (P1). `rawText` is what the page
+// PRINTED; `value` is what makes the series comparable.
+export interface CompetitorClaim {
+  pattern: string;
+  unit: string | null;
+  context: string;
+  value: number;
+  rawText: string;
+  observedAt: string;
+  /** Oldest first, so it reads as a trajectory. */
+  series: Array<{ observedAt: string; value: number; rawText: string }>;
+}
+
+// A rival this competitor points at, folded across every page naming them (P2).
+export interface NamedTarget {
+  name: string;
+  sources: string[];
+  evidenceUrls: string[];
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  announced: boolean;
+}
+
+// Another competitor in THIS workspace that names the one being looked at (P2).
+export interface NamedByEntry {
+  competitorId: string;
+  competitorName: string;
+  matchedOn: "domain" | "brand";
+  sources: string[];
+  evidenceUrls: string[];
+  firstSeenAt: string | null;
+}
+
+export interface MarketMap {
+  targets: NamedTarget[];
+  namedBy: NamedByEntry[];
+  targetsTotal: number;
+}
+
+// A segment they publish a page for (P3).
+export interface AudienceSegment {
+  slug: string;
+  displayName: string;
+  evidenceUrl: string | null;
+  firstSeenAt: string | null;
+  isNew: boolean;
+}
+
+// Declared vs proven verticals. `both` is the read: a page AND stories behind it.
+export interface AudienceProfile {
+  personas: AudienceSegment[];
+  useCases: AudienceSegment[];
+  industries: {
+    declared: Array<AudienceSegment & { isCanonical: boolean }>;
+    proven: Array<{ slug: string; label: string; count: number; isCanonical: boolean }>;
+    both: Array<{
+      slug: string;
+      label: string;
+      declaredName: string;
+      evidenceUrl: string | null;
+      provenCount: number;
+    }>;
+  };
+  newCount: number;
+  windowDays: number;
+}
+
+// Share of Model before P5 has wired it. The placeholder states what IS being
+// collected — the runs are real and already accruing — rather than "coming soon".
+// P5 adds a `ready` member to this union; the tab already renders both.
+export type ShareOfModel = {
+  status: "not_ready";
+  prompts: number;
+  answers: number;
+  lastRunAt: string | null;
+};
+
+// The identity line above the Positioning tab (P4): only what the four section
+// endpoints do not already answer.
+export interface PositioningSummary {
+  pricingModel: PricingModel | null;
+  /** Only set when an EARLIER wording exists — a first capture is not a rewrite. */
+  lastRepositionedAt: string | null;
+  versionsTotal: number;
+  shareOfModel: ShareOfModel;
+}
+
+// The facts the battle card's Positioning section is rendered from (P4). Every
+// field is nullable: a missing fact drops its line, it never prints "unknown".
+export interface PositioningFacts {
+  tagline: {
+    h1: string;
+    capturedAt: string;
+    primaryCta: string | null;
+    previousH1: string | null;
+  } | null;
+  claims: Array<{ rawText: string; observedAt: string }>;
+  comparison: {
+    recent: string[];
+    named: string[];
+    total: number;
+    windowDays: number;
+  } | null;
+  icp: { personas: string[]; industries: string[]; industriesProven: boolean } | null;
+  namedByCount: number;
 }
 
 // Competitor "fact sheet" — the state view behind the Overview tab. Pure
@@ -3209,12 +3329,33 @@ export const api = {
     request<ReviewsData>(`/api/competitors/${id}/reviews`),
   getCompetitorReviewScores: (id: string) =>
     request<{ scores: ReviewScorePoint[] }>(`/api/competitors/${id}/review-scores`),
-  // Distinct versions of a competitor's positioning copy, newest first. Lazy: the
-  // Positioning tab is the only caller, so it stays off the detail payload.
-  getCompetitorPositioningHistory: (id: string) =>
-    request<{ versions: PositioningVersion[] }>(
-      `/api/competitors/${id}/positioning-history`,
+  // Positioning Intelligence v2 — the five section reads and the identity line.
+  // All lazy: the Positioning tab is the only caller, so none of them rides on
+  // the detail payload every other tab pays for.
+  //
+  // P1 — every distinct wording, newest first. Paginated on `capturedAt` rather
+  // than an offset: rows are only ever appended at the top, so an offset page
+  // would shift under a reader the moment a scrape landed mid-scroll.
+  getCompetitorMessagingTimeline: (id: string, cursor?: string | null) =>
+    request<{ versions: MessagingVersion[]; nextCursor: string | null }>(
+      `/api/competitors/${id}/messaging-timeline${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
     ),
+  // P1 — the quantified claims they make about themselves, and how each has moved.
+  getCompetitorClaims: (id: string) =>
+    request<{ claims: CompetitorClaim[] }>(`/api/competitors/${id}/claims`),
+  // P2 — who they attack, and which competitors of THIS workspace name them.
+  getCompetitorMarketMap: (id: string) =>
+    request<MarketMap>(`/api/competitors/${id}/market-map`),
+  // P3 — who they SAY they sell to, against who their stories PROVE they sell to.
+  getCompetitorAudienceProfile: (id: string) =>
+    request<AudienceProfile>(`/api/competitors/${id}/audience-profile`),
+  // P4 — the identity line: how they charge, when they last rewrote their story,
+  // and what Share of Model holds so far.
+  getCompetitorPositioning: (id: string) =>
+    request<PositioningSummary>(`/api/competitors/${id}/positioning`),
+  // P4 — the deterministic facts the battle-card section renders.
+  getCompetitorPositioningFacts: (id: string) =>
+    request<PositioningFacts>(`/api/competitors/${id}/positioning-facts`),
   getCompetitorPricingHistory: (id: string) =>
     request<{ history: PricingHistoryPoint[] }>(`/api/competitors/${id}/pricing-history`),
   // Rate structures (P3): how the latest capture's metered plans charge — the

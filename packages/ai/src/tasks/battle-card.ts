@@ -97,6 +97,28 @@ export interface BattleCardInput {
     deliveredInWindow: number;
     windowDays: number;
   } | null;
+  /**
+   * How they position themselves (Positioning Intelligence v2 P4): the headline
+   * on their homepage today, the quantified claims they print, who they publish
+   * comparison pages against, and the buyers their sitemap says they sell to.
+   *
+   * Every field is something they wrote — a hero headline, a claim verbatim, a
+   * slug. It is here so the generated sections can REFER to their positioning
+   * ("they now lead with X, you lead with Y") and still trace the claim; the
+   * card's own Positioning section is rendered from the same facts client-side
+   * and is not written by a model. null when nothing has been captured.
+   */
+  competitorPositioning?: {
+    /** Their current hero headline, verbatim, and the one it replaced. */
+    tagline: { h1: string; capturedAt: string; previousH1: string | null } | null;
+    /** Quantified claims as the page printed them. */
+    claims: string[];
+    /** Rivals they name on comparison pages, most recently first. */
+    comparisonTargets: string[];
+    comparisonTotal: number;
+    personas: string[];
+    industries: string[];
+  } | null;
   reviewComplaints: string[];
   reviewPraises: string[];
   recentSignals: Array<{ category: string; severity: string; insight: string }>;
@@ -122,6 +144,7 @@ function pricingBlock(tiers: BattleCardPricingTier[] | undefined): string | null
 }
 
 interface EvidenceBlocks {
+  positioningBlock: string | null;
   signalsBlock: string | null;
   praisesBlock: string | null;
   complaintsBlock: string | null;
@@ -225,6 +248,36 @@ export function computeBlocks(input: BattleCardInput): EvidenceBlocks {
     return parts.length ? parts.join("\n") : null;
   })();
 
+  // How they position themselves, in their own words. The headline is quoted
+  // rather than paraphrased: the whole value of "they now lead with X" is that a
+  // seller can be shown the page, and a summarised headline cannot be checked.
+  const positioningBlock = (() => {
+    const p = input.competitorPositioning;
+    if (!p) return null;
+    const parts: string[] = [];
+    if (p.tagline) {
+      parts.push(
+        `Their homepage headline, since ${p.tagline.capturedAt.slice(0, 10)}: "${p.tagline.h1}"` +
+          (p.tagline.previousH1 ? ` (it replaced: "${p.tagline.previousH1}")` : ""),
+      );
+    }
+    if (p.claims.length > 0) {
+      parts.push(`Claims they print, verbatim: ${p.claims.map((c) => `"${c}"`).join("; ")}`);
+    }
+    if (p.comparisonTargets.length > 0) {
+      parts.push(
+        `Rivals they publish comparison pages against (${p.comparisonTotal} in total): ${p.comparisonTargets.join(", ")}`,
+      );
+    }
+    if (p.personas.length > 0) {
+      parts.push(`Buyers they publish a page for: ${p.personas.join(", ")}`);
+    }
+    if (p.industries.length > 0) {
+      parts.push(`Industries they publish a page for: ${p.industries.join(", ")}`);
+    }
+    return parts.length ? parts.join("\n") : null;
+  })();
+
   // What their customers are still asking for. The single most useful line on a
   // competitive call, and the one the competitor publishes themselves — so it is
   // given verbatim, with the vote counts, and never summarised into "users want
@@ -267,6 +320,7 @@ export function computeBlocks(input: BattleCardInput): EvidenceBlocks {
       : "";
 
   return {
+    positioningBlock,
     signalsBlock,
     praisesBlock,
     complaintsBlock,
@@ -310,6 +364,7 @@ export function evidenceBlock(input: BattleCardInput, b: EvidenceBlocks): string
     competitorPricing ? `Pricing:\n${competitorPricing}` : null,
     b.competitorTechBlock ? `Tech stack (detected on their site):\n${b.competitorTechBlock}` : null,
     b.reviewScoreBlock ? `Reviews:\n${b.reviewScoreBlock}` : null,
+    b.positioningBlock ? `How they position themselves:\n${b.positioningBlock}` : null,
     b.customersBlock ? `Published customer proof:\n${b.customersBlock}` : null,
     b.roadmapBlock ? `Their public roadmap:\n${b.roadmapBlock}` : null,
     b.competitorHomepage ? `Homepage excerpt:\n${b.competitorHomepage}` : null,
@@ -359,6 +414,7 @@ export function evidenceSourceText(input: BattleCardInput, b: EvidenceBlocks): s
     competitorPricing ? `Competitor pricing:\n${competitorPricing}` : "",
     b.competitorTechBlock ? `Competitor tech stack:\n${b.competitorTechBlock}` : "",
     b.reviewScoreBlock ? `Competitor reviews:\n${b.reviewScoreBlock}` : "",
+    b.positioningBlock ? `Competitor positioning:\n${b.positioningBlock}` : "",
     b.customersBlock ? `Competitor published customer proof:\n${b.customersBlock}` : "",
     b.roadmapBlock ? `Competitor public roadmap:\n${b.roadmapBlock}` : "",
     b.competitorHomepage ? `Competitor homepage:\n${b.competitorHomepage}` : "",

@@ -137,7 +137,7 @@ import { HiringTab } from "./competitor-detail/hiring-tab";
 import { ReviewsTab, readShopifyApp } from "./competitor-detail/reviews-tab";
 import { OverviewTab } from "./competitor-detail/overview-tab";
 import { ActivityTab } from "./competitor-detail/activity-tab";
-import { ProductTab } from "./competitor-detail/product-tab";
+import { PositioningTab } from "./competitor-detail/positioning-tab";
 import { ContentTab } from "./competitor-detail/content-tab";
 import { readMobileApps } from "./competitor-detail/mobile-apps";
 import { PRODUCT_SOURCES } from "./competitor-detail/product-lenses";
@@ -837,16 +837,18 @@ export function CompetitorDetailView({ id }: { id: string }) {
               />
             </TabsContent>
             <TabsContent value="product" className={TAB_PANEL_CLASS}>
-              <ProductTab
+              <PositioningTab
                 competitorId={id}
                 competitorName={competitor.name}
+                competitorUrl={competitor.url}
+                category={competitor.category}
                 changes={recentChanges}
                 signals={recentSignals}
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 onRun={requestRunMonitor}
-                competitorUrl={competitor.url}
                 mobileApps={mobileApps}
+                overview={overview}
               />
             </TabsContent>
             </div>

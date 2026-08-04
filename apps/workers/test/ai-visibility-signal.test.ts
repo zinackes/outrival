@@ -50,6 +50,7 @@ beforeAll(async () => {
   const realShared = await import("@outrival/shared");
   const realAi = await import("@outrival/ai");
   const realAnalytics = await import("../src/lib/analytics");
+  const realEngines = await import("../src/lib/ai-visibility/engines");
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
@@ -66,9 +67,11 @@ beforeAll(async () => {
       },
     },
   }));
-  // Spread the REAL modules: these mocks are process-global and outlive the file,
-  // so a partial one breaks whatever later file imports them, depending only on
-  // the order bun picked.
+  // Spread the REAL modules on EVERY mock below: these are process-global and
+  // outlive the file, so a partial one breaks whatever later file imports the
+  // dropped export, depending only on the order bun picked. Stubbing `engines`
+  // without the spread is what turned this suite red on CI and green locally —
+  // `ai-visibility-quota.test.ts` imports `retryAfterMs` from it.
   mock.module("@outrival/shared", () => ({
     ...realShared,
     uploadToR2: async () => undefined,
@@ -94,7 +97,7 @@ beforeAll(async () => {
     loggedAi: async <T>(_task: string, _cfg: unknown, fn: () => Promise<T>) => await fn(),
   }));
   mock.module("../src/lib/ai-visibility/engines", () => ({
-    EngineQuotaError: class extends Error {},
+    ...realEngines,
     queryEngine: async () => ({ answer: engineAnswer, engine: "gemini", model: "stub" }),
   }));
 

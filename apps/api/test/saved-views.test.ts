@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { savedViews } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
@@ -10,16 +10,23 @@ import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 let app: Hono;
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 let A: { orgId: string; userId: string; email: string };
 let B: { orgId: string; userId: string; email: string };
 
 afterAll(() => closeDb());
 
 beforeAll(async () => {
-  ({ db: testDb, close: closeDb } = await makeTestDb());
+  ({ db: testDb, close: closeDb, reset: resetDb } = await makeTestDb());
   await installAppMocks(testDb);
   const { savedViewsRouter } = await import("../src/routes/saved-views");
   app = mountApp("/api/saved-views", savedViewsRouter);
+});
+
+// Per test, not per file: the create test below adds a second view, which the
+// "sees only their org's views" count would read as a tenant leak if it ran after.
+beforeEach(async () => {
+  await resetDb();
   A = await seedOrg(testDb);
   B = await seedOrg(testDb);
   // A view owned by org A — the cross-tenant target.

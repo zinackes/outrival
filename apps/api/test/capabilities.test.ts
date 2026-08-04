@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { backfillRuns, extractionRuns } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
@@ -16,6 +16,7 @@ import { installAppMocks, mountApp } from "./app-harness";
 
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 
 const HOOK_TIMEOUT_MS = 30_000;
 const ALL_KEYS = [
@@ -38,9 +39,13 @@ const ALL_KEYS = [
 afterAll(() => closeDb());
 
 beforeAll(async () => {
-  ({ db: testDb, close: closeDb } = await makeTestDb());
+  ({ db: testDb, close: closeDb, reset: resetDb } = await makeTestDb());
   await installAppMocks(testDb);
 }, HOOK_TIMEOUT_MS);
+
+// Every scenario here writes the rows whose liveness it then reads, and one of them
+// asserts on an EMPTY database — so the wipe belongs between tests, not per file.
+beforeEach(() => resetDb());
 
 let bust = 0;
 async function freshApp(): Promise<Hono> {

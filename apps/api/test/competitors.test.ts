@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 import {
@@ -21,22 +21,30 @@ import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 let app: Hono;
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 let A: { orgId: string; userId: string; email: string };
 let B: { orgId: string; userId: string; email: string };
 
 afterAll(() => closeDb());
 
 beforeAll(async () => {
-  ({ db: testDb, close: closeDb } = await makeTestDb());
+  ({ db: testDb, close: closeDb, reset: resetDb } = await makeTestDb());
   await installAppMocks(testDb);
   const { competitorsRouter } = await import("../src/routes/competitors");
   app = mountApp("/api/competitors", competitorsRouter);
-  A = await seedOrg(testDb, { plan: "free" });
-  B = await seedOrg(testDb, { plan: "free" });
-  await testDb.insert(competitors).values({ id: "comp-a", orgId: A.orgId, name: "Acme" });
   // Explicit timeout: booting PGlite + migrations + the router's module graph sits
   // around 4.5s on a slow machine, so bun's 5s default for hooks was one import
   // away from timing out and failing the whole file at once.
+}, 30_000);
+
+// Per test, not per file: A is on the free plan, so every competitor another test
+// leaves behind pushes the roster past the cap and flips pausedByPlan on rows that
+// are supposed to read false.
+beforeEach(async () => {
+  await resetDb();
+  A = await seedOrg(testDb, { plan: "free" });
+  B = await seedOrg(testDb, { plan: "free" });
+  await testDb.insert(competitors).values({ id: "comp-a", orgId: A.orgId, name: "Acme" });
 }, 30_000);
 
 const enable = (userId: string, email: string, competitorId: string, sourceType: string) =>
@@ -380,7 +388,7 @@ describe("custom-page monitors", () => {
       })
     ).length;
 
-  beforeAll(async () => {
+  beforeEach(async () => {
     // starter → customMonitorsPerCompetitor = 2.
     S = await seedOrg(testDb, { plan: "starter" });
     await testDb
@@ -429,7 +437,23 @@ describe("custom-page monitors", () => {
     expect(await countCustoms("comp-s")).toBe(2);
   });
 
+  // The two tests below read a competitor already at the starter limit, which (c)
+  // happens to leave behind. Each seeds its own so neither depends on running after it.
+  const fillCustoms = async () => {
+    await addCustom(S, "comp-s", {
+      url: "https://docs.acme.example/security",
+      label: "Security docs",
+      hint: "security",
+    });
+    await addCustom(S, "comp-s", {
+      url: "https://acme.example/enterprise",
+      label: "Enterprise",
+      hint: "product",
+    });
+  };
+
   test("dedup: the same page (canonical URL) is rejected, no extra row", async () => {
+    await fillCustoms();
     // Trailing slash normalizes to the existing /enterprise custom.
     const res = await addCustom(S, "comp-s", {
       url: "https://acme.example/enterprise/",
@@ -442,6 +466,7 @@ describe("custom-page monitors", () => {
   });
 
   test("(b) per-competitor quota → plan_limit_custom_monitors (backend)", async () => {
+    await fillCustoms();
     // starter limit is 2 and comp-s already has 2 → a third distinct page is blocked.
     const res = await addCustom(S, "comp-s", {
       url: "https://acme.example/about",
@@ -582,7 +607,7 @@ describe("GET /competitors under a stale product scope", () => {
   let livePid: string;
   let archivedPid: string;
 
-  beforeAll(async () => {
+  beforeEach(async () => {
     S = await seedOrg(testDb, { plan: "pro" });
     await testDb.insert(competitors).values([
       { id: "comp-live-s", orgId: S.orgId, name: "Live rival" },

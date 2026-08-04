@@ -71,3 +71,34 @@ export async function closeSharedDb(): Promise<void> {
   shared = null;
   await open?.client.close();
 }
+
+/**
+ * A stable stand-in for @outrival/db's `db`, resolving to the shared instance at call
+ * time. The preload mocks @outrival/db with this ONCE, before any instance exists, so
+ * no test file has to register its own — which is what used to break: eleven files
+ * each re-registered `{ ...schema, db }`, spreading a namespace mock.module had already
+ * mutated in place, and some file orders left a consumer holding a half-built module.
+ */
+export const sharedDbProxy = new Proxy({} as TestDb, {
+  get: (_t, prop: string) => {
+    const target = dbOverride ?? shared?.db;
+    if (!target) throw new Error("makeTestDb() must run before the DB is used");
+    return Reflect.get(target as object, prop);
+  },
+}) as TestDb;
+
+let dbOverride: unknown = null;
+
+/**
+ * Swap in a hand-written fake `db` for a file that tests decision logic rather than
+ * SQL. Set it from beforeEach and clear it in afterAll: replacing the @outrival/db
+ * module outright (as this used to) left every file loaded afterwards holding a
+ * three-table stand-in for the whole schema.
+ */
+export function setDbOverride(fake: unknown): void {
+  dbOverride = fake;
+}
+
+export function clearDbOverride(): void {
+  dbOverride = null;
+}

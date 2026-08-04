@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import {
   onboardingSessions,
@@ -19,6 +19,7 @@ import { installAppMocks, mountApp, seedOrg } from "./app-harness";
 let app: Hono;
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 
 // PGlite migrates the whole schema on first use, which runs past bun's 5s hook
 // default on a cold VM.
@@ -27,11 +28,15 @@ const HOOK_TIMEOUT_MS = 30_000;
 afterAll(() => closeDb());
 
 beforeAll(async () => {
-  ({ db: testDb, close: closeDb } = await makeTestDb());
+  ({ db: testDb, close: closeDb, reset: resetDb } = await makeTestDb());
   await installAppMocks(testDb);
   const { productRouter } = await import("../src/routes/admin/product");
   app = mountApp("/api/admin", productRouter);
 }, HOOK_TIMEOUT_MS);
+
+// The route reports totals over the whole table, so every test seeds the entire
+// population it asserts on.
+beforeEach(() => resetDb());
 
 let seq = 0;
 
@@ -93,9 +98,6 @@ async function seedBackfillRun(competitorId: string, outcome: string, daysAgo: n
   });
 }
 
-// Tests share one PGlite instance and accumulate state test-to-test (bun:test
-// runs a describe's tests in declaration order), so each test's expected numbers
-// are the running total after that test's seed — not an isolated fixture.
 describe("GET /api/admin/first-signal-misses", () => {
   test("empty database: does not throw, reports zero completions", async () => {
     const res = await app.request("/api/admin/first-signal-misses");
@@ -129,7 +131,7 @@ describe("GET /api/admin/first-signal-misses", () => {
     const res = await app.request("/api/admin/first-signal-misses");
     const body = await res.json();
     expect(body.available).toBe(true);
-    expect(body.completions).toBe(2);
+    expect(body.completions).toBe(1);
     expect(body.missed).toBe(1);
     expect(body.neverSignal).toBe(1);
     const noBackfillBucket = body.buckets.find((b: { bucket: string }) => b.bucket === "no_backfill_run");
@@ -138,21 +140,26 @@ describe("GET /api/admin/first-signal-misses", () => {
   });
 
   test("a missed completion with a no_archive_capture backfill run is bucketed", async () => {
-    const { orgId, userId } = await seedOrg(testDb);
-    const competitorId = await seedCompetitor(orgId, "Archived");
-    await seedCompletion(orgId, userId, 1);
+    const archived = await seedOrg(testDb);
+    const competitorId = await seedCompetitor(archived.orgId, "Archived");
+    await seedCompletion(archived.orgId, archived.userId, 1);
     await seedBackfillRun(competitorId, "no_archive_capture", 1);
+
+    // A second missed org that never had a backfill run at all, so the two buckets
+    // are proven to be counted apart rather than one absorbing the other.
+    const silent = await seedOrg(testDb);
+    await seedCompetitor(silent.orgId, "Silent");
+    await seedCompletion(silent.orgId, silent.userId, 1);
 
     const res = await app.request("/api/admin/first-signal-misses");
     const body = await res.json();
     expect(body.available).toBe(true);
-    expect(body.completions).toBe(3);
+    expect(body.completions).toBe(2);
     expect(body.missed).toBe(2);
     expect(body.neverSignal).toBe(2);
     const bucket = body.buckets.find((b: { bucket: string }) => b.bucket === "no_archive_capture");
     expect(bucket).toBeTruthy();
     expect(bucket.orgs).toBe(1);
-    // The Silent org from the previous test still has no backfill run at all.
     const noBackfillBucket = body.buckets.find((b: { bucket: string }) => b.bucket === "no_backfill_run");
     expect(noBackfillBucket?.orgs).toBe(1);
   });

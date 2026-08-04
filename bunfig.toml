@@ -21,7 +21,7 @@
 # an empty-but-migrated database. Each app's own bunfig.toml preloads the run-scoped
 # afterAll that closes it (an open WASM client makes bun exit 99 on a green suite).
 #
-#   apps/api      7.28 GB / 76.6 s  ->  1.02 GB / 13.8 s   (353 pass)
+#   apps/api      7.28 GB / 76.6 s  ->  1.76 GB / 24.7 s   (353 pass)
 #   apps/workers  3.35 GB / 17.1 s  ->  1.09 GB /  7.6 s   (352 pass)
 
 [test]

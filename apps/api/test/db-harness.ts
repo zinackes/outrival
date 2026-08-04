@@ -17,6 +17,12 @@ export interface TestHarness {
   db: TestDb;
   /** Close PGlite in afterAll — an open WASM client makes bun exit non-zero. */
   close: () => Promise<void>;
+  /**
+   * Empty every table. Seed from a beforeEach that calls this first whenever a file's
+   * tests write rows the other tests read: a beforeAll seed is shared mutable state,
+   * and bun runs tests in declaration order only until someone passes --randomize.
+   */
+  reset: () => Promise<void>;
 }
 
 const MIGRATIONS = resolve(import.meta.dir, "../../../packages/db/migrations");
@@ -57,11 +63,16 @@ export async function makeTestDb(): Promise<TestHarness> {
   } else {
     await shared.client.exec(TRUNCATE_PUBLIC);
   }
+  const open = shared;
   // Files keep their afterAll close(): closing the shared instance would pull the DB
   // out from under the next file, so teardown is a no-op. test/setup.ts (preloaded
   // via bunfig.toml) closes it once when the whole run ends — an open WASM client
   // makes bun exit 99 even with every test passing.
-  return { db: shared.db, close: async () => {} };
+  return {
+    db: open.db,
+    close: async () => {},
+    reset: async () => void (await open.client.exec(TRUNCATE_PUBLIC)),
+  };
 }
 
 /** Called once per process by the preloaded test/setup.ts, never by a test file. */

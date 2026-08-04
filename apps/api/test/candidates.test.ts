@@ -1,5 +1,4 @@
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
-import { resolve } from "node:path";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import {
@@ -13,7 +12,7 @@ import {
 } from "@outrival/db";
 import { PLAN_LIMITS } from "@outrival/shared";
 import { makeTestDb, type TestDb } from "./db-harness";
-import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
+import { asUser, installAppMocks, installQueueMock, mountApp, seedOrg } from "./app-harness";
 
 // The Discovery page reads its whole opening from this router: the queue with the
 // numbers behind it (counts, competitor seats, what the search ran on), the scan
@@ -22,22 +21,26 @@ import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 let app: Hono;
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 let A: { orgId: string; userId: string; email: string };
 let B: { orgId: string; userId: string; email: string };
 
 afterAll(() => closeDb());
 
 beforeAll(async () => {
-  ({ db: testDb, close: closeDb } = await makeTestDb());
+  ({ db: testDb, close: closeDb, reset: resetDb } = await makeTestDb());
   await installAppMocks(testDb);
   // The add path fires platform detection + first scrapes. The queue is not the
   // subject here, and a real enqueue would need a running pg-boss.
-  mock.module(resolve(import.meta.dir, "../src/lib/queue"), () => ({
-    enqueueJob: async () => "job-id",
-  }));
+  installQueueMock();
   const { candidatesRouter } = await import("../src/routes/candidates");
   app = mountApp("/api/candidates", candidatesRouter);
+});
 
+// Per test, not per file: /add and /dismiss move a candidate out of `new`, and the
+// queue counts and the Added receipt are both read off that status.
+beforeEach(async () => {
+  await resetDb();
   A = await seedOrg(testDb, { plan: "pro" });
   B = await seedOrg(testDb, { plan: "free" });
 
@@ -143,7 +146,7 @@ beforeAll(async () => {
     category: "pricing",
     insight: "Entry tier moved",
   });
-});
+}, 30_000);
 
 describe("GET /api/candidates", () => {
   test("carries the counts, the seats and the search basis the reading is made of", async () => {

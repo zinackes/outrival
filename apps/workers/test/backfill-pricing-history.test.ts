@@ -82,7 +82,6 @@ beforeAll(async () => {
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/db", () => ({ ...schema, db: harness.db }));
 
   // Every enqueue is recorded rather than performed: "no signal" means no
   // classify-change and no generate-signal reached the queue either.

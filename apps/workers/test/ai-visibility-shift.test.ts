@@ -32,7 +32,6 @@ beforeAll(async () => {
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
-  mock.module("@outrival/db", () => ({ ...schema, db: harness.db }));
   ({ computeVisibilityShifts, subjectsInCooldown, shiftRawDiff } = await import(
     "../src/lib/ai-visibility/shift"
   ));

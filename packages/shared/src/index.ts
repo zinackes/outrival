@@ -32,6 +32,7 @@ export * from "./roadmap-status";
 export * from "./shipping-velocity";
 export * from "./customer-name";
 export * from "./positioning";
+export * from "./visibility-metrics";
 export * from "./editorial-metrics";
 export * from "./entitlement-diff";
 export * from "./price-tier-diff";

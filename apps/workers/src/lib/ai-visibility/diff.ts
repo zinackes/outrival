@@ -1,7 +1,15 @@
-// AI Visibility diff — phase 3 (docs/ai-visibility.md). Pure functions (no DB): turn
-// the raw per-(prompt × subject) rows of a run into per-engine share-of-voice, then
-// compare two runs and surface only the meaningful shifts worth a signal. Idempotent
-// by construction: two identical runs produce identical aggregates → zero deltas.
+// AI Visibility — per-RUN share of voice (docs/ai-visibility.md). Pure functions (no
+// DB): turn the raw per-(prompt × subject) rows of ONE run into per-engine share of
+// voice.
+//
+// The run-to-run delta that used to live here was removed in Positioning Intelligence
+// v2 P5. It compared the last sweep to the one before it, which mostly measured how
+// differently an answer engine answers the same question twice. Signals are now
+// computed over 28-day windows in `./shift.ts`, off the same rows.
+//
+// What remains is the single-run aggregate, which the day-0 onboarding teaser still
+// wants: that card is a one-shot taste of a single free sweep, and a window it has no
+// history for would leave it with nothing to show.
 
 export interface VisibilityRow {
   competitorId: string;
@@ -84,100 +92,4 @@ export function aggregate(rows: VisibilityRow[]): RunAgg {
     out.set(engine, { totalPrompts: e.prompts.size, subjects });
   }
   return out;
-}
-
-export type DeltaType = "self_dropped" | "overtaken" | "competitor_appeared";
-
-export interface VisibilityDelta {
-  type: DeltaType;
-  engine: string;
-  competitorId: string; // the subject the signal is about (self for self_dropped)
-  subjectBefore: number;
-  subjectAfter: number;
-  selfBefore: number;
-  selfAfter: number;
-  severity: "medium" | "high";
-}
-
-const sovOf = (agg: EngineAgg | undefined, id: string | null): number =>
-  (id && agg?.subjects.get(id)?.sov) || 0;
-
-// Compare the previous run to the current one and emit only meaningful shifts. An
-// engine with no previous baseline yields nothing (the first run just establishes the
-// baseline, like tech-stack's first scrape). Self-drop and overtake need a self product;
-// competitor-appeared works regardless.
-//
-// `minPrompts` is a noise gate: SoV on a run where the engine answered only a handful of
-// prompts is meaningless (1 prompt → 100%/0% swings, 2 prompts → 50% steps). Require a
-// real sample on BOTH runs before trusting a shift. This suppresses "appeared"/"overtaken"
-// events that are really free-tier quota starvation — the engine returned nothing nameable
-// for most prompts, not a market move. Default 1 keeps the pure baseline behaviour; the
-// job passes AI_VISIBILITY_MIN_PROMPTS_FOR_SIGNAL.
-export function computeDeltas(
-  prev: RunAgg,
-  curr: RunAgg,
-  selfId: string | null,
-  minPrompts = 1,
-): VisibilityDelta[] {
-  const deltas: VisibilityDelta[] = [];
-  for (const [engine, currEng] of curr) {
-    const prevEng = prev.get(engine);
-    if (!prevEng) continue; // no baseline → no signal
-    // Both runs need enough answered prompts for their SoV to mean anything.
-    if (currEng.totalPrompts < minPrompts || prevEng.totalPrompts < minPrompts) continue;
-
-    const selfAfter = sovOf(currEng, selfId);
-    const selfBefore = sovOf(prevEng, selfId);
-
-    if (selfId && selfBefore > 0 && selfAfter === 0) {
-      deltas.push({
-        type: "self_dropped",
-        engine,
-        competitorId: selfId,
-        subjectBefore: selfBefore,
-        subjectAfter: selfAfter,
-        selfBefore,
-        selfAfter,
-        severity: "high",
-      });
-    }
-
-    for (const [cid, cAgg] of currEng.subjects) {
-      if (cid === selfId) continue;
-      const after = cAgg.sov;
-      const before = sovOf(prevEng, cid);
-      // An "overtake" means the competitor GAINED ground and passed the self product
-      // (before at/below self, now above it, AND its own SoV rose). Without the
-      // `after > before` clause, a competitor that merely appears ahead because the
-      // self product collapsed — while the competitor itself declined — would wrongly
-      // fire a HIGH "overtaken" signal; that case is a self decline, not an overtake.
-      const overtook =
-        selfId !== null && before <= selfBefore && after > selfAfter && after > before;
-      const appeared = before === 0 && after > 0;
-      if (overtook) {
-        deltas.push({
-          type: "overtaken",
-          engine,
-          competitorId: cid,
-          subjectBefore: before,
-          subjectAfter: after,
-          selfBefore,
-          selfAfter,
-          severity: "high",
-        });
-      } else if (appeared) {
-        deltas.push({
-          type: "competitor_appeared",
-          engine,
-          competitorId: cid,
-          subjectBefore: before,
-          subjectAfter: after,
-          selfBefore,
-          selfAfter,
-          severity: "medium",
-        });
-      }
-    }
-  }
-  return deltas;
 }

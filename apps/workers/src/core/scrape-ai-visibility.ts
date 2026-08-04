@@ -14,21 +14,24 @@ import {
   snapshots,
   changes,
 } from "@outrival/db";
-import { computeHash, uploadToR2 } from "@outrival/shared";
+import {
+  computeHash,
+  uploadToR2,
+  visibilityHumanChange,
+  visibilityHumanChangeSides,
+  VISIBILITY_MIN_RUNS,
+  VISIBILITY_WINDOW_DAYS,
+} from "@outrival/shared";
 import { extractAiVisibility, AI_CONFIG, type Classification } from "@outrival/ai";
 import { EngineQuotaError, queryEngine, type Engine } from "../lib/ai-visibility/engines";
+import { insertAiVisibilityResults, loggedAi, type AiVisibilityResultRow } from "../lib/analytics";
+import { promptNamesSubject } from "../lib/ai-visibility/diff";
 import {
-  insertAiVisibilityResults,
-  getPreviousAiVisibilityRun,
-  loggedAi,
-  type AiVisibilityResultRow,
-} from "../lib/analytics";
-import {
-  aggregate,
-  computeDeltas,
-  promptNamesSubject,
-  type VisibilityDelta,
-} from "../lib/ai-visibility/diff";
+  computeVisibilityShifts,
+  shiftRawDiff,
+  subjectsInCooldown,
+  type SubjectShift,
+} from "../lib/ai-visibility/shift";
 import { textNamesSubject } from "../lib/ai-visibility/match";
 import { buildVisibilityPromptInput, seedVisibilityPrompts } from "../lib/ai-visibility/seed";
 import { notifyJobComplete } from "../lib/job-complete";
@@ -74,10 +77,12 @@ export async function runScrapeAiVisibility(payload: z.input<typeof InputSchema>
       return { skipped: true, reason: "disabled" };
     }
     const maxPrompts = Number(process.env.AI_VISIBILITY_MAX_PROMPTS ?? 10);
-    // Minimum answered prompts (per engine, on BOTH runs) before a shift is trustworthy
-    // enough to signal on. Guards against free-tier quota starvation faking swings: a run
-    // where the engine answered 1-2 prompts yields 100%/50% SoV noise, not a market move.
-    const minPromptsForSignal = Number(process.env.AI_VISIBILITY_MIN_PROMPTS_FOR_SIGNAL ?? 4);
+    // Minimum RUNS a window must hold, on BOTH sides, before a shift between them is
+    // trustworthy enough to signal on (P5). This replaced a per-run prompt floor: the
+    // floor guarded against a quota-starved sweep faking a swing, but it could not guard
+    // against the engine simply answering differently on two healthy runs, which is the
+    // failure that actually filled the feed.
+    const minRuns = Number(process.env.AI_VISIBILITY_MIN_RUNS_FOR_SIGNAL ?? VISIBILITY_MIN_RUNS);
 
     const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId) });
     if (!org) throw new AbortTaskRunError(`Org ${orgId} not found`);
@@ -242,26 +247,24 @@ export async function runScrapeAiVisibility(payload: z.input<typeof InputSchema>
       totalRows += productRows.length;
       totalPrompts += prompts.length;
 
-      // Phase 3 diff: against THIS product's previous run, signal on meaningful shifts.
+      // P5: signal on the WINDOW, never on this run. The rows this run just wrote are
+      // part of the current window's average — the sweep is the trigger to re-measure,
+      // not the thing being measured.
       if (productRows.length > 0) {
-        const prevRows = await getPreviousAiVisibilityRun(orgId, runId, product.id);
-        if (prevRows && prevRows.length > 0) {
-          const currAgg = aggregate(
-            productRows.map((r) => ({
-              competitorId: r.competitor_id,
-              engine: r.engine,
-              promptId: r.prompt_id,
-              mentioned: r.mentioned,
-              promptNamed: r.prompt_named ?? false,
-              rank: r.rank ?? null,
-            })),
-          );
-          const deltas = computeDeltas(aggregate(prevRows), currAgg, self?.id ?? null, minPromptsForSignal);
-          if (deltas.length > 0) {
-            const nameById = new Map(roster.map((c) => [c.id, c.name]));
-            const urlById = new Map(roster.map((c) => [c.id, c.url ?? null]));
-            signalled += await emitVisibilitySignals(deltas, nameById, urlById);
-          }
+        const shifts = await computeVisibilityShifts({
+          orgId,
+          productId: product.id,
+          rosterIds: roster.map((c) => c.id),
+          selfId: self?.id ?? null,
+          now,
+          minRuns,
+        });
+        if (shifts.length > 0) {
+          const cooling = await subjectsInCooldown(shifts.map((s) => s.competitorId), now);
+          const fresh = shifts.filter((s) => !cooling.has(s.competitorId));
+          const nameById = new Map(roster.map((c) => [c.id, c.name]));
+          const urlById = new Map(roster.map((c) => [c.id, c.url ?? null]));
+          signalled += await emitVisibilitySignals(fresh, nameById, urlById);
         }
       }
     }
@@ -336,46 +339,61 @@ async function orderByOldestCheck<T extends { id: string }>(prompts: T[]): Promi
   }
 }
 
-const ENGINE_LABEL: Record<string, string> = { perplexity: "Perplexity", gemini: "Gemini" };
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
-function deltaCopy(d: VisibilityDelta, name: string): { diffText: string; reason: string } {
-  const engine = ENGINE_LABEL[d.engine] ?? d.engine;
-  switch (d.type) {
-    case "self_dropped":
-      return {
-        diffText: `Your product is no longer mentioned in ${engine} AI answers for any tracked prompt (it appeared in ${pct(d.subjectBefore)} of prompts last run).`,
-        reason: `Your product dropped out of ${engine} AI answers`,
-      };
-    case "overtaken":
-      return {
-        diffText: `${name} now appears in ${pct(d.subjectAfter)} of ${engine} AI answers vs your ${pct(d.selfAfter)} — overtaking your product since the last run (previously ${pct(d.subjectBefore)} vs your ${pct(d.selfBefore)}).`,
-        reason: `${name} overtook your product in ${engine} AI answers`,
-      };
-    case "competitor_appeared":
-      return {
-        diffText: `${name} started appearing in ${engine} AI answers (${pct(d.subjectAfter)} of tracked prompts), where it was absent last run.`,
-        reason: `${name} newly appeared in ${engine} AI answers`,
-      };
+/**
+ * What the feed reads, and what the classifier is handed.
+ *
+ * `diffText` opens on the locked line so the change reads the same everywhere it is
+ * quoted, then states who it is about. The engines and the answer count travel with
+ * the rate because a percentage without its denominator invites a confidence the
+ * sample does not carry.
+ */
+function shiftCopy(s: SubjectShift, name: string): { diffText: string; reason: string } {
+  const subject = s.isSelf ? "Your product" : name;
+  const { current, previous, driver, direction } = s.shift;
+  const headline = visibilityHumanChange(s.shift);
+  const verb = direction === "down" ? "fell" : "rose";
+
+  if (driver === "mention_rate") {
+    return {
+      diffText:
+        `${headline}. ${subject} ${verb} from being named in ${previous.mentions} of ` +
+        `${previous.answers} AI answers over the previous ${VISIBILITY_WINDOW_DAYS} days to ` +
+        `${current.mentions} of ${current.answers} over the last ${VISIBILITY_WINDOW_DAYS}.`,
+      reason: s.isSelf
+        ? `Your product's AI answer visibility ${verb} to ${pct(current.mentionRate)}`
+        : `${name}'s AI answer visibility ${verb} to ${pct(current.mentionRate)}`,
+    };
   }
+  return {
+    diffText:
+      `${headline}. When named, ${subject} now appears at position ` +
+      `${current.avgRank?.toFixed(1) ?? "—"} on average, against ` +
+      `${previous.avgRank?.toFixed(1) ?? "—"} over the previous ${VISIBILITY_WINDOW_DAYS} days.`,
+    reason: s.isSelf
+      ? `Your product ${verb} in AI answer ordering`
+      : `${name} ${verb} in AI answer ordering`,
+  };
 }
 
 // Anchor each meaningful shift into the existing signal pipeline. The ai_visibility
 // monitor is infra (isActive=false → never scheduled / handled by getScraper); it and
 // the snapshot exist only to satisfy the changes FK chain, exactly like tech_stack.
 async function emitVisibilitySignals(
-  deltas: VisibilityDelta[],
+  shifts: SubjectShift[],
   nameById: Map<string, string>,
   urlById: Map<string, string | null>,
 ): Promise<number> {
   let emitted = 0;
-  for (const d of deltas) {
-    const name = nameById.get(d.competitorId) ?? "A competitor";
-    const { diffText, reason } = deltaCopy(d, name);
+  for (const s of shifts) {
+    const name = nameById.get(s.competitorId) ?? "A competitor";
+    const { diffText, reason } = shiftCopy(s, name);
+    const sides = visibilityHumanChangeSides(s.shift);
 
     let monitor = await db.query.monitors.findFirst({
       where: and(
-        eq(monitors.competitorId, d.competitorId),
+        eq(monitors.competitorId, s.competitorId),
         eq(monitors.sourceType, "ai_visibility"),
       ),
     });
@@ -383,7 +401,7 @@ async function emitVisibilitySignals(
       [monitor] = await db
         .insert(monitors)
         .values({
-          competitorId: d.competitorId,
+          competitorId: s.competitorId,
           sourceType: "ai_visibility",
           frequency: "weekly", // unused — this monitor is never scheduled
           isActive: false,
@@ -400,7 +418,7 @@ async function emitVisibilitySignals(
 
     // R2 before DB (snapshots.r2Key is NOT NULL). The "snapshot" is the evidence text.
     const timestamp = new Date().toISOString();
-    const r2Key = `snapshots/${d.competitorId}/ai_visibility/${timestamp}`;
+    const r2Key = `snapshots/${s.competitorId}/ai_visibility/${timestamp}`;
     await uploadToR2(`${r2Key}.txt`, diffText, "text/plain; charset=utf-8", { compress: true });
 
     const [snapshot] = await db
@@ -408,10 +426,10 @@ async function emitVisibilitySignals(
       .values({
         monitorId: monitor.id,
         r2Key,
-        contentHash: computeHash(`${d.type}:${d.engine}:${d.competitorId}:${diffText}`),
+        contentHash: computeHash(`ai_visibility_shift:${s.competitorId}:${diffText}`),
         status: "success",
         scrapedAt: new Date(),
-        resolvedUrl: urlById.get(d.competitorId) ?? null,
+        resolvedUrl: urlById.get(s.competitorId) ?? null,
       })
       .returning();
     if (!snapshot) continue;
@@ -424,26 +442,23 @@ async function emitVisibilitySignals(
         snapshotAfterId: snapshot.id,
         diffText,
         diffType: "text",
-        rawDiff: {
-          aiVisibility: {
-            type: d.type,
-            engine: d.engine,
-            subjectAfter: d.subjectAfter,
-            selfAfter: d.selfAfter,
-          },
-        },
+        rawDiff: shiftRawDiff(s),
         detectedAt: new Date(),
       })
       .returning();
     if (!change) continue;
 
+    // MEDIUM, always. A share-of-model move is measured through an LLM's own
+    // variance, and no amount of averaging makes it the kind of fact that should
+    // page anyone — the severity guard demotes ai_visibility criticals anyway, and
+    // claiming "high" here would only spend the reader's trust on a rate.
     const classification: Classification = {
       category: "content",
-      severity: d.severity,
+      severity: "medium",
       is_significant: true,
       reason,
-      humanChangeBefore: pct(d.subjectBefore),
-      humanChangeAfter: pct(d.subjectAfter),
+      humanChangeBefore: sides.before,
+      humanChangeAfter: sides.after,
     };
     await generateSignal.enqueue({ changeId: change.id, classification });
     emitted++;

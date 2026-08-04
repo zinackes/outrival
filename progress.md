@@ -2470,3 +2470,111 @@ quatre décisions listées dans l'artifact, validées par le GO.
 - P5 (Share of Model) non entamée : la section rend le placeholder honnête (nombre de
   prompts actifs, réponses détenues, date du dernier run) et l'union
   `ShareOfModel` n'a qu'un membre `not_ready` — P5 ajoute `ready` et câble le réel.
+
+---
+
+### 2026-08-04 — Positioning Intelligence v2 — **P5 : Share of Model** (agrégats `ai_visibility`, narrative gap, `ai_visibility_shift`) — DERNIÈRE PHASE
+
+**Objectif** : lire ce que les runs `ai_visibility` écrivent depuis la phase 2 et qui
+n'avait aucune surface côté concurrent. Phase d'AGRÉGATION : zéro run orchestré, zéro
+appel IA ajouté, prompts/cadence/engines intouchés.
+
+**La branche du worktree était 5 commits en retard** — elle sortait de `a5495abb`, donc
+P4 (#431) n'existait pas : ni `positioning.ts`, ni la tab, ni l'union `ShareOfModel`.
+`git rebase origin/main` avant toute lecture. Troisième phase d'affilée où le prompt dit
+« P1-P4 mergées » et le worktree dit le contraire.
+
+**L'audit a trouvé un chemin de signal existant, et il violait la décision 1.**
+`computeDeltas` (`lib/ai-visibility/diff.ts`) comparait le DERNIER RUN au précédent et
+émettait trois types (`self_dropped`/`overtaken` en **high**, `competitor_appeared` en
+medium). C'est exactement « sur un run isolé ». Il a donc été **mis à niveau, pas
+doublé** : la fonction est supprimée, l'émetteur réécrit sur la fenêtre. `aggregate()`
+survit — le teaser d'onboarding (goût day-0 d'un seul run gratuit) n'a pas d'historique
+à fenêtrer.
+
+**Réalisé** :
+- **`packages/shared/src/visibility-metrics.ts`** — pur, sans DB. Bords de fenêtre
+  **UTC** (`end` = minuit UTC du lendemain de `now`, donc le jour en cours compte et les
+  bornes ne bougent qu'une fois par jour) · `subjectMetrics` (mention_rate, avg_rank,
+  cited_rate, avg_sentiment, n_runs, engines) · `rankVisibilitySubjects` (« #3 sur 6 »)
+  · `visibilityTrend` · `detectVisibilityShift` · `visibilityHumanChange` + `…Sides` ·
+  `extractMentionSentence(s)` (manipulation de chaînes seule).
+- **Endpoint réel** (`apps/api/src/lib/share-of-model.ts`) — remplace le `not_ready` de
+  P4 par une union à trois membres. Agrégation SQL : les deux fenêtres pour TOUS les
+  sujets en une requête, la série des 6 fenêtres bucketée en SQL, le dernier run de la
+  fenêtre pour le tableau par prompt, les excerpts, le h1 + le top claim.
+- **`ai_visibility_shift`** (`apps/workers/src/lib/ai-visibility/shift.ts`) — par sujet,
+  **self inclus**, fenêtre vs fenêtre, `n_runs ≥ 8` des DEUX côtés, |Δ mention_rate| ≥ 15
+  pts OU |Δ avg_rank| ≥ 2, **medium toujours**, cooldown 28 j. Émis depuis le hook
+  post-run existant ; ancre synthétique `ai_visibility` inchangée (monitor `isActive=false`
+  → snapshot → change), `rawDiff` = les deux fenêtres + le split par engine.
+- **Fact block `ai_visibility`** (API + rendu web) — lu sur le `rawDiff` du change, jamais
+  recalculé.
+- **Tab** : section Share of Model câblée (réel + `insufficient_data`), sparkline
+  mention_rate, tableau par prompt, extraits, narrative gap.
+
+**Ce que l'écriture a révélé** :
+1. **Les réponses brutes SONT persistées** (`answer_excerpt`, 2000 chars, écrit par
+   `scrape-ai-visibility`) — la sous-section « How AI engines describe them » a donc le
+   droit d'exister. Un test vérifie que chaque ligne est un substring EXACT de la réponse
+   stockée, un autre que sans réponse persistée la sous-section est simplement vide.
+2. **Le seuil exact ne se déclenchait pas.** `(0.43 - 0.58) * 100` vaut
+   `-14.999999999999996` : un mouvement de pile 15 points ratait la barre qu'il documente.
+   Les deux comparaisons portent maintenant un epsilon, commenté.
+3. **`prompt_named` est le cœur du taux, pas un détail.** Un sujet nommé DANS la question
+   est servi, pas surfacé : sa paire est exclue des deux côtés. Un concurrent nommé par
+   toutes ses questions marque 0 organique, jamais 100 %.
+4. **Une fenêtre sous le minimum ne dessine PAS de point** sur la sparkline. L'endpoint
+   envoie `null`. Une quinzaine où le quota gratuit a tué les runs plongeait sinon à 0 %
+   et se lisait comme un effondrement.
+5. **Le scope produit est celui du dernier run.** Un rival suivi sous deux SKU a deux jeux
+   de questions ; les mélanger moyennerait deux questions différentes en un taux. Le self
+   comparé est celui du produit, jamais « le self de l'org ».
+
+**Fichiers** : `packages/shared/src/{visibility-metrics.ts,index.ts}` (+test) ·
+`apps/api/src/lib/{share-of-model,positioning,signal-facts}.ts` (+test
+`share-of-model.test.ts`) · `apps/workers/src/lib/ai-visibility/{shift.ts,diff.ts}` ·
+`apps/workers/src/core/scrape-ai-visibility.ts` (hook d'émission seul) ·
+`apps/web/src/lib/api.ts` · `apps/web/src/components/outrival/signal-facts.tsx` ·
+`apps/web/src/app/dashboard/competitors/[id]/competitor-detail/positioning-tab.tsx` ·
+tests `ai-visibility-{shift,signal,diff}.test.ts`.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · shared 856 ✓ (+43) · api 374 ✓ (+10) ·
+workers 364 ✓ (+19 nets, suite relancée 3× stable) · web 204 ✓ · scrapers 1109 ✓ ·
+ai 214 ✓ · db 5 ✓. **Zéro appel IA ajouté** — aucun fichier neuf n'importe
+`@outrival/ai`, aucun fichier de `packages/ai` touché, aucun fichier d'engine ni de
+prompt modifié. Le nombre de signaux émis BAISSE (fenêtre + minimum 8 runs + cooldown
+28 j contre un diff run-à-run), donc les appels `insight` du pipeline baissent avec.
+
+**Le test qui compte** : « le même sweep lancé deux fois ne signale qu'UNE fois ». Le
+cooldown se lit sur les changes d'ancre `ai_visibility` eux-mêmes, pas sur une colonne
+dédiée : l'ancre EST la trace qu'un shift a été publié. Sa durée égale la fenêtre, donc
+deux signaux consécutifs ne peuvent jamais être calculés sur des données qui se
+recouvrent.
+
+**Vérifié en dev sur fixtures de runs** (PGlite, engines et extraction stubés, enqueues
+interceptés) : 12 runs de fenêtre précédente à 100 % contre 12 de fenêtre courante à 0 %
+→ un seul signal `content`/**medium**, `diffText` = « AI visibility — mention rate
+100% → 0% (Gemini+Perplexity, 13 answers). Acme CRM fell from being named in 12 of 12 AI
+answers over the previous 28 days to 0 of 13 over the last 28. », ancre synthétique +
+`rawDiff` portant les deux fenêtres ; relance immédiate → 0 signal (cooldown) ; même
+effondrement avec 3 runs côté précédent → 0 signal (minimum).
+
+**Écart assumé vs le brief** : le brief listait `AI_VISIBILITY_MIN_PROMPTS_FOR_SIGNAL`
+comme garde-fou existant. Il gardait un plancher de prompts PAR RUN, ce qui ne protège
+de rien quand les deux runs sont sains et répondent différemment. Il est remplacé par
+`AI_VISIBILITY_MIN_RUNS_FOR_SIGNAL` (défaut `VISIBILITY_MIN_RUNS` = 8). L'ancienne var
+n'est plus lue — à retirer de l'env worker.
+
+**Reste côté humain** :
+- **Aucune migration** — P5 ne touche pas au schéma.
+- Retirer `AI_VISIBILITY_MIN_PROMPTS_FOR_SIGNAL` de `/opt/outrival/.env.worker`
+  (inerte, plus lue) et poser `AI_VISIBILITY_MIN_RUNS_FOR_SIGNAL` seulement pour
+  surcharger le 8.
+- Déployer api + web + workers.
+- **Le premier signal n'arrivera pas tout de suite** : il faut 8 runs dans chacune des
+  deux fenêtres, soit ~8 semaines de drip quotidien par produit avant qu'un shift puisse
+  se déclencher. D'ici là la tab affiche `insufficient_data`, ce qui est le comportement
+  voulu.
+- **La card Positioning Intelligence v2 est COMPLÈTE** (P1 messaging/claims · P2 market
+  map · P3 ICP · P4 tab v2 · P5 Share of Model).

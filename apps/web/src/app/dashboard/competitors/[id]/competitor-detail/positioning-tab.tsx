@@ -21,6 +21,8 @@ import {
   type MarketMap,
   type MessagingVersion,
   type PositioningSummary,
+  type VisibilitySubjectStats,
+  type VisibilityWindowFact,
 } from "@/lib/api";
 import { PRICING_MODEL_LABELS, type SourceType } from "@outrival/shared";
 import { Badge } from "@/components/ui/badge";
@@ -997,14 +999,28 @@ function SegmentGroup({ label, segments }: { label: string; segments: AudienceSe
 
 // ── 5. Share of Model ───────────────────────────────────────────────────────
 
+const ENGINE_LABELS: Record<string, string> = {
+  gemini: "Gemini",
+  perplexity: "Perplexity",
+  chatgpt: "ChatGPT",
+  claude: "Claude",
+  google_aio: "Google AI Overviews",
+};
+
+const ratePct = (x: number) => `${Math.round(x * 100)}%`;
+
 /**
- * What the AI engines say about them, once P5 has aggregated it.
+ * What the AI engines say about them (P5).
  *
- * Until then the section is PRESENT and states what is actually being collected.
- * A reader told nothing assumes the capability is absent; a reader told "6 prompts,
- * last run yesterday" knows the data is accruing while the view is built. The
- * section hides entirely only when this workspace runs no visibility prompts at
- * all — there is then nothing honest to say.
+ * Three states, and the section renders all three. The two thin ones state what IS
+ * being collected rather than "coming soon", because the runs are real and already
+ * accruing: a reader told nothing assumes the capability is absent, and a reader
+ * told "6 prompts, last run yesterday" knows the view is waiting on data, not on
+ * engineering. The section hides entirely only when this workspace runs no
+ * visibility prompts at all — there is then nothing honest to say.
+ *
+ * Nothing here is generated. Every figure is an average over captured answers, and
+ * the verbatim lines are substrings of the answers themselves.
  */
 function ShareOfModelSection({
   summary,
@@ -1023,27 +1039,263 @@ function ShareOfModelSection({
   const som = summary?.shareOfModel;
   if (!som || som.prompts === 0) return null;
 
+  if (som.status !== "ready") {
+    return (
+      <TabSection title="Share of Model">
+        <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-2 p-4">
+          <p className="m-0 max-w-[70ch] text-sm">
+            We ask {som.prompts} buyer-intent {som.prompts === 1 ? "question" : "questions"} to the
+            AI engines and record who gets named.
+            {som.answers > 0 && (
+              <>
+                {" "}
+                <span className="tabular-nums">{som.answers}</span>{" "}
+                {som.answers === 1 ? "answer" : "answers"} held about them
+                {som.lastRunAt && `, last run ${format(new Date(som.lastRunAt), "d MMM yyyy")}`}.
+              </>
+            )}
+          </p>
+          <p className="m-0 max-w-[70ch] text-sm text-muted-foreground">
+            {som.status === "insufficient_data" ? (
+              <>
+                <span className="tabular-nums">{som.nRuns}</span> of{" "}
+                <span className="tabular-nums">{som.minRuns}</span> runs so far in the last{" "}
+                <span className="tabular-nums">{som.windowDays}</span> days. An engine answers the
+                same question differently each time, so a rate is only worth showing once enough
+                runs have averaged that out.
+              </>
+            ) : (
+              "How often they are named, where they rank and how that compares to you lands with Share of Model."
+            )}
+          </p>
+        </div>
+      </TabSection>
+    );
+  }
+
+  const { competitor, self, series, promptOutcomes, extracts, narrative } = som;
+  const m = competitor.metrics;
+  const points = series.filter((s): s is typeof s & { mentionRate: number } => s.mentionRate != null);
+
   return (
     <TabSection title="Share of Model">
-      <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-2 p-4">
-        <p className="m-0 max-w-[70ch] text-sm">
-          We ask {som.prompts} buyer-intent {som.prompts === 1 ? "question" : "questions"} to the
-          AI engines and record who gets named.
-          {som.answers > 0 && (
-            <>
-              {" "}
-              <span className="tabular-nums">{som.answers}</span>{" "}
-              {som.answers === 1 ? "answer" : "answers"} held about them
-              {som.lastRunAt && `, last run ${format(new Date(som.lastRunAt), "d MMM yyyy")}`}.
-            </>
-          )}
-        </p>
+      <div className="flex flex-col gap-5">
         <p className="m-0 max-w-[70ch] text-sm text-muted-foreground">
-          How often they are named, where they rank and how that compares to you lands with Share
-          of Model.
+          Named in <span className="tabular-nums text-foreground">{m.mentions}</span> of{" "}
+          <span className="tabular-nums text-foreground">{m.answers}</span> AI answers over the last{" "}
+          <span className="tabular-nums text-foreground">{som.windowDays}</span> days
+          {m.engines.length > 0 &&
+            ` (${m.engines.map((e) => ENGINE_LABELS[e] ?? e).join(", ")})`}
+          , across <span className="tabular-nums text-foreground">{m.nRuns}</span> runs.
         </p>
+
+        {/* Their window against yours. Four figures, each with what it was computed
+            over — a rate whose denominator is off-screen reads as a certainty. */}
+        <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+          <StatBlock
+            label={`${competitor.name} — #${som.position} of ${som.tracked} tracked`}
+            stats={m}
+            trend={competitor.trend}
+          />
+          {self && (
+            <StatBlock label={`${self.name} (you)`} stats={self.metrics} trend={self.trend} />
+          )}
+        </div>
+
+        {points.length >= 2 && <MentionRateSparkline series={series} windowDays={som.windowDays} />}
+
+        {/* The narrative gap. Two columns, no verdict between them: what they say,
+            beside what the engines return. The reader draws the line. */}
+        {(narrative.h1 || narrative.claim) && (
+          <div className="grid gap-4 rounded-md border border-border bg-surface-2 p-4 sm:grid-cols-2">
+            <div>
+              <p className="m-0 text-xs text-muted-foreground">What they say</p>
+              {narrative.h1 && <p className="m-0 mt-1 text-sm text-foreground">{narrative.h1}</p>}
+              {narrative.claim && (
+                <p className="m-0 mt-1 text-sm text-muted-foreground">
+                  {narrative.claim.rawText}
+                </p>
+              )}
+            </div>
+            <div>
+              <p className="m-0 text-xs text-muted-foreground">What the AI engines show</p>
+              <p className="m-0 mt-1 text-sm text-foreground">
+                Mentioned in <span className="tabular-nums">{m.mentions}</span> of{" "}
+                <span className="tabular-nums">{m.answers}</span> answers this month
+                {m.avgRank != null && (
+                  <>
+                    , on average at position{" "}
+                    <span className="tabular-nums">{m.avgRank.toFixed(1)}</span>
+                  </>
+                )}
+                .
+              </p>
+              {extracts.length > 0 && (
+                <p className="m-0 mt-1 text-sm text-muted-foreground">
+                  &ldquo;{extracts[0]!.text}&rdquo;
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {extracts.length > 0 && (
+          <div>
+            <p className="m-0 text-xs text-muted-foreground">
+              How AI engines describe them — quoted from the answers, unedited
+            </p>
+            <ul className="mt-2 flex flex-col gap-2">
+              {extracts.map((e) => (
+                <li key={`${e.engine}-${e.recordedAt}-${e.text}`} className="text-sm">
+                  <span className="text-foreground">&ldquo;{e.text}&rdquo;</span>{" "}
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {ENGINE_LABELS[e.engine] ?? e.engine}, {format(new Date(e.recordedAt), "d MMM")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {promptOutcomes.length > 0 && (
+          <div>
+            <p className="m-0 text-xs text-muted-foreground">
+              Last run, question by question
+              {promptOutcomes[0] &&
+                ` — ${format(new Date(promptOutcomes[0].recordedAt), "d MMM yyyy")}`}
+            </p>
+            <ul className="mt-2 flex flex-col">
+              {promptOutcomes.map((o) => (
+                <li
+                  key={`${o.promptId}-${o.engine}`}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1 border-t border-border py-2 first:border-t-0"
+                >
+                  <span className="min-w-0 text-sm leading-snug">
+                    {o.prompt}
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {ENGINE_LABELS[o.engine] ?? o.engine}
+                    </span>
+                  </span>
+                  <span className="flex flex-wrap items-center justify-end gap-2 text-xs">
+                    {o.promptNamed ? (
+                      // Naming a brand in the question guarantees it appears, so the
+                      // answer is not evidence an engine surfaced them — and it is
+                      // why a denominator can read 9 where 10 questions ran.
+                      <span className="text-muted-foreground">Named in the question</span>
+                    ) : o.mentioned ? (
+                      <>
+                        <Badge className="text-meta font-medium">Named</Badge>
+                        {o.rank != null && (
+                          <span className="text-muted-foreground tabular-nums">#{o.rank}</span>
+                        )}
+                        {o.cited && <span className="text-muted-foreground">cited</span>}
+                        {o.sentiment != null && (
+                          <span className="text-muted-foreground tabular-nums">
+                            {Math.round(o.sentiment)}/100
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">Not named</span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </TabSection>
+  );
+}
+
+/** One subject's window. Every rate carries the count it was computed over. */
+function StatBlock({
+  label,
+  stats,
+  trend,
+}: {
+  label: string;
+  stats: VisibilityWindowFact;
+  trend: VisibilitySubjectStats["trend"];
+}) {
+  const movement =
+    trend.mentionRate == null
+      ? null
+      : `${trend.mentionRate > 0 ? "+" : ""}${Math.round(trend.mentionRate * 100)} pts`;
+
+  return (
+    <div className="rounded-md border border-border p-4">
+      <p className="m-0 text-xs text-muted-foreground">{label}</p>
+      <p className="m-0 mt-1 flex items-baseline gap-2">
+        <span className="text-xl font-medium tabular-nums">{ratePct(stats.mentionRate)}</span>
+        {movement && (
+          <span
+            className={cn(
+              "text-xs tabular-nums",
+              trend.mentionRate! > 0 ? "text-positive" : "text-muted-foreground",
+            )}
+          >
+            {movement}
+          </span>
+        )}
+      </p>
+      <p className="m-0 mt-1 text-xs text-muted-foreground tabular-nums">
+        {stats.mentions} of {stats.answers} answers · {stats.nRuns} runs
+        {stats.avgRank != null && ` · avg position ${stats.avgRank.toFixed(1)}`}
+        {stats.citedRate != null && ` · cited ${ratePct(stats.citedRate)}`}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Mention rate across the last six windows.
+ *
+ * A window that never met the run minimum draws NO point: the endpoint sends null
+ * for it, and joining across the gap would let a quota-starved fortnight read as a
+ * collapse. The line is drawn between the windows that were actually measured.
+ */
+function MentionRateSparkline({
+  series,
+  windowDays,
+}: {
+  series: Array<{ windowStart: string; mentionRate: number | null; nRuns: number }>;
+  windowDays: number;
+}) {
+  const W = 240;
+  const H = 40;
+  const step = series.length > 1 ? W / (series.length - 1) : W;
+  const points = series
+    .map((s, i) => ({ ...s, x: i * step }))
+    .filter((s): s is typeof s & { mentionRate: number } => s.mentionRate != null)
+    .map((s) => ({ ...s, y: H - s.mentionRate * H }));
+
+  return (
+    <div>
+      <p className="m-0 text-xs text-muted-foreground">
+        Mention rate, {series.length} windows of{" "}
+        <span className="tabular-nums">{windowDays}</span> days
+      </p>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="mt-2 h-10 w-full max-w-[240px] overflow-visible text-link"
+        role="img"
+        aria-label={`Mention rate over the last ${series.length} windows: ${points
+          .map((p) => ratePct(p.mentionRate))
+          .join(", ")}`}
+      >
+        <polyline
+          points={points.map((p) => `${p.x},${p.y}`).join(" ")}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.5}
+        />
+        {points.map((p) => (
+          <circle key={p.windowStart} cx={p.x} cy={p.y} r={2} className="fill-current" />
+        ))}
+      </svg>
+    </div>
   );
 }
 

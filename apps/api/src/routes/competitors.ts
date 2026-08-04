@@ -63,6 +63,7 @@ import { translateToEnglish } from "../lib/translate";
 import { detectContentLanguage } from "../lib/detect-language";
 import { readGtm, productNavItems, type GtmRead } from "../lib/homepage-gtm";
 import { dedupeVerbatims } from "../lib/review-verbatims";
+import { namedBy, namedTargets } from "../lib/market-map";
 import {
   checkCompetitorQuota,
   getOrgPlan,
@@ -2774,6 +2775,40 @@ competitorsRouter.get("/:id/customers", async (c) => {
     storiesTotal: stories.length,
     customersTotal: registry.length,
     windowDays: CUSTOMER_WIN_WINDOW_DAYS,
+  });
+});
+
+/**
+ * The market map: who this competitor attacks, and who in THIS workspace attacks
+ * them (Positioning Intelligence v2 P2).
+ *
+ * Both halves are deterministic reads of `named_competitors` — comparison-page
+ * slugs and the mentions Content P2 already extracted from posts. Nothing here is
+ * written by a model, so the map can never claim a rivalry the competitor has not
+ * published.
+ *
+ * The cross reference is intra-workspace STRICT (decision 2 of the card): the org
+ * filter is a WHERE clause on the row's OWNER inside `namedBy`, never a filter
+ * applied to the result. The tab that renders this arrives in P4.
+ */
+competitorsRouter.get("/:id/market-map", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const [targets, namers] = await Promise.all([
+    namedTargets(competitor.id),
+    namedBy({ competitorId: competitor.id, orgId, name: competitor.name, url: competitor.url }),
+  ]);
+
+  return c.json({
+    // Newest first: who they turned on recently is the read, not who they have
+    // been comparing against since 2021.
+    targets: [...targets].sort((a, b) => (b.firstSeenAt ?? "").localeCompare(a.firstSeenAt ?? "")),
+    namedBy: namers,
+    targetsTotal: targets.length,
   });
 });
 

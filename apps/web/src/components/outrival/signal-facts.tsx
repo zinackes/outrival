@@ -48,6 +48,7 @@ export function SignalFacts({ facts }: { facts: Facts }) {
   if (facts.kind === "customer_win") return <CustomerWinFacts facts={facts} />;
   if (facts.kind === "roadmap_request") return <RoadmapRequestFacts facts={facts} />;
   if (facts.kind === "integrations") return <IntegrationFacts facts={facts} />;
+  if (facts.kind === "comparison_targets") return <ComparisonTargetFacts facts={facts} />;
   if (facts.kind === "editorial") return <EditorialFacts facts={facts} />;
   if (facts.kind === "tech_stack") return <TechStackFacts facts={facts} />;
   if (facts.kind === "reviews") return <ReviewFacts facts={facts} />;
@@ -628,6 +629,68 @@ function RoadmapRequestFacts({ facts }: { facts: Extract<Facts, { kind: "roadmap
           <p className="mt-3 text-xs text-muted-foreground">Committed in the same capture</p>
           <ul className="mt-1.5 space-y-2">{facts.alsoMoved.map((r) => line(r, false))}</ul>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Rivals a competitor started publishing comparison pages against.
+ *
+ * The page itself is the evidence, so every name links to the exact URL its slug
+ * came from — a claim about who somebody competes with should be checkable in one
+ * click. The date is when WE first saw the page: a sitemap carries none.
+ */
+function ComparisonTargetFacts({
+  facts,
+}: {
+  facts: Extract<Facts, { kind: "comparison_targets" }>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? facts.targets : facts.targets.slice(0, CUSTOMERS_COLLAPSED);
+  const hidden = facts.targetsTotal - shown.length;
+
+  return (
+    <div>
+      <p className="text-dense text-muted-foreground">
+        <span className="font-medium text-foreground tabular-nums">{facts.targetsTotal}</span>{" "}
+        {facts.targetsTotal === 1 ? "company" : "companies"} they had never published against
+      </p>
+
+      <ul className="mt-2 space-y-1.5">
+        {shown.map((t) => (
+          <li key={t.name} className="flex flex-wrap items-baseline gap-x-2">
+            {t.evidenceUrl ? (
+              <a
+                href={t.evidenceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+              >
+                {t.name}
+                <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
+              </a>
+            ) : (
+              <span className="text-sm text-foreground">{t.name}</span>
+            )}
+            {t.firstSeenAt && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                first seen {t.firstSeenAt}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      {hidden > 0 && !expanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <CaretDownIcon size={14} aria-hidden />
+          <span className="tabular-nums">{hidden}</span> more
+        </button>
       )}
     </div>
   );

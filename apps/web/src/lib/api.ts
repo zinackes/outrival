@@ -642,6 +642,14 @@ export type SignalFacts =
       alsoMoved: RoadmapRequestFact[];
     }
   | {
+      /** Rivals a competitor started publishing comparison pages against
+       *  (Positioning Intelligence v2 P2). The reader's own product is never in
+       *  here — that case stays the comparison_page critical. */
+      kind: "comparison_targets";
+      targets: ComparisonTargetFact[];
+      targetsTotal: number;
+    }
+  | {
       /** Integrations newly listed in a catalog (Content Intelligence v2 P5). */
       kind: "integrations";
       integrations: IntegrationFact[];
@@ -738,6 +746,15 @@ export interface RoadmapRequestFact {
   /** The portal's OWN status words, both sides. Null before = it was not listed. */
   fromRaw: string | null;
   toRaw: string;
+}
+
+export interface ComparisonTargetFact {
+  /** Prettified from the slug they published — "klue" → "Klue". */
+  name: string;
+  /** The exact page that names them; null only for a mention with no permalink. */
+  evidenceUrl: string | null;
+  /** "YYYY-MM-DD" — when WE first saw them named; a sitemap carries no date. */
+  firstSeenAt: string | null;
 }
 
 export interface IntegrationFact {

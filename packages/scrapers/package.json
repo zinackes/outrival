@@ -147,6 +147,10 @@
       "types": "./src/sitemap/index.ts",
       "default": "./src/sitemap/index.ts"
     },
+    "./positioning": {
+      "types": "./src/positioning/index.ts",
+      "default": "./src/positioning/index.ts"
+    },
     "./docs": {
       "types": "./src/docs/index.ts",
       "default": "./src/docs/index.ts"

@@ -66,6 +66,13 @@ beforeAll(async () => {
   closeDb = harness.close;
   const { mock } = await import("bun:test");
   mock.module("@outrival/db", () => ({ ...schema, db: harness.db }));
+  // Restore the real content-fetch before importing the job. A sibling file that
+  // stubbed only `fetchPostHtml` leaves a process-global mock with no
+  // POST_FETCH_CAP on it, and this file's import of ingest-blog-posts then dies
+  // with a SyntaxError — on CI only, because the order bun reads files in is the
+  // filesystem's. Imported by PATH: the package specifier is the mocked one.
+  const realContentFetch = await import("../../../packages/scrapers/src/content/fetch");
+  mock.module("@outrival/scrapers/content-fetch", () => ({ ...realContentFetch }));
 
   await testDb
     .insert(schema.organizations)

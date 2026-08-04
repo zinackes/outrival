@@ -7,6 +7,7 @@ import {
   knownCustomers,
   knownIntegrations,
   messagingVersions,
+  namedCompetitors,
   postingFacts,
   techStackEntries,
 } from "@outrival/db";
@@ -148,6 +149,16 @@ export interface RoadmapRequestFact {
   /** The portal's OWN status words, both sides. Null before = it was not listed. */
   fromRaw: string | null;
   toRaw: string;
+}
+
+/** One rival a competitor started pointing at (Positioning v2 P2). */
+export interface ComparisonTargetFact {
+  /** Prettified from the slug they published — "klue" → "Klue". */
+  name: string;
+  /** The exact page that names them. Null only for a mention with no permalink. */
+  evidenceUrl: string | null;
+  /** "YYYY-MM-DD" — when WE first saw them named, the only date a slug gives us. */
+  firstSeenAt: string | null;
 }
 
 /** One integration a competitor lists that we had never seen it claim (P5). */
@@ -305,6 +316,13 @@ export type SignalFacts =
       alsoMoved: RoadmapRequestFact[];
     }
   | {
+      /** Rivals a competitor started publishing against (Positioning v2 P2). */
+      kind: "comparison_targets";
+      targets: ComparisonTargetFact[];
+      /** Names before the cap, so a truncated list can say what it is hiding. */
+      targetsTotal: number;
+    }
+  | {
       /** Integrations newly listed in a catalog (Content Intelligence v2 P5). */
       kind: "integrations";
       integrations: IntegrationFact[];
@@ -389,6 +407,9 @@ const MAX_CONTENT_ENTRIES = 12;
 // A wall refresh can add a dozen logos at once; the block names the win, it does
 // not reproduce the customers page.
 const MAX_CUSTOMER_FACTS = 12;
+// A push can open a front against several rivals at once; the block names them, it
+// does not reproduce their comparison hub.
+const MAX_COMPARISON_TARGET_FACTS = 10;
 // A catalog release can list a batch of connectors; the block names them, it does
 // not reproduce the catalog.
 const MAX_INTEGRATION_FACTS = 12;
@@ -678,7 +699,11 @@ async function editorialFacts(monitorId: string, detectedAt: Date): Promise<Sign
  * The sitemap source writes onto this same anchor with no `kind`, so those changes
  * fall through to null and render exactly as they do today.
  */
-async function namedYouFacts(monitorId: string, detectedAt: Date): Promise<SignalFacts> {
+async function comparisonAnchorFacts(
+  competitorId: string,
+  monitorId: string,
+  detectedAt: Date,
+): Promise<SignalFacts> {
   const [change] = await db
     .select({ rawDiff: changes.rawDiff })
     .from(changes)
@@ -686,6 +711,12 @@ async function namedYouFacts(monitorId: string, detectedAt: Date): Promise<Signa
     .limit(1);
 
   const raw = change?.rawDiff as Record<string, unknown> | null | undefined;
+  // Positioning v2 P2 shares this anchor: the same monitor now carries "they named
+  // YOU" and "they started naming Klue", which are the same subject seen from
+  // either side. The `kind` on the change is what tells the two apart.
+  if (raw?.kind === "new_comparison_target") {
+    return await comparisonTargetFacts(competitorId, raw);
+  }
   if (!raw || raw.kind !== "competitor_named_you") return null;
   const itemId = typeof raw.contentItemId === "string" ? raw.contentItemId : null;
   if (!itemId) return null;
@@ -704,6 +735,60 @@ async function namedYouFacts(monitorId: string, detectedAt: Date): Promise<Signa
   if (!row) return null;
 
   return { kind: "content", entries: [row], entriesTotal: 1, velocity: null };
+}
+
+/**
+ * The rivals behind a `new_comparison_target` signal (Positioning v2 P2).
+ *
+ * Read off the change's OWN rawDiff — the names the emitter already decided —
+ * rather than a time window. A window over `named_competitors` would sweep in
+ * whatever else the same capture recorded, so a one-target front would render as
+ * six. The row is what carries the URL and the date, so the block can print the
+ * page a claim came from rather than asserting it.
+ */
+async function comparisonTargetFacts(
+  competitorId: string,
+  raw: Record<string, unknown>,
+): Promise<SignalFacts> {
+  const names = Array.isArray(raw.targets)
+    ? raw.targets.filter((n): n is string => typeof n === "string")
+    : [];
+  if (names.length === 0) return null;
+
+  const rows = await db
+    .select({
+      name: namedCompetitors.displayName,
+      evidenceUrl: namedCompetitors.evidenceUrl,
+      firstSeenAt: dsql<string | null>`to_char(${namedCompetitors.firstSeenAt}, 'YYYY-MM-DD')`,
+      nameNormalized: namedCompetitors.nameNormalized,
+    })
+    .from(namedCompetitors)
+    .where(
+      and(
+        eq(namedCompetitors.competitorId, competitorId),
+        inArray(namedCompetitors.nameNormalized, names),
+      ),
+    )
+    .orderBy(namedCompetitors.firstSeenAt);
+  if (rows.length === 0) return null;
+
+  // A target can hold a row per source; the block names each rival once, on the
+  // evidence we saw first.
+  const byName = new Map<string, ComparisonTargetFact>();
+  for (const row of rows) {
+    if (byName.has(row.nameNormalized)) continue;
+    byName.set(row.nameNormalized, {
+      name: row.name,
+      evidenceUrl: row.evidenceUrl,
+      firstSeenAt: row.firstSeenAt,
+    });
+  }
+  const targets = [...byName.values()];
+  return {
+    kind: "comparison_targets",
+    targets: targets.slice(0, MAX_COMPARISON_TARGET_FACTS),
+    targetsTotal: targets.length,
+  };
 }
 
 /**
@@ -1571,7 +1656,7 @@ export async function buildSignalFacts(args: {
       return await velocityFacts(competitorId, monitorId, new Date(detectedAt));
     }
     if (sourceType === "comparison_page") {
-      return await namedYouFacts(monitorId, new Date(detectedAt));
+      return await comparisonAnchorFacts(competitorId, monitorId, new Date(detectedAt));
     }
     if (sourceType === "customer_proof") {
       return await customerFacts(competitorId, monitorId, new Date(detectedAt));

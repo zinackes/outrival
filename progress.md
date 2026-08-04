@@ -2165,3 +2165,120 @@ ans plus tard, qu'une boîte s'est repositionnée.
 - Déployer api + web + workers.
 - P2 → P5 non entamées. P4 exige une maquette artifact avant tout câblage (décision 6
   de la card).
+
+---
+
+### 2026-08-04 — Positioning Intelligence v2 — **P2 : market map** (`named_competitors`, `new_comparison_target`, croisement « qui les nomme »)
+
+**Objectif** : le registre « qui ils attaquent ». Le détecteur sitemap savait depuis
+sitemap v2 qu'une page `/vs/` était apparue et ne posait qu'une question dessus — est-ce
+que le slug nomme le LECTEUR. Ce cas-là est un critical et reste intact. Tout le reste
+était jeté, alors que `/vs/klue` est une boîte qui dit en public, et exprès, contre qui
+elle pense perdre ses deals. Content P2 stockait la même matière depuis les posts
+(`content_items.competitors_named`) sans rien pour la ranger.
+
+**Réalisé** :
+- **`named_competitors`** (migration `0072`) — le 3e membre de la famille
+  `known_customers` / `known_integrations` : même normaliseur conservateur, même règle
+  insert-only, même premier passage muet. Clé `(competitor, name_normalized, source)` ;
+  `named_domain` rempli UNIQUEMENT si le slug EST un domaine, jamais deviné.
+- **Lecture sitemap, zéro fetch** (`@outrival/scrapers/positioning`) : `/vs/X`,
+  `/versus/X`, `/compare/X`, `/comparison/X`, `/alternatives/X`, `/X-alternative(s)`,
+  et le segment terminal `A-vs-B` qui nomme **les deux** côtés. Slug prettifié, mots de
+  ≤2 lettres en majuscules (« hr » → « HR »).
+- **Probe hub, ≤3 GET** : `/vs`, `/compare`, `/alternatives`, sondés une fois puis
+  cachés — **le MISS aussi**, sinon un concurrent sans hub paie la sonde chaque semaine.
+  Seuls les LIENS sont lus, via les mêmes patterns d'URL. Jamais la prose : une page de
+  comparaison est un mur de noms de produits dans des phrases, et le registre est
+  permanent.
+- **Merge `content_items.competitors_named`** → sources `blog` / `docs`, **display
+  only, jamais de signal**. Ces mentions étaient déjà extraites et déjà payées par
+  Content P2 : coût marginal nul. + rattrapage one-shot
+  `pnpm backfill:named-competitors` (dry-run par défaut, zéro réseau, zéro signal).
+- **`new_comparison_target`** — `content` / **medium**, groupé par run, ancré sur le
+  monitor `comparison_page` existant. Fact block `comparison_targets` : cibles, URLs
+  exactes, dates. Renderer web inclus.
+- **Croisement « qui les nomme »** : `namedBy()` + `GET /:id/market-map`.
+  **AUCUNE UI** — la tab arrive en P4.
+
+**Décisions à connaître** :
+1. **Pour X ≠ user, le medium REMPLACE le high.** Une nouvelle `/vs/klue` déclenchait
+   déjà un `content/high` par URL (« a comparison page appeared »). Émettre les deux,
+   c'était la même nouvelle deux fois sur la route la plus fréquente. `routeComparisonUrl`
+   partage les pages : **`attacks_you`** → le critical déterministe, INCHANGÉ ·
+   **`market_map`** → le medium nommé · **`unnamed_page`** (un hub `/compare` nu, un slug
+   générique) → garde le high générique, sinon il sortirait en silence.
+2. **Le marqueur de baseline est un STAMP, pas un compte de lignes.** Un concurrent qui
+   ne publie aucune page de comparaison garde un registre vide pour toujours : avec un
+   compte, chaque run serait « le premier », et le jour où ils publient leur toute
+   première `/vs/` — la plus intéressante qu'ils publieront jamais — elle passerait pour
+   du back catalogue. (`competitors.metadata.namedCompetitorsBaselinedAt`.)
+3. **La dédup du signal est par NOM, à vie, et en deux moitiés** : `pageNamesHeld()` lu
+   AVANT l'écriture (une cible qui gagne une 2e forme d'URL est une 2e ligne, pas une 2e
+   nouvelle) + `signalledAt` estampillé sur toutes les lignes du nom. Une mention blog
+   laisse `signalledAt` null **exprès** : le post a dit leur nom, il n'a pas construit
+   une page pour les affronter, donc il ne consomme pas l'annonce que le front mérite.
+4. **Deux exclusions, deux tests différents.** Le LECTEUR est vérifié largement
+   (`targetIsSelf`, avec le `slugMentionsBrand` du chemin critical, sans stoplist) : un
+   raté y filerait le produit du user comme rival de la boîte qui l'attaque. Le PUBLIEUR
+   est vérifié étroitement (`targetIsOwner`, nom exact ou domaine) : un substring ferait
+   qu'un concurrent nommé « Rival » avale toutes ses pages contre « Rivalytics ».
+   `/compare/crayon-vs-klue` sur crayon.co nomme son propre auteur — sans ça la map dit
+   « Crayon concurrence Crayon ».
+5. **Le stoplist mots-courants s'applique au CROISEMENT, pas au slug.** Sur `/vs/linear`
+   le slug EST un nom de produit par construction ; dans `matchTrackedCompetitor` en
+   revanche, sans lui, chaque `/compare/flow` du web serait rapporté comme nommant le
+   rival « Flow » du workspace.
+
+**Fichiers** : `packages/scrapers/src/positioning/{comparison-targets,target-identity,index}.ts`
+(+test) · `packages/db/src/schema/named-competitors.ts` + migration `0072` ·
+`apps/workers/src/lib/{named-competitors,self-identity}.ts` ·
+`apps/workers/src/core/{ingest-named-competitors,scrape-monitor,ingest-blog-posts}.ts` (+test) ·
+`apps/workers/src/scripts/backfill-named-competitors.ts` · `packages/queue/src/jobs.ts` ·
+`apps/workers/src/queue/handlers.ts` · `apps/api/src/lib/{market-map,signal-facts}.ts` ·
+`apps/api/src/routes/competitors.ts` (+test) ·
+`apps/web/src/{lib/api.ts,components/outrival/signal-facts.tsx}`.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · scrapers 1044 ✓ (+31) · workers 337 ✓ (+19) ·
+api 345 ✓ (+8) · shared 808 ✓ · ai 214 ✓ · web 187 ✓ · db 5 ✓. **Zéro appel IA ajouté** —
+aucun de ces fichiers n'importe `@outrival/ai`, `ai_runs` inchangé.
+
+**Le test qui compte** : « une ligne appartenant à un AUTRE workspace ne sort jamais »
+(décision 2 de la card). Deux workspaces suivent le même rival, l'autre a une page contre
+lui ; le test vérifie que `namedBy` renvoie vide **et** que la ligne est bien là quand
+c'est l'autre org qui demande. Le filtre org est un `WHERE` sur le PROPRIÉTAIRE de la
+ligne, jamais un post-filtre : un post-filtre est à un refactor de disparaître, et
+l'échec est silencieux — la forme de la réponse ne change pas, seulement à qui
+appartiennent les données.
+
+**Vérifié en dev sur fixture réelle** (PGlite, enqueues interceptés, formes d'URL
+réellement publiées par les vendeurs de competitive intelligence) : semaine 1 → 4 cibles
+au registre, **0 signal** ; semaine 2 → `content/medium` « New comparison target —
+/vs/contify », `/alternatives/klue` muet (déjà connu par page), `/vs/outrival` et
+`/compare/crayon-vs-klue` correctement hors registre.
+
+**Appliqué en PROD le 2026-08-04** (go explicite) :
+- Pré-flight ledger d'abord — nouveau `pnpm --filter @outrival/db db:preflight`,
+  read-only, qui compare le ledger prod au journal committé **en hachant chaque `.sql`**
+  et sort APPLIED / DRIFT / PENDING. Un compte de lignes a l'air sain pendant qu'un hash
+  a dérivé, et un hash dérivé fait rejouer une migration ou sauter silencieusement celle
+  d'avant. Verdict avant : `0 drift, 1 pending (0072)`. Après : `73/73, 0 pending`.
+- Migration `0072` appliquée via le migrator runtime (`src/migrate.ts`, le même que le
+  pré-deploy Coolify) sur l'endpoint **direct** — jamais `-pooler`, qui fait pendre le
+  migrator sur du DDL. Vérifié structurellement : 10 colonnes, 4 index, la FK cascade.
+- `backfill:named-competitors` : dry run puis `--apply`. 243 concurrents scannés,
+  **1 item, 5 mentions, 5 lignes écrites, 0 signal** — toutes `source=blog`,
+  `signalled_at` null. C'est le volume honnête : le lecteur blog de Content P2 n'a encore
+  enrichi qu'un post en prod.
+
+**Attention — la PROD est en avance sur le DEV sur 0072** (même inversion que 0067 en
+Content P3) : lancer `pnpm db:migrate` en local avant de retoucher au schéma, sinon le
+prochain `db:generate` diffe contre un snapshot qui n'a pas la table.
+
+**Reste côté humain** :
+- Déployer api + web + workers (le code n'est pas encore en prod ; la table est là, rien
+  ne l'écrit tant que les workers tournent l'ancien code).
+- Relancer le backfill après le déploiement des workers : le lecteur blog enrichira
+  d'autres posts, et leurs mentions n'entrent dans la map qu'au run suivant.
+- P3 (ICP / `audience_pages`), P4 (tab — maquette artifact obligatoire, décision 6) et
+  P5 (Share of Model) non entamées.

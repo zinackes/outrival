@@ -20,7 +20,8 @@
     "db:baseline": "bun run src/baseline.ts",
     "db:backfill-news": "bun run src/backfill-news-monitors.ts",
     "db:backfill-email-canonical": "bun run src/backfill-email-canonical.ts",
-    "db:realign-journal": "bun run src/realign-journal.ts"
+    "db:realign-journal": "bun run src/realign-journal.ts",
+    "db:preflight": "bun run preflight-prod.ts"
   },
   "dependencies": {
     "@outrival/shared": "workspace:*",

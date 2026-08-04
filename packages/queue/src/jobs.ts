@@ -111,6 +111,17 @@ export type IngestIntegrationsPayload = {
   competitorId: string;
   urls?: string[];
 };
+/**
+ * Market-map reading (Positioning Intelligence v2 P2), enqueued off the sitemap
+ * branch. `urls` are EVERY comparison URL of the capture, not only the ones the diff
+ * added: a competitor added today has a back catalogue of `/vs/` pages, and the map
+ * is meant to show it from the first run.
+ */
+export type IngestNamedCompetitorsPayload = {
+  snapshotId: string;
+  competitorId: string;
+  urls?: string[];
+};
 export type ExtractReviewsPayload = { snapshotId: string; competitorId: string; source: string };
 export type ScrapeAiVisibilityPayload = {
   orgId: string;
@@ -337,6 +348,14 @@ export const ingestCaseStudies = defineJob<IngestCaseStudiesPayload>("ingest-cas
 export const ingestIntegrations = defineJob<IngestIntegrationsPayload>("ingest-integrations", {
   expireInSeconds: 300,
 });
+// Market-map reading (Positioning Intelligence v2 P2), event-triggered off the
+// sitemap branch. Zero AI and at most three GETs — the probe that finds the
+// comparison hub runs once per competitor and caches its answer, hit or miss — so it
+// gets the same short window its deterministic sibling uses.
+export const ingestNamedCompetitors = defineJob<IngestNamedCompetitorsPayload>(
+  "ingest-named-competitors",
+  { expireInSeconds: 300 },
+);
 // Hiring footprint detectors (Hiring Intelligence v2 P2), event-triggered per
 // competitor off extract-jobs. Pure SQL + pure functions, zero AI — same window as
 // its two deterministic siblings.

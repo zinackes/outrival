@@ -1,6 +1,6 @@
 "use client";
 
-import { StackIcon, ArchiveIcon } from "@/components/icons";
+import { StackIcon, ArchiveIcon, CaretDownIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -13,12 +13,6 @@ import { CatText } from "./cat-pill";
 
 type Sev = Signal["severity"];
 
-const SEV_TEXT: Record<Sev, string> = {
-  critical: "text-critical",
-  high: "text-high",
-  medium: "text-medium",
-  low: "text-muted-foreground",
-};
 const SEV_RANK: Record<Sev, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
 /**
@@ -163,71 +157,75 @@ export function SignalRow({
 }
 
 /**
- * A batch of similar signals (patch-26) shown as one selectable row. Selecting it
- * opens the group (summary + members) in the detail pane — noise stays collapsed
- * in the list, unlike inline expansion.
+ * A fold of near-duplicate signals shown as one row: always ONE competitor and one
+ * category, inside one window (or the server-side batch they were grouped into,
+ * patch-26).
+ *
+ * It is a DISCLOSURE, not a selectable row — expanding reveals the individual
+ * signals underneath, and each of those opens on its own. That is the invariant
+ * the first attempt at batching broke: a group must never become the thing the
+ * detail pane shows, because the pane shows exactly one signal.
+ *
+ * The gutter is the signal row's (competitor mark over severity band), so a fold
+ * reads as a row of the same family rather than a foreign object in the list. The
+ * unread COUNT is on the row: a fold hides rows, it must not hide how many of them
+ * are still waiting.
  */
-export function BatchRow({
-  batchId,
+export function FoldRow({
   signals,
   summary,
-  selected,
-  onSelect,
-  tabStop = false,
-  onFocus,
+  expanded,
+  onToggle,
 }: {
-  batchId: string;
   signals: Signal[];
   summary: string | null;
-  selected: boolean;
-  onSelect: () => void;
-  tabStop?: boolean;
-  onFocus?: () => void;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   const first = signals[0]!;
-  const maxSev = signals.reduce<Sev>(
-    (m, s) => (SEV_RANK[s.severity] > SEV_RANK[m] ? s.severity : m),
-    "low",
+  const maxSev = signals.reduce<Sev>((m, s) => {
+    const sev = s.severityOverride ?? s.severity;
+    return SEV_RANK[sev] > SEV_RANK[m] ? sev : m;
+  }, "low");
+  const unread = signals.filter((s) => !s.isRead).length;
+  const newest = signals.reduce(
+    (acc, s) => (s.createdAt > acc ? s.createdAt : acc),
+    first.createdAt,
   );
-  const unread = signals.some((s) => !s.isRead);
 
   return (
     <button
       type="button"
-      id={`row-batch-${batchId}`}
-      tabIndex={tabStop ? 0 : -1}
-      role="option"
-      aria-selected={selected}
-      onFocus={onFocus}
-      onClick={onSelect}
-      className={cn(
-        "group relative grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors",
-        // Unread rail as an inset pill (before:) so it floats inside the row and
-        // never collides with the list's rounded corners on the first/last item.
-        // Selection is a background tint only — the rail now flags unread, not
-        // selection (a left-edge cue reads far more than the trailing dot alone).
-        "before:absolute before:inset-y-2 before:left-1 before:w-0.5 before:rounded-full before:transition-colors before:content-['']",
-        unread ? "before:bg-primary" : "before:bg-transparent",
-        selected ? "bg-accent" : "hover:bg-accent/50 focus-visible:bg-accent/50",
-      )}
+      onClick={onToggle}
+      aria-expanded={expanded}
+      aria-label={`${expanded ? "Collapse" : "Expand"} ${signals.length} similar signals from ${first.competitorName}`}
+      className="group relative grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors hover:bg-accent/50 focus-visible:bg-accent/50"
     >
-      <StackIcon
-        size={16}
-        className={cn("mt-0.5 shrink-0", SEV_TEXT[maxSev])}
-        aria-label={`${maxSev} severity batch`}
-      />
+      <span className="flex shrink-0 flex-col items-center gap-1">
+        <CompAvatar
+          name={first.competitorName}
+          url={first.competitorUrl}
+          size={18}
+        />
+        <SeverityGauge severity={maxSev} />
+      </span>
+
       <span className="min-w-0">
         <span
           className={cn(
             "block truncate text-dense leading-snug",
-            unread
+            unread > 0
               ? "font-semibold text-foreground"
               : "font-medium text-muted-foreground",
           )}
         >
+          {/* The AI batch summary when the grouping came from the server, else a
+              plain count. Neither names the competitor reliably, so the meta line
+              under it always does. */}
           {summary ?? `${signals.length} similar ${first.category} signals`}
         </span>
         <span className="mt-1 flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground">
+          <StackIcon size={14} className="shrink-0" aria-hidden />
           <span
             className="truncate font-medium"
             style={competitorNameColor(first.competitorColor)}
@@ -235,19 +233,31 @@ export function BatchRow({
             {first.competitorName}
           </span>
           <span aria-hidden>·</span>
-          <span className="shrink-0 rounded-sm bg-surface-2 px-1.5 tabular-nums">
-            {signals.length}
-          </span>
-          <span className="truncate">grouped</span>
+          <span className="shrink-0 tabular-nums">{signals.length}</span>
+          <span className="shrink-0">signals</span>
+          {unread > 0 && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="shrink-0 font-medium text-foreground tabular-nums">
+                {unread} unread
+              </span>
+            </>
+          )}
         </span>
       </span>
-      <span className="flex shrink-0 items-center gap-2 pt-0.5">
+
+      <span className="flex shrink-0 items-center gap-1.5 pt-0.5">
         <time className="text-meta text-muted-foreground tabular-nums">
-          {formatDistanceToNow(new Date(first.createdAt), { addSuffix: false })}
+          {shortAge(newest)}
         </time>
-        {unread && (
-          <span className="size-1.5 rounded-full bg-primary" aria-label="Unread" />
-        )}
+        <CaretDownIcon
+          size={16}
+          className={cn(
+            "text-muted-foreground transition-transform",
+            !expanded && "-rotate-90",
+          )}
+          aria-hidden
+        />
       </span>
     </button>
   );

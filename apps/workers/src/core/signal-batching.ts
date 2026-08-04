@@ -1,5 +1,5 @@
 import { logger } from "../lib/job-logger";
-import { and, eq, gte, inArray, isNull, ne } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, notInArray } from "drizzle-orm";
 import {
   db,
   signals,
@@ -25,9 +25,14 @@ interface Candidate {
 
 // Patch-26 layer 5: roll up 3+ similar signals (same competitor + same category)
 // within BATCHING_WINDOW_HOURS into a single batch with an AI summary, so the feed
-// shows "3 minor feature updates from Linear" instead of three rows. Critical
-// signals are never batched. Runs every 6h; idempotent (already-batched signals are
-// excluded by batchedIntoId).
+// shows "3 minor feature updates from Linear" instead of three rows. Runs every 6h;
+// idempotent (already-batched signals are excluded by batchedIntoId).
+//
+// Neither critical NOR high is ever batched. Critical was excluded from the start;
+// high joined it when the feed started folding batches into one row, because a fold
+// is a row the reader is invited to skip, and "urgent" is exactly what must not sit
+// behind a chevron. The feed applies the same guard client-side (buildFeedRows), so
+// a high signal batched before this rule still gets its own row.
 // Runtime-neutral job body: shared verbatim by the pg-boss handler and the thin
 // Trigger.dev wrapper in ../jobs/signal-batching.job.ts (deleted at the
 // cutover). The body is byte-identical to the pre-migration job — only the
@@ -61,7 +66,7 @@ export async function runSignalBatching() {
       .where(
         and(
           isNull(signals.batchedIntoId),
-          ne(signals.severity, "critical"),
+          notInArray(signals.severity, ["critical", "high"]),
           gte(signals.createdAt, windowStart),
         ),
       );

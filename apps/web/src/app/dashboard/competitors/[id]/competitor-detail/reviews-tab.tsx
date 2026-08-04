@@ -51,9 +51,10 @@ const MultiLineChart = dynamic(() => import("./chart-line"), {
   loading: () => <Skeleton className="h-[220px] w-full" />,
 });
 
-// Reviews v2 (2026-07-15): the scraped aggregators (G2/Capterra/Trustpilot) are
-// retired for legal reasons. App Store (Apple's public RSS feed) is the only
-// URL-based review source. Trustpilot survives as the surface-only
+// Reviews v2 (2026-07-15) + Shopify (2026-08-04): the scraped aggregators
+// (G2/Capterra/Trustpilot) are retired for legal reasons. What is left are the two
+// URL-based sources whose pages are open to us: Apple's public RSS feed and the
+// Shopify App Store listing. Trustpilot survives as the surface-only
 // `trustpilot_public` (official-API score/trend, no user URL) with its own enable
 // UX — it is intentionally NOT in this "paste a review-page URL" picker.
 const REVIEW_SOURCE_OPTIONS: {
@@ -68,20 +69,43 @@ const REVIEW_SOURCE_OPTIONS: {
     host: "apps.apple.com",
     placeholder: "https://apps.apple.com/us/app/<slug>/id000000000",
   },
+  {
+    value: "shopify_reviews",
+    label: "Shopify",
+    host: "apps.shopify.com",
+    placeholder: "https://apps.shopify.com/<app-handle>",
+  },
 ];
+
+/** Shape the worker stores under `competitors.metadata.shopifyApp`. */
+export interface ShopifyAppFact {
+  handle: string;
+  url: string;
+}
+
+/** Pull the Shopify listing the homepage detector found out of the metadata. */
+export function readShopifyApp(
+  metadata: Record<string, unknown> | null | undefined,
+): ShopifyAppFact | null {
+  const raw = metadata?.shopifyApp as ShopifyAppFact | undefined;
+  if (!raw || typeof raw !== "object" || !raw.url) return null;
+  return raw;
+}
 
 function ReviewEnableState({
   plan,
   onEnable,
   onLockedSource,
   detectedAppStoreUrl,
+  detectedShopifyUrl,
 }: {
   plan: Plan;
   onEnable?: (source: SourceType, url?: string) => Promise<void>;
   onLockedSource?: (source: ReviewSourceType) => void;
-  // App Store listing already detected on their site, so the field starts filled
-  // instead of asking the user to go and find the id themselves.
+  // Listings already detected on their site, so the field starts filled instead of
+  // asking the user to go and find the app id or handle themselves.
   detectedAppStoreUrl?: string | null;
+  detectedShopifyUrl?: string | null;
 }) {
   // Default to a source the plan actually covers so the form is usable out of the
   // gate; falls back to the first option when the plan covers none — then the form
@@ -92,11 +116,13 @@ function ReviewEnableState({
   const [source, setSource] = useState<ReviewSourceType>(firstAllowed);
   // Only prefill what actually validates: a detection that somehow produced a
   // malformed URL must not seed a field the user then has to notice and clear.
-  const prefill =
-    detectedAppStoreUrl && validateReviewUrl("appstore_reviews", detectedAppStoreUrl).ok
-      ? detectedAppStoreUrl
-      : "";
-  const [url, setUrl] = useState(prefill);
+  const prefillFor = (candidate: ReviewSourceType) => {
+    const detected =
+      candidate === "appstore_reviews" ? detectedAppStoreUrl : detectedShopifyUrl;
+    return detected && validateReviewUrl(candidate, detected).ok ? detected : "";
+  };
+  const prefill = prefillFor(source);
+  const [url, setUrl] = useState(() => prefillFor(firstAllowed));
   const [busy, setBusy] = useState(false);
   const active = REVIEW_SOURCE_OPTIONS.find((o) => o.value === source)!;
   const sourceLocked = !planIncludesSource(plan, source);
@@ -127,6 +153,9 @@ function ReviewEnableState({
                 return;
               }
               setSource(next);
+              // An App Store URL can never validate as a Shopify one, so carrying the
+              // field over would only ever show the user an error they didn't cause.
+              setUrl(prefillFor(next));
             }}
             variant="outline"
             size="sm"
@@ -221,6 +250,7 @@ export function ReviewsTab({
   plan,
   onLockedSource,
   detectedAppStoreUrl,
+  detectedShopifyUrl,
 }: {
   competitorId: string;
   /** Already on the page; carries the review-shift anchor the chart marks. */
@@ -229,6 +259,8 @@ export function ReviewsTab({
   onLockedSource?: (source: ReviewSourceType) => void;
   /** Their App Store listing, if the mobile-app detector found one. */
   detectedAppStoreUrl?: string | null;
+  /** Their Shopify App Store listing, if the homepage detector found one. */
+  detectedShopifyUrl?: string | null;
 } & MonitorSourceProps) {
   // The shared QueryClient serves the cache instantly on tab re-switch (no skeleton
   // flash); keepPreviousData keeps the last result during a refetch. A forced
@@ -265,6 +297,7 @@ export function ReviewsTab({
         onEnable={onEnable}
         onLockedSource={onLockedSource}
         detectedAppStoreUrl={detectedAppStoreUrl}
+        detectedShopifyUrl={detectedShopifyUrl}
       />
     );
   }

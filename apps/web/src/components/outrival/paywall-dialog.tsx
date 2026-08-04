@@ -82,6 +82,7 @@ const SOURCE_LABEL: Record<string, string> = {
   g2_reviews: "G2 reviews",
   capterra_reviews: "Capterra reviews",
   appstore_reviews: "App Store reviews",
+  shopify_reviews: "Shopify App Store reviews",
 };
 
 const CHANNEL_LABEL: Record<string, string> = {

@@ -54,15 +54,19 @@ const TONE_CLASS = {
 
 /**
  * What a URL means for this source. Most take a page on the competitor's own
- * domain and are auto-discovered, so the field is an override. The two that live
- * on a fixed third-party host (App Store listing, GitHub repo) can't be derived
- * from the site at all — they say what they need, since a blank field there is the
- * difference between enabling the source and a rejected request.
+ * domain and are auto-discovered, so the field is an override. The ones that live
+ * on a fixed third-party host (App Store listing, Shopify listing, GitHub repo)
+ * can't be derived from the site at all — they say what they need, since a blank
+ * field there is the difference between enabling the source and a rejected request.
  */
 const URL_GUIDANCE: Partial<Record<SourceType, { placeholder: string; help: string }>> = {
   appstore_reviews: {
     placeholder: "https://apps.apple.com/us/app/name/id123456789",
     help: "Their App Store listing. The link has to carry the numeric app id (…/id123456789).",
+  },
+  shopify_reviews: {
+    placeholder: "https://apps.shopify.com/their-app",
+    help: "Their Shopify App Store listing. We read the reviews merchants leave on it.",
   },
   github_repo: {
     placeholder: "https://github.com/owner/repo",
@@ -109,6 +113,7 @@ const NOT_AVAILABLE_PROMPT: Partial<Record<SourceType, string>> = {
   github_repo: "Nothing on their site points to a public repo. If you know of one, name it here.",
   roadmap: "We found no public roadmap portal. If you know of one, name it here.",
   appstore_reviews: "We found no App Store listing. If you know of one, name it here.",
+  shopify_reviews: "We found no Shopify App Store listing. If you know of one, name it here.",
   trustpilot_public:
     "Trustpilot lists no profile for their domain. If they're listed under a different one, paste that profile here.",
   youtube: "We found no channel linked from their site. If you know of one, name it here.",

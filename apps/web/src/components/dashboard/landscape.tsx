@@ -44,6 +44,7 @@ const SOURCE_LABELS: Record<string, string> = {
   g2_reviews: "G2 reviews",
   capterra_reviews: "Capterra reviews",
   appstore_reviews: "App Store reviews",
+  shopify_reviews: "Shopify App Store reviews",
   playstore_reviews: "Play Store reviews",
   trustpilot_reviews: "Trustpilot reviews",
   trustradius_reviews: "TrustRadius reviews",

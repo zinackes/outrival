@@ -7,6 +7,10 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // App Store customer reviews via Apple's public RSS JSON feed (kept in sync with
   // shared SOURCE_TYPES). The one review platform read directly.
   "appstore_reviews",
+  // Shopify App Store merchant reviews (2026-08-04). A public server-rendered listing
+  // whose robots.txt declares no `User-agent: *` group, captured through the standard
+  // L0 path. Kept in sync with shared SOURCE_TYPES.
+  "shopify_reviews",
   // Trustpilot public surface (Reviews v2) — score/count/distribution/trend via the
   // OFFICIAL Trustpilot API, never scraped verbatims. Kept in sync with SOURCE_TYPES.
   "trustpilot_public",

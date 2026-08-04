@@ -34,6 +34,7 @@ import {
 } from "@outrival/db";
 import { stampFirstScrape } from "../lib/onboarding-funnel";
 import { recordMobileApps } from "../lib/mobile-apps";
+import { recordShopifyApp } from "../lib/shopify-app";
 import { recordMessagingVersion } from "../lib/messaging-versions";
 import { crossesRoundMilestone } from "../lib/claim-milestone";
 import {
@@ -1177,6 +1178,20 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       });
     } catch (err) {
       logger.warn("Mobile-app detection failed (non-fatal)", { error: String(err) });
+    }
+
+    // Shopify App Store presence: same contract as the mobile-app fact above. It
+    // writes competitors.metadata.shopifyApp off the homepage capture so the Reviews
+    // tab can prefill the listing URL, and emits NO change and NO signal.
+    try {
+      await recordShopifyApp({
+        competitorId: competitor.id,
+        metadata: competitor.metadata,
+        sourceType: monitor.sourceType,
+        html: result.html,
+      });
+    } catch (err) {
+      logger.warn("Shopify-app detection failed (non-fatal)", { error: String(err) });
     }
 
     // Messaging timeline (Positioning Intelligence v2 P1): materialise how this

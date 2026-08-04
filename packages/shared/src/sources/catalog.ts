@@ -39,10 +39,12 @@ export const CONFIGURABLE_SOURCES: Record<SourceGroup, readonly SourceType[]> = 
   web_content: ["homepage", "blog", "changelog"],
   pricing: ["pricing"],
   hiring: ["jobs"],
-  // Reviews v2 (2026-07-15): the two legally-read review surfaces. The scraped
-  // aggregators are RETIRED_SOURCES below; G2 has no connected-vendor flow (its
-  // ToS review is still open), so it has no row at all rather than a fake one.
-  reviews: ["appstore_reviews", "trustpilot_public"],
+  // Reviews v2 (2026-07-15) + Shopify (2026-08-04): the legally-read review
+  // surfaces. The scraped aggregators are RETIRED_SOURCES below; G2 has no
+  // connected-vendor flow (its ToS review is still open), so it has no row at all
+  // rather than a fake one. `shopify_reviews` covers the e-commerce SaaS whose
+  // customers review them as merchants rather than on an aggregator.
+  reviews: ["appstore_reviews", "shopify_reviews", "trustpilot_public"],
   // `roadmap` (pro+) reads the competitor's public Canny / ProductBoard portal.
   // Enabled through the standard route; the optional URL override points at the
   // portal itself, which is why `roadmap` gets a brand exception in validateMonitorUrl.

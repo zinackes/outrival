@@ -1,7 +1,6 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import {
   audiencePages,
-  aiVisibilityPrompts,
   caseStudies,
   messagingVersions,
   namedCompetitors,
@@ -10,6 +9,7 @@ import { db } from "./db";
 import { analyticsQuery } from "./analytics-safe";
 import { industryLabel, pricingModelOf, type MeteredRow, type PricingModel } from "@outrival/shared";
 import { namedBy } from "./market-map";
+import { shareOfModelFor, type ShareOfModel } from "./share-of-model";
 
 /**
  * The two reads the Positioning tab needs that no other endpoint answers
@@ -33,24 +33,6 @@ const FACT_TARGETS_SHOWN = 3;
 /** Personas / industries named in the section. */
 const FACT_SEGMENTS_SHOWN = 4;
 
-/**
- * Share of Model before P5 has wired it.
- *
- * The placeholder states what IS collected rather than "coming soon", because the
- * runs are real and already cost money: a reader who is told nothing assumes the
- * feature is absent, and a reader who is told "6 prompts, last run yesterday"
- * knows the data is accruing while the view is built. P5 replaces this member of
- * the union with a `ready` one; the front already renders both.
- */
-export interface ShareOfModelPending {
-  status: "not_ready";
-  /** Active buyer-intent prompts on this workspace. */
-  prompts: number;
-  /** Answers recorded ABOUT this competitor, all engines. */
-  answers: number;
-  lastRunAt: string | null;
-}
-
 export interface PositioningSummary {
   /** How they charge, from the same pure function the compare price lens uses. */
   pricingModel: PricingModel | null;
@@ -62,7 +44,15 @@ export interface PositioningSummary {
    */
   lastRepositionedAt: string | null;
   versionsTotal: number;
-  shareOfModel: ShareOfModelPending;
+  /**
+   * What the answer engines say about them (P5).
+   *
+   * Three states, and the section renders all three: nothing collected yet, not
+   * enough runs in the window to average, or the real board. It stays on this
+   * response rather than moving to an endpoint of its own so the tab paints the
+   * section in the same pass as the identity line above it.
+   */
+  shareOfModel: ShareOfModel;
 }
 
 /** The rows `pricingModelOf` reads, as pricing_history stores them. */
@@ -80,7 +70,7 @@ export async function positioningSummary(args: {
 }): Promise<PositioningSummary> {
   const { competitorId, orgId } = args;
 
-  const [pricingRows, versions, prompts, visibility] = await Promise.all([
+  const [pricingRows, versions, som] = await Promise.all([
     // The latest LIVE batch only. An override is a number a user typed, and the
     // badge is a claim about how the competitor charges, not about what we show.
     analyticsQuery<PricingRow>(sql`
@@ -101,16 +91,7 @@ export async function positioningSummary(args: {
       .where(eq(messagingVersions.competitorId, competitorId))
       .orderBy(desc(messagingVersions.capturedAt))
       .limit(1),
-    db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(aiVisibilityPrompts)
-      .where(and(eq(aiVisibilityPrompts.orgId, orgId), eq(aiVisibilityPrompts.isActive, true))),
-    analyticsQuery<{ answers: number; last_run: string | null }>(sql`
-      SELECT count(*)::int AS answers,
-             (max(recorded_at) AT TIME ZONE 'UTC')::text AS last_run
-      FROM ai_visibility_results
-      WHERE competitor_id = ${competitorId}
-    `),
+    shareOfModelFor({ competitorId, orgId }),
   ]);
 
   const newest = versions[0];
@@ -121,12 +102,7 @@ export async function positioningSummary(args: {
     lastRepositionedAt:
       newest && versionsTotal >= 2 ? newest.capturedAt.toISOString() : null,
     versionsTotal,
-    shareOfModel: {
-      status: "not_ready",
-      prompts: Number(prompts[0]?.n ?? 0),
-      answers: Number(visibility?.[0]?.answers ?? 0),
-      lastRunAt: visibility?.[0]?.last_run ?? null,
-    },
+    shareOfModel: som,
   };
 }
 

@@ -658,6 +658,23 @@ export type SignalFacts =
       pagesTotal: number;
     }
   | {
+      /** The two 28-day windows behind an AI-visibility shift (Positioning
+       *  Intelligence v2 P5). Both sides are averages over many answer-engine
+       *  runs — a single run is the engine's variance, not a market position. */
+      kind: "ai_visibility";
+      driver: "mention_rate" | "avg_rank";
+      direction: "up" | "down";
+      isSelf: boolean;
+      windowDays: number;
+      current: VisibilityWindowFact;
+      previous: VisibilityWindowFact;
+      byEngine: Array<{
+        engine: string;
+        current: VisibilityWindowFact;
+        previous: VisibilityWindowFact;
+      }>;
+    }
+  | {
       /** Integrations newly listed in a catalog (Content Intelligence v2 P5). */
       kind: "integrations";
       integrations: IntegrationFact[];
@@ -775,6 +792,24 @@ export interface AudiencePageFact {
   evidenceUrl: string | null;
   /** "YYYY-MM-DD" — when WE first saw the page; a sitemap carries no date. */
   firstSeenAt: string | null;
+}
+
+/**
+ * One 28-day window of answer-engine measurements (Positioning v2 P5).
+ *
+ * `nRuns` and `answers` are rendered beside every rate on purpose: a percentage
+ * shown without its denominator reads as a precision that four weeks of LLM
+ * answers do not carry.
+ */
+export interface VisibilityWindowFact {
+  mentionRate: number;
+  mentions: number;
+  answers: number;
+  avgRank: number | null;
+  citedRate: number | null;
+  avgSentiment: number | null;
+  nRuns: number;
+  engines: string[];
 }
 
 export interface IntegrationFact {
@@ -2897,15 +2932,87 @@ export interface AudienceProfile {
   windowDays: number;
 }
 
-// Share of Model before P5 has wired it. The placeholder states what IS being
-// collected — the runs are real and already accruing — rather than "coming soon".
-// P5 adds a `ready` member to this union; the tab already renders both.
-export type ShareOfModel = {
-  status: "not_ready";
+// What the answer engines say about a competitor (Positioning v2 P5).
+//
+// Three states, and the section renders all three. Everything is measured over a
+// 28-day WINDOW, never over a single run: an engine asked the same buyer question
+// twice does not answer it the same way, so a run-to-run rate measures the engine.
+// Below the run minimum the response carries no statistics at all, so the tab
+// cannot render a rate computed off two answers even by accident.
+interface ShareOfModelCounts {
+  /** Active buyer-intent prompts on this workspace. */
   prompts: number;
+  /** Answers recorded ABOUT this competitor, all engines, all time. */
   answers: number;
   lastRunAt: string | null;
-};
+}
+
+/** One subject's window, plus how it moved against the window before it. */
+export interface VisibilitySubjectStats {
+  competitorId: string;
+  name: string;
+  isSelf: boolean;
+  metrics: VisibilityWindowFact;
+  trend: {
+    mentionRate: number | null;
+    /** NEGATIVE is an improvement — position 4 → 2 is -2. */
+    avgRank: number | null;
+    citedRate: number | null;
+    avgSentiment: number | null;
+  };
+}
+
+/** One prompt as the window's last run answered it. */
+export interface VisibilityPromptOutcome {
+  promptId: string;
+  prompt: string;
+  engine: string;
+  mentioned: boolean;
+  /** The prompt itself names them, so the answer is seeded and excluded. */
+  promptNamed: boolean;
+  rank: number | null;
+  cited: boolean | null;
+  sentiment: number | null;
+  recordedAt: string;
+}
+
+/** A sentence from a stored answer, verbatim — never a summary of one. */
+export interface VisibilityExtract {
+  text: string;
+  engine: string;
+  recordedAt: string;
+}
+
+export type ShareOfModel =
+  | ({ status: "not_ready" } & ShareOfModelCounts)
+  | ({
+      status: "insufficient_data";
+      /** Runs the window holds, against what it takes. */
+      nRuns: number;
+      minRuns: number;
+      windowDays: number;
+    } & ShareOfModelCounts)
+  | ({
+      status: "ready";
+      windowDays: number;
+      windowStart: string;
+      windowEnd: string;
+      competitor: VisibilitySubjectStats;
+      /** Null when the tracking product has no self competitor. */
+      self: VisibilitySubjectStats | null;
+      position: number;
+      tracked: number;
+      /** Mention rate per past window, oldest first. A window under the run
+       *  minimum carries null rather than a point drawn off two answers. */
+      series: Array<{ windowStart: string; mentionRate: number | null; nRuns: number }>;
+      promptOutcomes: VisibilityPromptOutcome[];
+      /** EMPTY when no answer text was persisted — the sub-section is then absent. */
+      extracts: VisibilityExtract[];
+      narrative: {
+        h1: string | null;
+        claim: { rawText: string; observedAt: string } | null;
+      };
+    } & ShareOfModelCounts);
 
 // The identity line above the Positioning tab (P4): only what the four section
 // endpoints do not already answer.

@@ -53,6 +53,7 @@ function catalog(names: string[]): string {
 
 beforeAll(async () => {
   const realQueue = await import("@outrival/queue");
+  const realContentFetch = await import("@outrival/scrapers/content-fetch");
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
@@ -69,7 +70,11 @@ beforeAll(async () => {
       },
     },
   }));
+  // Spread the REAL module: this mock is process-global and outlives the file,
+  // so a partial one leaves every later file importing a module that reads
+  // POST_FETCH_CAP with a SyntaxError, depending only on the order bun picked.
   mock.module("@outrival/scrapers/content-fetch", () => ({
+    ...realContentFetch,
     fetchPostHtml: async (url: string) => {
       fetched.push(url);
       const html = pages.get(url);

@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { firstTextDate } from "./text-date";
 
 /**
  * Read the posts off a blog INDEX page (Content Intelligence v2 P2).
@@ -32,6 +33,8 @@ const MAX_CANDIDATES = 400;
 const MAX_POSTS = 60;
 /** A shorter anchor text is a "Read more" chevron, not a title. */
 const MIN_TITLE_CHARS = 12;
+/** How far above a post's link its card may sit. Past this it is the page. */
+const MAX_CARD_DEPTH = 6;
 
 /** Conventional post prefixes, for blogs whose posts do not live under the index. */
 const POST_PATH_RE =
@@ -119,7 +122,7 @@ export function extractPostLinks(html: string, indexUrl: string): BlogPostLink[]
     .toArray()
     .slice(0, MAX_CANDIDATES);
 
-  const seen = new Set<string>();
+  const byUrl = new Map<string, BlogPostLink>();
   const out: BlogPostLink[] = [];
   const indexCanonical = canonicalizeUrl(indexUrl);
 
@@ -136,7 +139,61 @@ export function extractPostLinks(html: string, indexUrl: string): BlogPostLink[]
     }
     if (EXCLUDED_RE.some((re) => re.test(url))) continue;
     if (!isDeeperThan(url, indexUrl) && !POST_PATH_RE.test(pathOf(url))) continue;
-    if (seen.has(url)) continue;
+
+    // This post's card: the LARGEST ancestor that still contains only this post.
+    //
+    // The nearest one is routinely too small. Templates put the title and the
+    // date in SIBLING blocks (`<div>title + blurb</div><div><time/></div>`), so
+    // the closest wrapper holds the link and nothing that dates it. Climbing
+    // stops the moment an ancestor reaches another post, which is the one thing
+    // that must not happen: a container's first date handed to every post in it
+    // is a page of posts all dated the same day.
+    const anchor = $(el);
+    let card = anchor;
+    for (let depth = 0; depth < MAX_CARD_DEPTH; depth++) {
+      const parent = card.parent();
+      if (parent.length === 0) break;
+      const reachesAnotherPost = parent
+        .find("a[href]")
+        .toArray()
+        .some((other) => {
+          const u = canonicalizeUrl($(other).attr("href") ?? "", indexUrl);
+          if (!u || u === url) return false;
+          if (EXCLUDED_RE.some((re) => re.test(u))) return false;
+          return isDeeperThan(u, indexUrl) || POST_PATH_RE.test(pathOf(u));
+        });
+      if (reachesAnotherPost) break;
+      card = parent;
+    }
+
+    // The date the card states: machine-readable if the template emits one, else
+    // the one it printed for a human. A large minority of blogs emit no <time> at
+    // all, and every post on one of those pages is otherwise dated from the day
+    // we scraped it. `firstTextDate` reads only chips that stand on their own, so
+    // a date quoted inside an excerpt is never taken for a publication.
+    const publishedAt =
+      toIso(card.find("time[datetime]").first().attr("datetime")) ??
+      firstTextDate(
+        // Each element's OWN text, so "By Ada · June 25, 2026" stays one chip
+        // and the card's whole prose never becomes one.
+        card
+          .find("*")
+          .addBack()
+          .map((_i, node) => $(node).clone().children().remove().end().text())
+          .toArray(),
+      );
+
+    // The same post, linked twice. A "Recent posts" sidebar carries the NEWEST
+    // posts as bare list items with no date beside them, and it is rendered
+    // BEFORE the listing — so the first anchor for a recent post is routinely
+    // the undated one, and keeping it dated the post from the day we scraped.
+    // Whichever anchor came first, the dated one is the one that knows when the
+    // post was published.
+    const known = byUrl.get(url);
+    if (known) {
+      if (!known.publishedAt && publishedAt) known.publishedAt = publishedAt;
+      continue;
+    }
 
     // The anchor's own words are the title. An image-only card carries it in the
     // alt text; an anchor with neither says nothing, and a row needs a title.
@@ -145,21 +202,9 @@ export function extractPostLinks(html: string, indexUrl: string): BlogPostLink[]
       "") as string;
     if (title.length < MIN_TITLE_CHARS) continue;
 
-    // The date the listing printed next to this post, when it printed a
-    // machine-readable one. Inside the anchor first, then the card around it.
-    const anchor = $(el);
-    const publishedAt =
-      toIso(anchor.find("time[datetime]").attr("datetime")) ??
-      toIso(
-        anchor
-          .closest("article, li, .post, .entry, div")
-          .find("time[datetime]")
-          .first()
-          .attr("datetime"),
-      );
-
-    seen.add(url);
-    out.push({ url, title, publishedAt });
+    const link: BlogPostLink = { url, title, publishedAt };
+    byUrl.set(url, link);
+    out.push(link);
     if (out.length >= MAX_POSTS) break;
   }
 

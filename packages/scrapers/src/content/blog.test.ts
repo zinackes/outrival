@@ -127,6 +127,61 @@ test("reads posts off a listing and skips everything that is not one", () => {
   expect(links[0]!.publishedAt).toBe(new Date("2024-05-01").toISOString());
 });
 
+test("a 'recent posts' sidebar does not strip a post of its date", () => {
+  // Docusaurus (and most blog themes) render an undated "Recent posts" nav BEFORE
+  // the listing. Its anchors used to win the dedup, so the newest posts landed
+  // with no publishedAt and were then dated from the day we scraped them.
+  const html = `<!doctype html><html><body>
+    <aside><nav aria-label="Blog recent posts navigation"><ul>
+      <li><a href="/blog/release/4.0">Release: Yarn 4.0</a></li>
+    </ul></nav></aside>
+    <main><article>
+      <h2><a href="/blog/release/4.0">Release: Yarn 4.0</a></h2>
+      <time datetime="2023-10-23T00:00:00.000Z">October 23, 2023</time>
+    </article></main>
+  </body></html>`;
+
+  const links = extractPostLinks(html, "https://yarnpkg.com/blog");
+  expect(links).toHaveLength(1);
+  expect(links[0]!.publishedAt).toBe("2023-10-23T00:00:00.000Z");
+});
+
+test("a date printed beside the card, not inside it, still dates the post", () => {
+  // The shape most templates ship: the title and the date are SIBLING blocks, so
+  // the nearest wrapper around the link holds nothing that dates it.
+  const html = `<!doctype html><html><body><main>
+    <div class="card">
+      <div class="head"><a href="/blog/content-api-release">Content API: optimize anywhere</a></div>
+      <div class="meta"><span>Jul 29, 2026</span><span>By multiple authors</span></div>
+    </div>
+    <div class="card">
+      <div class="head"><a href="/blog/pages-release">Pages, rebuilt from scratch</a></div>
+      <div class="meta"><span>Jul 23, 2026</span></div>
+    </div>
+  </main></body></html>`;
+
+  const links = extractPostLinks(html, "https://acme.com/blog");
+  expect(links.map((l) => l.publishedAt)).toEqual([
+    "2026-07-29T00:00:00.000Z",
+    "2026-07-23T00:00:00.000Z",
+  ]);
+});
+
+test("a container of several posts never dates them all the same day", () => {
+  // No per-post wrapper at all: one grid holding every link. The first date in it
+  // belongs to the first post and to nothing else, so the rest stay undated.
+  const html = `<!doctype html><html><body><main><div class="grid">
+    <a href="/blog/first-post-of-the-week">The first post of the week</a>
+    <span>June 25, 2026</span>
+    <a href="/blog/second-post-of-the-week">The second post of the week</a>
+    <a href="/blog/third-post-of-the-week">The third post of the week</a>
+  </div></main></body></html>`;
+
+  const links = extractPostLinks(html, "https://acme.com/blog");
+  expect(links).toHaveLength(3);
+  expect(links.every((l) => l.publishedAt === null)).toBe(true);
+});
+
 test("canonicalisation drops query, fragment and trailing slash", () => {
   expect(canonicalizeUrl("https://Acme.com/blog/post/?utm=x#top")).toBe(
     "https://acme.com/blog/post",

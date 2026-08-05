@@ -6,7 +6,6 @@ import {
   jensenShannonDivergence,
   risingDeclining,
   cadenceByMonth,
-  typeMix,
   editorialWindows,
   detectEditorialPivot,
   topTopics,
@@ -301,34 +300,6 @@ describe("cadenceByMonth", () => {
 describe("monthKey", () => {
   test("pads the month", () => {
     expect(monthKey(new Date("2026-03-09T00:00:00Z"))).toBe("2026-03");
-  });
-});
-
-describe("typeMix", () => {
-  const window = { start: new Date(NOW.getTime() - 90 * DAY), end: NOW };
-
-  test("counts item types most frequent first", () => {
-    const mix = typeMix(
-      [
-        post(1, null, { itemType: "feature" }),
-        post(2, null, { itemType: "feature" }),
-        post(3, null, { itemType: "fix" }),
-      ],
-      window,
-    );
-    expect(mix).toEqual([
-      { itemType: "feature", count: 2 },
-      { itemType: "fix", count: 1 },
-    ]);
-  });
-
-  test("groups the unread ones under null rather than dropping them", () => {
-    const mix = typeMix([post(1, null, { itemType: null }), post(2, null, { itemType: "fix" })], window);
-    expect(mix.find((m) => m.itemType === null)).toEqual({ itemType: null, count: 1 });
-  });
-
-  test("respects the window", () => {
-    expect(typeMix([post(200, null, { itemType: "fix" })], window)).toEqual([]);
   });
 });
 

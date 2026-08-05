@@ -840,6 +840,10 @@ export interface ContentItemRow {
   itemType: string | null;
   /** Roadmap only: the portal's own status word. */
   status: string | null;
+  /** Roadmap only: `status` on our own vocabulary — the board's columns. */
+  statusNormalized: string | null;
+  /** Roadmap only: the exact vote count the portal published. */
+  votes: number | null;
   title: string;
   url: string | null;
   /** ISO, or null when the source dates nothing. */
@@ -857,6 +861,12 @@ export interface ContentTimeline {
   hasMore: boolean;
   /** source_type → items in the PERIOD, whatever source is selected. */
   sourceCounts: Record<string, number>;
+  /**
+   * The kinds on offer in the PERIOD, each carrying the source it belongs to —
+   * "breaking" is a changelog word, "case study" a blog one. `itemType: null`
+   * groups the items nobody has read yet, per source.
+   */
+  typeCounts: Array<{ sourceType: string; itemType: string | null; count: number }>;
   periodDays: number;
 }
 
@@ -872,7 +882,6 @@ export interface ContentSummary {
   }>;
   /** Top subjects, ranked by whichever window holds more of them. */
   themes: Array<{ topic: string; now: number; then: number }>;
-  typeMix: Array<{ itemType: string | null; count: number }>;
   totals: {
     published: number;
     previousPublished: number;

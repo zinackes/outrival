@@ -114,7 +114,6 @@ import {
   creditBurnActionKey,
   industryLabel,
   cadenceByMonth,
-  typeMix,
   topicDistribution,
   editorialWindows,
   EDITORIAL_WINDOW_DAYS,
@@ -3051,13 +3050,15 @@ competitorsRouter.get("/:id/content", async (c) => {
       : undefined;
   const where = and(base, sourceFilter, typeFilter);
 
-  const [rows, totals, bySource] = await Promise.all([
+  const [rows, totals, bySource, byType] = await Promise.all([
     db
       .select({
         id: contentItems.id,
         sourceType: contentItems.sourceType,
         itemType: contentItems.itemType,
         status: contentItems.status,
+        statusNormalized: contentItems.statusNormalized,
+        votes: contentItems.votes,
         title: contentItems.title,
         url: contentItems.url,
         publishedAt: contentItems.publishedAt,
@@ -3079,6 +3080,19 @@ competitorsRouter.get("/:id/content", async (c) => {
       .from(contentItems)
       .where(base)
       .groupBy(contentItems.sourceType),
+    // The kinds, carrying the source they belong to. Same window as the pills and
+    // for the same reason: the kind filter used to be counted over a fixed 90 days
+    // while the timeline showed whatever period was selected, so past 90 days it
+    // offered kinds that were not on screen and hid kinds that were.
+    db
+      .select({
+        sourceType: contentItems.sourceType,
+        itemType: contentItems.itemType,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(contentItems)
+      .where(base)
+      .groupBy(contentItems.sourceType, contentItems.itemType),
   ]);
 
   const total = totals[0]?.n ?? 0;
@@ -3088,6 +3102,8 @@ competitorsRouter.get("/:id/content", async (c) => {
       sourceType: r.sourceType,
       itemType: r.itemType,
       status: r.status,
+      statusNormalized: r.statusNormalized,
+      votes: r.votes,
       title: r.title,
       url: r.url,
       publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
@@ -3101,6 +3117,11 @@ competitorsRouter.get("/:id/content", async (c) => {
     total,
     hasMore: offset + rows.length < total,
     sourceCounts: Object.fromEntries(bySource.map((r) => [r.sourceType, r.n])),
+    typeCounts: byType.map((r) => ({
+      sourceType: r.sourceType,
+      itemType: r.itemType,
+      count: r.n,
+    })),
     periodDays: period,
   });
 });
@@ -3202,7 +3223,6 @@ competitorsRouter.get("/:id/content-summary", async (c) => {
     windowDays: EDITORIAL_WINDOW_DAYS,
     cadence: cadenceByMonth(items, { months: CADENCE_MONTHS }),
     themes,
-    typeMix: typeMix(items, windows.current),
     totals: {
       published: inCurrent.length,
       previousPublished: inPrevious.length,

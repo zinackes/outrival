@@ -306,28 +306,6 @@ export function cadenceByMonth(
   return series;
 }
 
-export interface TypeCount {
-  /** null groups the items nobody has read yet — a state, not a type. */
-  itemType: string | null;
-  count: number;
-}
-
-/** What kinds of thing a competitor published inside a window, most frequent first. */
-export function typeMix(
-  items: readonly EditorialItem[],
-  window: DateWindow,
-): TypeCount[] {
-  const counts = new Map<string | null, number>();
-  for (const item of items) {
-    if (!inWindow(itemDate(item), window)) continue;
-    const key = item.itemType ?? null;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .map(([itemType, count]) => ({ itemType, count }))
-    .sort((a, b) => b.count - a.count || String(a.itemType).localeCompare(String(b.itemType)));
-}
-
 /** The two windows a pivot compares, ending at `now`. */
 export function editorialWindows(now: Date, days = EDITORIAL_WINDOW_DAYS): {
   current: DateWindow;

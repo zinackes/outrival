@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, keepPreviousData } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { ArrowUpIcon, ArrowDownIcon, ArrowSquareOutIcon } from "@/components/icons";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
@@ -11,9 +11,22 @@ import {
   api,
   type ContentItemRow,
   type ContentSummary,
+  type ContentTimeline,
   type CompetitorSignal,
   type Monitor,
 } from "@/lib/api";
+import {
+  boardColumns,
+  docsSections,
+  groupByMonth,
+  itemDate,
+  kindGroups,
+  pathnameOf,
+  viewFor,
+  SOURCE_COLOR,
+  SOURCE_KEYS,
+  SOURCES,
+} from "./content-derive";
 import { cn } from "@/lib/utils";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +34,9 @@ import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -61,23 +76,24 @@ const CadenceBars = dynamic(() => import("./content-cadence-chart"), {
  *    have only just started reading gets a working chart and an honest blank where
  *    the themes go, rather than an empty tab.
  *
+ * THE SOURCE PICKS THE READING, and that is the third rule (OUT-13). One dated list
+ * was the wrong shape for three of the four sources, because they do not publish the
+ * same kind of thing:
+ *
+ *  - A ROADMAP IS A BOARD, NOT A FEED. Its entries carry a status and a vote count
+ *    and mostly no date at all, so a chronological list sorted them by when WE saw
+ *    them and buried the only two questions worth asking — what have they committed
+ *    to, and what are their own customers shouting for. It gets a kanban, in
+ *    commitment order, cards ranked by votes.
+ *  - A CHANGELOG IS READ BY KIND. Whether a release breaks something is the scan,
+ *    so the kind takes the left gutter and runs down the page as a column.
+ *  - DOCS ARE READ BY AREA. A docs surface publishes pages and endpoints with no
+ *    dates on them; grouping by month files them all under "this month". Grouped by
+ *    the section of the site they landed in, the list says WHERE the product grew.
+ *  - A BLOG, and the mixed "All" view, stay a dated timeline: that is what they are.
+ *
  * Zero AI on this path: every number here is counted from rows P1/P2 wrote.
  */
-
-/** The four sources this tab reads, in stacking order, with their series colour. */
-const SOURCES = [
-  { key: "changelog", label: "Changelog", color: "var(--chart-1)" },
-  { key: "blog", label: "Blog", color: "var(--chart-2)" },
-  { key: "roadmap", label: "Roadmap", color: "var(--chart-3)" },
-  { key: "docs", label: "Docs", color: "var(--chart-4)" },
-] as const;
-
-/** What "Re-scan now" on this tab has to run: all four, not whichever came first. */
-const SOURCE_KEYS = SOURCES.map((s) => s.key);
-
-const SOURCE_COLOR: Record<string, string> = Object.fromEntries(
-  SOURCES.map((s) => [s.key, s.color]),
-);
 
 const TYPE_LABEL: Record<string, string> = {
   feature: "Feature",
@@ -118,27 +134,19 @@ const PERIODS = [
   { days: 0, label: "All" },
 ] as const;
 
-/** Rows per page. The timeline pages rather than shipping a publication history. */
-const PAGE = 20;
+/** Rows per fetch. The timeline pages rather than shipping a publication history. */
+const FEED_PAGE = 20;
+/** The board asks for more: six columns off twenty rows is not a roadmap. */
+const BOARD_PAGE = 50;
 
 /** How recent an editorial_pivot signal must be to still head the tab. */
 const PIVOT_SHOWN_DAYS = 90;
 
-const MONTH_LABEL = new Intl.DateTimeFormat("en-US", {
-  month: "long",
-  year: "numeric",
-  timeZone: "UTC",
-});
 const DAY_LABEL = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "2-digit",
   timeZone: "UTC",
 });
-
-/** `published_at ?? first_seen_at` — the date an item is placed on, as the API does. */
-function itemDate(item: ContentItemRow): Date {
-  return new Date(item.publishedAt ?? item.firstSeenAt);
-}
 
 export function ContentTab({
   competitorId,
@@ -158,32 +166,50 @@ export function ContentTab({
   const [source, setSource] = useState<string>("all");
   const [type, setType] = useState<string>("all");
   const [period, setPeriod] = useState<number>(90);
-  const [pages, setPages] = useState(1);
+
+  const pageSize = source === "roadmap" ? BOARD_PAGE : FEED_PAGE;
 
   const summaryQuery = useQuery({
     queryKey: ["competitor", competitorId, "contentSummary"],
     queryFn: () => api.getCompetitorContentSummary(competitorId),
     placeholderData: keepPreviousData,
   });
-  const timelineQuery = useQuery({
-    queryKey: ["competitor", competitorId, "content", source, type, period, pages],
-    queryFn: () =>
+  // Paged by OFFSET, one page appended to the last. It used to re-ask for a bigger
+  // and bigger single page, which the endpoint caps at 50 — so the third press of
+  // "Show more" asked for 60, was rejected as an invalid query, and dropped the
+  // whole tab into its error state.
+  const timelineQuery = useInfiniteQuery({
+    queryKey: ["competitor", competitorId, "content", source, type, period],
+    queryFn: ({ pageParam }) =>
       api.getCompetitorContent(competitorId, {
         source,
         type,
         period,
-        limit: PAGE * pages,
-        offset: 0,
+        limit: pageSize,
+        offset: pageParam,
       }),
+    initialPageParam: 0,
+    getNextPageParam: (last: ContentTimeline, all: ContentTimeline[]) =>
+      last.hasMore ? all.reduce((n, page) => n + page.items.length, 0) : undefined,
     placeholderData: keepPreviousData,
   });
 
   const summary = summaryQuery.data ?? null;
-  const timeline = timelineQuery.data ?? null;
+  // Counts and totals come off the FIRST page: they describe the period, not the
+  // slice of it that has been fetched.
+  const timeline = timelineQuery.data?.pages[0] ?? null;
+  const items = timelineQuery.data?.pages.flatMap((page) => page.items) ?? [];
 
-  const reset = (apply: () => void) => {
-    apply();
-    setPages(1);
+  // The reading follows the ROWS, not the pill that was just pressed. A source
+  // switch keeps the previous rows on screen while it loads, and reading those in
+  // the new source's layout puts a board full of blog posts under a Planned column.
+  const view = items.every((i) => i.sourceType === source) ? viewFor(source) : "feed";
+
+  // A kind belongs to a source ("breaking" is a changelog word), so moving the
+  // source pill leaves a kind that can only ever match nothing.
+  const pickSource = (next: string) => {
+    setSource(next);
+    setType("all");
   };
 
   if (summaryQuery.isError || timelineQuery.isError)
@@ -308,10 +334,10 @@ export function ContentTab({
         <ToggleGroup
           type="single"
           value={source}
-          onValueChange={(v) => v && reset(() => setSource(v))}
+          onValueChange={(v) => v && pickSource(v)}
           variant="outline"
           size="sm"
-          aria-label="Source"
+          aria-label="Where it was published"
         >
           <ToggleGroupItem value="all" className="gap-1.5 text-xs">
             All <span className="tabular-nums opacity-70">{sumCounts(timeline.sourceCounts)}</span>
@@ -329,24 +355,17 @@ export function ContentTab({
           ))}
         </ToggleGroup>
 
-        <Select value={type} onValueChange={(v) => reset(() => setType(v))}>
-          <SelectTrigger size="sm" className="w-[11.5rem] text-xs" aria-label="Type">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All types</SelectItem>
-            {summary.typeMix.map((t) => (
-              <SelectItem key={t.itemType ?? "unread"} value={t.itemType ?? "unread"}>
-                {t.itemType ? (TYPE_LABEL[t.itemType] ?? t.itemType) : "Not read yet"} ({t.count})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <KindFilter
+          counts={timeline.typeCounts}
+          source={source}
+          value={type}
+          onChange={setType}
+        />
 
         <ToggleGroup
           type="single"
           value={String(period)}
-          onValueChange={(v) => v && reset(() => setPeriod(Number(v)))}
+          onValueChange={(v) => v && setPeriod(Number(v))}
           variant="outline"
           size="sm"
           aria-label="Period"
@@ -374,13 +393,34 @@ export function ContentTab({
         onEnable={onEnable}
       />
 
-      <Timeline items={timeline.items} />
+      {items.length === 0 ? (
+        <NoMatch />
+      ) : view === "board" ? (
+        <RoadmapBoard items={items} />
+      ) : view === "releases" ? (
+        <ReleaseNotes items={items} />
+      ) : view === "pages" ? (
+        <DocsAreas items={items} />
+      ) : (
+        <Timeline items={items} showSource={source === "all"} />
+      )}
 
-      {timeline.hasMore && (
+      {timelineQuery.hasNextPage && (
         <div className="flex justify-center px-5 py-3.5">
-          <Button variant="outline" size="sm" onClick={() => setPages((n) => n + 1)}>
-            Show {Math.min(PAGE, timeline.total - timeline.items.length)} more ·{" "}
-            <span className="tabular-nums">{timeline.total - timeline.items.length}</span> left
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={timelineQuery.isFetchingNextPage}
+            onClick={() => void timelineQuery.fetchNextPage()}
+          >
+            {timelineQuery.isFetchingNextPage ? (
+              "Loading…"
+            ) : (
+              <>
+                Show {Math.min(pageSize, timeline.total - items.length)} more ·{" "}
+                <span className="tabular-nums">{timeline.total - items.length}</span> left
+              </>
+            )}
           </Button>
         </div>
       )}
@@ -720,61 +760,267 @@ function quietState(monitor: Monitor | undefined, scrapingIds: Set<string>): str
   return "watched, nothing filed yet";
 }
 
-/**
- * The items themselves, grouped by the month they were published in.
- *
- * An item its source never dated gets its own trailing group instead of the month
- * of OUR scrape. A blog listing that prints no dates, or a roadmap portal that
- * states a status and not a publication date, would otherwise have every entry
- * filed under this month — the tab claiming a publication date the publisher never
- * gave. The API sorts those rows last, so the group is one run at the end.
- */
-function Timeline({ items }: { items: ContentItemRow[] }) {
-  const groups = useMemo(() => {
-    const out: Array<{ key: string; label: string; undated: boolean; items: ContentItemRow[] }> = [];
-    for (const item of items) {
-      const at = itemDate(item);
-      const undated = item.publishedAt === null;
-      const key = undated ? "undated" : `${at.getUTCFullYear()}-${at.getUTCMonth()}`;
-      const last = out[out.length - 1];
-      if (last?.key === key) last.items.push(item);
-      else
-        out.push({
-          key,
-          label: undated ? "Undated" : MONTH_LABEL.format(at),
-          undated,
-          items: [item],
-        });
-    }
-    return out;
-  }, [items]);
+/** Same words whichever reading is on screen, since it is the filters that are empty. */
+function NoMatch() {
+  return (
+    <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
+      <p className="text-content font-semibold">Nothing matches those filters</p>
+      <p className="text-sm text-muted-foreground">Widen the period, or clear the kind.</p>
+    </div>
+  );
+}
 
-  if (items.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
-        <p className="text-content font-semibold">Nothing matches those filters</p>
-        <p className="text-sm text-muted-foreground">Widen the period, or clear the type.</p>
+/**
+ * The kind filter — what an item IS, next to the pills that say where it came from.
+ *
+ * Three things make it read as its own question rather than a second copy of the
+ * source pills: the trigger carries the word "Kind" at all times, the options are
+ * the selected source's own vocabulary, and on "All" they are grouped under the
+ * source each one belongs to. When the source has a single kind there is nothing to
+ * choose, so the control is not rendered at all.
+ */
+function KindFilter({
+  counts,
+  source,
+  value,
+  onChange,
+}: {
+  counts: ContentTimeline["typeCounts"];
+  source: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const groups = useMemo(
+    () =>
+      kindGroups(counts, source).map((group) => ({
+        key: group.source,
+        label: SOURCES.find((s) => s.key === group.source)?.label ?? group.source,
+        kinds: group.kinds.map((kind) => ({
+          // `unread` is the API's word for "no type yet" — a state, not a kind.
+          value: kind.itemType ?? "unread",
+          label: kind.itemType ? (TYPE_LABEL[kind.itemType] ?? kind.itemType) : "Not read yet",
+          count: kind.count,
+        })),
+      })),
+    [counts, source],
+  );
+
+  const total = groups.reduce((n, g) => n + g.kinds.length, 0);
+  // Nothing to choose between — but never while a kind is applied, which would
+  // hide the only control that can clear it.
+  if (total < 2 && value === "all") return null;
+
+  // Written out rather than mirrored from the selected option: the option carries
+  // its count, and a trigger reading "Kind Feature 12" is three numbers of chrome.
+  const selected =
+    groups.flatMap((g) => g.kinds).find((k) => k.value === value)?.label ?? "Any";
+
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger size="sm" className="w-[13rem] text-xs" aria-label="Kind of item">
+        <span className="flex min-w-0 items-baseline gap-1.5 truncate">
+          <span className="text-muted-foreground">Kind</span>
+          <SelectValue>{selected}</SelectValue>
+        </span>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">Any</SelectItem>
+        {groups.map((group) => (
+          <SelectGroup key={group.key}>
+            {/* Named even on a single source: it is the word that says these are the
+                blog's kinds, not another list of sources. */}
+            <SelectLabel>{group.label}</SelectLabel>
+            {group.kinds.map((kind) => (
+              <SelectItem key={`${group.key}:${kind.value}`} value={kind.value}>
+                {kind.label}{" "}
+                <span className="tabular-nums text-muted-foreground">{kind.count}</span>
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** The band that opens a group, in every reading: a name, a count, a caveat. */
+function GroupHead({
+  title,
+  count,
+  unit,
+  note,
+}: {
+  title: string;
+  count: number;
+  /** Singular, plural — "page"/"pages" is not "item"/"items" in a docs section. */
+  unit: [string, string];
+  note?: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 border-t border-border bg-surface-2/55 px-5 py-2.5 first:border-t-0">
+      <h4 className="text-xs font-semibold capitalize tracking-tight">{title}</h4>
+      <span className="text-xs tabular-nums text-muted-foreground">
+        {count} {count === 1 ? unit[0] : unit[1]}
+      </span>
+      {note && <span className="text-xs text-muted-foreground">· {note}</span>}
+    </div>
+  );
+}
+
+/** The title, linked out when the source gave us a URL. */
+function ItemLink({ item }: { item: ContentItemRow }) {
+  if (!item.url) return <span className="text-sm font-medium">{item.title}</span>;
+  return (
+    <a
+      href={item.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-baseline gap-1 rounded-sm text-sm font-medium text-foreground underline-offset-2 outline-none hover:text-link hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+    >
+      {item.title}
+      <ArrowSquareOutIcon size={14} className="shrink-0 self-center text-muted-foreground" aria-hidden />
+    </a>
+  );
+}
+
+/** The kind, or the honest blank when nobody has read the item yet. */
+function KindBadge({ item }: { item: ContentItemRow }) {
+  const label = item.itemType ? (TYPE_LABEL[item.itemType] ?? item.itemType) : null;
+  const loud = item.itemType ? LOUD_VARIANT[item.itemType] : undefined;
+  if (!item.enriched || !label)
+    return <em className="text-meta not-italic text-muted-foreground">not read yet</em>;
+  return (
+    <Badge variant={loud ?? "secondary"} className={loud ? undefined : "text-meta capitalize"}>
+      {label}
+    </Badge>
+  );
+}
+
+/**
+ * A competitor's roadmap as the board it is published as.
+ *
+ * Columns run in COMMITMENT order and are headed by our word for the state and, when
+ * the portal spells it differently, by the portal's own: "Up next" is what their
+ * customers read, and translating it silently would put words in their mouth. The
+ * grouping and the ranking are in {@link boardColumns}.
+ */
+function RoadmapBoard({ items }: { items: ContentItemRow[] }) {
+  const columns = useMemo(() => boardColumns(items), [items]);
+
+  const anyVotes = items.some((i) => i.votes !== null);
+  const anyUndated = items.some((i) => i.publishedAt === null);
+
+  return (
+    <div className="flex flex-col">
+      {/* Focusable so the board can be reached and scrolled from the keyboard. */}
+      <div
+        role="region"
+        aria-label="Roadmap board"
+        tabIndex={0}
+        className="overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
+      >
+        <div className="flex min-w-max items-stretch divide-x divide-border">
+          {columns.map((column) => (
+            <section key={column.status} className="flex w-64 shrink-0 flex-col">
+              <header className="flex flex-col gap-0.5 bg-surface-2/55 px-4 py-2.5">
+                <div className="flex items-baseline gap-2">
+                  <h4 className="text-xs font-semibold tracking-tight">{column.label}</h4>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {column.items.length}
+                  </span>
+                </div>
+                {column.theirWords.length > 0 && (
+                  <p
+                    className="truncate text-meta capitalize text-muted-foreground"
+                    title={column.theirWords.join(", ")}
+                  >
+                    {column.theirWords.join(" · ")}
+                  </p>
+                )}
+              </header>
+              <ul className="flex flex-1 flex-col divide-y divide-border">
+                {column.items.map((item) => (
+                  <RoadmapCard key={item.id} item={item} />
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
       </div>
-    );
-  }
+
+      <p className="max-w-[74ch] px-5 py-3 text-xs text-muted-foreground">
+        Every portal names its columns differently, so entries are grouped on a common
+        set of states and each column also carries the words this one uses.
+        {anyVotes && " Cards rank on the vote count the portal publishes."}
+        {anyUndated && " A portal states a status, not a date, so dates are when we first saw the entry."}
+      </p>
+    </div>
+  );
+}
+
+function RoadmapCard({ item }: { item: ContentItemRow }) {
+  const at = itemDate(item);
+  return (
+    <li className="flex flex-col gap-1.5 px-4 py-3 transition-colors hover:bg-surface-3/55">
+      <ItemLink item={item} />
+      {item.summary && (
+        <p className="line-clamp-3 text-dense text-muted-foreground">{item.summary}</p>
+      )}
+      <div className="flex flex-wrap items-baseline gap-x-3 text-xs text-muted-foreground">
+        {item.votes !== null && (
+          <span className="inline-flex items-baseline gap-1">
+            <ArrowUpIcon size={14} className="self-center" aria-hidden />
+            <span className="font-semibold tabular-nums text-foreground">{item.votes}</span>
+            {item.votes === 1 ? "vote" : "votes"}
+          </span>
+        )}
+        <span className="tabular-nums">{DAY_LABEL.format(at)}</span>
+      </div>
+    </li>
+  );
+}
+
+/**
+ * A changelog read the way release notes are read: down the KIND column.
+ *
+ * Whether a release breaks something, deprecates something or fixes something is the
+ * question, and in the mixed timeline that fact sat at the end of the title line
+ * where it could not be scanned. Here it holds the left gutter, so a month of
+ * releases answers "did they break anything" without reading a single title.
+ */
+function ReleaseNotes({ items }: { items: ContentItemRow[] }) {
+  const groups = useMemo(() => groupByMonth(items), [items]);
 
   return (
     <div>
       {groups.map((group) => (
         <div key={group.key}>
-          <div className="flex items-baseline gap-2 border-t border-border bg-surface-2/55 px-5 py-2.5 first:border-t-0">
-            <h4 className="text-xs font-semibold tracking-tight">{group.label}</h4>
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {group.items.length} {group.items.length === 1 ? "item" : "items"}
-            </span>
-            {group.undated && (
-              <span className="text-xs text-muted-foreground">
-                · dates below are when we first saw them
-              </span>
-            )}
-          </div>
+          <GroupHead
+            title={group.label}
+            count={group.items.length}
+            unit={["entry", "entries"]}
+            note={group.undated ? "dates below are when we first saw them" : undefined}
+          />
           {group.items.map((item) => (
-            <TimelineRow key={item.id} item={item} />
+            <div
+              key={item.id}
+              className="flex gap-3.5 border-t border-border px-5 py-3 transition-colors hover:bg-surface-3/55"
+            >
+              <span className="w-[6.5rem] shrink-0 pt-0.5">
+                <KindBadge item={item} />
+              </span>
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <div className="flex flex-wrap items-baseline gap-x-3">
+                  <ItemLink item={item} />
+                  <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {DAY_LABEL.format(itemDate(item))}
+                  </span>
+                </div>
+                {item.summary && (
+                  <p className="max-w-[68ch] text-dense text-muted-foreground">{item.summary}</p>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       ))}
@@ -782,10 +1028,104 @@ function Timeline({ items }: { items: ContentItemRow[] }) {
   );
 }
 
-function TimelineRow({ item }: { item: ContentItemRow }) {
+/** Their docs, by the area of the product each new page or endpoint documents. */
+function DocsAreas({ items }: { items: ContentItemRow[] }) {
+  const areas = useMemo(() => docsSections(items), [items]);
+
+  const anyUndated = items.some((i) => i.publishedAt === null);
+
+  return (
+    <div>
+      {areas.map((section) => (
+        <div key={section.area}>
+          <GroupHead
+            title={section.area}
+            count={section.rows.length}
+            unit={section.endpointsOnly ? ["endpoint", "endpoints"] : ["page", "pages"]}
+          />
+          {section.rows.map((item) => (
+            <DocsRow key={item.id} item={item} />
+          ))}
+        </div>
+      ))}
+      {anyUndated && (
+        <p className="max-w-[74ch] px-5 py-3 text-xs text-muted-foreground">
+          A docs index carries no publication dates, so the date is the capture this
+          page first appeared in — the first capture of a docs surface publishes
+          nothing, precisely so an existing site is not reported as written today.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function DocsRow({ item }: { item: ContentItemRow }) {
+  const endpoint = item.itemType === "doc_endpoint";
+  const [method, ...rest] = item.title.split(" ");
+  const path = pathnameOf(item.url);
+
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-border px-5 py-2.5 transition-colors hover:bg-surface-3/55">
+      {endpoint ? (
+        <>
+          <span className="shrink-0 rounded-sm bg-surface-2 px-1.5 py-0.5 font-mono text-meta uppercase text-muted-foreground">
+            {method}
+          </span>
+          {item.url ? (
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="min-w-0 truncate rounded-sm font-mono text-dense text-foreground underline-offset-2 outline-none hover:text-link hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              {rest.join(" ")}
+            </a>
+          ) : (
+            <span className="min-w-0 truncate font-mono text-dense">{rest.join(" ")}</span>
+          )}
+        </>
+      ) : (
+        <>
+          <ItemLink item={item} />
+          {path && (
+            <span className="min-w-0 truncate font-mono text-meta text-muted-foreground">
+              {path}
+            </span>
+          )}
+        </>
+      )}
+      <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
+        {DAY_LABEL.format(itemDate(item))}
+      </span>
+    </div>
+  );
+}
+
+/** Blog and the mixed view: what they published, when. */
+function Timeline({ items, showSource }: { items: ContentItemRow[]; showSource: boolean }) {
+  const groups = useMemo(() => groupByMonth(items), [items]);
+
+  return (
+    <div>
+      {groups.map((group) => (
+        <div key={group.key}>
+          <GroupHead
+            title={group.label}
+            count={group.items.length}
+            unit={["item", "items"]}
+            note={group.undated ? "dates below are when we first saw them" : undefined}
+          />
+          {group.items.map((item) => (
+            <TimelineRow key={item.id} item={item} showSource={showSource} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TimelineRow({ item, showSource }: { item: ContentItemRow; showSource: boolean }) {
   const at = itemDate(item);
-  const typeLabel = item.itemType ? (TYPE_LABEL[item.itemType] ?? item.itemType) : null;
-  const loud = item.itemType ? LOUD_VARIANT[item.itemType] : undefined;
 
   return (
     <div className="grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-3.5 gap-y-1 border-t border-border px-5 py-3 transition-colors hover:bg-surface-3/55 sm:grid-cols-[3.25rem_minmax(0,1fr)]">
@@ -809,21 +1149,11 @@ function TimelineRow({ item }: { item: ContentItemRow }) {
       </span>
 
       <span className="flex min-w-0 flex-wrap items-baseline gap-2">
-        {item.url ? (
-          <a
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-baseline gap-1 rounded-sm text-sm font-medium text-foreground underline-offset-2 outline-none hover:text-link hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            {item.title}
-            <ArrowSquareOutIcon size={14} className="shrink-0 self-center text-muted-foreground" aria-hidden />
-          </a>
-        ) : (
-          <span className="text-sm font-medium">{item.title}</span>
-        )}
+        <ItemLink item={item} />
 
-        <span className="text-meta text-muted-foreground">{item.sourceType}</span>
+        {/* Named only in the mixed view. On a single source the pill above already
+            says it, and repeating it on every row is a column of one word. */}
+        {showSource && <span className="text-meta text-muted-foreground">{item.sourceType}</span>}
 
         {/* Roadmap entries carry a status, not a type: "planned → shipped" IS the
             reason to watch a portal, so it takes the badge slot. */}
@@ -838,15 +1168,8 @@ function TimelineRow({ item }: { item: ContentItemRow }) {
           >
             {item.status}
           </Badge>
-        ) : item.enriched && typeLabel ? (
-          <Badge
-            variant={loud ?? "secondary"}
-            className={loud ? undefined : "text-meta capitalize"}
-          >
-            {typeLabel}
-          </Badge>
         ) : (
-          <em className="text-meta not-italic text-muted-foreground">not read yet</em>
+          <KindBadge item={item} />
         )}
       </span>
 

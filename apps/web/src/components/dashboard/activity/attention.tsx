@@ -117,7 +117,7 @@ export function Attention({
           opens smoothly without pinning a pixel height a wrapped row would break. */}
       <div
         className={cn(
-          "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+          "grid transition-[grid-template-rows] duration-[var(--duration-standard)] ease-out motion-reduce:transition-none",
           open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
         )}
       >

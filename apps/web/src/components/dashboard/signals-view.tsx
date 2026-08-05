@@ -28,7 +28,7 @@ import { toCsv, downloadCsv } from "@/lib/csv";
 import { Button } from "@/components/ui/button";
 import { useSetAskContext, type AskEntity } from "./ask-context";
 import { cn } from "@/lib/utils";
-import { feedItemMotion } from "@/lib/motion";
+import { disclosureMotion, feedItemMotion } from "@/lib/motion";
 import {
   SignalsListHeader,
   QUICK_VIEWS,
@@ -1281,6 +1281,12 @@ export function SignalsView() {
                           key={row.key}
                           role="presentation"
                           {...feedItemMotion}
+                          // The fold grows in place, so this wrapper keeps only its
+                          // POSITION animated: a full `layout` projects the collapsed
+                          // box over the expanded one and scales the whole band and
+                          // its text while it opens, which reads as the row bouncing
+                          // rather than as members appearing under it.
+                          layout="position"
                         >
                           <FoldRow
                             signals={row.signals}
@@ -1289,12 +1295,21 @@ export function SignalsView() {
                             onToggle={() => toggleFold(row.key)}
                           />
                           {/* Expansion is INLINE: the members become ordinary rows,
-                              each opening on its own in the detail pane. */}
-                          {expandedFolds.has(row.key) && (
-                            <div className="ml-4 mt-0.5 flex flex-col gap-0.5 border-l border-border pl-1.5">
-                              {row.signals.map(renderRow)}
-                            </div>
-                          )}
+                              each opening on its own in the detail pane. They used to
+                              appear in one frame, shoving every row below them down
+                              with nothing to say what pushed. The band opens on the
+                              shared disclosure fold now. `initial={false}` so the
+                              members ride the height instead of each sliding in on
+                              top of it. */}
+                          <AnimatePresence initial={false}>
+                            {expandedFolds.has(row.key) && (
+                              <motion.div key="members" {...disclosureMotion}>
+                                <div className="ml-4 mt-0.5 flex flex-col gap-0.5 border-l border-border pl-1.5">
+                                  {row.signals.map(renderRow)}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </motion.div>
                       ),
                     )}

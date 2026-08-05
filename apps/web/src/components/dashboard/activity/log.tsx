@@ -195,7 +195,7 @@ function DaySection({
         id={bodyId}
         className={cn(
           "grid",
-          armed && "transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+          armed && "transition-[grid-template-rows] duration-[var(--duration-standard)] ease-out motion-reduce:transition-none",
           open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
         )}
       >

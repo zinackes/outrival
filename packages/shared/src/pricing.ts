@@ -298,6 +298,120 @@ export function priceMedian(values: number[]): number | null {
   return (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
+// ---------------------------------------------------------------------------
+// Ladder comparability (competitor Pricing tab).
+//
+// Ranking two pricing tables against each other only means something when both
+// are ladders of the SAME kind of offer, read on the SAME billing axis. These
+// two helpers are the gate, kept pure and here so the tab and any later reader
+// (battle cards, digests) never re-derive it differently.
+// ---------------------------------------------------------------------------
+
+/**
+ * The billing axes a ladder can be price-ranked on, in the order a buyer reads
+ * them. `usage` is absent on purpose: a per-unit rate is not a rung.
+ */
+export type LadderAxis = "monthly" | "yearly" | "one_time";
+
+const LADDER_AXES: readonly LadderAxis[] = ["monthly", "yearly", "one_time"];
+
+/**
+ * The axes both tables can actually be ranked on, in preference order.
+ *
+ * Takes the billing periods of each side's PRICED rows (a quote-based row has no
+ * number, so it belongs to no axis and is ranked last on whichever axis wins).
+ * An empty result means the two tables share no axis at all — a monthly SaaS
+ * ladder against a one-off service menu — and no per-rung % is defensible.
+ *
+ * Mixing axes is what made a $1,000 one-time audit sort BELOW a $2,292/mo
+ * retainer and get labelled the competitor's "Entry" tier.
+ */
+export function sharedLadderAxes(
+  oursPricedPeriods: readonly string[],
+  theirsPricedPeriods: readonly string[],
+): LadderAxis[] {
+  const ours = new Set(oursPricedPeriods);
+  const theirs = new Set(theirsPricedPeriods);
+  return LADDER_AXES.filter((axis) => ours.has(axis) && theirs.has(axis));
+}
+
+// Words a plan name carries when it names a RUNG rather than a product. Broad on
+// purpose: one hit anywhere in the table is enough to accept it as a ladder, so a
+// miss costs a suppressed comparison while a false hit costs a misleading one.
+const TIER_WORD =
+  /\b(free|freemium|trial|starter|start|basic|lite|essentials?|standard|plus|pro|professional|premium|growth|grow|scale|business|teams?|advanced|ultimate|enterprise|custom|individual|personal|solo|agency|unlimited|hobby|core|max|mvp|dedicated|community|developer|launch|company|organization|tier)\b/i;
+
+// A plan name that is really a column header the extractor mistook for a plan.
+const EXTRACTION_ARTIFACT = /^(from|up to|starting at|prices?|from price|monthly|yearly)$/i;
+
+/**
+ * Whether a pricing table lists individual ITEMS rather than tiers of one offer.
+ *
+ * Real cases this catches in production: 12 trading cards, 14 domain TLDs, a
+ * hardware catalogue, a menu of separately-sold APIs, and `From` / `Up to`
+ * captured as plan names. None of them has a "tier 2", so aligning them against
+ * a SaaS ladder by price rank produces pairs that are arithmetic, not meaning.
+ *
+ * Three signals, any one of which is decisive:
+ *  - a plan named like a table header (extraction artifact);
+ *  - three or more plans and not ONE of them names a rung;
+ *  - two or more distinct `Section · Plan` prefixes, which is our extractor
+ *    saying the page priced several separate products.
+ */
+export function looksLikeCatalog(planNames: readonly string[]): boolean {
+  const names = planNames.map((n) => n.trim()).filter(Boolean);
+  if (names.length < 2) return false;
+  if (names.some((n) => EXTRACTION_ARTIFACT.test(n))) return true;
+  if (names.length >= 3 && !names.some((n) => TIER_WORD.test(n))) return true;
+  const prefixes = new Set<string>();
+  for (const n of names) {
+    const i = n.indexOf(" · ");
+    if (i > 0) prefixes.add(n.slice(0, i).toLowerCase());
+  }
+  return prefixes.size >= 2;
+}
+
+/**
+ * How two ladders' price ranges sit against each other, or null when either side
+ * publishes no comparable number.
+ *
+ * `ratio` is how far apart the ranges are: their entry over our top when theirs
+ * is above, our entry over their top when theirs is below. It is what the reader
+ * actually needs ("their cheapest plan costs 15x your dearest"), and it stays
+ * meaningful at any distance, unlike a per-rung % between two ladders that never
+ * touch.
+ */
+export type SpanRelation =
+  | { kind: "overlap" }
+  | { kind: "above"; ratio: number }
+  | { kind: "below"; ratio: number };
+
+/**
+ * Compare two ladders' price spans. Callers pass the PAID rung prices of each
+ * side, already on one axis and one currency.
+ *
+ * Free rungs ($0) must be excluded by the caller: a free tier drags a span down
+ * to zero and makes every pair overlap, which is the opposite of what the test
+ * is for. Quote-based rungs carry no number and cannot enter a span either.
+ *
+ * Disjoint spans are the case the rank pairing could never express: when their
+ * cheapest plan costs more than your dearest, rung 1 against rung 1 is two
+ * unrelated offers and the % between them is arithmetic about nothing.
+ */
+export function compareLadderSpans(
+  ourPaidPrices: readonly number[],
+  theirPaidPrices: readonly number[],
+): SpanRelation | null {
+  if (ourPaidPrices.length === 0 || theirPaidPrices.length === 0) return null;
+  const ourMin = Math.min(...ourPaidPrices);
+  const ourMax = Math.max(...ourPaidPrices);
+  const theirMin = Math.min(...theirPaidPrices);
+  const theirMax = Math.max(...theirPaidPrices);
+  if (theirMin > ourMax) return { kind: "above", ratio: theirMin / ourMax };
+  if (ourMin > theirMax) return { kind: "below", ratio: ourMin / theirMax };
+  return { kind: "overlap" };
+}
+
 export type PricingRepositioningType =
   | "pricing_gated" // pulled public prices behind a gate
   | "pricing_public" // exposed previously gated prices

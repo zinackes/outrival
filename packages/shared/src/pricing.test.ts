@@ -4,6 +4,9 @@ import {
   normalizePlanKey,
   priceMedian,
   resolveCurrentPricing,
+  sharedLadderAxes,
+  looksLikeCatalog,
+  compareLadderSpans,
   type PricingTier,
   type CompetitorOverrides,
 } from "./pricing";
@@ -144,4 +147,70 @@ test("median takes the middle of an odd sample and the mean of the two middles",
 test("median of one price is that price, of none is null", () => {
   expect(priceMedian([99])).toBe(99);
   expect(priceMedian([])).toBeNull();
+});
+
+test("a shared axis needs a PRICED row on both sides", () => {
+  // seorce (monthly SaaS) vs visiblie (one-off audit + monthly retainers).
+  expect(sharedLadderAxes(["monthly", "monthly"], ["one_time", "monthly"])).toEqual(["monthly"]);
+  // A one-off service menu on both sides is a real shared axis, not a mismatch.
+  expect(sharedLadderAxes(["one_time"], ["one_time", "one_time"])).toEqual(["one_time"]);
+  // Monthly against a pure one-off menu shares nothing.
+  expect(sharedLadderAxes(["monthly"], ["one_time"])).toEqual([]);
+  // Preference order holds when several axes qualify.
+  expect(sharedLadderAxes(["yearly", "monthly"], ["monthly", "yearly"])).toEqual([
+    "monthly",
+    "yearly",
+  ]);
+});
+
+test("usage rates never open an axis", () => {
+  expect(sharedLadderAxes(["usage"], ["usage"])).toEqual([]);
+});
+
+test("a catalogue of items is not a tier ladder", () => {
+  // 12 trading cards (CardNexus), 14 domain TLDs (netcup) — no rung anywhere.
+  expect(looksLikeCatalog(["Mind Rune", "Defiler Spire", "Falling Star"])).toBe(true);
+  // `From` / `Up to` are column headers the extractor mistook for plans.
+  expect(looksLikeCatalog(["From", "Up to"])).toBe(true);
+  // Two separately-priced products on one page (Galaxy: Mongodb, Redis).
+  expect(looksLikeCatalog(["Mongodb · Free", "Redis · Basic"])).toBe(true);
+});
+
+test("a real ladder survives, even a sparsely named one", () => {
+  expect(looksLikeCatalog(["Free", "Pro", "Enterprise"])).toBe(false);
+  // One rung word anywhere is enough: Back4app's MVP / Pay as You Go / Dedicated.
+  expect(looksLikeCatalog(["Free", "MVP", "Pay as You Go", "Dedicated", "Enterprise"])).toBe(false);
+  // Two unlabelled plans stay a ladder: too small a sample to call it a catalogue.
+  expect(looksLikeCatalog(["On Cloud", "On Premises"])).toBe(false);
+  expect(looksLikeCatalog([])).toBe(false);
+});
+
+test("ladders that never touch report the distance, not an overlap", () => {
+  // holofolio $1.99-$19.90 against Pulltrader $300-$3000.
+  expect(compareLadderSpans([1.99, 19.9], [300, 3000])).toEqual({
+    kind: "above",
+    ratio: 300 / 19.9,
+  });
+  // Reversed: our whole ladder above theirs.
+  expect(compareLadderSpans([300, 3000], [1.99, 19.9])).toEqual({
+    kind: "below",
+    ratio: 300 / 19.9,
+  });
+});
+
+test("adjacent ranges still count as disjoint", () => {
+  // capydex $19.90 top against Prodmap.ai $20 entry: a 1.005x gap, but no rung
+  // of ours sits inside theirs, so rank pairing has nothing to pair.
+  const rel = compareLadderSpans([1.99, 19.9], [20, 500]);
+  expect(rel?.kind).toBe("above");
+});
+
+test("touching ranges overlap", () => {
+  expect(compareLadderSpans([29, 99], [29, 99])).toEqual({ kind: "overlap" });
+  expect(compareLadderSpans([10, 880], [29, 59])).toEqual({ kind: "overlap" });
+});
+
+test("a span needs a paid rung on both sides", () => {
+  expect(compareLadderSpans([], [29])).toBeNull();
+  expect(compareLadderSpans([29], [])).toBeNull();
 });

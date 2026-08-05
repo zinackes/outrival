@@ -6,7 +6,14 @@ import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { ArrowUpIcon, ArrowDownIcon, CaretRightIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
-import { PRICING_STATUS_LABELS } from "@outrival/shared";
+import {
+  PRICING_STATUS_LABELS,
+  sharedLadderAxes,
+  looksLikeCatalog,
+  compareLadderSpans,
+  type LadderAxis,
+  type SpanRelation,
+} from "@outrival/shared";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
 import {
   api,
@@ -471,17 +478,24 @@ function isChartable(p: { billing_period: string }, period: PeriodChoice): boole
   return true;
 }
 
-// One offer billed monthly and the same offer billed yearly are the SAME plan,
-// not two tiers — but the toggle-capture scrape stores them as two rows, so
-// without this they'd rank as two separate tiers (Starter at Entry, its yearly
-// variant several rows up). Collapse tiers sharing a plan name to one row and
-// pick the variant for the active period. Period-neutral tiers (custom/one_time)
-// and plans that only exist in the other period are kept so nothing disappears
-// when the toggle flips.
-function collapseByPlan<
-  T extends { plan_name: string; price: number | null; billing_period: string },
->(tiers: T[], period: PeriodChoice): T[] {
-  const other = period === "monthly" ? "yearly" : "monthly";
+type LadderTier = { plan_name: string; price: number | null; billing_period: string };
+
+/**
+ * The rungs of one side's ladder on a given billing axis, one row per plan.
+ *
+ * One offer billed monthly and the same offer billed yearly are the SAME plan,
+ * not two tiers — the toggle-capture scrape stores them as two rows, so without
+ * the collapse they'd rank as two rungs (Starter at Entry, its yearly variant
+ * several rows up). A plan keeps its row on the active axis; a quote-based plan
+ * (no public number, whatever its period) keeps its row too and sorts last,
+ * because "Enterprise: talk to us" is a real top rung.
+ *
+ * A plan priced only OFF the axis leaves the ladder entirely. That is the fix
+ * for the rank corruption: a $1,000 one-time audit used to sort below a
+ * $2,292/mo retainer and get labelled the competitor's "Entry" tier. It is not a
+ * rung of a monthly ladder, so it is annexed (see `offAxisPlans`) instead.
+ */
+function ladderFor<T extends LadderTier>(tiers: T[], axis: LadderAxis): T[] {
   const groups = new Map<string, T[]>();
   for (const t of tiers) {
     const key = t.plan_name.trim().toLowerCase();
@@ -489,13 +503,30 @@ function collapseByPlan<
     if (group) group.push(t);
     else groups.set(key, [t]);
   }
-  return Array.from(groups.values(), (group) => {
-    const active = group.find((t) => t.billing_period === period);
-    if (active) return active;
-    const neutral = group.find(
-      (t) => t.billing_period !== "monthly" && t.billing_period !== "yearly",
-    );
-    return neutral ?? group.find((t) => t.billing_period === other) ?? group[0]!;
+  const rungs: T[] = [];
+  for (const group of groups.values()) {
+    const onAxis = group.find((t) => t.billing_period === axis && t.price != null);
+    if (onAxis) {
+      rungs.push(onAxis);
+      continue;
+    }
+    const quoted = group.find((t) => t.price == null);
+    if (quoted) rungs.push(quoted);
+  }
+  return rungs;
+}
+
+// The priced plans that never reached the ladder: everything the axis left out.
+// Keyed by plan name rather than by period, so a plan's yearly twin is not
+// announced as a separate offer just because the ladder read its monthly row.
+function offAxisPlans<T extends LadderTier>(tiers: T[], ladder: T[]): T[] {
+  const onLadder = new Set(ladder.map((t) => t.plan_name.trim().toLowerCase()));
+  const seen = new Set<string>();
+  return tiers.filter((t) => {
+    const key = t.plan_name.trim().toLowerCase();
+    if (t.price == null || onLadder.has(key) || seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
 }
 
@@ -578,6 +609,26 @@ function DeltaCell({ cmp, from, to }: { cmp: TierCmp | null; from?: string; to?:
   );
 }
 
+/**
+ * What to say when the two ladders never touch, in place of the rung-to-rung %.
+ *
+ * The distance IS the finding, so it leads: "their cheapest costs 15x your
+ * dearest" is the sentence a positioning decision is made on, and it survives a
+ * gap of any size. Under 1.5x the ranges are merely adjacent and a multiple
+ * would overstate it, so those read as "just above" / "just below" instead.
+ */
+function spanVerdict(competitorName: string, span: Exclude<SpanRelation, { kind: "overlap" }>): string {
+  const near = span.ratio < 1.5;
+  const times = `${span.ratio.toFixed(span.ratio < 10 ? 1 : 0)}x`;
+  return span.kind === "above"
+    ? near
+      ? `${competitorName}'s cheapest plan sits just above your top plan, so no tier lines up.`
+      : `${competitorName}'s cheapest plan costs ${times} your top plan, so no tier lines up.`
+    : near
+      ? `${competitorName}'s dearest plan sits just below your entry plan, so no tier lines up.`
+      : `Your entry plan costs ${times} ${competitorName}'s dearest plan, so no tier lines up.`;
+}
+
 // Pricing comparison (patch-29): our product's captured tiers vs the competitor's
 // latest tiers, aligned by ascending price rank. No AI. A % is shown when the
 // billing period matches and the currencies either match or can be converted via
@@ -599,13 +650,19 @@ function PricingComparison({
   // Called before the early return so the hook order stays stable (rules of hooks).
   const fx = useFx();
   const [period, setPeriod] = useState<PeriodChoice>("monthly");
-  // A toggle only makes sense when both periods exist somewhere; otherwise the
-  // collapse falls back to whatever period each plan has and we hide the switch.
-  const bothPeriods =
-    [...ours, ...theirs].some((t) => t.billing_period === "monthly") &&
-    [...ours, ...theirs].some((t) => t.billing_period === "yearly");
-  const oursSorted = collapseByPlan(ours, period).sort(byPriceAsc);
-  const theirsSorted = collapseByPlan(theirs, period).sort(byPriceAsc);
+
+  // The axes both tables can be ranked on. A monthly SaaS ladder and a one-off
+  // service menu share none, and then there is no rung-to-rung % to draw.
+  const axes = sharedLadderAxes(
+    ours.filter((t) => t.price != null).map((t) => t.billing_period),
+    theirs.filter((t) => t.price != null).map((t) => t.billing_period),
+  );
+  // The toggle only offers a period both sides actually publish; otherwise it
+  // flips the ladder to an axis one side cannot stand on.
+  const bothPeriods = axes.includes("monthly") && axes.includes("yearly");
+  const axis: LadderAxis = axes.includes(period) ? period : (axes[0] ?? "monthly");
+  const oursSorted = ladderFor(ours, axis).sort(byPriceAsc);
+  const theirsSorted = ladderFor(theirs, axis).sort(byPriceAsc);
 
   if (oursSorted.length === 0) {
     return (
@@ -642,6 +699,35 @@ function PricingComparison({
   const rates = fx?.rates ?? null;
   const ourCurrency = oursSorted[0]?.currency ?? theirsSorted[0]?.currency ?? "";
 
+  // The two spans, in OUR currency, over the paid rungs only. A free rung would
+  // drag a span to zero and make every pair overlap, which is the opposite of
+  // what the test is for; a rung we cannot convert is left out rather than
+  // compared at its face value in a foreign currency.
+  const paidSpan = (tiers: { price: number | null; currency: string }[]): number[] =>
+    tiers
+      .map((t) =>
+        t.price == null || t.price <= 0
+          ? null
+          : t.currency === ourCurrency
+            ? t.price
+            : convertCurrency(t.price, t.currency, ourCurrency, rates),
+      )
+      .filter((p): p is number => p != null);
+  const span = compareLadderSpans(paidSpan(oursSorted), paidSpan(theirsSorted));
+
+  // Why these two tables cannot be ranked against each other, or null when they
+  // can. Stated up front and once: a rung-to-rung % computed across a catalogue,
+  // across two billing axes, or across two ladders that never touch is precise
+  // and meaningless, and the old "lines up by price rank, not feature parity"
+  // footnote admitted the problem rather than declining to draw it.
+  const incomparable: string | null = looksLikeCatalog(theirs.map((t) => t.plan_name))
+    ? `${competitorName}'s pricing page lists individual items, not tiers of one offer, so there is no rung to match yours against.`
+    : axes.length === 0
+      ? `${competitorName} prices on a different basis than you do, so no tier lines up.`
+      : span && span.kind !== "overlap"
+        ? spanVerdict(competitorName, span)
+        : null;
+
   const rowCount = Math.max(oursSorted.length, theirsSorted.length);
   const rankLabel = (i: number) =>
     i === 0 ? "Entry" : i === rowCount - 1 ? "Top" : `Tier ${i + 1}`;
@@ -649,8 +735,17 @@ function PricingComparison({
   const rows = Array.from({ length: rowCount }, (_, i) => {
     const mine = oursSorted[i] ?? null;
     const theirs = theirsSorted[i] ?? null;
-    return { mine, theirs, cmp: mine && theirs ? compareTiers(mine, theirs, rates) : null };
+    return {
+      mine,
+      theirs,
+      cmp: incomparable || !mine || !theirs ? null : compareTiers(mine, theirs, rates),
+    };
   });
+
+  // Their priced offers that the axis left out: a one-off audit next to a monthly
+  // retainer, a lifetime deal next to a subscription. Real facts about their
+  // pricing, just not rungs — so they read as a line, like the metered rates do.
+  const theirOffAxis = offAxisPlans(theirs, theirsSorted);
   const anyConverted = rows.some(
     (r) => r.cmp !== null && r.cmp.pct !== null && r.cmp.converted,
   );
@@ -729,11 +824,17 @@ function PricingComparison({
                 <span className="text-sm text-muted-foreground">no equivalent</span>
               )}
             </div>
+            {/* No rank label when the two tables aren't rungs of the same kind of
+                ladder: calling their third item "Tier 3" is the claim being denied. */}
             <div className="flex flex-col items-center gap-1">
-              <span className="text-meta uppercase tracking-wide text-muted-foreground">
-                {rankLabel(i)}
-              </span>
-              <DeltaCell cmp={cmp} from={theirs?.currency} to={mine?.currency} />
+              {!incomparable && (
+                <>
+                  <span className="text-meta uppercase tracking-wide text-muted-foreground">
+                    {rankLabel(i)}
+                  </span>
+                  <DeltaCell cmp={cmp} from={theirs?.currency} to={mine?.currency} />
+                </>
+              )}
             </div>
             <div>
               {theirs ? (
@@ -749,7 +850,7 @@ function PricingComparison({
       {/* Said out loud, because leaving it implicit lets a reader conclude that
           their second-cheapest tier does what your second-cheapest tier does. */}
       <p className="text-xs text-muted-foreground">
-        Tiers line up by price rank, not by feature parity.
+        {incomparable ?? "Tiers line up by price rank, not by feature parity."}
       </p>
 
       {anyConverted && (
@@ -768,6 +869,19 @@ function PricingComparison({
             </li>
           ))}
         </ul>
+      )}
+
+      {theirOffAxis.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {competitorName} also sells, off the {axis === "one_time" ? "one-off" : axis} axis:{" "}
+          {theirOffAxis.map((t, i) => (
+            <span key={i}>
+              {i > 0 ? " · " : ""}
+              <span className="text-foreground">{formatTierPrice(t)}</span>
+              {t.plan_name ? ` (${t.plan_name})` : ""}
+            </span>
+          ))}
+        </p>
       )}
 
       {usageTiers.length > 0 && (

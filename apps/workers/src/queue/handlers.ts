@@ -48,6 +48,7 @@ import {
   heartbeat,
   scrapeMonitor,
   probePricingCalculator,
+  verifySignalDelta,
   detectPlatform,
   generateBattleCard,
   NonRetriable,
@@ -110,6 +111,7 @@ import { runHeartbeat } from "../core/heartbeat";
 import { runScrapeMonitor, onScrapeMonitorFailure } from "../core/scrape-monitor";
 import { runDetectPlatform } from "../core/detect-platform";
 import { runProbePricingCalculator } from "../core/probe-pricing-calculator";
+import { runVerifySignalDelta } from "../core/verify-signal-delta";
 import {
   runGenerateBattleCard,
   onGenerateBattleCardFailure,
@@ -261,6 +263,11 @@ export async function registerHandlers(role: WorkerRole): Promise<string[]> {
     // Pricing calculator probe (P4) — drives a competitor's public calculator in
     // Chromium, so it belongs on this worker with the other browser jobs.
     await on(probePricingCalculator, runProbePricingCalculator);
+
+    // Double-capture verification (Véracité P2). Re-captures a page through the same
+    // cascade the original went through, so a `rendered` original launches Chromium:
+    // this is a browser-worker job for the same reason scrape-monitor is.
+    await on(verifySignalDelta, runVerifySignalDelta);
 
     // On-demand battle card — launches Chromium to render the PDF. The summary-less
     // grounding path runs refresh-competitor-summary inline (Decision #1).

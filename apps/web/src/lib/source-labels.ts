@@ -57,6 +57,8 @@ const SOURCE_LABELS: Record<string, string> = {
   comparison_page: "Comparison page",
   // Internal anchor for calculator-measured cost moves (no page scraped).
   pricing_probe: "Calculator pricing",
+  // Internal anchor for a page caught serving a delta and its inverse (A/B test).
+  page_variance: "Page variance",
   // Internal anchor for release-cadence moves counted off content_items.
   shipping_velocity: "Shipping velocity",
   // Internal anchor for published case studies + first-seen customer names.
@@ -119,6 +121,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   wellknown: "App & AI footprint",
   comparison_page: "Comparison page",
   pricing_probe: "Calculator pricing",
+  page_variance: "Page variance",
   shipping_velocity: "Shipping velocity",
   customer_proof: "Customer proof",
   editorial_shift: "Editorial shift",

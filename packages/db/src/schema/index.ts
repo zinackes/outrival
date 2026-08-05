@@ -49,4 +49,5 @@ export * from "./signal-comments";
 export * from "./ask-history";
 export * from "./standing-queries";
 export * from "./ai-visibility";
+export * from "./signal-verifications";
 export * from "./analytics";

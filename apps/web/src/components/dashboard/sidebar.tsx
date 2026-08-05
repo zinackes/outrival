@@ -175,9 +175,14 @@ export function WorkspaceSwitcher({
     }
   }
 
+  // Mono-product orgs still have one product, and its name is the identity worth
+  // reading — the plan is a property of the workspace, not a name. Absent (legacy
+  // orgs with no product row, cold cache) the header falls back to "Workspace".
+  const soleProduct = selectable[0] ?? null;
+
   // The workspace has no name of its own (it used to render a fabricated
-  // "<first name> workspace"), so its identity line is what the workspace IS:
-  // the plan it runs on and how much it watches.
+  // "<first name> workspace"), so what it IS drops to the sub-line: the plan it
+  // runs on and how much it watches.
   const planLabel = org.plan
     ? org.plan.charAt(0).toUpperCase() + org.plan.slice(1)
     : null;
@@ -194,7 +199,9 @@ export function WorkspaceSwitcher({
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              tooltip={(multiProduct ? activeProduct?.name : null) ?? "Workspace"}
+              tooltip={
+                (multiProduct ? activeProduct?.name : soleProduct?.name) ?? "Workspace"
+              }
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               {/* On a single product the switcher has nothing to disambiguate, so it
@@ -230,13 +237,15 @@ export function WorkspaceSwitcher({
                   )}
                 </div>
               ) : (
+                // Same shape as the multi-product branch: the product names the
+                // header, plan/coverage sit under it.
                 <div className="grid flex-1 text-left leading-tight">
                   <span className="truncate text-sm font-semibold text-foreground">
-                    {planLabel ?? "Workspace"}
+                    {soleProduct?.name ?? "Workspace"}
                   </span>
-                  {competitorsLabel && (
+                  {meta && (
                     <span className="truncate text-meta text-[var(--muted-2)]">
-                      {competitorsLabel}
+                      {meta}
                     </span>
                   )}
                 </div>

@@ -3,17 +3,22 @@ import {
   SOURCE_TYPES,
   SOURCE_BUCKETS,
   SOURCE_GROUPS,
+  AUTOMATIC_SOURCES,
+  AUTOMATIC_SOURCE_MAX_FREQUENCY,
   CONFIGURABLE_SOURCES,
   ALL_CONFIGURABLE_SOURCES,
   RETIRED_SOURCES,
   UNIMPLEMENTED_SOURCES,
+  automaticFrequencyOptions,
+  automaticSourceFrequencies,
+  automaticSourceMaxFrequency,
   sourceBucket,
   isConfigurableSource,
   isAutomaticSource,
   isHiddenSource,
 } from "./catalog";
 import { PLANS, PLAN_LIMITS, planAllowsMonitorSource } from "../constants/plans";
-import type { SourceType } from "../constants/sources";
+import { frequencyWithin, type SourceType } from "../constants/sources";
 
 describe("source catalog is a partition of SOURCE_TYPES", () => {
   const placed = Object.values(SOURCE_BUCKETS).flat();
@@ -83,6 +88,68 @@ describe("the buckets encode the product rules", () => {
     for (const p of PLANS) {
       for (const s of PLAN_LIMITS[p].allowedSources) {
         expect(isConfigurableSource(s)).toBe(true);
+      }
+    }
+  });
+});
+
+describe("always-on cadence", () => {
+  test("every always-on source states its ceiling explicitly", () => {
+    // The fallback in automaticSourceMaxFrequency is deliberately weekly, so a source
+    // added to AUTOMATIC_SOURCES without a decision would silently ship un-tunable
+    // instead of failing. This is the decision gate.
+    const undeclared = AUTOMATIC_SOURCES.filter((s) => !AUTOMATIC_SOURCE_MAX_FREQUENCY[s]);
+    expect(undeclared).toEqual([]);
+  });
+
+  test("the ceiling table names no source that is not always-on", () => {
+    const stray = Object.keys(AUTOMATIC_SOURCE_MAX_FREQUENCY).filter(
+      (s) => !isAutomaticSource(s as SourceType),
+    );
+    expect(stray).toEqual([]);
+  });
+
+  test("hourly is reserved for the two same-day surfaces", () => {
+    // crt.sh + 100 DNS probes, a sitemap walk, /.well-known and a channel RSS all
+    // answer an hourly poll with the same bytes — only news and HN carry an event
+    // that is stale by tomorrow.
+    const hourly = AUTOMATIC_SOURCES.filter((s) => automaticSourceMaxFrequency(s) === "realtime");
+    expect(hourly.sort()).toEqual(["hackernews", "news"]);
+  });
+
+  test("segments are fastest-first and never exceed the source ceiling", () => {
+    for (const s of AUTOMATIC_SOURCES) {
+      const segments = automaticSourceFrequencies(s);
+      expect(segments.length).toBeGreaterThan(0);
+      expect(segments.at(-1)).toBe("weekly");
+      for (const f of segments) expect(frequencyWithin(f, automaticSourceMaxFrequency(s))).toBe(true);
+    }
+  });
+
+  test("only a configurable source gets no segments", () => {
+    expect(automaticSourceFrequencies("pricing")).toEqual([]);
+    expect(automaticSourceFrequencies("tech_stack")).toEqual([]);
+  });
+
+  test("free and starter get no say at all", () => {
+    for (const plan of ["free", "starter"] as const) {
+      for (const s of AUTOMATIC_SOURCES) expect(automaticFrequencyOptions(plan, s)).toEqual([]);
+    }
+  });
+
+  test("pro and business get every cadence the source itself allows", () => {
+    for (const plan of ["pro", "business"] as const) {
+      expect(automaticFrequencyOptions(plan, "news")).toEqual(["realtime", "daily", "weekly"]);
+      expect(automaticFrequencyOptions(plan, "subdomains")).toEqual(["daily", "weekly"]);
+    }
+  });
+
+  test("a plan never gets a cadence its own tier forbids", () => {
+    for (const plan of PLANS) {
+      for (const s of AUTOMATIC_SOURCES) {
+        for (const f of automaticFrequencyOptions(plan, s)) {
+          expect(PLAN_LIMITS[plan].allowedFrequencies).toContain(f);
+        }
       }
     }
   });

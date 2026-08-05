@@ -68,6 +68,15 @@ describe("PLAN_LIMITS — features", () => {
     }
   });
 
+  test("alwaysOnCadence starts at pro", () => {
+    // The always-on rows are seeded on every plan; what pro buys is the cadence
+    // control, not the sources. Free/starter must stay exactly where they were.
+    expect(PLAN_LIMITS.free.features.alwaysOnCadence).toBe(false);
+    expect(PLAN_LIMITS.starter.features.alwaysOnCadence).toBe(false);
+    expect(PLAN_LIMITS.pro.features.alwaysOnCadence).toBe(true);
+    expect(PLAN_LIMITS.business.features.alwaysOnCadence).toBe(true);
+  });
+
   test("fullMode off only on free", () => {
     expect(PLAN_LIMITS.free.features.fullMode).toBe(false);
     for (const plan of ["starter", "pro", "business"] as const) {

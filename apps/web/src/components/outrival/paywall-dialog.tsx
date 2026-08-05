@@ -75,6 +75,7 @@ const FEATURE_LABEL: Record<string, string> = {
   api: "API access",
   multiUser: "Multi-user",
   aiVisibility: "AI Visibility",
+  alwaysOnCadence: "Always-on source cadence",
 };
 
 const SOURCE_LABEL: Record<string, string> = {

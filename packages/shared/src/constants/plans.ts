@@ -70,6 +70,15 @@ export interface PlanLimits {
     // (docs/ai-visibility.md). Premium capability (pro+); gates the feature, while the
     // ai_visibility anchor source itself stays ungated (internal, like tech_stack).
     aiVisibility: boolean;
+    // Tuning the cadence of the ALWAYS-ON sources (AUTOMATIC_SOURCES in the source
+    // catalog: sitemap, news, subdomains, youtube, hackernews, wellknown). Those rows
+    // are seeded on every competitor whatever the plan and stay read-only below pro —
+    // they cost the user nothing, so the free/starter contract is unchanged: watched
+    // weekly, nothing to decide. Pro+ can move each one within its own ceiling
+    // (AUTOMATIC_SOURCE_MAX_FREQUENCY), which is a per-endpoint fact, not a tier one.
+    // Gates the CONTROL, never the source: an always-on source is never frozen by a
+    // downgrade, it just falls back to the tier cadence like any other monitor.
+    alwaysOnCadence: boolean;
   };
 }
 
@@ -89,7 +98,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     usersPerOrg: 1,
     historyRetentionDays: 7,
     // Battle cards now open to every tier, governed by battleCardsPerDay (not a hard gate).
-    features: { battleCards: true, realtimeAlerts: false, api: false, multiUser: false, fullMode: false, crmIntegrations: false, aiVisibility: false },
+    features: { battleCards: true, realtimeAlerts: false, api: false, multiUser: false, fullMode: false, crmIntegrations: false, aiVisibility: false, alwaysOnCadence: false },
   },
   starter: {
     maxCompetitors: 5,
@@ -105,7 +114,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     customMonitorsPerCompetitor: 2,
     usersPerOrg: 1,
     historyRetentionDays: 30,
-    features: { battleCards: true, realtimeAlerts: false, api: false, multiUser: false, fullMode: true, crmIntegrations: false, aiVisibility: false },
+    features: { battleCards: true, realtimeAlerts: false, api: false, multiUser: false, fullMode: true, crmIntegrations: false, aiVisibility: false, alwaysOnCadence: false },
   },
   pro: {
     maxCompetitors: 15,
@@ -128,7 +137,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     customMonitorsPerCompetitor: 5,
     usersPerOrg: 3,
     historyRetentionDays: 365,
-    features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: false, aiVisibility: true },
+    features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: false, aiVisibility: true, alwaysOnCadence: true },
   },
   business: {
     // Decided 2026-06-04: a real, displayed cap — no "unlimited" anywhere.
@@ -154,7 +163,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     customMonitorsPerCompetitor: 10,
     usersPerOrg: 10,
     historyRetentionDays: 1095,
-    features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: true, aiVisibility: true },
+    features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: true, aiVisibility: true, alwaysOnCadence: true },
   },
 };
 
@@ -259,6 +268,11 @@ export function minPlanForSectoral(): Plan {
 export function clampFrequencyToPlan(plan: Plan, freq: MonitorFrequency): MonitorFrequency {
   if (planIncludesFrequency(plan, freq)) return freq;
   return PLAN_LIMITS[plan].allowedFrequencies[0] ?? "weekly";
+}
+
+/** Whether `plan` unlocks `feature`. Mirrors the API gate (isFeatureAllowed). */
+export function planIncludesFeature(plan: Plan, feature: PlanFeature): boolean {
+  return PLAN_LIMITS[plan].features[feature];
 }
 
 /** Cheapest plan that unlocks `feature` — drives badges/upsell copy. */

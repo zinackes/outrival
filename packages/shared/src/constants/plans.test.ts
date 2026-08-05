@@ -74,6 +74,14 @@ describe("PLAN_LIMITS — features", () => {
       expect(PLAN_LIMITS[plan].features.fullMode).toBe(true);
     }
   });
+
+  // OUT-11: the always-on sources stay ungated (every tier collects them); this flag
+  // governs only whether the user may speed them up.
+  test("alwaysOnCadence is pro+", () => {
+    for (const plan of PLANS) {
+      expect(PLAN_LIMITS[plan].features.alwaysOnCadence).toBe(plan === "pro" || plan === "business");
+    }
+  });
 });
 
 describe("forcedRescansPerDay", () => {

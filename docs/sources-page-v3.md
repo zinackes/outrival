@@ -240,6 +240,24 @@ better") carries the only part that is actionable.
 Seven always-on sources (six automatic plus tech stack) carry no user decision and
 occupy a seventh of the page. One summary line, expanded on demand.
 
+**Superseded in part (OUT-11, 2026-08-05).** "Carry no user decision" was true of what
+we collect, not of how often: all six are seeded weekly and a pro workspace has a real
+reason to want news or the HN feed daily. The expanded block now carries ONE control per
+row, a two-segment cadence (daily / weekly), and only for `features.alwaysOnCadence`
+(pro+); below it the row shows the current cadence behind a lock that opens the paywall.
+
+Two rows still render nothing, and the order of those two checks is the design:
+
+- `subdomains` is pinned to weekly on every tier (crt.sh 429s under a daily load), so it
+  is checked FIRST and shows no control at all. A lock there would advertise an upgrade
+  that changes nothing about that row.
+- a `not_available` row keeps the "point us at one" escape hatch instead, since a surface
+  the competitor doesn't have has nothing to check more often.
+
+`realtime` is never offered on any tier: these sources read endpoints we don't own, so an
+hourly poll is not something a plan can sell. Everything else in this section stands, and
+tech stack still has no cadence (its own monthly cron). See `docs/tier-limits.md`.
+
 ---
 
 ## Part III: motion spec

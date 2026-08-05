@@ -141,6 +141,12 @@ beforeEach(async () => {
     // frozen by the free plan; m-e-ungated is a free-tier source that must stay refreshable.
     { id: "m-e-gated", competitorId: "c-e", sourceType: "jobs", lastRunAt: new Date(Date.now() - 60_000) },
     { id: "m-e-ungated", competitorId: "c-e", sourceType: "homepage", lastRunAt: new Date(Date.now() - 60_000) },
+    // Always-on sources (OUT-11): seeded weekly, ungated, cadence configurable pro+.
+    // One on free org A, one on pro org C, so both sides of the gate have a target.
+    { id: "m-a-news", competitorId: "c-a", sourceType: "news", frequency: "weekly" },
+    { id: "m-c-news", competitorId: "c-c", sourceType: "news", frequency: "weekly" },
+    // Pinned to weekly on every tier (crt.sh 429s under a daily × N-competitor load).
+    { id: "m-c-subdomains", competitorId: "c-c", sourceType: "subdomains", frequency: "weekly" },
   ]);
 }, 30_000);
 
@@ -406,6 +412,56 @@ describe("PATCH isActive — manual pause / enable of a single source", () => {
     expect((await res.json()).error).toBe("source_not_toggleable");
     const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-tech"));
     expect(m?.isActive).toBe(false); // still off
+  });
+});
+
+// OUT-11 — the always-on sources (sitemap/news/subdomains/youtube/hackernews/wellknown)
+// are seeded weekly and collected on every tier. Their CADENCE is what pro+ buys, and
+// it tops out at daily: nobody buys an hourly poll of crt.sh or the HN index.
+describe("PATCH frequency on an always-on source", () => {
+  test("free → 403 plan_locked_feature, naming the capability not the frequency", async () => {
+    const res = await patchMonitor(A, "m-a-news", { frequency: "daily" });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("plan_locked_feature");
+    expect(body.feature).toBe("alwaysOnCadence");
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-a-news"));
+    expect(m?.frequency).toBe("weekly");
+  });
+
+  test("pro → 200, stored and rescheduled", async () => {
+    const res = await patchMonitor(C, "m-c-news", { frequency: "daily" });
+    expect(res.status).toBe(200);
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-c-news"));
+    expect(m?.frequency).toBe("daily");
+    expect(m?.nextRunAt).not.toBeNull();
+  });
+
+  test("pro asking realtime → 400, no tier buys an hourly poll of these", async () => {
+    const res = await patchMonitor(C, "m-c-news", { frequency: "realtime" });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("frequency_not_supported_for_source");
+    expect(body.supported).toEqual(["daily", "weekly"]);
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-c-news"));
+    expect(m?.frequency).toBe("weekly"); // untouched
+  });
+
+  test("subdomains stays weekly even on pro → 400 (crt.sh, not a plan question)", async () => {
+    const res = await patchMonitor(C, "m-c-subdomains", { frequency: "daily" });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("frequency_not_supported_for_source");
+    expect(body.supported).toEqual(["weekly"]);
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-c-subdomains"));
+    expect(m?.frequency).toBe("weekly");
+  });
+
+  test("the gate is scoped to always-on sources — pro keeps realtime elsewhere", async () => {
+    const res = await patchMonitor(C, "m-c-new", { frequency: "realtime" });
+    expect(res.status).toBe(200);
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-c-new"));
+    expect(m?.frequency).toBe("realtime");
   });
 });
 

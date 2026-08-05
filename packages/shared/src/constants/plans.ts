@@ -70,6 +70,14 @@ export interface PlanLimits {
     // (docs/ai-visibility.md). Premium capability (pro+); gates the feature, while the
     // ai_visibility anchor source itself stays ungated (internal, like tech_stack).
     aiVisibility: boolean;
+    // Whether the user may set the cadence of the ALWAYS-ON sources (AUTOMATIC_SOURCES:
+    // sitemap, news, subdomains, youtube, hackernews, wellknown). They are seeded
+    // weekly, run for free on every tier and are never gated by allowedSources — so
+    // this flag governs the SPEED knob only, never whether they collect. pro+, because
+    // below it the promise those rows make is "watched for free, nothing to configure":
+    // the org is not paying for the extra runs. See ALWAYS_ON_FREQUENCIES for the
+    // narrower cadence set they accept.
+    alwaysOnCadence: boolean;
   };
 }
 
@@ -89,7 +97,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     usersPerOrg: 1,
     historyRetentionDays: 7,
     // Battle cards now open to every tier, governed by battleCardsPerDay (not a hard gate).
-    features: { battleCards: true, realtimeAlerts: false, api: false, multiUser: false, fullMode: false, crmIntegrations: false, aiVisibility: false },
+    features: { battleCards: true, realtimeAlerts: false, api: false, multiUser: false, fullMode: false, crmIntegrations: false, aiVisibility: false, alwaysOnCadence: false },
   },
   starter: {
     maxCompetitors: 5,
@@ -105,7 +113,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     customMonitorsPerCompetitor: 2,
     usersPerOrg: 1,
     historyRetentionDays: 30,
-    features: { battleCards: true, realtimeAlerts: false, api: false, multiUser: false, fullMode: true, crmIntegrations: false, aiVisibility: false },
+    features: { battleCards: true, realtimeAlerts: false, api: false, multiUser: false, fullMode: true, crmIntegrations: false, aiVisibility: false, alwaysOnCadence: false },
   },
   pro: {
     maxCompetitors: 15,
@@ -128,7 +136,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     customMonitorsPerCompetitor: 5,
     usersPerOrg: 3,
     historyRetentionDays: 365,
-    features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: false, aiVisibility: true },
+    features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: false, aiVisibility: true, alwaysOnCadence: true },
   },
   business: {
     // Decided 2026-06-04: a real, displayed cap — no "unlimited" anywhere.
@@ -154,7 +162,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     customMonitorsPerCompetitor: 10,
     usersPerOrg: 10,
     historyRetentionDays: 1095,
-    features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: true, aiVisibility: true },
+    features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: true, aiVisibility: true, alwaysOnCadence: true },
   },
 };
 

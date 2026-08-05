@@ -4,19 +4,25 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowLeftIcon, CaretRightIcon, SpinnerIcon, PlayIcon } from "@/components/icons";
+import { ArrowLeftIcon, CaretRightIcon, LockIcon, SpinnerIcon, PlayIcon } from "@/components/icons";
 import {
   ALL_CONFIGURABLE_SOURCES,
   ATTENTION_OF,
   AUTOMATIC_SOURCES,
   CONFIGURABLE_SOURCES,
+  PLAN_LABELS,
   RIBBON_ATTENTIONS,
   SOURCE_GROUPS,
   SOURCE_GROUP_LABELS,
+  alwaysOnFrequenciesFor,
+  alwaysOnFrequenciesForSource,
   buildCoverage,
+  minPlanForFeature,
   sourceState,
   validateMonitorUrl,
   type DetectedTargets,
+  type MonitorFrequency,
+  type Plan,
   type SourceAttention,
   type SourceState,
   type SourceType,
@@ -252,6 +258,82 @@ function PinChannel({
 }
 
 /**
+ * How often one always-on source runs (OUT-11). These rows were read-only forever,
+ * on the grounds that they cost the user nothing and carry no decision. The speed
+ * IS a decision though, so pro and business get it.
+ *
+ * Three renderings, in this order, because the reasons don't compose:
+ *   - the SOURCE is pinned (subdomains, crt.sh) → nothing at all. Showing a lock here
+ *     would sell an upgrade that changes nothing about this row.
+ *   - the PLAN can't configure → one quiet locked button opening the paywall.
+ *   - otherwise → two segments. Not three: `realtime` is an hourly poll of an endpoint
+ *     we don't own, which the shared catalog refuses on every tier.
+ */
+function AlwaysOnCadence({
+  monitor,
+  plan,
+  onEdit,
+  onLocked,
+}: {
+  monitor: Monitor;
+  plan: Plan;
+  onEdit: (id: string, patch: { frequency?: MonitorFrequency }) => Promise<void>;
+  onLocked: () => void;
+}) {
+  const supported = alwaysOnFrequenciesForSource(monitor.sourceType);
+  if (supported.length < 2) return null;
+
+  const allowed = alwaysOnFrequenciesFor(plan, monitor.sourceType);
+
+  if (allowed.length === 0) {
+    return (
+      <button
+        type="button"
+        onClick={onLocked}
+        className="ml-auto inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs capitalize text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <LockIcon size={16} className="opacity-70" />
+        {monitor.frequency}
+        <span className="text-meta uppercase tracking-wide opacity-70">
+          {PLAN_LABELS[minPlanForFeature("alwaysOnCadence")]}
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className="ml-auto inline-flex items-center gap-0.5 rounded-md border border-border bg-surface-2 p-0.5"
+      role="group"
+      aria-label={`How often we check ${sourceShortLabel(monitor.sourceType)}`}
+    >
+      {supported.map((freq) => {
+        const selected = monitor.frequency === freq;
+        return (
+          <button
+            key={freq}
+            type="button"
+            aria-pressed={selected}
+            className={cn(
+              "inline-flex h-6 items-center rounded px-2.5 text-xs capitalize",
+              "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              selected
+                ? "bg-surface text-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+            onClick={() => {
+              if (!selected) void onEdit(monitor.id, { frequency: freq });
+            }}
+          >
+            {freq}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * Everything that governs what we collect on one competitor. Split out of the
  * detail page so the tabs are purely for reading and this is purely for deciding.
  *
@@ -375,7 +457,16 @@ export function SourcesView({ id }: { id: string }) {
     (c) => c.count > 0,
   );
 
-  const automaticSummary = AUTOMATIC_SOURCES.map((s) => sourceShortLabel(s)).join(", ");
+  const sourceNames = AUTOMATIC_SOURCES.map((s) => sourceShortLabel(s)).join(", ");
+  // The line used to end on "nothing to configure", which stopped being true the day
+  // pro gained the cadence knob. It still has to say these cost nothing, since that is
+  // why they can't be turned off.
+  const canSetCadence = AUTOMATIC_SOURCES.some(
+    (s) => alwaysOnFrequenciesFor(plan, s).length > 1,
+  );
+  const automaticSummary = canSetCadence
+    ? `Watched for free, set how often: ${sourceNames}, tech stack.`
+    : `Watched for free: ${sourceNames}, tech stack.`;
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -546,7 +637,7 @@ export function SourcesView({ id }: { id: string }) {
 
         <CollapsedBlock
           title="Always on"
-          summary={`Watched for free, nothing to configure: ${automaticSummary}, tech stack.`}
+          summary={automaticSummary}
           cta="Show"
         >
           <ul className="divide-y divide-border">
@@ -591,6 +682,23 @@ export function SourcesView({ id }: { id: string }) {
                   </span>
                   {sourceType === "youtube" && state === "not_available" && monitor && (
                     <PinChannel monitor={monitor} onEdit={editMonitor} />
+                  )}
+                  {/* Only where a cadence means something: a surface the competitor
+                      doesn't have has nothing to check more often, and that row is
+                      already carrying the "point us at one" escape hatch. */}
+                  {monitor && state !== "not_available" && (
+                    <AlwaysOnCadence
+                      monitor={monitor}
+                      plan={plan}
+                      onEdit={editMonitor}
+                      onLocked={() =>
+                        setPaywall({
+                          code: "plan_locked_feature",
+                          feature: "alwaysOnCadence",
+                          plan,
+                        })
+                      }
+                    />
                   )}
                 </li>
               );

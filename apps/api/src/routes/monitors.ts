@@ -5,6 +5,9 @@ import { monitors, competitors, changes, signals, alerts, forcedRescanLog } from
 import { scrapeMonitor, USER_SCRAPE_PRIORITY } from "@outrival/queue";
 import {
   MONITOR_FREQUENCIES,
+  alwaysOnFrequenciesFor,
+  alwaysOnFrequenciesForSource,
+  isAutomaticSource,
   validateMonitorUrl,
   computeNextRun,
   forcedRescansPerDay,
@@ -128,6 +131,29 @@ monitorsRouter.patch("/:id", async (c) => {
 
   if (parsed.data.frequency !== undefined) {
     const plan = await getOrgPlan(orgId);
+    // Always-on sources (OUT-11) carry their own gate, checked BEFORE the generic
+    // frequency one so the refusal names the real cause: on free, "daily" is refused
+    // by both, and only this one tells the user what they'd actually be buying.
+    if (isAutomaticSource(monitor.sourceType)) {
+      const allowed = alwaysOnFrequenciesFor(plan, monitor.sourceType);
+      if (allowed.length === 0) {
+        return c.json({ error: "plan_locked_feature", feature: "alwaysOnCadence", plan }, 403);
+      }
+      // Not a plan refusal, so not an upsell: no tier buys an hourly poll of Google
+      // News or the HN index, and `subdomains` is pinned to its weekly seed on all of
+      // them (crt.sh). A 400 the UI never provokes.
+      if (!allowed.includes(parsed.data.frequency)) {
+        return c.json(
+          {
+            error: "frequency_not_supported_for_source",
+            source: monitor.sourceType,
+            frequency: parsed.data.frequency,
+            supported: alwaysOnFrequenciesForSource(monitor.sourceType),
+          },
+          400,
+        );
+      }
+    }
     if (!isFrequencyAllowed(plan, parsed.data.frequency)) {
       return c.json({ error: "plan_locked_frequency", frequency: parsed.data.frequency, plan }, 403);
     }

@@ -39,7 +39,7 @@ import { recordShopifyApp } from "../lib/shopify-app";
 import { recordMessagingVersion } from "../lib/messaging-versions";
 import { crossesRoundMilestone } from "../lib/claim-milestone";
 import {
-  clampFrequencyToPlan,
+  effectiveFrequencyFor,
   computeHash,
   computeNextRun,
   computeTextDiff,
@@ -668,13 +668,19 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
 
     // Clamp the reschedule cadence to the org's current plan: a downgraded org keeps
     // its monitors but must not keep scraping at a frequency above its tier (e.g. a
-    // realtime monitor on free → weekly). Soft + reversible — we never touch the stored
-    // monitor.frequency, so re-upgrading restores the full cadence on the next run.
+    // realtime monitor on free → weekly, or an always-on source sped up on pro and then
+    // downgraded to starter, whose own `daily` entitlement would otherwise hide it).
+    // Soft + reversible — we never touch the stored monitor.frequency, so re-upgrading
+    // restores the full cadence on the next run.
     const org = await db.query.organizations.findFirst({
       where: eq(organizations.id, competitor.orgId),
       columns: { plan: true },
     });
-    const effectiveFrequency = clampFrequencyToPlan(org?.plan ?? "free", monitor.frequency);
+    const effectiveFrequency = effectiveFrequencyFor(
+      org?.plan ?? "free",
+      monitor.sourceType,
+      monitor.frequency,
+    );
 
     if (!input.force) {
       const cutoff = new Date(Date.now() - IDEMPOTENCE_WINDOW_MS);

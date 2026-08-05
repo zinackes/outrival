@@ -27,6 +27,7 @@ upgrade prompt.
 | `features.crmIntegrations` | ✗ | ✗ | ✗ | ✓ |
 | `features.fullMode` | ✗ | ✓ | ✓ | ✓ |
 | `features.multiUser` | — | — | — | planned |
+| `features.alwaysOnCadence` | ✗ | ✗ | ✓ | ✓ |
 
 No "unlimited" anywhere — every cap is a real number (transparency choice).
 
@@ -51,6 +52,7 @@ suggestedPlan, upgradeHint }`) then perform the action.
 | `battleCardsPerDay` | `assertWithinLimit` → battle-cards.ts | `battlecard_limit_reached` 429 | `battle_cards.generatedAt` today (DB-free) |
 | `discoveriesPerMonth` | `assertWithinLimit` → candidates.ts `/detect` | `discovery_limit_reached` 429 | `discovery_runs.detect_count` + `detect_count_month` |
 | `aiActionsPerHour` | `aiIntensiveRateLimit` middleware + `consumeAiAction` → monitors.ts | `ai_rate_limit_exceeded` 429 | Redis `ratelimit:ai_intensive:<userId>` /user/hour |
+| `features.alwaysOnCadence` | `alwaysOnFrequenciesFor` → `PATCH /monitors/:id` | `plan_locked_feature` 403 | — (capability, not a counter) |
 
 Notes:
 - **Battle cards opened to every tier** (was a pro+ feature gate). The daily cap is the
@@ -81,6 +83,31 @@ Notes:
     runaway client does hundreds. The numbers sit in that gap.
 - `AI_INTENSIVE_RATE_LIMIT` survives as a **single-value emergency override**: setting it
   re-flattens every tier onto one number. Leave it unset (`.env.example` ships it commented).
+- **`features.alwaysOnCadence` (OUT-11)** governs the SPEED of the always-on sources
+  (`AUTOMATIC_SOURCES`: sitemap, news, subdomains, youtube, hackernews, wellknown), never
+  whether they collect. They stay ungated (`isGatedSource` is false for all six), seeded
+  weekly on every tier, and can't be turned off. Three properties bound the knob:
+  - **The ceiling is `daily`, on every tier** (`ALWAYS_ON_FREQUENCIES` in
+    `packages/shared/src/scheduling.ts`). `realtime` is an hourly poll and each of these
+    sources reads a third-party endpoint nobody pays us for per competitor: Google News
+    RSS, the HN Algolia index, a channel's `videos.xml`. Hourly × 50 competitors is abuse
+    of someone else's service, so the API answers `400 frequency_not_supported_for_source`
+    rather than an upsell.
+  - **`subdomains` is pinned to weekly on every tier** (`CADENCE_LOCKED_SOURCES`). It
+    reads Certificate Transparency through crt.sh, which is slow, shared, and 429s under
+    a daily × N-competitor load — the reason both creation paths already hardcode it
+    weekly (`competitors.ts` POST, `onboarding.ts`). Selling the knob would have undone
+    that decision silently, so the row renders no control at all: a lock there would
+    advertise an upgrade that changes nothing about it.
+  - **Below pro the block stays read-only**, which is what those rows have always
+    promised ("watched for free"). The org is not paying for the extra runs, so the
+    refusal is `plan_locked_feature` naming `alwaysOnCadence`, not `plan_locked_frequency`
+    naming a cadence they would still not get after buying it.
+  - **A downgrade drops the cadence back to the weekly seed** via `effectiveFrequencyFor`
+    (`scrape-monitor.ts`), not `clampFrequencyToPlan`: starter allows `daily` for the
+    sources it pays for, so the plain frequency clamp would have let a sped-up anchor keep
+    running daily after pro → starter. Soft and reversible like the existing clamp,
+    `monitors.frequency` is never mutated.
 
 Whether a free workspace ever *encounters* these gates (vs. hitting them silently)
 is a separate question from whether they're enforced. 📄 docs/monetization-first-encounter.md
@@ -115,3 +142,11 @@ Until pushed, the discovery monthly cap reads 0/null → effectively unlimited (
 `packages/shared/src/constants/plans.test.ts` (`bun test`) — pins the grid per dimension
 × tier, business `maxCompetitors`=50 (finite), business `forcedRescansPerDay`=100, the env
 override, and `isWithinLimit` below/at/above the threshold.
+
+`packages/shared/src/scheduling.test.ts` — `ALWAYS_ON_FREQUENCIES` never holds `realtime`,
+always holds every always-on source's seed cadence, `subdomains` reports only `weekly` on
+every tier, and `effectiveFrequencyFor` returns the seed on a pro → starter downgrade
+while leaving configurable sources on the plain plan clamp.
+`apps/api/test/monitors.test.ts` covers the route: free → 403 `plan_locked_feature`, pro
+daily → 200 + reschedule, pro realtime → 400, pro daily on `subdomains` → 400, and pro
+keeping realtime on a non-always-on source.

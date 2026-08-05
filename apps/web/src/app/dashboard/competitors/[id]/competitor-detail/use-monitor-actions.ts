@@ -86,11 +86,18 @@ export function useMonitorActions(id: string) {
     );
   }
 
-  /** Patch one monitor in the cached detail — for optimistic writes. */
+  /**
+   * Patch one monitor in the cached detail — for optimistic writes. Both lists, since
+   * the payload splits configurable from always-on and the caller only has an id: an
+   * always-on cadence change patched into `monitors` alone would land nowhere and the
+   * segment would sit on its old value until the refetch came back.
+   */
   function patchMonitor(monitorId: string, patch: Partial<Monitor>) {
+    const apply = (list: Monitor[]) =>
+      list.map((m) => (m.id === monitorId ? { ...m, ...patch } : m));
     setData((d) =>
       d
-        ? { ...d, monitors: d.monitors.map((m) => (m.id === monitorId ? { ...m, ...patch } : m)) }
+        ? { ...d, monitors: apply(d.monitors), automaticMonitors: apply(d.automaticMonitors) }
         : d,
     );
   }
@@ -507,7 +514,10 @@ export function useMonitorActions(id: string) {
     // The selected segment renders off monitor.frequency, so without this it only
     // moved once the PATCH *and* the heavy detail refetch had both landed — a full
     // second of a click that looks like it did nothing. Flip it now, revert on error.
-    const previousFrequency = data?.monitors.find((m) => m.id === monitorId)?.frequency;
+    const previousFrequency = [
+      ...(data?.monitors ?? []),
+      ...(data?.automaticMonitors ?? []),
+    ].find((m) => m.id === monitorId)?.frequency;
     if (patch.frequency) patchMonitor(monitorId, { frequency: patch.frequency });
     try {
       await api.updateMonitor(monitorId, patch);

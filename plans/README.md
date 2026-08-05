@@ -64,6 +64,9 @@ deadlines, security and direction.
 | 023 | Decide whether collected data can become a public surface | P2 | M | MED-HIGH | — | TODO |
 | 024 | Find where 80% of archive backfills are lost, then stop losing them | P1 | M | MED | 019 | REJECTED (premise falsified: the gap was historical and self-resolved on 2026-07-22) |
 | 025 | The dead-letter tile reports the real depth, and something pages | P1 | S | LOW | — | TODO |
+| 028 | Revive the dead homepage/pricing signal classes | P1 | M | MED | — | DONE (fix A re-verified in `homepage-diff.ts` on 2026-08-05; perimeter left untouched by Véracité P1) |
+| 029 | A client-rendered pricing page gets a browser render before "no prices" | P1 | S | LOW-MED | — | DONE (`render-retry.ts` + wiring + `PRICING_RENDER_RETRY_ENABLED` in `.env.example` and `docs/architecture/env.md`) |
+| 030 | Staged-extraction heal cache | P1 | M | LOW-MED | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 

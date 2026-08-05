@@ -75,6 +75,10 @@
       "types": "./src/lib/anti-void.ts",
       "default": "./src/lib/anti-void.ts"
     },
+    "./completeness": {
+      "types": "./src/lib/completeness.ts",
+      "default": "./src/lib/completeness.ts"
+    },
     "./volatile": {
       "types": "./src/learning/volatile-detector.ts",
       "default": "./src/learning/volatile-detector.ts"

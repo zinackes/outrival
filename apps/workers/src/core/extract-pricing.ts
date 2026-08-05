@@ -100,6 +100,22 @@ export async function runExtractPricing(payload: z.input<typeof InputSchema>) {
     });
     if (!snapshot) throw new AbortTaskRunError(`Snapshot ${input.snapshotId} not found`);
 
+    // P1 (audit R4) — a batch derived from a degraded capture is REJECTED, whatever
+    // it happens to contain. scrape-monitor already declines to enqueue on a partial,
+    // so this is the defence in depth for every other way a run reaches here: a
+    // forced re-scan, an admin re-run, a retry that outlived the snapshot's grade.
+    // pricing_history is append-only and reads take the newest batch, so one bad
+    // insert shadows the real tiers everywhere until the next good scrape. A log,
+    // not an exception: nothing failed, we simply decline to write.
+    if (snapshot.status === "partial") {
+      logger.warn("Rejecting pricing batch from a partial capture", {
+        snapshotId: snapshot.id,
+        competitorId: input.competitorId,
+        completeness: snapshot.completeness,
+      });
+      return { ok: false, reason: "partial_capture" as const };
+    }
+
     // A deferred change must never be stranded: every path that ends without a
     // deterministic emission hands it back to the lexical classifier (iff
     // scrape-monitor judged the text diff worth one) — the exact pre-P1 behavior.

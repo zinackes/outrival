@@ -526,6 +526,13 @@
       "when": 1785865610883,
       "tag": "0074_mature_vengeance",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1785958480807,
+      "tag": "0075_pink_calypso",
+      "breakpoints": true
     }
   ]
 }

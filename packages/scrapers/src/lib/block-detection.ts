@@ -52,3 +52,43 @@ export function isCloudflareChallenge(html: string): boolean {
     /<title>[^<]*cloudflare/i.test(html)
   );
 }
+
+/**
+ * The soft-block band (audit T2 / R6): a rendered page that carries almost no
+ * visible text but no vendor challenge marker either — a styled shell served
+ * INSTEAD of the content.
+ *
+ * `innerText` alone cannot decide this. It respects computed CSS, so it reads
+ * near-empty on real pages whose copy lives in a <canvas>/WebGL hero or stays
+ * CSS-hidden until a reveal animation runs — both common on marketing homepages,
+ * neither a block. So the band is only a TRIGGER: the verdict is the markup-based
+ * extractor (cheerio, no computed CSS), which is not fooled by either and reads
+ * near-empty only when the shell really is empty.
+ *
+ * That asymmetry is why the band is the safe thing to widen. The pre-P1 value of
+ * 100 chars was calibrated against `innerText` alone and left the audit's 100-600
+ * dead band uninspected: a shell with a header, a footer and an empty <main> reads
+ * ~300 chars of chrome and was accepted as a successful capture. Raising the
+ * trigger only means MORE captures pay the cheap markup cross-check; a page with
+ * real text in its DOM still passes at any band width. Escalating (rather than
+ * storing) is also the conservative outcome: the cascade retries at a higher
+ * level, and a genuinely thin page fails honestly instead of seeding a baseline.
+ *
+ * Kept pure and browser-free so it can be calibrated against fixtures.
+ *
+ * @param visibleTextLength `document.body.innerText.length` of the rendered page
+ * @param statusCode        HTTP status of the response that produced `html`
+ * @param markupIsCollapsed `isContentCollapsed(extractContent(html))` — passed in
+ *                          so this module keeps no dependency on the extractor
+ */
+export const SOFT_BLOCK_TEXT_BAND = 600;
+
+export function isSoftBlockShell(
+  visibleTextLength: number,
+  statusCode: number,
+  markupIsCollapsed: boolean,
+): boolean {
+  // 4xx/5xx are rejected upstream as http errors, never as soft blocks.
+  if (statusCode >= 400) return false;
+  return visibleTextLength < SOFT_BLOCK_TEXT_BAND && markupIsCollapsed;
+}

@@ -1,0 +1,6 @@
+# bun test config for @outrival/workers. See the repo-root bunfig.toml for the measured
+# numbers behind this and for why the fix is a preload, not a worker/parallelism flag.
+[test]
+# Run-scoped teardown: closes the one process-wide PGlite after the last test file.
+# Without it bun exits 99 on a fully green suite (an open WASM client is a live handle).
+preload = ["./test/setup.ts"]

@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { ScrapeOutcome } from "../../types";
 
 // Capture the real module BEFORE mocking it. jobs/ loads before lib/ in the shared
@@ -97,20 +97,27 @@ const careersToVanityHtml = `<html><body>
   <a href="https://careers.acme.com/">See job openings</a>
 </body></html>`;
 
-const scrapePage = mock(async (u: string): Promise<ScrapeOutcome> => {
+// The fixture router most tests run on. Named, because half of them replace it with
+// `mockImplementation` (persistent, not Once) and it has to be put back per test.
+const defaultScrapePage = async (u: string): Promise<ScrapeOutcome> => {
   if (u.includes("/jobs-with-links")) return outcome(listingWithNavHtml, u);
   if (u.includes("/careers/all-jobs")) return outcome(listingHtml, u);
   if (u.includes("/careers")) return outcome(hubHtml, u);
   if (u.includes("/about-us")) return outcome(listingHtml, u);
   if (u.includes("jobs.wttj.com")) return outcome(listingHtml, u);
   return outcome(homepageHtml, HOMEPAGE);
-});
+};
+const scrapePage = mock(defaultScrapePage);
 // Bun cannot un-register a mock.module mid-run, so instead of restoring the real
-// module in afterAll, keep it mocked for the whole process but make this mock a
-// transparent passthrough to the real scrapeFirstSuccess once this file's tests are
-// done — flipped by the flag below. This un-poisons any later file (e.g.
+// module afterwards, keep it mocked for the whole process but make this mock a
+// transparent passthrough to the real scrapeFirstSuccess whenever this file is not the
+// one running — flipped by the flag below. This un-poisons any later file (e.g.
 // src/lib/__tests__/scrape-first-success.test.ts) that imports the mocked binding.
-let jobsCareersMockActive = true;
+//
+// The flag is raised per TEST, not once per file: with --randomize a file-scoped
+// afterAll no longer marks "this file is done", so a single flip left this file's own
+// remaining tests reading the real, network-bound implementation.
+let jobsCareersMockActive = false;
 const scrapeFirstSuccess = mock(
   async (...args: Parameters<typeof realScrapeFirstSuccess>): Promise<ScrapeOutcome> => {
     if (jobsCareersMockActive) throw new Error("no standard careers path (all 404)");
@@ -122,7 +129,13 @@ mock.module("../../lib/crawler", () => ({ ...realCrawler, scrapePage, scrapeFirs
 
 const { scrape } = await import("../jobs.scraper");
 
-afterAll(() => {
+beforeEach(() => {
+  jobsCareersMockActive = true;
+  // Hand every test the same starting fixtures, whatever the test before it left set.
+  scrapePage.mockImplementation(defaultScrapePage);
+});
+
+afterEach(() => {
   jobsCareersMockActive = false;
 });
 

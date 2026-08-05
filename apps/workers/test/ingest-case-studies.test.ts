@@ -71,13 +71,13 @@ function storyPage(title: string, body: string): string {
 
 beforeAll(async () => {
   const realQueue = await import("@outrival/queue");
+  const realContentFetch = await import("@outrival/scrapers/content-fetch");
   const realAi = await import("@outrival/ai");
   const realAnalytics = await import("../src/lib/analytics");
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/db", () => ({ ...schema, db: harness.db }));
   mock.module("@outrival/queue", () => ({
     ...realQueue,
     NonRetriable: realQueue.NonRetriable,
@@ -103,7 +103,11 @@ beforeAll(async () => {
       })),
     }),
   }));
+  // Spread the REAL module: this mock is process-global and outlives the file,
+  // so a partial one leaves every later file importing a module that reads
+  // POST_FETCH_CAP with a SyntaxError, depending only on the order bun picked.
   mock.module("@outrival/scrapers/content-fetch", () => ({
+    ...realContentFetch,
     fetchPostHtml: async (url: string) => {
       const html = pages.get(url);
       return html ? { ok: true, html, bytes: html.length } : { ok: false, reason: "http_404" };

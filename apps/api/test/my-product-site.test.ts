@@ -1,10 +1,9 @@
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
-import { resolve } from "node:path";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { competitors, products } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
-import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
+import { asUser, installAppMocks, installQueueMock, mountApp, seedOrg } from "./app-harness";
 
 // POST /my-product/site — going live must rename BOTH rows a product's identity
 // lives on: the self-competitor (monitoring anchor) AND the products row, which is
@@ -15,6 +14,7 @@ import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 let app: Hono;
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 let A: { orgId: string; userId: string; email: string };
 
 afterAll(() => closeDb());
@@ -22,14 +22,16 @@ afterAll(() => closeDb());
 const HOOK_TIMEOUT_MS = 30_000;
 
 beforeAll(async () => {
-  ({ db: testDb, close: closeDb } = await makeTestDb());
+  ({ db: testDb, close: closeDb, reset: resetDb } = await makeTestDb());
   await installAppMocks(testDb);
-  mock.module(resolve(import.meta.dir, "../src/lib/queue"), () => ({
-    enqueueJob: async () => "run_test",
-  }));
+  installQueueMock();
   const { myProductRouter } = await import("../src/routes/my-product");
   app = mountApp("/api/my-product", myProductRouter);
+}, HOOK_TIMEOUT_MS);
 
+// Per test, not per file: the PATCH tests write the very profile the reads assert on.
+beforeEach(async () => {
+  await resetDb();
   A = await seedOrg(testDb, { plan: "pro" });
 }, HOOK_TIMEOUT_MS);
 

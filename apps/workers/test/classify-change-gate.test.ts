@@ -61,7 +61,6 @@ beforeAll(async () => {
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/db", () => ({ ...schema, db: harness.db }));
 
   // The job body fans out through the typed pg-boss registry, so the capture lives
   // here. Without a started queue `enqueue` would throw

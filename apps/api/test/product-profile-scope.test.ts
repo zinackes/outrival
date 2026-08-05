@@ -1,10 +1,9 @@
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
-import { resolve } from "node:path";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { competitors, organizations, products } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
-import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
+import { asUser, installAppMocks, installQueueMock, mountApp, seedOrg } from "./app-harness";
 
 // Which product a profile edit lands on, in a workspace that has several.
 //
@@ -22,6 +21,7 @@ let myProductApp: Hono;
 let onboardingApp: Hono;
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 let A: { orgId: string; userId: string; email: string };
 
 afterAll(() => closeDb());
@@ -29,18 +29,19 @@ afterAll(() => closeDb());
 const HOOK_TIMEOUT_MS = 30_000;
 
 beforeAll(async () => {
-  ({ db: testDb, close: closeDb } = await makeTestDb());
+  ({ db: testDb, close: closeDb, reset: resetDb } = await makeTestDb());
   await installAppMocks(testDb);
-  mock.module(resolve(import.meta.dir, "../src/lib/queue"), () => ({
-    enqueueJob: async () => "run_test",
-    enqueueByName: async () => "run_test",
-    ensureQueue: async () => {},
-  }));
+  installQueueMock();
   const { myProductRouter } = await import("../src/routes/my-product");
   const { onboardingRouter } = await import("../src/routes/onboarding");
   myProductApp = mountApp("/api/my-product", myProductRouter);
   onboardingApp = mountApp("/api/onboarding", onboardingRouter);
+}, HOOK_TIMEOUT_MS);
 
+// Per test, not per file: every test here PATCHes one of the two anchors, and the
+// next one asserts on the profile that edit would already have rewritten.
+beforeEach(async () => {
+  await resetDb();
   A = await seedOrg(testDb, { plan: "pro" });
 
   // The OLDEST anchor belongs to the SECONDARY product: an unordered "find a self"
@@ -189,6 +190,13 @@ describe("PATCH /my-product with no product scope", () => {
 
 describe("PATCH /onboarding/profile — the workspace-wide edit targets the primary", () => {
   test("it writes the primary's anchor, not the oldest self-competitor", async () => {
+    // Give the secondary its own positioning first — the point of the last two
+    // assertions is that this workspace-wide write leaves it alone.
+    await patchProduct("prod-secondary", {
+      category: "Appointment scheduling",
+      audience: "Independent clinics",
+    });
+
     const res = await onboardingApp.request(
       "/api/onboarding/profile",
       asUser(A.userId, A.email, {

@@ -89,7 +89,10 @@ afterAll(() => {
   hangNewContext = false;
   poolMockActive = false;
   __setPoolCeilingsForTest(null);
-  mock.restore();
+  // No mock.restore() here: it is process-wide, and this file's own mock is already
+  // neutralised by the flag above. Calling it reset the mocks OTHER files had set up
+  // (the jobs scraper's crawler passthrough), so whichever ran after this one saw its
+  // stubs return undefined.
 });
 
 test("concurrent renders share ONE launched browser, not one each", async () => {

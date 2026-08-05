@@ -16,7 +16,9 @@ pnpm dev --filter @outrival/web # Web uniquement
 pnpm dev --filter @outrival/api # API uniquement
 pnpm build                      # Build tous les packages
 pnpm typecheck                  # Typecheck tous les packages
-pnpm test                       # Tests
+pnpm test                       # Tests — tous les packages en parallèle (parité CI, ~3,4 Go)
+pnpm test:local                 # Tests un package à la fois (~1,1 Go) — à préférer en local
+pnpm test:fast                  # Tests des seuls packages touchés vs origin/main
 pnpm db:generate                # Génère une migration versionnée depuis le schéma
 pnpm db:migrate                 # Applique les migrations en attente (dev + déploiement)
 pnpm db:baseline                # One-shot : marque les migrations existantes appliquées (env déjà créé via push)
@@ -58,7 +60,7 @@ plus par `db:push` direct (qui causait du drift + des colonnes manquantes en pro
 
 - Handlers de jobs    → apps/workers/src/core/[name].ts (déclarés dans packages/queue/src/jobs.ts)
 - Scrapers            → packages/scrapers/src/[source]/[source].scraper.ts
-- Prompts AI          → packages/ai/src/prompts/[name].prompt.ts
+- Tâches IA           → packages/ai/src/tasks/[name].ts
 - Schema DB           → packages/db/src/schema/[entity].ts
 - Routes API          → apps/api/src/routes/[resource].ts
 

@@ -127,7 +127,7 @@ export function CompetitorRail({
               size="sm"
               variant="ghost"
               className="-mr-1.5 h-7 text-xs text-muted-foreground"
-              onClick={onRunAll}
+              onClick={() => onRunAll()}
               disabled={runningAll}
             >
               {runningAll ? <SpinnerIcon size={16} className="animate-spin" /> : <PlayIcon size={16} />}

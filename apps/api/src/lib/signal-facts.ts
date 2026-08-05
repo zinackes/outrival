@@ -18,6 +18,7 @@ import {
   industryLabel,
   normalizeDepartment,
   DEPARTMENT_BUCKET_LABELS,
+  VISIBILITY_WINDOW_DAYS,
   type DepartmentBucket,
   type EntitlementRow,
   type TierBandRow,
@@ -237,6 +238,24 @@ export interface ClaimFact {
   series: Array<{ observedAt: string; value: number; rawText: string }>;
 }
 
+/**
+ * One 28-day window of answer-engine measurements (Positioning v2 P5).
+ *
+ * `nRuns` and `answers` are on the block for the same reason the copy carries them:
+ * a mention rate is a fraction of a sample, and a reader shown "31%" without the
+ * denominator will read a precision that four weeks of LLM answers do not have.
+ */
+export interface VisibilityWindowFact {
+  mentionRate: number;
+  mentions: number;
+  answers: number;
+  avgRank: number | null;
+  citedRate: number | null;
+  avgSentiment: number | null;
+  nRuns: number;
+  engines: string[];
+}
+
 /** One open role behind a salary band, with the range its own posting states. */
 export interface BandRoleFact {
   title: string;
@@ -341,6 +360,21 @@ export type SignalFacts =
       pages: AudiencePageFact[];
       /** Pages before the cap, so a truncated list can say what it is hiding. */
       pagesTotal: number;
+    }
+  | {
+      /** Both windows behind an `ai_visibility_shift` (Positioning v2 P5). */
+      kind: "ai_visibility";
+      /** Which threshold fired, and which way it went. */
+      driver: "mention_rate" | "avg_rank";
+      direction: "up" | "down";
+      /** True when this is the reader's OWN product losing ground. */
+      isSelf: boolean;
+      windowDays: number;
+      current: VisibilityWindowFact;
+      previous: VisibilityWindowFact;
+      /** Per engine, when more than one answered. [] when only one did — a split
+       *  with a single row states nothing the headline did not. */
+      byEngine: Array<{ engine: string; current: VisibilityWindowFact; previous: VisibilityWindowFact }>;
     }
   | {
       /** Integrations newly listed in a catalog (Content Intelligence v2 P5). */
@@ -885,6 +919,68 @@ async function audiencePageFacts(
     kind: "audience_pages",
     pages: pages.slice(0, MAX_AUDIENCE_PAGE_FACTS),
     pagesTotal: pages.length,
+  };
+}
+
+/**
+ * The two windows behind an `ai_visibility_shift` (Positioning v2 P5).
+ *
+ * Read off the change's OWN rawDiff, never recomputed. The emitter measured both
+ * windows at the moment it decided to signal, and by the time anyone opens the
+ * block the current window has slid forward: recomputing would print a rate that
+ * contradicts the sentence above it, on a signal whose entire claim is a pair of
+ * numbers. This is the same rule the salary and cadence blocks follow.
+ */
+async function aiVisibilityFacts(monitorId: string, detectedAt: Date): Promise<SignalFacts> {
+  const [change] = await db
+    .select({ rawDiff: changes.rawDiff })
+    .from(changes)
+    .where(and(eq(changes.monitorId, monitorId), eq(changes.detectedAt, detectedAt)))
+    .limit(1);
+
+  const raw = change?.rawDiff as Record<string, unknown> | null | undefined;
+  if (!raw || raw.kind !== "ai_visibility_shift") return null;
+
+  const window = (v: unknown): VisibilityWindowFact | null => {
+    if (typeof v !== "object" || v === null) return null;
+    const w = v as Record<string, unknown>;
+    if (typeof w.mentionRate !== "number" || typeof w.answers !== "number") return null;
+    return {
+      mentionRate: w.mentionRate,
+      mentions: typeof w.mentions === "number" ? w.mentions : 0,
+      answers: w.answers,
+      avgRank: typeof w.avgRank === "number" ? w.avgRank : null,
+      citedRate: typeof w.citedRate === "number" ? w.citedRate : null,
+      avgSentiment: typeof w.avgSentiment === "number" ? w.avgSentiment : null,
+      nRuns: typeof w.nRuns === "number" ? w.nRuns : 0,
+      engines: Array.isArray(w.engines) ? w.engines.filter((e): e is string => typeof e === "string") : [],
+    };
+  };
+
+  const current = window(raw.current);
+  const previous = window(raw.previous);
+  if (!current || !previous) return null;
+
+  const byEngine = Array.isArray(raw.byEngine)
+    ? raw.byEngine.flatMap((e) => {
+        if (typeof e !== "object" || e === null) return [];
+        const row = e as Record<string, unknown>;
+        const c = window(row.current);
+        const p = window(row.previous);
+        if (typeof row.engine !== "string" || !c || !p) return [];
+        return [{ engine: row.engine, current: c, previous: p }];
+      })
+    : [];
+
+  return {
+    kind: "ai_visibility",
+    driver: raw.driver === "avg_rank" ? "avg_rank" : "mention_rate",
+    direction: raw.direction === "up" ? "up" : "down",
+    isSelf: raw.isSelf === true,
+    windowDays: VISIBILITY_WINDOW_DAYS,
+    current,
+    previous,
+    byEngine,
   };
 }
 
@@ -1736,6 +1832,7 @@ export async function buildSignalFacts(args: {
     sourceType !== "roadmap_shift" &&
     sourceType !== "integration_catalog" &&
     sourceType !== "audience_page" &&
+    sourceType !== "ai_visibility" &&
     sourceType !== "tech_stack" &&
     sourceType !== "homepage" &&
     !REVIEW_SOURCES.has(sourceType ?? "")
@@ -1777,6 +1874,11 @@ export async function buildSignalFacts(args: {
     // whole vertical's worth of pages, so a window would name them all.
     if (sourceType === "audience_page") {
       return await audiencePageFacts(competitorId, monitorId, new Date(detectedAt));
+    }
+    // Both windows come off the change that announced them — see the note on the
+    // resolver for why they are never recomputed.
+    if (sourceType === "ai_visibility") {
+      return await aiVisibilityFacts(monitorId, new Date(detectedAt));
     }
     // Reads the change's own rawDiff for the same reason integrations do: the
     // monthly scan records every tech at once, so a window would name them all.

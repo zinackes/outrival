@@ -658,6 +658,23 @@ export type SignalFacts =
       pagesTotal: number;
     }
   | {
+      /** The two 28-day windows behind an AI-visibility shift (Positioning
+       *  Intelligence v2 P5). Both sides are averages over many answer-engine
+       *  runs — a single run is the engine's variance, not a market position. */
+      kind: "ai_visibility";
+      driver: "mention_rate" | "avg_rank";
+      direction: "up" | "down";
+      isSelf: boolean;
+      windowDays: number;
+      current: VisibilityWindowFact;
+      previous: VisibilityWindowFact;
+      byEngine: Array<{
+        engine: string;
+        current: VisibilityWindowFact;
+        previous: VisibilityWindowFact;
+      }>;
+    }
+  | {
       /** Integrations newly listed in a catalog (Content Intelligence v2 P5). */
       kind: "integrations";
       integrations: IntegrationFact[];
@@ -775,6 +792,24 @@ export interface AudiencePageFact {
   evidenceUrl: string | null;
   /** "YYYY-MM-DD" — when WE first saw the page; a sitemap carries no date. */
   firstSeenAt: string | null;
+}
+
+/**
+ * One 28-day window of answer-engine measurements (Positioning v2 P5).
+ *
+ * `nRuns` and `answers` are rendered beside every rate on purpose: a percentage
+ * shown without its denominator reads as a precision that four weeks of LLM
+ * answers do not carry.
+ */
+export interface VisibilityWindowFact {
+  mentionRate: number;
+  mentions: number;
+  answers: number;
+  avgRank: number | null;
+  citedRate: number | null;
+  avgSentiment: number | null;
+  nRuns: number;
+  engines: string[];
 }
 
 export interface IntegrationFact {
@@ -1270,7 +1305,11 @@ export interface ActivityEvent {
   // products page rather than a competitor detail page.
   isSelf?: boolean;
   sourceType: string;
-  status: "success" | "no_change" | "failed";
+  // `skipped` is a run that found no surface to read at all (the competitor
+  // publishes no roadmap portal, links no YouTube channel…). It is neither a
+  // failure nor a quiet check, and folding it into either one is what made the
+  // feed say "Nothing new" about a page it had never opened.
+  status: "success" | "no_change" | "failed" | "skipped";
   durationMs: number;
   recordedAt: string;
   // What the "Change detected" run actually found (null for no-change/failed runs
@@ -1286,10 +1325,16 @@ export interface ActivityEvent {
   // True only for a monitor's baseline capture (first snapshot, no diff possible).
   // Distinguishes the first scrape from an actual "change detected" in the feed.
   isFirstCapture?: boolean;
-  // The live page this run inspected (snapshot's resolved URL, else the
-  // competitor site). Lets a no-change / first-capture row link out to what was
-  // checked, instead of being a dead end.
+  // Why a failed / skipped run produced no capture — the scraper's own marker
+  // (`no_roadmap_portal`, `portal_private`, `no_docs_surface`…).
+  failureReason?: string | null;
+  // The competitor's own site. Identity only (the row's favicon), never "the
+  // page we read".
   url?: string | null;
+  // The page this run actually read, null when it read nothing.
+  readUrl?: string | null;
+  // The page the monitor watches, whether or not this run reached it.
+  targetUrl?: string | null;
   // When the monitor last truly detected a change — context for a no-change row
   // ("unchanged since …"). Null if it has never changed.
   lastChangedAt?: string | null;
@@ -1525,7 +1570,16 @@ export interface CompareColumn {
   id: string;
   name: string;
   url: string | null;
-  positioning: { category: string | null; summary: string | null };
+  // Positioning v2 P4 — `summary` is the AI profile line, kept for the picker's
+  // completeness score. The lens reads the two fields under it, both captured
+  // rather than written: the words on their homepage today, and the buyers their
+  // own sitemap says they sell to.
+  positioning: {
+    category: string | null;
+    summary: string | null;
+    h1: string | null;
+    personas: string[];
+  };
   pricing: {
     // null when only quote-based tiers were captured (no public number).
     entry: number | null;
@@ -2797,14 +2851,197 @@ export type TechStackData = {
   platformProfile: PlatformProfile | null;
 };
 
-// One version of a competitor's homepage positioning copy. `capturedAt` is when
+// ── Positioning Intelligence v2 ────────────────────────────────────────────
+
+// One distinct wording of a competitor's homepage hero (P1). `capturedAt` is when
 // this wording FIRST appeared, not when it was last seen, so two consecutive
 // versions read as "they changed this on that date".
-export interface PositioningVersion {
+export interface MessagingVersion {
   capturedAt: string;
-  headline: string | null;
+  h1: string | null;
   subheadline: string | null;
+  primaryCta: string | null;
   valueProps: string[];
+  snapshotKey: string | null;
+}
+
+// A quantified claim and how it has moved (P1). `rawText` is what the page
+// PRINTED; `value` is what makes the series comparable.
+export interface CompetitorClaim {
+  pattern: string;
+  unit: string | null;
+  context: string;
+  value: number;
+  rawText: string;
+  observedAt: string;
+  /** Oldest first, so it reads as a trajectory. */
+  series: Array<{ observedAt: string; value: number; rawText: string }>;
+}
+
+// A rival this competitor points at, folded across every page naming them (P2).
+export interface NamedTarget {
+  name: string;
+  sources: string[];
+  evidenceUrls: string[];
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  announced: boolean;
+}
+
+// Another competitor in THIS workspace that names the one being looked at (P2).
+export interface NamedByEntry {
+  competitorId: string;
+  competitorName: string;
+  matchedOn: "domain" | "brand";
+  sources: string[];
+  evidenceUrls: string[];
+  firstSeenAt: string | null;
+}
+
+export interface MarketMap {
+  targets: NamedTarget[];
+  namedBy: NamedByEntry[];
+  targetsTotal: number;
+}
+
+// A segment they publish a page for (P3).
+export interface AudienceSegment {
+  slug: string;
+  displayName: string;
+  evidenceUrl: string | null;
+  firstSeenAt: string | null;
+  isNew: boolean;
+}
+
+// Declared vs proven verticals. `both` is the read: a page AND stories behind it.
+export interface AudienceProfile {
+  personas: AudienceSegment[];
+  useCases: AudienceSegment[];
+  industries: {
+    declared: Array<AudienceSegment & { isCanonical: boolean }>;
+    proven: Array<{ slug: string; label: string; count: number; isCanonical: boolean }>;
+    both: Array<{
+      slug: string;
+      label: string;
+      declaredName: string;
+      evidenceUrl: string | null;
+      provenCount: number;
+    }>;
+  };
+  newCount: number;
+  windowDays: number;
+}
+
+// What the answer engines say about a competitor (Positioning v2 P5).
+//
+// Three states, and the section renders all three. Everything is measured over a
+// 28-day WINDOW, never over a single run: an engine asked the same buyer question
+// twice does not answer it the same way, so a run-to-run rate measures the engine.
+// Below the run minimum the response carries no statistics at all, so the tab
+// cannot render a rate computed off two answers even by accident.
+interface ShareOfModelCounts {
+  /** Active buyer-intent prompts on this workspace. */
+  prompts: number;
+  /** Answers recorded ABOUT this competitor, all engines, all time. */
+  answers: number;
+  lastRunAt: string | null;
+}
+
+/** One subject's window, plus how it moved against the window before it. */
+export interface VisibilitySubjectStats {
+  competitorId: string;
+  name: string;
+  isSelf: boolean;
+  metrics: VisibilityWindowFact;
+  trend: {
+    mentionRate: number | null;
+    /** NEGATIVE is an improvement — position 4 → 2 is -2. */
+    avgRank: number | null;
+    citedRate: number | null;
+    avgSentiment: number | null;
+  };
+}
+
+/** One prompt as the window's last run answered it. */
+export interface VisibilityPromptOutcome {
+  promptId: string;
+  prompt: string;
+  engine: string;
+  mentioned: boolean;
+  /** The prompt itself names them, so the answer is seeded and excluded. */
+  promptNamed: boolean;
+  rank: number | null;
+  cited: boolean | null;
+  sentiment: number | null;
+  recordedAt: string;
+}
+
+/** A sentence from a stored answer, verbatim — never a summary of one. */
+export interface VisibilityExtract {
+  text: string;
+  engine: string;
+  recordedAt: string;
+}
+
+export type ShareOfModel =
+  | ({ status: "not_ready" } & ShareOfModelCounts)
+  | ({
+      status: "insufficient_data";
+      /** Runs the window holds, against what it takes. */
+      nRuns: number;
+      minRuns: number;
+      windowDays: number;
+    } & ShareOfModelCounts)
+  | ({
+      status: "ready";
+      windowDays: number;
+      windowStart: string;
+      windowEnd: string;
+      competitor: VisibilitySubjectStats;
+      /** Null when the tracking product has no self competitor. */
+      self: VisibilitySubjectStats | null;
+      position: number;
+      tracked: number;
+      /** Mention rate per past window, oldest first. A window under the run
+       *  minimum carries null rather than a point drawn off two answers. */
+      series: Array<{ windowStart: string; mentionRate: number | null; nRuns: number }>;
+      promptOutcomes: VisibilityPromptOutcome[];
+      /** EMPTY when no answer text was persisted — the sub-section is then absent. */
+      extracts: VisibilityExtract[];
+      narrative: {
+        h1: string | null;
+        claim: { rawText: string; observedAt: string } | null;
+      };
+    } & ShareOfModelCounts);
+
+// The identity line above the Positioning tab (P4): only what the four section
+// endpoints do not already answer.
+export interface PositioningSummary {
+  pricingModel: PricingModel | null;
+  /** Only set when an EARLIER wording exists — a first capture is not a rewrite. */
+  lastRepositionedAt: string | null;
+  versionsTotal: number;
+  shareOfModel: ShareOfModel;
+}
+
+// The facts the battle card's Positioning section is rendered from (P4). Every
+// field is nullable: a missing fact drops its line, it never prints "unknown".
+export interface PositioningFacts {
+  tagline: {
+    h1: string;
+    capturedAt: string;
+    primaryCta: string | null;
+    previousH1: string | null;
+  } | null;
+  claims: Array<{ rawText: string; observedAt: string }>;
+  comparison: {
+    recent: string[];
+    named: string[];
+    total: number;
+    windowDays: number;
+  } | null;
+  icp: { personas: string[]; industries: string[]; industriesProven: boolean } | null;
+  namedByCount: number;
 }
 
 // Competitor "fact sheet" — the state view behind the Overview tab. Pure
@@ -3212,12 +3449,33 @@ export const api = {
     request<ReviewsData>(`/api/competitors/${id}/reviews`),
   getCompetitorReviewScores: (id: string) =>
     request<{ scores: ReviewScorePoint[] }>(`/api/competitors/${id}/review-scores`),
-  // Distinct versions of a competitor's positioning copy, newest first. Lazy: the
-  // Positioning tab is the only caller, so it stays off the detail payload.
-  getCompetitorPositioningHistory: (id: string) =>
-    request<{ versions: PositioningVersion[] }>(
-      `/api/competitors/${id}/positioning-history`,
+  // Positioning Intelligence v2 — the five section reads and the identity line.
+  // All lazy: the Positioning tab is the only caller, so none of them rides on
+  // the detail payload every other tab pays for.
+  //
+  // P1 — every distinct wording, newest first. Paginated on `capturedAt` rather
+  // than an offset: rows are only ever appended at the top, so an offset page
+  // would shift under a reader the moment a scrape landed mid-scroll.
+  getCompetitorMessagingTimeline: (id: string, cursor?: string | null) =>
+    request<{ versions: MessagingVersion[]; nextCursor: string | null }>(
+      `/api/competitors/${id}/messaging-timeline${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
     ),
+  // P1 — the quantified claims they make about themselves, and how each has moved.
+  getCompetitorClaims: (id: string) =>
+    request<{ claims: CompetitorClaim[] }>(`/api/competitors/${id}/claims`),
+  // P2 — who they attack, and which competitors of THIS workspace name them.
+  getCompetitorMarketMap: (id: string) =>
+    request<MarketMap>(`/api/competitors/${id}/market-map`),
+  // P3 — who they SAY they sell to, against who their stories PROVE they sell to.
+  getCompetitorAudienceProfile: (id: string) =>
+    request<AudienceProfile>(`/api/competitors/${id}/audience-profile`),
+  // P4 — the identity line: how they charge, when they last rewrote their story,
+  // and what Share of Model holds so far.
+  getCompetitorPositioning: (id: string) =>
+    request<PositioningSummary>(`/api/competitors/${id}/positioning`),
+  // P4 — the deterministic facts the battle-card section renders.
+  getCompetitorPositioningFacts: (id: string) =>
+    request<PositioningFacts>(`/api/competitors/${id}/positioning-facts`),
   getCompetitorPricingHistory: (id: string) =>
     request<{ history: PricingHistoryPoint[] }>(`/api/competitors/${id}/pricing-history`),
   // Rate structures (P3): how the latest capture's metered plans charge — the

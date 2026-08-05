@@ -1,10 +1,9 @@
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
-import { resolve } from "node:path";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 import { competitorCandidates, competitors, organizations, products } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
-import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
+import { asUser, installAppMocks, installQueueMock, mountApp, seedOrg } from "./app-harness";
 
 // POST /onboarding/complete must default the org's digestEmail to the account
 // email (2026-07-10 audit: the weekly briefing is the retention loop, yet only
@@ -13,23 +12,24 @@ import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 let app: Hono;
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 
 afterAll(() => closeDb());
 
 beforeAll(async () => {
-  ({ db: testDb, close: closeDb } = await makeTestDb());
+  ({ db: testDb, close: closeDb, reset: resetDb } = await makeTestDb());
   await installAppMocks(testDb);
   // Keep the job queue out of the test: a fixed job id, never a queue connection.
-  mock.module(resolve(import.meta.dir, "../src/lib/queue"), () => ({
-    enqueueJob: async () => "run_test",
-    enqueueByName: async () => "run_test",
-    ensureQueue: async () => {},
-  }));
+  installQueueMock();
   const { onboardingRouter } = await import("../src/routes/onboarding");
   app = mountApp("/api/onboarding", onboardingRouter);
   // The onboarding router's import graph (scrapers discovery + ai) outweighs the
   // 5s default hook budget on a cold compile.
 }, 30_000);
+
+// Each test seeds the org and the self-competitor it acts on, so the table has to
+// start empty rather than carrying the previous test's product.
+beforeEach(() => resetDb());
 
 function completeBody() {
   return JSON.stringify({

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "b
 import { and, eq } from "drizzle-orm";
 import { isoWeekStart, weeksBack } from "@outrival/scrapers/jobs-hiring";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
+import { clearSharedOverrides, setSharedOverrides } from "./shared-mock";
 
 // Hiring Intelligence v2 P3 — the two salary signals, end to end against a real
 // (in-process) Postgres: the same migrations, the same enum, the same unique
@@ -41,12 +42,10 @@ const CURRENT_WEEK = WEEKS[4] as string;
 
 beforeAll(async () => {
   const realQueue = await import("@outrival/queue");
-  const realShared = await import("@outrival/shared");
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/db", () => ({ ...schema, db: harness.db }));
   mock.module("@outrival/queue", () => ({
     ...realQueue,
     NonRetriable: realQueue.NonRetriable,
@@ -58,15 +57,18 @@ beforeAll(async () => {
       },
     },
   }));
-  // The anchor writes its body to R2 before the DB row; there is no bucket here.
-  mock.module("@outrival/shared", () => ({ ...realShared, uploadToR2: async () => {} }));
 
   ({ runDetectSalaryShifts: runDetect } = await import("../src/core/detect-salary-shifts"));
 });
 
-afterAll(() => closeDb());
+afterAll(() => {
+  clearSharedOverrides();
+  return closeDb();
+});
 beforeEach(() => {
   enqueued = [];
+  // The anchor writes its body to R2 before the DB row; there is no bucket here.
+  setSharedOverrides({ uploadToR2: async () => {} });
 });
 
 let seq = 0;

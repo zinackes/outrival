@@ -241,6 +241,13 @@ export function ContentTab({
     const at = new Date(m.lastRunAt);
     return !oldest || at < oldest ? at : oldest;
   }, null);
+  // The sources that actually put rows on this page. An enabled monitor can have
+  // handed us nothing — never captured, or a page that lists no entries — and
+  // naming it as somewhere this was "read from" credits the reading to pages we
+  // never opened. Counted off the cadence rather than the timeline so the list
+  // holds still when the period toggle moves.
+  const published = totalsBySource(summary.cadence);
+  const readMonitors = contentMonitors.filter((m) => (published[m.sourceType] ?? 0) > 0);
 
   return (
     <TabCard>
@@ -379,10 +386,10 @@ export function ContentTab({
       )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 text-xs text-muted-foreground">
-        {contentMonitors.length > 0 && (
+        {readMonitors.length > 0 && (
           <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5">
             Read from
-            {contentMonitors.map((m, i) => (
+            {readMonitors.map((m, i) => (
               <span key={m.id} className="inline-flex min-w-0 items-center">
                 {i > 0 && <span className="mr-1.5">,</span>}
                 {m.pageUrl ? (
@@ -417,6 +424,15 @@ export function ContentTab({
 
 function sumCounts(counts: Record<string, number>): number {
   return Object.values(counts).reduce((n, v) => n + v, 0);
+}
+
+/** source_type → items over the whole cadence, the rows the tab's own totals count. */
+function totalsBySource(cadence: ContentSummary["cadence"]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const month of cadence) {
+    for (const [key, n] of Object.entries(month.bySource)) out[key] = (out[key] ?? 0) + n;
+  }
+  return out;
 }
 
 /**
@@ -704,16 +720,31 @@ function quietState(monitor: Monitor | undefined, scrapingIds: Set<string>): str
   return "watched, nothing filed yet";
 }
 
-/** The items themselves, grouped by the month they were published in. */
+/**
+ * The items themselves, grouped by the month they were published in.
+ *
+ * An item its source never dated gets its own trailing group instead of the month
+ * of OUR scrape. A blog listing that prints no dates, or a roadmap portal that
+ * states a status and not a publication date, would otherwise have every entry
+ * filed under this month — the tab claiming a publication date the publisher never
+ * gave. The API sorts those rows last, so the group is one run at the end.
+ */
 function Timeline({ items }: { items: ContentItemRow[] }) {
   const groups = useMemo(() => {
-    const out: Array<{ key: string; label: string; items: ContentItemRow[] }> = [];
+    const out: Array<{ key: string; label: string; undated: boolean; items: ContentItemRow[] }> = [];
     for (const item of items) {
       const at = itemDate(item);
-      const key = `${at.getUTCFullYear()}-${at.getUTCMonth()}`;
+      const undated = item.publishedAt === null;
+      const key = undated ? "undated" : `${at.getUTCFullYear()}-${at.getUTCMonth()}`;
       const last = out[out.length - 1];
       if (last?.key === key) last.items.push(item);
-      else out.push({ key, label: MONTH_LABEL.format(at), items: [item] });
+      else
+        out.push({
+          key,
+          label: undated ? "Undated" : MONTH_LABEL.format(at),
+          undated,
+          items: [item],
+        });
     }
     return out;
   }, [items]);
@@ -736,6 +767,11 @@ function Timeline({ items }: { items: ContentItemRow[] }) {
             <span className="text-xs tabular-nums text-muted-foreground">
               {group.items.length} {group.items.length === 1 ? "item" : "items"}
             </span>
+            {group.undated && (
+              <span className="text-xs text-muted-foreground">
+                · dates below are when we first saw them
+              </span>
+            )}
           </div>
           {group.items.map((item) => (
             <TimelineRow key={item.id} item={item} />
@@ -760,7 +796,16 @@ function TimelineRow({ item }: { item: ContentItemRow }) {
           className="size-1.5 shrink-0 -translate-y-0.5 rounded-full"
           style={{ background: SOURCE_COLOR[item.sourceType] ?? "var(--muted-foreground)" }}
         />
-        {DAY_LABEL.format(at)}
+        {item.publishedAt === null ? (
+          <span
+            className="underline decoration-dotted underline-offset-2"
+            title="This source didn't date the item. This is when we first saw it."
+          >
+            {DAY_LABEL.format(at)}
+          </span>
+        ) : (
+          DAY_LABEL.format(at)
+        )}
       </span>
 
       <span className="flex min-w-0 flex-wrap items-baseline gap-2">

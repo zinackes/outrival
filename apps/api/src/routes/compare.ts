@@ -1,6 +1,13 @@
 import { Hono } from "hono";
 import { and, eq, ne, isNull, inArray, desc, sql as dsql } from "drizzle-orm";
-import { competitors, contentItems, signals, techStackEntries } from "@outrival/db";
+import {
+  audiencePages,
+  competitors,
+  contentItems,
+  messagingVersions,
+  signals,
+  techStackEntries,
+} from "@outrival/db";
 import {
   type PlatformProfile,
   platformLabel,
@@ -278,11 +285,25 @@ function buildShippingDetails(
   return out;
 }
 
+/** Personas named on a compare card. Two is a reading; five is a paragraph. */
+const COMPARE_PERSONAS_SHOWN = 2;
+
 interface CompareColumn {
   id: string;
   name: string;
   url: string | null;
-  positioning: { category: string | null; summary: string | null };
+  // Positioning Intelligence v2 P4. `summary` is the AI profile line and stays for
+  // the picker's completeness score; the LENS reads the three fields under it, all
+  // of them captured rather than written: the words on their homepage today, and
+  // the buyers their own sitemap says they sell to.
+  positioning: {
+    category: string | null;
+    summary: string | null;
+    /** Their current hero headline, verbatim (messaging_versions). */
+    h1: string | null;
+    /** The personas they publish a page for, newest first (audience_pages). */
+    personas: string[];
+  };
   pricing: PricingDetail | null;
   hiring: HiringDetail | null;
   shipping: ShippingDetail | null;
@@ -343,8 +364,9 @@ compareRouter.get("/", async (c) => {
     sql`, `,
   );
 
-  // Relational: active tech + latest signal per competitor.
-  const [techRows, latestSignals] = await Promise.all([
+  // Relational: active tech + latest signal per competitor, plus what the
+  // positioning lens reads (P4) — the current headline and the persona pages.
+  const [techRows, latestSignals, currentH1s, personaRows] = await Promise.all([
     db
       .select({
         competitorId: techStackEntries.competitorId,
@@ -365,7 +387,38 @@ compareRouter.get("/", async (c) => {
       .from(signals)
       .where(and(eq(signals.orgId, orgId), inArray(signals.competitorId, ids)))
       .orderBy(signals.competitorId, desc(signals.createdAt)),
+    // One row per competitor — the newest wording. DISTINCT ON rides the unique
+    // (competitor, captured_at) index the timeline is already read on.
+    db
+      .selectDistinctOn([messagingVersions.competitorId], {
+        competitorId: messagingVersions.competitorId,
+        h1: messagingVersions.h1,
+      })
+      .from(messagingVersions)
+      .where(inArray(messagingVersions.competitorId, ids))
+      .orderBy(messagingVersions.competitorId, desc(messagingVersions.capturedAt)),
+    db
+      .select({
+        competitorId: audiencePages.competitorId,
+        displayName: audiencePages.displayName,
+      })
+      .from(audiencePages)
+      .where(and(inArray(audiencePages.competitorId, ids), eq(audiencePages.kind, "persona")))
+      .orderBy(desc(audiencePages.firstSeenAt)),
   ]);
+
+  const h1ById = new Map(currentH1s.map((r) => [r.competitorId, r.h1]));
+  // Capped at the read side, not the query: the lens names two, and a competitor
+  // with nine persona pages must not push a card to nine lines.
+  const personasById = new Map<string, string[]>();
+  for (const row of personaRows) {
+    const held = personasById.get(row.competitorId);
+    if (held) {
+      if (held.length < COMPARE_PERSONAS_SHOWN) held.push(row.displayName);
+      continue;
+    }
+    personasById.set(row.competitorId, [row.displayName]);
+  }
 
   // Release cadence (Content Intelligence v2 P5): changelog entries per month, from
   // the rows their own feed wrote. Dated by `published_at ?? first_seen_at` — the
@@ -798,7 +851,12 @@ compareRouter.get("/", async (c) => {
         id: o.id,
         name: o.name,
         url: o.url,
-        positioning: { category: o.category, summary: o.aiSummary ?? o.description },
+        positioning: {
+          category: o.category,
+          summary: o.aiSummary ?? o.description,
+          h1: h1ById.get(id) ?? null,
+          personas: personasById.get(id) ?? [],
+        },
         pricing: pricingById.get(id) ?? null,
         hiring: hiringById.get(id) ?? null,
         shipping: shippingById.get(id) ?? null,

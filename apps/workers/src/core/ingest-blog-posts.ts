@@ -342,12 +342,18 @@ type CompetitorRow = typeof competitors.$inferSelect;
  * inserts nothing. A post is never updated in place: its title can be edited, and
  * an edit is not a publication.
  *
+ * The ONE exception is a `published_at` we never had. A row with no date is dated
+ * from the day we first saw it everywhere downstream — the timeline, the cadence
+ * chart, the pivot windows — so a listing that only later hands us the real date
+ * has to be able to correct it. Filling a NULL is not an edit; it is the record
+ * completing. A date we already hold is never overwritten.
+ *
  * `markSeen` is the baseline: `enrichedAt` is stamped so those rows leave the fetch
  * queue permanently. They are not "read and found empty" — they are the state the
  * blog was in when we arrived, and the point of a baseline is that everything after
  * it is genuinely new.
  */
-async function insertItems(
+export async function insertItems(
   competitorId: string,
   items: ReadonlyArray<ContentItemInput>,
   options: { markSeen?: boolean } = {},
@@ -367,9 +373,15 @@ async function insertItems(
         enrichedAt: seenAt,
       })),
     )
-    .onConflictDoNothing()
-    .returning({ id: contentItems.id });
-  return rows.length;
+    .onConflictDoUpdate({
+      target: [contentItems.competitorId, contentItems.sourceType, contentItems.externalId],
+      set: { publishedAt: sql`excluded.published_at` },
+      setWhere: sql`${contentItems.publishedAt} is null and excluded.published_at is not null`,
+    })
+    // `xmax = 0` is true only for the rows this statement INSERTED, so a repaired
+    // date is not reported as a publication.
+    .returning({ id: contentItems.id, isNew: sql<boolean>`xmax = 0` });
+  return rows.filter((r) => r.isNew).length;
 }
 
 /**

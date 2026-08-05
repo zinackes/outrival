@@ -50,6 +50,7 @@ export function SignalFacts({ facts }: { facts: Facts }) {
   if (facts.kind === "integrations") return <IntegrationFacts facts={facts} />;
   if (facts.kind === "comparison_targets") return <ComparisonTargetFacts facts={facts} />;
   if (facts.kind === "audience_pages") return <AudiencePageFacts facts={facts} />;
+  if (facts.kind === "ai_visibility") return <AiVisibilityFacts facts={facts} />;
   if (facts.kind === "editorial") return <EditorialFacts facts={facts} />;
   if (facts.kind === "tech_stack") return <TechStackFacts facts={facts} />;
   if (facts.kind === "reviews") return <ReviewFacts facts={facts} />;
@@ -760,6 +761,92 @@ function AudiencePageFacts({ facts }: { facts: Extract<Facts, { kind: "audience_
           <CaretDownIcon size={14} aria-hidden />
           <span className="tabular-nums">{hidden}</span> more
         </button>
+      )}
+    </div>
+  );
+}
+
+const ENGINE_LABELS: Record<string, string> = {
+  gemini: "Gemini",
+  perplexity: "Perplexity",
+  chatgpt: "ChatGPT",
+  claude: "Claude",
+  google_aio: "Google AI Overviews",
+};
+
+const ratePct = (x: number) => `${Math.round(x * 100)}%`;
+
+/**
+ * Both windows behind an AI-visibility shift.
+ *
+ * Every rate is printed with the fraction it came from and the number of runs
+ * behind it. That is not decoration: the measurement is an average over an answer
+ * engine's own variance, and "31%" alone invites a confidence that "2 of 8 answers,
+ * over 8 runs" immediately corrects. The per-engine split appears only when more
+ * than one engine answered — with one, it would restate the headline.
+ */
+function AiVisibilityFacts({ facts }: { facts: Extract<Facts, { kind: "ai_visibility" }> }) {
+  const { current, previous, windowDays } = facts;
+  const rankRow = current.avgRank != null || previous.avgRank != null;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-dense text-muted-foreground">
+        Measured over <span className="tabular-nums text-foreground">{windowDays}</span> days,
+        against the <span className="tabular-nums text-foreground">{windowDays}</span> before —
+        never a single run.
+      </p>
+
+      <div className="grid grid-cols-[auto_1fr_1fr] gap-x-4 gap-y-1.5 text-sm">
+        <span className="text-xs text-muted-foreground">&nbsp;</span>
+        <span className="text-xs text-muted-foreground">Previous</span>
+        <span className="text-xs text-muted-foreground">Current</span>
+
+        <span className="text-xs text-muted-foreground">Named in</span>
+        <span className="tabular-nums">
+          {ratePct(previous.mentionRate)}{" "}
+          <span className="text-xs text-muted-foreground">
+            ({previous.mentions} of {previous.answers})
+          </span>
+        </span>
+        <span className="font-medium tabular-nums">
+          {ratePct(current.mentionRate)}{" "}
+          <span className="text-xs font-normal text-muted-foreground">
+            ({current.mentions} of {current.answers})
+          </span>
+        </span>
+
+        {rankRow && (
+          <>
+            <span className="text-xs text-muted-foreground">Average position</span>
+            <span className="tabular-nums">
+              {previous.avgRank == null ? "—" : previous.avgRank.toFixed(1)}
+            </span>
+            <span className="font-medium tabular-nums">
+              {current.avgRank == null ? "—" : current.avgRank.toFixed(1)}
+            </span>
+          </>
+        )}
+
+        <span className="text-xs text-muted-foreground">Runs</span>
+        <span className="tabular-nums">{previous.nRuns}</span>
+        <span className="tabular-nums">{current.nRuns}</span>
+      </div>
+
+      {facts.byEngine.length > 0 && (
+        <ul className="space-y-1 border-t border-border pt-2">
+          {facts.byEngine.map((e) => (
+            <li key={e.engine} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+              <span className="text-foreground">{ENGINE_LABELS[e.engine] ?? e.engine}</span>
+              <span className="tabular-nums text-muted-foreground">
+                {ratePct(e.previous.mentionRate)} → {ratePct(e.current.mentionRate)}
+              </span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {e.current.mentions} of {e.current.answers} answers
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

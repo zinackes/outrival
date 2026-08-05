@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import {
@@ -21,6 +21,7 @@ import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 let app: Hono;
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 let A: { orgId: string; userId: string; email: string };
 let B: { orgId: string; userId: string; email: string };
 let productA: string;
@@ -32,11 +33,16 @@ afterAll(() => closeDb());
 const HOOK_TIMEOUT_MS = 30_000;
 
 beforeAll(async () => {
-  ({ db: testDb, close: closeDb } = await makeTestDb());
+  ({ db: testDb, close: closeDb, reset: resetDb } = await makeTestDb());
   await installAppMocks(testDb);
   const { productsRouter } = await import("../src/routes/products");
   app = mountApp("/api/products", productsRouter);
+}, HOOK_TIMEOUT_MS);
 
+// Per test, not per file: the portfolio aggregates are read off rows other tests
+// attach and insert, and one of them asserts a product with nothing on it at all.
+beforeEach(async () => {
+  await resetDb();
   A = await seedOrg(testDb, { plan: "free" });
   B = await seedOrg(testDb, { plan: "free" });
   // A normal competitor in each org, for the attach / cross-tenant tests.
@@ -57,6 +63,37 @@ beforeAll(async () => {
 
 const get = (u: { userId: string; email: string }, id: string) =>
   app.request(`/api/products/${id}`, asUser(u.userId, u.email));
+
+/** Link comp-a to org A's product, the way the attach test does. */
+const attachCompA = () =>
+  app.request(
+    `/api/products/${productA}/competitors/comp-a`,
+    asUser(A.userId, A.email, { method: "POST", body: JSON.stringify({}) }),
+  );
+
+/** One critical pricing signal on comp-a, dated two days back. */
+async function seedCompASignal(): Promise<void> {
+  await testDb
+    .insert(monitors)
+    .values({ id: "mon-pa", competitorId: "comp-a", sourceType: "homepage", isActive: true });
+  await testDb
+    .insert(snapshots)
+    .values({ id: "snp-pa", monitorId: "mon-pa", r2Key: "k", contentHash: "h" });
+  const at = new Date(Date.now() - 2 * 24 * 3600 * 1000);
+  await testDb
+    .insert(changes)
+    .values({ id: "chg-pa", monitorId: "mon-pa", snapshotAfterId: "snp-pa", detectedAt: at });
+  await testDb.insert(signals).values({
+    id: "sig-pa",
+    changeId: "chg-pa",
+    orgId: A.orgId,
+    competitorId: "comp-a",
+    severity: "critical",
+    category: "pricing",
+    insight: "Entry tier moved",
+    createdAt: at,
+  });
+}
 
 describe("products tenant isolation (IDOR)", () => {
   test("owner reads their own product", async () => {
@@ -155,27 +192,8 @@ describe("GET /products portfolio aggregates", () => {
   });
 
   test("signals on a linked competitor land on the product's own row", async () => {
-    // comp-a was attached to productA by the attach test above.
-    await testDb
-      .insert(monitors)
-      .values({ id: "mon-pa", competitorId: "comp-a", sourceType: "homepage", isActive: true });
-    await testDb
-      .insert(snapshots)
-      .values({ id: "snp-pa", monitorId: "mon-pa", r2Key: "k", contentHash: "h" });
-    const at = new Date(Date.now() - 2 * 24 * 3600 * 1000);
-    await testDb
-      .insert(changes)
-      .values({ id: "chg-pa", monitorId: "mon-pa", snapshotAfterId: "snp-pa", detectedAt: at });
-    await testDb.insert(signals).values({
-      id: "sig-pa",
-      changeId: "chg-pa",
-      orgId: A.orgId,
-      competitorId: "comp-a",
-      severity: "critical",
-      category: "pricing",
-      insight: "Entry tier moved",
-      createdAt: at,
-    });
+    await attachCompA();
+    await seedCompASignal();
 
     const res = await app.request("/api/products", asUser(A.userId, A.email));
     const body = (await res.json()) as { products: Record<string, any>[] };
@@ -227,6 +245,9 @@ describe("GET /products/:id linked competitors", () => {
   // competitor last DID. Unwindowed on purpose: a competitor silent for weeks
   // still has a last move, and that is the useful thing its row can say.
   test("each linked competitor carries its latest signal", async () => {
+    await attachCompA();
+    await seedCompASignal();
+
     const body = await (await get(A, productA)).json();
     const linked = body.competitors.find(
       (c: { competitorId: string }) => c.competitorId === "comp-a",
@@ -269,7 +290,7 @@ describe("price position", () => {
     recordedAt: new Date(),
   });
 
-  beforeAll(async () => {
+  beforeEach(async () => {
     P = await seedOrg(testDb, { plan: "pro" });
     const created = await app.request(
       "/api/products",
@@ -340,7 +361,7 @@ describe("price position: one axis, whatever period each side publishes on", () 
   let Y: { orgId: string; userId: string; email: string };
   let productY: string;
 
-  beforeAll(async () => {
+  beforeEach(async () => {
     Y = await seedOrg(testDb, { plan: "pro" });
     const created = await app.request(
       "/api/products",
@@ -410,6 +431,8 @@ describe("GET /products/:id/pricing-position", () => {
   });
 
   test("with no priced competitor the ladder is empty rather than absent", async () => {
+    await attachCompA(); // a rival on the ladder that publishes no price at all
+
     const res = await app.request(
       `/api/products/${productA}/pricing-position`,
       asUser(A.userId, A.email),
@@ -512,7 +535,7 @@ describe("archiving a product hands its roster back", () => {
       .map((r) => r.productId)
       .sort();
 
-  beforeAll(async () => {
+  beforeEach(async () => {
     C = await seedOrg(testDb, { plan: "pro" });
     await testDb.insert(competitors).values([
       { id: "comp-c-shared", orgId: C.orgId, name: "Shared rival" },

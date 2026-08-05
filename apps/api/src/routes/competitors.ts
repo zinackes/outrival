@@ -65,6 +65,7 @@ import { readGtm, productNavItems, type GtmRead } from "../lib/homepage-gtm";
 import { dedupeVerbatims } from "../lib/review-verbatims";
 import { namedBy, namedTargets } from "../lib/market-map";
 import { audienceProfile } from "../lib/audience-profile";
+import { positioningFacts, positioningSummary } from "../lib/positioning";
 import {
   checkCompetitorQuota,
   getOrgPlan,
@@ -2835,6 +2836,51 @@ competitorsRouter.get("/:id/audience-profile", async (c) => {
   return c.json(await audienceProfile(competitor.id));
 });
 
+/**
+ * The identity line above the Positioning tab's sections (Positioning v2 P4):
+ * how they charge, when they last rewrote their story, and what Share of Model
+ * holds so far.
+ *
+ * Only what the four section endpoints (messaging-timeline, claims, market-map,
+ * audience-profile) do not already answer. The pricing model comes from the same
+ * pure `pricingModelOf` the compare price lens reads, so the badge on this tab
+ * and the badge on the compare grid can never disagree.
+ */
+competitorsRouter.get("/:id/positioning", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  return c.json(await positioningSummary({ competitorId: competitor.id, orgId }));
+});
+
+/**
+ * The facts the battle card's Positioning section is rendered from.
+ *
+ * 100% deterministic: a headline they published, a claim they printed, a slug in
+ * their sitemap, a count of workspace rivals that name them. Nothing on this
+ * response was written by a model, which is what lets the section state it
+ * without a hedge — see the same guarantee on `/customers` and `/roadmap`.
+ */
+competitorsRouter.get("/:id/positioning-facts", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  return c.json(
+    await positioningFacts({
+      competitorId: competitor.id,
+      orgId,
+      competitorName: competitor.name,
+      competitorUrl: competitor.url,
+    }),
+  );
+});
+
 /** How recent a first sighting has to be to still read as a win. */
 const CUSTOMER_WIN_WINDOW_DAYS = 90;
 
@@ -2952,7 +2998,16 @@ const ContentQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).optional(),
 });
 
-/** `published_at ?? first_seen_at` — the date an item is placed on, everywhere. */
+/**
+ * `published_at ?? first_seen_at` — the date an item FALLS IN, for every window
+ * this file cuts (the timeline period, the cadence months).
+ *
+ * It is deliberately NOT the sort key. An undated item coalesces to the day we
+ * scraped it, which on a fresh competitor is today — so sorting on it puts a post
+ * from 2021 at the top of the timeline under this month's heading. Ordering keeps
+ * dated items on their own date and sends the undated ones to the end, where the
+ * tab labels them as undated instead of dating them for the publisher.
+ */
 const itemDateSql = sql`coalesce(${contentItems.publishedAt}, ${contentItems.firstSeenAt})`;
 
 /**
@@ -3012,7 +3067,7 @@ competitorsRouter.get("/:id/content", async (c) => {
       })
       .from(contentItems)
       .where(where)
-      .orderBy(sql`${itemDateSql} desc`)
+      .orderBy(sql`${contentItems.publishedAt} desc nulls last`, desc(contentItems.firstSeenAt))
       .limit(limit)
       .offset(offset),
     db.select({ n: sql<number>`count(*)::int` }).from(contentItems).where(where),

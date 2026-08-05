@@ -113,6 +113,75 @@ export function barSegments(
   return { segments: parts, height: parts.reduce((n, p) => n + p.height, 0) };
 }
 
+// ── Skipped runs ─────────────────────────────────────────────────────────────
+//
+// A run the worker logged as `skipped`: it opened nothing, because there was
+// nothing of this kind to open. Two sentences per reason — the row's one-liner
+// and, in the panel, what it means for the competitor — keyed on the marker the
+// scraper itself threw (apps/workers/src/core/scrape-monitor.ts benignSkipFrom).
+//
+// Without this a skip inherited the no-change copy and the feed said "Nothing
+// new · We read this page and it matches our last capture" about a page it had
+// never opened. Measured on prod 2026-08-04: 145 roadmap skips in seven days.
+
+interface SkipCopy {
+  /** The row's one-liner, in the "what happened" column. */
+  short: string;
+  /** The expanded panel's sentence. */
+  detail: string;
+}
+
+const SKIP_COPY: Record<string, SkipCopy> = {
+  no_roadmap_portal: {
+    short: "No public roadmap to read",
+    detail:
+      "We looked for a public roadmap or feedback portal and found none, so there was nothing to read. If they publish one at an address we missed, point us at it from the source's settings.",
+  },
+  portal_private: {
+    short: "Their roadmap portal is private",
+    detail:
+      "They run a roadmap portal, but its board is access-restricted. We stop at that rather than work around it, so nothing is collected from it.",
+  },
+  portal_empty: {
+    short: "Their roadmap portal is empty",
+    detail:
+      "Their roadmap portal is public and currently carries no entries. We keep checking it, and the first entry they publish will show up here.",
+  },
+  no_docs_surface: {
+    short: "No public developer docs",
+    detail:
+      "We found no public developer documentation for this competitor, so there was nothing to read.",
+  },
+  no_channel: {
+    short: "No YouTube channel linked",
+    detail: "This competitor links no YouTube channel, so there was nothing to read.",
+  },
+  no_sitemap_found: {
+    short: "No sitemap published",
+    detail: "This site publishes no sitemap.xml, so there was nothing to read.",
+  },
+  no_live_subdomains: {
+    short: "No live subdomains found",
+    detail: "No live subdomain came back for this competitor on this check.",
+  },
+  crtsh_unavailable: {
+    short: "Certificate log unavailable",
+    detail:
+      "The certificate transparency log we read subdomains from did not answer. Nothing is wrong with the competitor: we try again on the next check.",
+  },
+};
+
+const SKIP_FALLBACK: SkipCopy = {
+  short: "Nothing to read on this source",
+  detail: "There was nothing of this kind to read on this check.",
+};
+
+/** How a `skipped` run reads. Null for any other status. */
+export function skipCopy(e: ActivityEvent): SkipCopy | null {
+  if (e.status !== "skipped") return null;
+  return (e.failureReason ? SKIP_COPY[e.failureReason] : null) ?? SKIP_FALLBACK;
+}
+
 // ── Structured homepage changes ──────────────────────────────────────────────
 
 // Readable label per structured-diff kind. Sentence case, not an uppercase mono

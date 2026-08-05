@@ -1,10 +1,9 @@
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
-import { resolve } from "node:path";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { competitors, monitors, organizations } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
-import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
+import { asUser, installAppMocks, installQueueMock, mountApp, seedOrg } from "./app-harness";
 
 // Monitoring defaults: which sources a new competitor starts with, and the
 // retroactive "apply to existing competitors" action behind the settings card and
@@ -14,22 +13,24 @@ import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 let app: Hono;
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 let FREE: { orgId: string; userId: string; email: string };
 let PRO: { orgId: string; userId: string; email: string };
 
 afterAll(() => closeDb());
 
 beforeAll(async () => {
-  ({ db: testDb, close: closeDb } = await makeTestDb());
+  ({ db: testDb, close: closeDb, reset: resetDb } = await makeTestDb());
   await installAppMocks(testDb);
-  mock.module(resolve(import.meta.dir, "../src/lib/queue"), () => ({
-    enqueueJob: async () => "run_test",
-    enqueueByName: async () => "run_test",
-    ensureQueue: async () => {},
-  }));
+  installQueueMock();
   const { settingsRouter } = await import("../src/routes/settings");
   app = mountApp("/api/settings", settingsRouter);
+});
 
+// Per test, not per file: /sources/apply creates the very monitors the read tests
+// then assert are still missing.
+beforeEach(async () => {
+  await resetDb();
   FREE = await seedOrg(testDb, { plan: "free" });
   PRO = await seedOrg(testDb, { plan: "pro" });
 
@@ -164,6 +165,9 @@ describe("POST /api/settings/sources/apply", () => {
   });
 
   test("running it again creates nothing", async () => {
+    // The first apply is this test's own setup: idempotence is the assertion.
+    await app.request("/api/settings/sources/apply", asUser(PRO.userId, PRO.email, { method: "POST" }));
+
     const res = await app.request(
       "/api/settings/sources/apply",
       asUser(PRO.userId, PRO.email, { method: "POST" }),

@@ -29,6 +29,23 @@ export async function installAppMocks(testDb: TestDb): Promise<void> {
   }));
 }
 
+/**
+ * Stub the job queue: a fixed job id, never a queue connection.
+ *
+ * Shared on purpose. mock.module is process-global and cannot be unregistered, so the
+ * LAST file to mock this module defines it for every file that imports it afterwards.
+ * When each file wrote its own partial stub, running them in a different order made a
+ * router blow up on `Export named 'ensureQueue' not found` — a file that never mocked
+ * the queue at all inherited a two-export version of it. One surface, defined once.
+ */
+export function installQueueMock(): void {
+  mock.module(resolve(import.meta.dir, "../src/lib/queue"), () => ({
+    ensureQueue: async () => {},
+    enqueueByName: async () => "run_test",
+    enqueueJob: async () => "run_test",
+  }));
+}
+
 /** Build a one-route app for app.request(), matching the prod mount path. */
 export function mountApp(basePath: string, router: Hono): Hono {
   return new Hono().route(basePath, router);

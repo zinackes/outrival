@@ -248,4 +248,78 @@ describe("buildSlopeModel", () => {
     expect(model.firstDate).toBe("2026-05-01");
     expect(model.lastDate).toBe("2026-07-01");
   });
+
+  // Dropping the one competitor that owns the top of the range is the reason to
+  // offer a filter on a price chart: without the rescale, ten cheap plans stay
+  // flattened onto the floor whether the expensive one is plotted or not.
+  test("plotting fewer competitors rescales the ladder", () => {
+    const cheap = series("cheap", [
+      ["2026-05-01", 9],
+      ["2026-07-01", 12],
+    ]);
+    const expensive = series("expensive", [
+      ["2026-05-01", 499],
+      ["2026-07-01", 499],
+    ]);
+
+    const withOutlier = buildSlopeModel([cheap, expensive])!;
+    const without = buildSlopeModel([cheap])!;
+
+    expect(withOutlier.ticks).not.toEqual(without.ticks);
+    expect(Math.max(...withOutlier.ticks)).toBe(499);
+    expect(Math.max(...without.ticks)).toBe(12);
+    // The $3 the cheap plan moved was 0.6% of the old plot's height and is the whole
+    // of the new one's.
+    const travelled = (m: typeof without) => Math.abs(m.y(9) - m.y(12)) / m.height;
+    expect(travelled(without)).toBeGreaterThan(travelled(withOutlier) * 10);
+  });
+});
+
+describe("buildSlopeModel leaders", () => {
+  test("a label pushed off its own line gets a pointer back to it", () => {
+    // The shape the pointers exist for: a bundle of similar prices plus one
+    // enterprise plan that stretches the scale, so the bundle's end dots land within
+    // a pixel of each other and decollide has to move every one of their labels.
+    const bundle = Array.from({ length: 5 }, (_, i) =>
+      series(`c${i}`, [
+        ["2026-05-01", 10 + i * 0.1],
+        ["2026-07-01", 10 + i * 0.1],
+      ]),
+    );
+    const model = buildSlopeModel([
+      ...bundle,
+      series("enterprise", [
+        ["2026-05-01", 500],
+        ["2026-07-01", 500],
+      ]),
+    ])!;
+
+    expect(model.leaders.length).toBe(bundle.length);
+    // The outlier's label never moved, so it is not pointed at.
+    expect(model.leaders.some((l) => l.competitorId === "enterprise")).toBe(false);
+
+    for (const leader of model.leaders) {
+      const label = model.labels.find((l) => l.row.item.competitorId === leader.competitorId);
+      expect(leader.labelY).toBe(label!.top);
+      // The pointer starts on the data, never on the label's nudged position.
+      expect(leader.endY).toBe(model.y(label!.row.to));
+    }
+  });
+
+  test("labels that already sit on their line get no pointer", () => {
+    // Far enough apart that decollide leaves both alone — a leader here would point
+    // at the label it is already touching.
+    const model = buildSlopeModel([
+      series("high", [
+        ["2026-05-01", 400],
+        ["2026-07-01", 400],
+      ]),
+      series("low", [
+        ["2026-05-01", 10],
+        ["2026-07-01", 10],
+      ]),
+    ])!;
+
+    expect(model.leaders).toEqual([]);
+  });
 });

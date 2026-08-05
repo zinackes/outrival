@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ChartLineIcon } from "@/components/icons";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
@@ -18,9 +19,15 @@ import { trendsSummaryQuery, trendsMarketQuery } from "@/lib/queries";
 import { formatDate } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 import { competitorNameColor } from "@/lib/competitor-color";
-import { seriesStroke } from "@/lib/series-color";
+import { buildSeriesPalette, paintFor, type SeriesPaint } from "@/lib/series-color";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CompAvatar } from "./comp-avatar";
+import { FilterChip } from "./filter-chip";
+import { SeriesSwatch } from "./series-swatch";
+import {
+  TrendsCompetitorFilter,
+  type TrendsRosterEntry,
+} from "./trends-competitor-filter";
 import { Sparkline } from "./sparkline";
 // Plain SVG, no recharts: imported directly so the page's first chart doesn't
 // arrive behind a skeleton the way the lazy market chart has to.
@@ -409,25 +416,41 @@ function Movement({
   );
 }
 
+/** Past this many entries the key scrolls rather than pushing the page down. */
+const KEY_SCROLL_AFTER = 12;
+
 /**
  * The chart's key, and its filter. Clicking a competitor drops its line, so eight
  * overlapping series can be read two at a time without leaving the page.
+ *
+ * A switched-off entry stays in place at reduced opacity rather than disappearing:
+ * it is how you switch it back on, and a control that vanishes when used sends the
+ * reader to the toolbar for something they were already holding.
  */
 function ChartKey({
   series,
   hidden,
+  paint,
   onToggle,
   onHighlight,
 }: {
   series: TrendsMarketSeries[];
   hidden: Set<string>;
+  paint: Map<string, SeriesPaint>;
   onToggle: (id: string) => void;
   onHighlight: (id: string | null) => void;
 }) {
   if (series.length < 2) return null;
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-      {series.map((item, i) => {
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-x-3 gap-y-1.5",
+        // Nothing caps the roster, and thirty legend chips push the next section off
+        // the screen entirely.
+        series.length > KEY_SCROLL_AFTER && "max-h-[4.75rem] overflow-y-auto",
+      )}
+    >
+      {series.map((item) => {
         const off = hidden.has(item.competitorId);
         return (
           <button
@@ -441,17 +464,17 @@ function ChartKey({
             onFocus={() => onHighlight(off ? null : item.competitorId)}
             onBlur={() => onHighlight(null)}
             aria-pressed={!off}
+            // aria-pressed alone announces "pressed" against a label that is only a
+            // company name, which never says what is being pressed.
+            aria-label={`${item.competitorName}, ${off ? "hidden" : "shown"}`}
             className={cn(
               "inline-flex items-center gap-1.5 rounded-sm px-1 py-0.5 text-xs transition-opacity",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               off ? "opacity-40" : "hover:opacity-70",
             )}
           >
-            <span
-              aria-hidden
-              className="h-0.5 w-3.5 shrink-0 rounded-full"
-              style={{ background: seriesStroke(item.color, i) }}
-            />
+            <CompAvatar name={item.competitorName} url={item.competitorUrl} size={14} />
+            <SeriesSwatch paint={paintFor(paint, item.competitorId)} />
             <span className={cn(item.isSelf && "font-medium")}>
               {item.competitorName}
               {item.isSelf && <span className="text-muted-foreground"> (you)</span>}
@@ -463,19 +486,28 @@ function ChartKey({
   );
 }
 
-/** A market chart plus its key, sharing one hidden-series state. */
+/**
+ * A market chart plus its key. The hidden set is the page's, not the chart's: the
+ * same competitor is off on every plot and out of every count.
+ */
 function MarketPlot({
   series,
   mode,
   formatValue,
   height,
+  paint,
+  hidden,
+  onToggle,
 }: {
   series: TrendsMarketSeries[];
   mode: "index" | "absolute";
   formatValue: (value: number, item: TrendsMarketSeries) => string;
   height?: number;
+  paint: Map<string, SeriesPaint>;
+  hidden: Set<string>;
+  onToggle: (id: string) => void;
 }) {
-  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  // Transient, so it stays local: pointing at a line is not choosing one.
   const [highlighted, setHighlighted] = useState<string | null>(null);
   if (series.length === 0) return null;
   return (
@@ -484,6 +516,7 @@ function MarketPlot({
         series={series}
         mode={mode}
         formatValue={formatValue}
+        paint={paint}
         hidden={hidden}
         highlighted={highlighted}
         height={height}
@@ -491,15 +524,9 @@ function MarketPlot({
       <ChartKey
         series={series}
         hidden={hidden}
+        paint={paint}
         onHighlight={setHighlighted}
-        onToggle={(id) =>
-          setHidden((prev) => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-          })
-        }
+        onToggle={onToggle}
       />
     </div>
   );
@@ -605,6 +632,11 @@ function Quiet({ children }: { children: React.ReactNode }) {
   return <p className="py-2 text-sm text-muted-foreground">{children}</p>;
 }
 
+function parseSet(s: string | null): Set<string> {
+  if (!s) return new Set();
+  return new Set(s.split(",").filter(Boolean));
+}
+
 /* -------------------------------------------------------------------------- */
 /* View                                                                        */
 /* -------------------------------------------------------------------------- */
@@ -613,6 +645,34 @@ export function TrendsView() {
   const [range, setRange] = useState<DateRange>(() => lastNDays(90));
   // patch-28 — active product scope (cookie-backed switcher, URL ?product= overrides).
   const productId = useProductScope() ?? undefined;
+  const searchParams = useSearchParams();
+  // Excluded, not included: a stale id from a shared link or a swapped product scope
+  // then matches nobody and the page shows everything, where an include list would
+  // resolve to nothing and blank the report. Seeded once — the URL is a mirror of
+  // this state from here on, not its source.
+  const [hidden, setHidden] = useState<Set<string>>(() => parseSet(searchParams.get("hide")));
+
+  // Mirrored with the NATIVE history API, never router.replace: this route's Server
+  // Component awaits searchParams, so a router.replace would re-run getTrendsData +
+  // getTrendsMarketData and re-hydrate the cache on every checkbox tick, for a filter
+  // that never leaves the client. Same reason as signals-view.tsx.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (hidden.size > 0) url.searchParams.set("hide", Array.from(hidden).join(","));
+    else url.searchParams.delete("hide");
+    window.history.replaceState(window.history.state, "", url.toString());
+  }, [hidden]);
+
+  const toggleHidden = useCallback((competitorId: string) => {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      if (next.has(competitorId)) next.delete(competitorId);
+      else next.add(competitorId);
+      return next;
+    });
+  }, []);
+  const showAll = useCallback(() => setHidden(new Set()), []);
+
   // Server-seeded for the default 90d window (trends/page.tsx); the queryKey embeds
   // from/to (+ product), so changing the range or product refetches automatically.
   const summaryQ = useQuery(trendsSummaryQuery(range, productId));
@@ -620,12 +680,34 @@ export function TrendsView() {
   const summary = summaryQ.data ?? null;
   const market = marketQ.data ?? null;
 
-  const reading = useMemo(() => {
+  // The filter is applied HERE, at the source, so the headline, the rail stats, the
+  // mover chips and every movement list follow the same set as the charts. A page
+  // whose chart drops a competitor while its counters still add them up is two
+  // different reports on one screen.
+  const visibleSummary = useMemo(() => {
     if (!summary) return null;
-    const pricing = readPricing(summary.pricing);
-    const hiring = readHiring(summary.hiring);
-    const reviews = readReviews(summary.reviews);
-    const tech = readTech(summary.tech);
+    if (hidden.size === 0) return summary;
+    const keep = <T extends { competitorId: string }>(rows: T[]) =>
+      rows.filter((row) => !hidden.has(row.competitorId));
+    return {
+      ...summary,
+      pricing: keep(summary.pricing),
+      hiring: keep(summary.hiring),
+      reviews: keep(summary.reviews),
+      tech: keep(summary.tech),
+    };
+  }, [summary, hidden]);
+
+  // The charts, by contrast, keep the FULL series and take `hidden` as a prop: their
+  // keys have to keep drawing a switched-off entry, in place, because that entry is
+  // how it gets switched back on.
+
+  const reading = useMemo(() => {
+    if (!visibleSummary) return null;
+    const pricing = readPricing(visibleSummary.pricing);
+    const hiring = readHiring(visibleSummary.hiring);
+    const reviews = readReviews(visibleSummary.reviews);
+    const tech = readTech(visibleSummary.tech);
     return {
       pricing,
       hiring,
@@ -634,7 +716,7 @@ export function TrendsView() {
       movers: readMovers(pricing, hiring, reviews),
       market: readMarket(pricing, hiring, reviews, tech),
     };
-  }, [summary]);
+  }, [visibleSummary]);
 
   // Competitor identity (favicon + assigned colour) only travels on the market
   // series, so the leaderboard rows borrow it from there rather than making the
@@ -661,15 +743,57 @@ export function TrendsView() {
     return map;
   }, [market]);
 
+  /**
+   * Everyone the page could plot, taken from BOTH routes.
+   *
+   * /market and /summary are different queries with different limits, and a
+   * competitor can appear in one without the other — a tech adoption carries no
+   * market series at all. A roster built from the charts alone would leave those
+   * competitors unfilterable and their movement rows unswatched.
+   */
+  const roster = useMemo<TrendsRosterEntry[]>(() => {
+    const map = new Map<string, TrendsRosterEntry>();
+    for (const list of [market?.pricing, market?.hiring, market?.reviews]) {
+      for (const item of list ?? []) {
+        if (map.has(item.competitorId)) continue;
+        map.set(item.competitorId, {
+          competitorId: item.competitorId,
+          competitorName: item.competitorName,
+          competitorUrl: item.competitorUrl,
+          color: item.color,
+          isSelf: item.isSelf,
+        });
+      }
+    }
+    for (const list of [summary?.pricing, summary?.hiring, summary?.reviews, summary?.tech]) {
+      for (const move of list ?? []) {
+        if (map.has(move.competitorId)) continue;
+        map.set(move.competitorId, {
+          competitorId: move.competitorId,
+          competitorName: move.competitorName,
+          competitorUrl: null,
+          color: null,
+          isSelf: false,
+        });
+      }
+    }
+    return [...map.values()];
+  }, [market, summary]);
+
+  // Dealt once, off the full roster, and handed to all three charts: a competitor's
+  // colour is its identity, so it cannot depend on which chart is drawing it or on
+  // who is currently switched off.
+  const paint = useMemo(() => buildSeriesPalette(roster), [roster]);
+
   const competitorCount = useMemo(() => {
-    if (!summary) return 0;
+    if (!visibleSummary) return 0;
     const ids = new Set<string>();
-    for (const m of summary.pricing) ids.add(m.competitorId);
-    for (const m of summary.hiring) ids.add(m.competitorId);
-    for (const m of summary.reviews) ids.add(m.competitorId);
-    for (const m of summary.tech) ids.add(m.competitorId);
+    for (const m of visibleSummary.pricing) ids.add(m.competitorId);
+    for (const m of visibleSummary.hiring) ids.add(m.competitorId);
+    for (const m of visibleSummary.reviews) ids.add(m.competitorId);
+    for (const m of visibleSummary.tech) ids.add(m.competitorId);
     return ids.size;
-  }, [summary]);
+  }, [visibleSummary]);
 
   if (summaryQ.isError) {
     return <p className="text-muted-foreground text-sm">Couldn&apos;t load trends right now.</p>;
@@ -683,6 +807,11 @@ export function TrendsView() {
     summary.tech.length === 0;
 
   const rangeLabel = `${shortDate(range.from.toISOString())} to ${shortDate(range.to.toISOString())}`;
+  // Reachable in one gesture (untick everyone), and every section would otherwise
+  // report on an empty set in the present tense: "prices held steady everywhere we
+  // watch" is a claim, not a blank.
+  const allHidden = roster.length > 0 && roster.every((r) => hidden.has(r.competitorId));
+  const excluded = roster.filter((r) => hidden.has(r.competitorId));
 
   return (
     <div className="flex flex-col gap-7">
@@ -690,8 +819,43 @@ export function TrendsView() {
         flush
         title="Trends"
         sub="What the market did while you were working."
-        actions={<DateRangePicker value={range} onChange={setRange} presets={TRENDS_PRESETS} />}
+        actions={
+          <>
+            <TrendsCompetitorFilter
+              roster={roster}
+              hidden={hidden}
+              paint={paint}
+              onToggle={toggleHidden}
+              onShowAll={showAll}
+            />
+            <DateRangePicker value={range} onChange={setRange} presets={TRENDS_PRESETS} />
+          </>
+        }
       />
+
+      {/* A menu the reader closed still governs the page, so what it excluded stays
+          named on screen. */}
+      {excluded.length > 0 && (
+        <div className="-mt-4 flex flex-wrap items-center gap-1.5">
+          {excluded.map((entry) => (
+            <FilterChip
+              key={entry.competitorId}
+              onRemove={() => toggleHidden(entry.competitorId)}
+            >
+              <CompAvatar name={entry.competitorName} url={entry.competitorUrl} size={14} />
+              <span className="text-muted-foreground line-through">
+                {entry.competitorName}
+              </span>
+            </FilterChip>
+          ))}
+          <button
+            onClick={showAll}
+            className="px-1 text-dense text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Show all
+          </button>
+        </div>
+      )}
 
       {summary === null || reading === null ? (
         <TrendsSkeleton />
@@ -714,13 +878,24 @@ export function TrendsView() {
           title="No trends yet"
           description="Pricing, hiring, review and tech history build up over the next few scrapes."
         />
+      ) : allHidden ? (
+        <EmptyState
+          icon={ChartLineIcon}
+          title="Every competitor is hidden"
+          description="Bring one back from the Competitors menu to read the window again."
+        />
       ) : (
         <>
           {/* The reading, before the evidence. */}
           <div className="grid overflow-hidden rounded-lg border border-border-strong bg-card lg:grid-cols-[minmax(0,1fr)_300px]">
             <div className="flex min-w-0 flex-col gap-2 px-5 py-4">
-              <div className="text-meta text-muted-foreground tabular-nums">
-                {rangeLabel} · {competitorCount} {plural(competitorCount, "competitor")}
+              {/* Announced: ticking one checkbox silently rewrites the headline,
+                  three stats and every list under them. */}
+              <div className="text-meta text-muted-foreground tabular-nums" aria-live="polite">
+                {rangeLabel} ·{" "}
+                {hidden.size > 0
+                  ? `${competitorCount} of ${roster.length} competitors`
+                  : `${competitorCount} ${plural(competitorCount, "competitor")}`}
               </div>
               <h2 className="m-0 max-w-[42ch] text-lead font-medium leading-snug tracking-tight text-pretty lg:text-xl">
                 {reading.market.headline}
@@ -792,6 +967,9 @@ export function TrendsView() {
               <TrendsSlopeChart
                 series={market.pricing}
                 formatValue={(v, item) => money(v, item.unit)}
+                paint={paint}
+                hidden={hidden}
+                onToggle={toggleHidden}
               />
             )}
             {reading.pricing.ranked.length === 0 ? (
@@ -859,6 +1037,9 @@ export function TrendsView() {
                 series={market.hiring}
                 mode="index"
                 formatValue={(v) => `${Math.round(v)} open`}
+                paint={paint}
+                hidden={hidden}
+                onToggle={toggleHidden}
               />
             )}
             {reading.hiring.ranked.length === 0 ? (
@@ -890,7 +1071,9 @@ export function TrendsView() {
                             data={shape}
                             w={72}
                             h={22}
-                            color="var(--link)"
+                            // The row's own colour, so the shape beside a name
+                            // matches the line that name owns on the chart above.
+                            color={paintFor(paint, move.competitorId).stroke}
                             fill
                             valueLabel="roles"
                           />
@@ -926,6 +1109,9 @@ export function TrendsView() {
                 mode="absolute"
                 formatValue={(v) => v.toFixed(2)}
                 height={180}
+                paint={paint}
+                hidden={hidden}
+                onToggle={toggleHidden}
               />
             )}
             {reading.reviews.drifted.length === 0 ? (

@@ -15,8 +15,8 @@ Traite l'issue Linear $ARGUMENTS via le MCP Linear.
    avec le nom de branche fourni par Linear (gitBranchName).
 4. Implémente, puis lance lint + tests.
 5. Commits préfixés "$ARGUMENTS: ...". Ne push pas sans mon accord.
-6. Poste un commentaire sur l'issue : résumé, fichiers modifiés,
-   comment tester.
+6. N'écris PAS de commentaire sur l'issue. Résume en 1-2 lignes max,
+   et termine par le lien de la PR.
 7. Passe l'issue en "In Review".
 
 ## Règles

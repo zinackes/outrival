@@ -60,7 +60,7 @@ plus par `db:push` direct (qui causait du drift + des colonnes manquantes en pro
 
 - Handlers de jobs    → apps/workers/src/core/[name].ts (déclarés dans packages/queue/src/jobs.ts)
 - Scrapers            → packages/scrapers/src/[source]/[source].scraper.ts
-- Prompts AI          → packages/ai/src/prompts/[name].prompt.ts
+- Tâches IA           → packages/ai/src/tasks/[name].ts
 - Schema DB           → packages/db/src/schema/[entity].ts
 - Routes API          → apps/api/src/routes/[resource].ts
 

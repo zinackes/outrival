@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   BellIcon,
   BellSlashIcon,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { api, ApiError } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
 import { formatDate } from "@/lib/format-date";
@@ -13,6 +13,10 @@ interface Options {
   onStarted?: () => void;
   /** Fired once the outcome is known (or polling gave up). */
   onDone?: () => void;
+  /** What is being re-scanned ("Acme · Pricing page"), prefixed to every toast.
+   *  Without it, a re-scan fired from a list of sources reported "Re-scan
+   *  complete" with no way to tell which row it belonged to. */
+  label?: string;
 }
 
 // Typical forced scrape resolves in 30-90s; poll a bit past that before giving up.
@@ -31,14 +35,16 @@ function formatDay(iso: string | null): string {
 export function useForceRescan(monitorId: string, options?: Options) {
   const [isRescanning, setIsRescanning] = useState(false);
   const activeRef = useRef(false);
-
+  // Every toast below carries the same id, so a second re-scan replaces the first
+  // one's outcome instead of stacking on it.
   const forceRescan = useCallback(async () => {
     if (activeRef.current) return;
     activeRef.current = true;
     setIsRescanning(true);
     // A forced scrape runs 30-150s; show a single live toast that transforms in
     // place into the outcome instead of leaving the user with no feedback.
-    let toastId: string | number | undefined;
+    const toastId = `rescan:${monitorId}`;
+    const named = (text: string) => (options?.label ? `${options.label} · ${text}` : text);
     try {
       const res = await api.forceRescan(monitorId);
       options?.onStarted?.();
@@ -49,7 +55,10 @@ export function useForceRescan(monitorId: string, options?: Options) {
       // so there's nothing to say here.
       if (!res.rescanLogId) return;
 
-      toastId = toast.loading("Re-scanning… this can take up to a minute.");
+      toast.loading(named("Re-scanning…"), {
+        id: toastId,
+        description: "This can take up to a minute.",
+      });
 
       const start = Date.now();
       let outcome: { failed: boolean; hadNewSignal: boolean | null; nextRunAt: string | null } | null =
@@ -64,23 +73,25 @@ export function useForceRescan(monitorId: string, options?: Options) {
       }
 
       if (!outcome) {
-        toast.info(
-          "Re-scan started. It's taking a little longer than usual. The data will refresh shortly.",
-          { id: toastId },
-        );
-      } else if (outcome.failed) {
-        toast.error("Re-scan failed: we couldn't reach the source. It'll retry automatically.", {
+        toast.info(named("Re-scan still running"), {
           id: toastId,
+          description: "It's taking longer than usual. The data will refresh on its own.",
+        });
+      } else if (outcome.failed) {
+        toast.error(named("Re-scan failed"), {
+          id: toastId,
+          description: "We couldn't reach the source. It'll retry automatically.",
         });
       } else if (outcome.hadNewSignal) {
-        toast.success("Re-scan complete. We found an update and it's in your latest signals.", {
+        toast.success(named("Update found"), {
           id: toastId,
+          description: "It's in your latest signals.",
         });
       } else {
-        toast.info(
-          `Re-scan complete, nothing new. Next automatic check around ${formatDay(outcome.nextRunAt)}.`,
-          { id: toastId },
-        );
+        toast.info(named("Nothing new"), {
+          id: toastId,
+          description: `Next automatic check around ${formatDay(outcome.nextRunAt)}.`,
+        });
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
@@ -100,7 +111,7 @@ export function useForceRescan(monitorId: string, options?: Options) {
             : undefined,
         });
       } else {
-        toastApiError(err, { title: "Re-scan failed", id: toastId });
+        toastApiError(err, { title: named("Re-scan failed"), id: toastId });
       }
     } finally {
       activeRef.current = false;

@@ -21,7 +21,7 @@ import {
   CaretDownIcon,
 } from "@/components/icons";
 import { EmptyState } from "@/components/dashboard/empty-state";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
 import { friendlyScrapeError } from "@/lib/scrape-errors";
 import { formatDistanceToNow } from "date-fns";

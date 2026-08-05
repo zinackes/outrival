@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { myProductQuery } from "@/lib/queries";
 import { friendlyScrapeError } from "@/lib/scrape-errors";
 import type { MyProduct, SelfProfile } from "@/lib/api";
@@ -46,8 +46,13 @@ export function useScanPoll({
     if (!wasScanning.current) return;
     wasScanning.current = false;
 
+    // One id for the whole scan, so a second re-scan replaces the previous
+    // outcome instead of stacking a near-identical toast on top of it.
+    const toastId = `product-scan:${productId ?? "primary"}`;
+
     if (product?.scanError) {
       toast.error("Scan failed", {
+        id: toastId,
         description: friendlyScrapeError(product.scanError, product.scanErrorSource ?? undefined),
       });
       return;
@@ -56,7 +61,7 @@ export function useScanPoll({
     // Fast path: the profile already has content (re-scan of an analysed product) →
     // confirm immediately; still poll a few cycles to fold in any refreshed fields.
     if (hasProfileContent(product?.profile)) {
-      toast.success("Scan complete", { description: "Your profile is up to date." });
+      toast.success("Scan complete", { id: toastId, description: "Your profile is up to date." });
       let n = 0;
       const t = setInterval(() => {
         void load();
@@ -70,7 +75,7 @@ export function useScanPoll({
     // few seconds AFTER scrapeStartedAt clears — or the extraction may have silently
     // failed (parse miss → empty profile). Poll for the late write, then tell the
     // truth instead of claiming "up to date" over a blank profile.
-    const toastId = toast.loading("Scan complete, reading your profile…");
+    toast.loading("Scan complete, reading your profile…", { id: toastId });
     let n = 0;
     const t = setInterval(async () => {
       await load();

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { SpinnerIcon, SparkleIcon } from "@/components/icons";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { api } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
 import { Button } from "@/components/ui/button";

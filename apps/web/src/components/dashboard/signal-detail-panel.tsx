@@ -17,7 +17,7 @@ import {
   SparkleIcon,
 } from "@/components/icons";
 import { format, formatDistanceToNow } from "date-fns";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { motion } from "motion/react";
 import { api, type ActionStatus, type Signal, type SignalDetail } from "@/lib/api";
 import {

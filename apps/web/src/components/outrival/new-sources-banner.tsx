@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { SpinnerIcon, SparkleIcon, XIcon } from "@/components/icons";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { PLAN_LABELS } from "@outrival/shared";
 import { api } from "@/lib/api";
 import { sourceDefaultsQuery } from "@/lib/queries";

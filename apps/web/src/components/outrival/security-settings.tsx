@@ -14,7 +14,7 @@ import {
   ShieldCheckIcon,
 } from "@/components/icons";
 import { QRCodeSVG } from "qrcode.react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { formatDistanceToNow } from "date-fns";
 import { useSession, authClient } from "@/lib/auth-client";
 import { api, ApiError } from "@/lib/api";

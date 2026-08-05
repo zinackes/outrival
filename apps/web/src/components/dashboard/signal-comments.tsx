@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DotsThreeIcon, PencilIcon, ArrowClockwiseIcon, TrashIcon } from "@/components/icons";
 import { format, formatDistanceToNow, isToday } from "date-fns";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { api, type SignalComment } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";

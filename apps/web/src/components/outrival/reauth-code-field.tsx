@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { SpinnerIcon } from "@/components/icons";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -13,7 +13,7 @@ import {
   ArchiveIcon,
 } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { api, type Signal, type ActionStatus } from "@/lib/api";
 import {
   ACTION_OPTIONS,

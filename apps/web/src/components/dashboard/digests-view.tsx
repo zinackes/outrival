@@ -15,7 +15,7 @@ import {
   DownloadSimpleIcon,
 } from "@/components/icons";
 import { differenceInCalendarDays, endOfDay, startOfWeek } from "date-fns";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { EmptyState } from "./empty-state";
 import { toastApiError } from "@/lib/error-helpers";
 import { ListError } from "@/components/outrival/list-error";

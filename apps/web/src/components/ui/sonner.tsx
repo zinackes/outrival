@@ -18,9 +18,15 @@ export function Toaster() {
       theme={theme as "light" | "dark" | "system" | undefined}
       position="bottom-right"
       closeButton
-      // Default a touch longer than sonner's 4s so a two-line description is
-      // readable; actionable errors override this in toastApiError (error-helpers).
+      // How long a toast stays is decided per KIND in lib/toast.ts, which every
+      // call site goes through; this is only the floor for anything that reaches
+      // sonner without one.
       duration={5000}
+      // A batch action (scrape all sources, bulk-edit a roster) can resolve into
+      // several toasts within a second or two. Sonner stacks the rest behind the
+      // three on top instead of walking them up the whole right edge — the pile
+      // was the distraction, not any single toast.
+      visibleToasts={3}
       // Custom icons keep the toast palette inside the OKLCH design system
       // (severity tokens + --link) instead of sonner's generic richColors set.
       icons={{

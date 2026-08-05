@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { classifyLogoName, type AnalysisStatus } from "@outrival/shared";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useQuery } from "@tanstack/react-query";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { myProductQuery } from "@/lib/queries";

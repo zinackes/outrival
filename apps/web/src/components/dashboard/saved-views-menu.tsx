@@ -9,7 +9,7 @@ import {
   CaretDownIcon,
   CheckIcon,
 } from "@/components/icons";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { api, type SavedView, type SavedViewFilters } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";

@@ -13,7 +13,7 @@ import {
   SparkleIcon,
   UploadSimpleIcon,
 } from "@/components/icons";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   Dialog,
   DialogContent,

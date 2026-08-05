@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { WarningIcon } from "@/components/icons";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 

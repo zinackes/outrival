@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { competitorsQuery, productsListQuery } from "@/lib/queries";
 import { leftProductScope } from "@/lib/product-scope";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";

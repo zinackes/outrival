@@ -10,7 +10,7 @@ import {
   SpinnerIcon,
   PencilIcon,
 } from "@/components/icons";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { api, ApiError, type CrmDestination } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";

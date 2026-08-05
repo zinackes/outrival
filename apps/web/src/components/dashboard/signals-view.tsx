@@ -14,7 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { CheckIcon, CaretDownIcon, TrayIcon, FlaskIcon, ScanIcon } from "@/components/icons";
 import { startOfWeek, endOfWeek, format, isToday, isYesterday } from "date-fns";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { AnimatePresence, motion } from "motion/react";
 import {
   api,

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { BellIcon, CheckIcon, ChecksIcon, TrashIcon, XIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -14,6 +14,12 @@ import type { AppNotification as Notification } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
+// One scrape that lands five signals emits five notifications within a few seconds.
+// Toasting each one buried the screen to say what the bell was already showing, so
+// only the first of a burst is shown in full; the rest fold into it as a count.
+const BURST_TOAST_ID = "notifications";
+const BURST_WINDOW_MS = 10_000;
+
 export function NotificationsBell({ compact = false }: { compact?: boolean } = {}) {
   const [items, setItems] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -21,6 +27,10 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
   const router = useRouter();
   const esRef = useRef<EventSource | null>(null);
   const seenIds = useRef<Set<string>>(new Set());
+  const burstRef = useRef<{ count: number; timer: ReturnType<typeof setTimeout> | null }>({
+    count: 0,
+    timer: null,
+  });
   const dropdownRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -53,14 +63,34 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
         setItems((prev) => [notif, ...prev].slice(0, 20));
         if (!notif.isRead) setUnreadCount((c) => c + 1);
 
-        toast(notif.title, {
-          id: notif.id,
-          description: notif.body ?? undefined,
-          icon: <BellIcon size={16} className="text-[var(--link)]" />,
-          action: notif.linkUrl
-            ? { label: "View", onClick: () => router.push(notif.linkUrl!) }
-            : undefined,
-        });
+        const burst = burstRef.current;
+        burst.count += 1;
+        if (burst.timer) clearTimeout(burst.timer);
+        burst.timer = setTimeout(() => {
+          burst.count = 0;
+          burst.timer = null;
+        }, BURST_WINDOW_MS);
+
+        const icon = <BellIcon size={16} className="text-[var(--link)]" />;
+        if (burst.count === 1) {
+          toast(notif.title, {
+            id: BURST_TOAST_ID,
+            description: notif.body ?? undefined,
+            icon,
+            action: notif.linkUrl
+              ? { label: "View", onClick: () => router.push(notif.linkUrl!) }
+              : undefined,
+          });
+        } else {
+          // Same toast, now standing for the whole burst: the newest title is the
+          // description so the user still knows what just arrived.
+          toast(`${burst.count} new notifications`, {
+            id: BURST_TOAST_ID,
+            description: notif.title,
+            icon,
+            action: { label: "View all", onClick: () => setOpen(true) },
+          });
+        }
       } catch {
         /* ignore */
       }
@@ -68,9 +98,13 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
     es.onerror = () => {
       /* let browser auto-reconnect */
     };
+    const burst = burstRef.current;
     return () => {
       es.close();
       esRef.current = null;
+      if (burst.timer) clearTimeout(burst.timer);
+      burst.timer = null;
+      burst.count = 0;
     };
   }, []);
 

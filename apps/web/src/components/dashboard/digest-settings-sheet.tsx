@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowSquareOutIcon, SpinnerIcon } from "@/components/icons";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { api, type NotificationSettings } from "@/lib/api";
 import { notificationSettingsQuery } from "@/lib/queries";
 import {

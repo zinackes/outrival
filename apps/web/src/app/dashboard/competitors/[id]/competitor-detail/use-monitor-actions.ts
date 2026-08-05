@@ -2,13 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import type { MonitorFrequency, SourceType, CustomMonitorHint } from "@outrival/shared";
 import { api, ApiError, type Monitor } from "@/lib/api";
 import { competitorDetailQuery } from "@/lib/queries";
 import { track } from "@/lib/posthog/events";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
 import { friendlyScrapeError } from "@/lib/scrape-errors";
+import {
+  scrapeRunProgress,
+  scrapeRunSummary,
+  type ScrapeRunOutcome,
+} from "@/lib/scrape-run-summary";
 import { sourceShortLabel } from "@/lib/source-labels";
 import { paywallFromError, type PaywallReason } from "@/components/outrival/paywall-dialog";
 import { QUEUE_TIMEOUT_MS, POLL_INTERVAL_MS, isServerInFlight } from "./shared";
@@ -65,6 +70,10 @@ export function useMonitorActions(id: string) {
       }
     >
   >(new Map());
+  // The single live toast that covers one scrape run, whatever it fans out to.
+  // Opened when the first source starts, updated in place as they settle, and
+  // replaced by one summary line when the last one does — see lib/scrape-run-summary.
+  const runRef = useRef<(ScrapeRunOutcome & { total: number }) | null>(null);
   // Which competitor the in-progress seeding below already ran for. Keyed by id,
   // not a boolean: the pager swaps `id` without remounting this hook, and a bare
   // flag left a scrape running on the newly opened competitor untracked — so its
@@ -114,6 +123,45 @@ export function useMonitorActions(id: string) {
     tick();
   }
 
+  // One id for the whole run, so every update lands in the same toast instead of
+  // stacking a new one per source per poll tick.
+  const runToastId = `scrape:${id}`;
+
+  /** Open the run toast, or widen it when more sources join a run already going. */
+  function openRun(sources: number, competitorName: string) {
+    const run = runRef.current;
+    if (run) run.total += sources;
+    else {
+      runRef.current = {
+        competitorName,
+        total: sources,
+        changed: [],
+        unchanged: [],
+        failed: [],
+        pending: [],
+      };
+    }
+    renderRun();
+  }
+
+  function renderRun() {
+    const run = runRef.current;
+    if (!run) return;
+    const done =
+      run.changed.length + run.unchanged.length + run.failed.length + run.pending.length;
+    const { title, description } = scrapeRunProgress(run.competitorName, done, run.total);
+    toast.loading(title, { id: runToastId, description });
+  }
+
+  /** Last source settled: replace the live toast with the one-line outcome. */
+  function closeRun() {
+    const run = runRef.current;
+    if (!run) return;
+    runRef.current = null;
+    const { kind, title, description } = scrapeRunSummary(run);
+    toast[kind](title, { id: runToastId, description });
+  }
+
   // Restore the in-progress state after a refresh: any monitor the server still
   // reports as scraping is re-tracked so the poll resumes and reports its outcome.
   useEffect(() => {
@@ -133,6 +181,7 @@ export function useMonitorActions(id: string) {
       });
     }
     setScrapingIds(new Set(running.map((m) => m.id)));
+    openRun(running.length, data.competitor.name);
   }, [data, id]);
 
   useEffect(() => {
@@ -141,6 +190,8 @@ export function useMonitorActions(id: string) {
         clearInterval(pollRef.current);
         pollRef.current = null;
       }
+      // Nothing left in flight — the run is over, so report it once.
+      closeRun();
       return;
     }
     if (pollRef.current) return;
@@ -188,19 +239,20 @@ export function useMonitorActions(id: string) {
         return next;
       });
 
+      // Everything below only records what settled; the toast itself is the run's
+      // single live one, refreshed once at the end of the tick.
+      const run = runRef.current;
+      const label = (mid: string) => {
+        const m = fresh.monitors.find((x) => x.id === mid);
+        return m ? sourceShortLabel(m.sourceType) : mid;
+      };
+
       if (finished.length > 0) {
         const changedSet = new Set(changed);
-        const label = (mid: string) =>
-          fresh.monitors.find((m) => m.id === mid)?.sourceType ?? mid;
-        const changedLabels = finished.filter((mid) => changedSet.has(mid)).map(label);
-        const unchangedLabels = finished.filter((mid) => !changedSet.has(mid)).map(label);
-        if (changedLabels.length > 0) {
-          toast.success("Change detected", {
-            description: `${changedLabels.join(", ")}: new snapshot captured`,
-          });
-        }
-        if (unchangedLabels.length > 0) {
-          toast.info("Scrape complete · no change", { description: unchangedLabels.join(", ") });
+        if (run) {
+          for (const mid of finished) {
+            (changedSet.has(mid) ? run.changed : run.unchanged).push(label(mid));
+          }
         }
         void queryClient.invalidateQueries({ queryKey: ["competitor", id] });
         // That invalidation lands before any downstream job has written anything —
@@ -209,22 +261,25 @@ export function useMonitorActions(id: string) {
         scheduleRecheck();
       }
       if (failed.length > 0) {
-        for (const mid of failed) {
-          const m = fresh.monitors.find((x) => x.id === mid);
-          toast.error(`Scrape failed · ${m?.sourceType ?? mid}`, {
-            description: friendlyScrapeError(m?.lastError, m?.sourceType),
-          });
+        if (run) {
+          for (const mid of failed) {
+            const m = fresh.monitors.find((x) => x.id === mid);
+            run.failed.push({
+              label: label(mid),
+              reason: friendlyScrapeError(m?.lastError, m?.sourceType),
+            });
+          }
         }
         void queryClient.invalidateQueries({ queryKey: ["competitor", id] });
       }
-      if (timedOut.length > 0) {
-        const labels = timedOut
-          .map((mid) => fresh.monitors.find((m) => m.id === mid)?.sourceType ?? mid)
-          .join(", ");
-        toast.warning("Scrape still pending", {
-          description: `${labels}: still waiting after an hour. It stays queued and will run; check back later.`,
-        });
+      if (timedOut.length > 0 && run) {
+        for (const mid of timedOut) run.pending.push(label(mid));
       }
+      // Keep the live count moving while sources remain. When this tick settled the
+      // last of them, say nothing: the effect above is about to close the run with
+      // its summary, and re-rendering "Scanning…" first would flash for a frame.
+      const settled = finished.length + failed.length + timedOut.length;
+      if (settled < scrapingIds.size) renderRun();
     }, POLL_INTERVAL_MS);
 
     return () => {
@@ -236,12 +291,18 @@ export function useMonitorActions(id: string) {
   }, [scrapingIds, id]);
 
   // Tear down the recheck chain when switching competitor or unmounting (it
-  // invalidates this id's queries).
+  // invalidates this id's queries). The run toast goes with it: a "Scanning…"
+  // spinner never auto-dismisses, so leaving the page would strand it on screen.
   useEffect(() => {
     const ref = recheckRef.current;
+    const toastId = `scrape:${id}`;
     return () => {
       if (ref.timer) clearTimeout(ref.timer);
       ref.timer = null;
+      if (runRef.current) {
+        runRef.current = null;
+        toast.dismiss(toastId);
+      }
     };
   }, [id]);
 
@@ -253,6 +314,7 @@ export function useMonitorActions(id: string) {
       lastChangedAt: monitor.lastChangedAt,
     });
     setScrapingIds((prev) => new Set(prev).add(monitor.id));
+    openRun(1, data?.competitor.name ?? "this competitor");
   }
 
   function untrackScrape(monitorId: string) {
@@ -262,6 +324,19 @@ export function useMonitorActions(id: string) {
       next.delete(monitorId);
       return next;
     });
+    // The scrape never started (the enqueue itself failed), so it owes no outcome:
+    // shrink the run, and drop its toast entirely if nothing else is left in it.
+    // The caller reports the failure — a summary here would be a second toast for
+    // the same event.
+    const run = runRef.current;
+    if (!run) return;
+    run.total -= 1;
+    if (run.total <= 0) {
+      runRef.current = null;
+      toast.dismiss(runToastId);
+    } else {
+      renderRun();
+    }
   }
 
   async function runMonitor(
@@ -309,6 +384,9 @@ export function useMonitorActions(id: string) {
       const s = monitorStaleness(monitor);
       if (s !== "outdated") {
         toast.info(s === "very_recent" ? "Scraped just now" : "No changes since last scrape", {
+          // Clicking the same source twice replaces this toast instead of piling
+          // a second identical one on top.
+          id: `staleness:${monitorId}`,
           description:
             s === "very_recent"
               ? "This source was checked in the last 30 minutes."
@@ -366,9 +444,9 @@ export function useMonitorActions(id: string) {
     trackScrapeStart(monitor);
     try {
       await api.resumeMonitor(monitorId);
-      toast.success(`${sourceShortLabel(monitor.sourceType)} resumed`, {
-        description: "A fresh scrape is on its way.",
-      });
+      // No "a scrape is on its way" here: the run toast opened by trackScrapeStart
+      // above is already saying exactly that, live.
+      toast.success(`${sourceShortLabel(monitor.sourceType)} resumed`);
       await refresh();
     } catch (e) {
       untrackScrape(monitorId);
@@ -410,14 +488,8 @@ export function useMonitorActions(id: string) {
       await api.addCompetitorMonitor(id, sourceType, url ? { url } : undefined);
       const fresh = await refresh();
       const created = fresh?.monitors.find((m) => m.sourceType === sourceType);
-      if (created && fresh) {
-        toast.success(`${sourceShortLabel(sourceType)} monitoring enabled`, {
-          description: "Starting first scrape…",
-        });
-        await runMonitor(created.id, fresh.monitors);
-      } else {
-        toast.success(`${sourceShortLabel(sourceType)} monitoring enabled`);
-      }
+      toast.success(`${sourceShortLabel(sourceType)} monitoring enabled`);
+      if (created && fresh) await runMonitor(created.id, fresh.monitors);
     } catch (e) {
       const reason = paywallFromError(e);
       if (reason) {
@@ -468,7 +540,7 @@ export function useMonitorActions(id: string) {
     try {
       const { monitor } = await api.addCustomMonitor(id, input);
       const fresh = await refresh();
-      toast.success("Watching custom page", { description: "Starting first scrape…" });
+      toast.success("Watching custom page");
       await runMonitor(monitor.id, fresh?.monitors);
       return { ok: true };
     } catch (e) {
@@ -512,9 +584,7 @@ export function useMonitorActions(id: string) {
       const { monitor } = await api.addCompetitorMonitor(id, source, { url });
       await api.deleteMonitor(oldMonitorId);
       const fresh = await refresh();
-      toast.success(`Switched to ${sourceShortLabel(source)}`, {
-        description: "Starting first scrape…",
-      });
+      toast.success(`Switched to ${sourceShortLabel(source)}`);
       await runMonitor(monitor.id, fresh?.monitors);
     } catch (e) {
       const reason = paywallFromError(e);

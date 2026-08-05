@@ -39,6 +39,8 @@ async function seedItem(
     title?: string;
     url?: string | null;
     status?: string | null;
+    statusNormalized?: string | null;
+    votes?: number | null;
     summary?: string | null;
     publishedAt?: Date | null;
     firstSeenAt?: Date;
@@ -55,6 +57,8 @@ async function seedItem(
     itemType: item.itemType ?? null,
     topics: item.topics ?? null,
     status: item.status ?? null,
+    statusNormalized: item.statusNormalized ?? null,
+    votes: item.votes ?? null,
     summary: item.summary ?? null,
     publishedAt: item.publishedAt ?? null,
     firstSeenAt: item.firstSeenAt ?? item.publishedAt ?? daysAgo(1),
@@ -162,6 +166,48 @@ describe("GET /:id/content", () => {
     expect((await content(id, "?type=unread")).items[0].enriched).toBe(false);
   });
 
+  test("the kind counts carry their source, over the period and not the filter", async () => {
+    const id = await seedCompetitor();
+    await seedItem(id, { sourceType: "changelog", itemType: "fix", publishedAt: daysAgo(2) });
+    await seedItem(id, { sourceType: "changelog", itemType: "fix", publishedAt: daysAgo(3) });
+    await seedItem(id, { sourceType: "blog", itemType: null, publishedAt: daysAgo(4) });
+    await seedItem(id, { sourceType: "blog", itemType: "seo", publishedAt: daysAgo(200) });
+
+    const key = (t: { sourceType: string; itemType: string | null; count: number }) =>
+      [`${t.sourceType}:${t.itemType ?? "unread"}`, t.count] as const;
+
+    // The kind menu is scoped to the selected source, so a count with no source on
+    // it cannot be offered under the right pill.
+    const within = await content(id, "?period=90&source=changelog");
+    expect(Object.fromEntries(within.typeCounts.map(key))).toEqual({
+      "changelog:fix": 2,
+      "blog:unread": 1,
+    });
+
+    // And it follows the PERIOD, which is what the old fixed 90-day mix could not
+    // do: past 90 days it hid kinds that were on screen.
+    const wider = await content(id, "?period=365");
+    expect(Object.fromEntries(wider.typeCounts.map(key))["blog:seo"]).toBe(1);
+  });
+
+  test("a roadmap row carries its vote count and our own status word", async () => {
+    const id = await seedCompetitor();
+    await seedItem(id, {
+      sourceType: "roadmap",
+      itemType: "roadmap_entry",
+      status: "up next",
+      statusNormalized: "planned",
+      votes: 128,
+      publishedAt: null,
+      firstSeenAt: daysAgo(3),
+    });
+
+    const res = await content(id, "?source=roadmap");
+    // The portal's own word is what the board shows; the normalized one is what it
+    // groups a column on, since every portal spells its columns differently.
+    expect(res.items[0]).toMatchObject({ status: "up next", statusNormalized: "planned", votes: 128 });
+  });
+
   test("the period filter is applied on the date the item is placed on", async () => {
     const id = await seedCompetitor();
     await seedItem(id, { sourceType: "blog", publishedAt: daysAgo(10) });
@@ -264,20 +310,6 @@ describe("GET /:id/content-summary", () => {
     // never opened. Only the first counts toward what the themes rest on.
     expect(res.totals.postsRead).toBe(1);
     expect(res.themes).toEqual([]);
-  });
-
-  test("type mix counts the current window, unread grouped under null", async () => {
-    const id = await seedCompetitor();
-    await seedItem(id, { sourceType: "changelog", itemType: "fix", publishedAt: daysAgo(2) });
-    await seedItem(id, { sourceType: "changelog", itemType: "fix", publishedAt: daysAgo(3) });
-    await seedItem(id, { sourceType: "blog", itemType: null, publishedAt: daysAgo(4) });
-    await seedItem(id, { sourceType: "blog", itemType: "seo", publishedAt: daysAgo(200) });
-
-    const res = await summary(id);
-    const mix = Object.fromEntries(
-      res.typeMix.map((t: { itemType: string | null; count: number }) => [t.itemType ?? "null", t.count]),
-    );
-    expect(mix).toEqual({ fix: 2, null: 1 });
   });
 
   test("the per-month rate carries the window before it, so the tab can say 'up from'", async () => {

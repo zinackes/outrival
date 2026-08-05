@@ -332,12 +332,17 @@ export function useMonitorActions(id: string) {
    */
   async function runAllMonitors(only?: readonly SourceType[]) {
     if (!data) return;
+    // Passed straight to an onClick, `only` is the click event, and reading
+    // `.includes` off it threw before a single source ran — the button did
+    // nothing. The signature says "a list or nothing", so anything else is
+    // nothing.
+    const scope = Array.isArray(only) ? only : undefined;
     // Skip paused sources — "Scrape all" shouldn't wake a source the user turned off.
     const idle = data.monitors.filter(
       (m) =>
         !scrapingIds.has(m.id) &&
         m.isActive !== false &&
-        (!only || only.includes(m.sourceType)),
+        (!scope || scope.includes(m.sourceType)),
     );
     if (idle.length === 0) return;
     setRunningAll(true);

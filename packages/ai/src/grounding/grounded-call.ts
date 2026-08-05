@@ -3,7 +3,9 @@ import { withAiCache } from "@outrival/shared";
 import { complete } from "../provider";
 import { wasTruncated } from "../provider/provider-context";
 import { safeParseJson } from "../lib/parse";
+import { toStrictJsonSchema } from "../lib/json-schema";
 import { validateCitations, type Citation, type GroundingValidation } from "./citations";
+import { verifyFieldsAgainstSource } from "./posthoc-grounding";
 import {
   runSelfCheck,
   decideIfSelfCheck,
@@ -14,6 +16,7 @@ import type {
   GroundedCallParams,
   GroundedQuality,
   GroundedResult,
+  PostHocGrounding,
 } from "./types";
 
 const ConfidenceSchema = z.enum(["low", "medium", "high"]);
@@ -28,6 +31,52 @@ const PASSED_GROUNDING: GroundingValidation = {
   failedCitations: [],
   validCitations: [],
 };
+
+/**
+ * Post-hoc grounding (Véracité Intelligence v2 P3) — the mode the audit's R3 asks
+ * for, and the one that does NOT re-enable the citation envelope.
+ *
+ * `postHoc: true` adds ZERO output tokens: the model is asked for nothing extra, the
+ * call is unchanged, and after the reply parses we check deterministically that every
+ * figure and quotation it wrote appears in the source it was shown
+ * (grounding/posthoc-grounding). It is on for exactly the four generations the audit
+ * names as user-facing-and-ungrounded — `generate_signal`, `narrate_change`,
+ * `summarize_competitor`, `extract_features`. The tasks that are ALREADY grounded by
+ * the citation envelope (battle_card, digest, summaries) are deliberately untouched:
+ * they carry a stronger check already, and a second one could only add false alarms.
+ *
+ * The result is recorded, never acted on here. The caller decides — for a signal it
+ * ABSTAINS from the sentence that carries the unsupported figure (see
+ * grounding/abstention); it never regenerates, because "say it again" is how a model
+ * is taught to say it more confidently, not more truthfully.
+ */
+const POSTHOC_TASKS = new Set([
+  "generate_signal",
+  "narrate_change",
+  "summarize_competitor",
+  "extract_features",
+]);
+
+/**
+ * Below this a `sourceText` is not a source: an empty or one-line reference cannot
+ * support anything, so checking against it would flag every figure in an otherwise
+ * healthy generation. That is a `skipped`, which never blocks (gate.ts posture).
+ */
+const MIN_SOURCE_CHARS = 40;
+
+/**
+ * Tasks that ask for CONSTRAINED DECODING when the provider serving the call
+ * declares the capability (Véracité P3). The same call, the same tokens: the schema
+ * is compiled into the decoder, so the reply cannot come back malformed instead of
+ * merely being unlikely to.
+ *
+ * The two user-facing generations the audit names, and only those: a parse miss on
+ * `generate_signal` costs a change its signal, and `narrate_change` had no schema at
+ * all until P3. Widening this is a per-task decision, not a default, because a
+ * provider that advertises the field and rejects our schema answers 400 — the one
+ * status the pool deliberately does not fail over on.
+ */
+const JSON_SCHEMA_TASKS = new Set(["generate_signal", "narrate_change"]);
 
 /**
  * Per-task grounding/citation policy (cost control). The grounding envelope makes
@@ -51,6 +100,13 @@ const GROUNDING_POLICY: Record<string, { grounding: boolean; confidence: boolean
   // miss here fails open, but it would pay for a call and gain nothing.
   cosmetic_gate: { grounding: false, confidence: false },
   generate_signal: { grounding: false, confidence: true },
+  // The homepage narrative (Véracité P3 gave it a schema and routed it here). It is
+  // 2-3 sentences of prose over a change list that is ALREADY a set of before/after
+  // pairs — there is nothing to quote that the list does not already say verbatim,
+  // and the envelope on a free reasoning model is the documented cause of parse
+  // misses (see summarize_competitor below). Its guarantee is the post-hoc check
+  // plus the caller's abstention, not a self-citation.
+  narrate_change: { grounding: false, confidence: false },
   // The competitor summary is an internal 2-3 sentence blurb (never surfaces
   // citations to the user). With grounding ON, the model must emit a verbatim
   // sourceQuote per assertion — that envelope overran the task's maxTokens (512),
@@ -113,6 +169,20 @@ const GROUNDING_POLICY: Record<string, { grounding: boolean; confidence: boolean
  *
  * Returns null on a parse miss — same contract as the pre-grounding tasks.
  */
+/**
+ * The three switches that apply to a task, resolved. Exported as a named seam so a
+ * test can pin WHICH tasks get the citation envelope and which get the deterministic
+ * check — the distinction is the whole of P3 and it is invisible from the outside.
+ */
+export function groundingPolicyFor(taskName: string): {
+  grounding: boolean;
+  confidence: boolean;
+  postHoc: boolean;
+} {
+  const policy = GROUNDING_POLICY[taskName] ?? DEFAULT_GROUNDING_POLICY;
+  return { ...policy, postHoc: POSTHOC_TASKS.has(taskName) };
+}
+
 export async function groundedAiCall<T>(
   params: GroundedCallParams<T>,
 ): Promise<GroundedResult<T> | null> {
@@ -128,11 +198,27 @@ export async function groundedAiCall<T>(
     citations: z.array(CitationSchema).optional(),
     confidence: ConfidenceSchema.optional(),
   });
+  // What the prompt actually asks this call for — the envelope with exactly the
+  // parts that were switched on, or the bare output when neither was. Parsing stays
+  // tolerant (the optionals above): the constraint applies to providers that can
+  // honour it, the parse to every reply we ever get.
+  const requestedSchema =
+    groundingEnabled || confidenceEnabled
+      ? z.object({
+          output: params.schema,
+          ...(groundingEnabled ? { citations: z.array(CitationSchema) } : {}),
+          ...(confidenceEnabled ? { confidence: ConfidenceSchema } : {}),
+        })
+      : params.schema;
+  const jsonSchema = JSON_SCHEMA_TASKS.has(params.taskName)
+    ? { name: params.taskName, schema: toStrictJsonSchema(requestedSchema) }
+    : undefined;
 
   const run = async (): Promise<{ output: T; quality: GroundedQuality; raw: string } | null> => {
     const raw = await complete(params.config, {
       prompt: augmentedPrompt,
       json: true,
+      ...(jsonSchema ? { jsonSchema } : {}),
       ...(params.system ? { system: params.system } : {}),
       ...(params.maxTokens ? { maxTokens: params.maxTokens } : {}),
     });
@@ -180,6 +266,9 @@ export async function groundedAiCall<T>(
       selfCheck: null,
       selfCheckTriggeredBy: null,
       flaggedForHumanReview: false,
+      postHoc: POSTHOC_TASKS.has(params.taskName)
+        ? checkPostHoc(output, params.sourceText)
+        : null,
     };
 
     // Self-check (patch-24 layer 3) runs here in the generation closure, so it
@@ -230,6 +319,39 @@ export async function groundedAiCall<T>(
   const r = await run();
   if (!r) return null;
   return { output: r.output, quality: r.quality, generated: true, raw: r.raw };
+}
+
+/**
+ * Every text leaf of a parsed output, with the path it sits at ("insight",
+ * "features[2]"). The path is what lets the caller drop exactly the field that
+ * carries an unsupported figure instead of the whole generation.
+ */
+function textFields(value: unknown, path = ""): Array<{ field: string; text: string }> {
+  if (typeof value === "string") return [{ field: path || "output", text: value }];
+  if (Array.isArray(value)) return value.flatMap((v, i) => textFields(v, `${path}[${i}]`));
+  if (value && typeof value === "object") {
+    return Object.entries(value).flatMap(([k, v]) => textFields(v, path ? `${path}.${k}` : k));
+  }
+  return [];
+}
+
+/** Run the deterministic check, or say honestly why it could not run. */
+function checkPostHoc(output: unknown, sourceText: string): PostHocGrounding {
+  // A reply cut off at max_tokens can end mid-figure ("$1,2"), which would flag as
+  // an invented number. The repair for a truncation is a budget change, never an
+  // abstention — so the check stands down and says which case this was.
+  if (wasTruncated()) {
+    return { status: "skipped", unverified: [], checked: 0, reason: "truncated_output" };
+  }
+  if ((sourceText ?? "").trim().length < MIN_SOURCE_CHARS) {
+    return { status: "skipped", unverified: [], checked: 0, reason: "no_source" };
+  }
+  const result = verifyFieldsAgainstSource(textFields(output), sourceText);
+  return {
+    status: result.verified ? "verified" : "unverified",
+    unverified: result.unverified,
+    checked: result.checked,
+  };
 }
 
 function augmentPrompt(prompt: string, grounding: boolean, confidence: boolean): string {

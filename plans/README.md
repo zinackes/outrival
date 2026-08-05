@@ -98,6 +98,12 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
   `outrival-dlq` holding 602 jobs while the `/admin` tile that exists for exactly
   that reads `25`, because the count is the length of a list capped at `DLQ_CAP`.
   Nothing alerts on it either. Small, live, and independent of everything else.
+  Véracité v2 P3 (2026-08-05) added a second way in without touching this plan's
+  perimeter: a handler can now route a terminal, unretriable failure straight to
+  `outrival-dlq` by throwing `DeadLetter`, and those jobs carry the original payload
+  plus a `__dlq { queue, reason, jobId }` envelope. The tile should read that envelope
+  when it is present, and keep counting the natively dead-lettered jobs, which carry
+  no provenance at all.
 - **024 is REJECTED, and the reason is worth keeping.** It was written on a
   measurement that was true but mis-framed: 105 of 109 new competitors got a
   backfillable snapshot and only 21 produced a `backfill_runs` row. Splitting that

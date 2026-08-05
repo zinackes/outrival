@@ -657,6 +657,12 @@ signalsRouter.get("/:id/detail", async (c) => {
       // The three sub-scores the severity band was computed from. Null on the
       // deterministically synthesized paths and on pre-materiality signals.
       materiality: signals.materiality,
+      // Deterministic post-hoc grounding of the prose (Véracité P3): whether every
+      // figure and quotation in the insight is in the source, and which ones were
+      // not — the fields carrying them were withheld at write time. Data only here;
+      // the badge that reads it is P4.
+      groundingStatus: signals.groundingStatus,
+      groundingUnverified: signals.groundingUnverified,
       // Engagement, projected out of rawDiff rather than shipping the blob. Only
       // Hacker News writes these, and only on captures taken after they were added;
       // the same projection the competitor product tab uses.
@@ -777,6 +783,12 @@ signalsRouter.get("/:id/detail", async (c) => {
               corroboration: row.materiality.corroboration,
             }),
           }
+        : null,
+      // What the deterministic figure check made of this signal's prose, and what it
+      // withheld. 'unverified' means a sentence was dropped BEFORE the row was
+      // written — the reader is looking at a signal that deliberately says less.
+      grounding: row.groundingStatus
+        ? { status: row.groundingStatus, unverified: row.groundingUnverified ?? [] }
         : null,
       // The discussion a Hacker News signal is about: the numbers that say whether
       // it landed, and a link to the thread. Absent for every other source.

@@ -30,6 +30,9 @@ import {
   AI_CONFIG,
   toMyProductContext,
   toMaterialityScores,
+  abstainFromUnverified,
+  deterministicInsight,
+  withTruncationReport,
 } from "@outrival/ai";
 import type { StructuredChange } from "@outrival/scrapers/homepage-diff";
 import {
@@ -44,6 +47,7 @@ import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
 import { sendEmail, ALERT_FROM } from "../lib/resend";
 import { decideDispatch } from "../lib/notification-dispatcher";
 import { applySeverityGuard } from "../lib/severity-guard";
+import { truncatedReplyError } from "../lib/classify-errors";
 import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfulness-gate";
 import { interceptEmission, recordEmission } from "../lib/emission-verification";
 
@@ -349,7 +353,8 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
     // Ops quality logging (patch-02): success / parse_failed (null) / error
     // (thrown). Both insight paths use the 70b model.
     const attribution = { orgId: competitor.orgId, competitorId: competitor.id };
-    const insight = await loggedAi(
+    const { value: insight, truncated } = await withTruncationReport(() =>
+      loggedAi(
       "insight",
       AI_CONFIG.insights,
       () =>
@@ -374,17 +379,57 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
               change.diffType !== "structured",
             ),
       attribution,
+      ),
     );
     if (!insight) {
+      // A reply cut off at max_tokens reproduces exactly — same prompt, same budget,
+      // same cut — so retrying it buys the identical failure three times. Straight to
+      // the dead-letter with the payload intact: the change is untouched, no signal
+      // row exists, and replaying the job once the budget is fixed recreates it.
+      if (truncated) {
+        logger.error("Insight reply truncated at maxTokens — dead-lettering", {
+          changeId: input.changeId,
+        });
+        throw truncatedReplyError("Insight", input.changeId);
+      }
       // Parse miss (malformed/empty JSON), not a provider error — transient on the
       // free reasoning providers, so RETRIABLE: aborting here dropped a change
-      // already judged significant. Plain throw → Trigger re-runs (fresh LLM call);
+      // already judged significant. Plain throw → pg-boss re-runs (fresh LLM call);
       // the run is idempotent up to this point (signal insert happens below and is
       // protected by the signals_change_id_uq unique index).
       logger.error("Insight returned null (parse failed) — retrying", {
         changeId: input.changeId,
       });
       throw new Error("Insight returned null (parse failed)");
+    }
+
+    // Abstention (Véracité Intelligence v2 P3). The deterministic post-hoc check ran
+    // inside the SAME call that produced the insight — no extra token — and if a
+    // figure or a quotation in the prose is absent from the diff the model was shown,
+    // that FIELD is withheld here. What survives is everything that was never in
+    // doubt: the severity, the category, the human before/after the classifier lifted
+    // out of the diff, and the fact block the API builds from the sibling extractors.
+    //
+    // Placed BEFORE the faithfulness gate on purpose — the gate must judge what will
+    // actually be published, not a sentence we have already decided to drop — and
+    // after the P2 interception, which reasons about severity and never about prose,
+    // so the two never meet.
+    const grounding = insight._quality.postHoc;
+    const published = abstainFromUnverified({
+      prose: insight,
+      postHoc: grounding,
+      fallbackInsight: deterministicInsight({
+        competitorName: competitor.name,
+        humanChangeBefore,
+        humanChangeAfter,
+      }),
+    });
+    if (published.withheld.length > 0) {
+      logger.warn("Insight fields withheld — figures unsupported by the source", {
+        changeId: input.changeId,
+        withheld: published.withheld,
+        unverified: grounding?.unverified.map((t) => t.text) ?? [],
+      });
     }
 
     // Strategic narrative (patch-16): only for significant STRUCTURED homepage
@@ -394,7 +439,7 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
     let narrative: string | null = null;
     if (change.diffType === "structured" && change.structuredDiff && shouldNarrate(severity)) {
       try {
-        narrative = await loggedAi(
+        const narrated = await loggedAi(
           "narrate_change",
           AI_CONFIG.insights,
           () =>
@@ -405,6 +450,20 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
             }),
           attribution,
         );
+        // Same abstention rule as the insight, with a simpler shape: the narrative is
+        // ONE optional paragraph, so an unsupported figure anywhere in it withholds
+        // the whole thing. Dropping it is not a loss of evidence — the deterministic
+        // before/after stays on the row and the panel renders it — and there is no
+        // second call, which is what the re-roll that used to live in narrateChange
+        // was.
+        if (narrated && narrated._quality.postHoc?.status === "unverified") {
+          logger.warn("Narrative withheld — figures unsupported by the change list", {
+            changeId: input.changeId,
+            unverified: narrated._quality.postHoc.unverified.map((t) => t.text),
+          });
+        } else {
+          narrative = narrated?.narrative ?? null;
+        }
       } catch {
         logger.warn("Narrative generation failed (non-fatal)", { changeId: input.changeId });
       }
@@ -429,7 +488,14 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
     const faithfulness =
       severity === "critical" || severity === "high"
         ? await checkFaithfulness({
-            output: insight,
+            // What will actually be published, after any abstention: a withheld
+            // sentence has no claims to judge, and judging it would let the gate
+            // block a signal over text nobody will ever read.
+            output: {
+              insight: published.insight,
+              so_what: published.soWhat,
+              recommended_action: published.recommendedAction,
+            },
             sourceText: formatDiffForPrompt(diffText),
             outputKind: "competitive intelligence signal insight",
             context: { changeId: input.changeId, competitorId: competitor.id, severity },
@@ -446,9 +512,16 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
         competitorId: competitor.id,
         severity,
         category,
-        insight: insight.insight,
-        soWhat: insight.so_what,
-        recommendedAction: insight.recommended_action,
+        insight: published.insight,
+        soWhat: published.soWhat,
+        recommendedAction: published.recommendedAction,
+        // What the deterministic check made of the prose, and what it withheld
+        // (Véracité P3). Data only — the badge that reads it is P4.
+        groundingStatus: grounding?.status ?? null,
+        groundingUnverified:
+          grounding?.status === "unverified" && grounding.unverified.length > 0
+            ? grounding.unverified
+            : null,
         humanChangeBefore,
         humanChangeAfter,
         narrative,
@@ -611,8 +684,8 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
           const email = renderCelebrationEmail({
             competitorName: competitor.name,
             category,
-            insight: insight.insight,
-            soWhat: insight.so_what,
+            insight: published.insight,
+            soWhat: published.soWhat,
             signalUrl: `${webUrl}/dashboard/signals`,
           });
           await sendEmail({

@@ -2,7 +2,6 @@ import { z } from "zod";
 import { formatDiffForPrompt, truncateDiffText } from "@outrival/shared";
 import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
-import { unsupportedNumbers } from "../grounding/numeric-grounding";
 import { attachQuality, type WithQuality } from "../grounding/types";
 import type { Classification } from "./classify";
 
@@ -131,27 +130,13 @@ export async function generateInsight(
     ...(requireGrounding ? { requireGrounding: true } : {}),
   };
 
-  let result = await groundedAiCall(callParams);
+  // The deterministic figure check now runs INSIDE groundedAiCall (the post-hoc
+  // policy, Véracité P3) and rides back on `_quality.postHoc`. The regenerate-once
+  // pass that used to live here is gone: it was the one place in the pipeline that
+  // paid for a second insight call, and re-rolling an invented statistic is not a
+  // repair — the same prompt on the same source produces the same class of sentence,
+  // only more confidently. The caller ABSTAINS from the offending field instead.
+  const result = await groundedAiCall(callParams);
   if (!result) return null;
-
-  // R3: deterministic numeric-hallucination guard. A number in the insight absent
-  // from the change diff is an invented statistic (the free reasoning providers'
-  // most common hallucination). Regenerate ONCE; if it's still unsupported, keep the
-  // text but downgrade confidence + flag for review — non-destructive, since a
-  // legitimately derived number (a % computed from two source prices) is rare and
-  // tagging never removes it.
-  const insightText = (o: Insight) =>
-    [o.insight, o.so_what, o.recommended_action].filter(Boolean).join(" ");
-  if (unsupportedNumbers(insightText(result.output), source).length > 0) {
-    const retry = await groundedAiCall(callParams);
-    if (retry) result = retry;
-    if (unsupportedNumbers(insightText(result.output), source).length > 0) {
-      result = {
-        ...result,
-        quality: { ...result.quality, confidence: "low", flaggedForHumanReview: true },
-      };
-    }
-  }
-
   return attachQuality(result.output, result.quality);
 }

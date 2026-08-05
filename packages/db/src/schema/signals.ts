@@ -67,6 +67,20 @@ export const signals = pgTable("signals", {
   // in-app but NEVER emailed/Slacked, and the claims are in the review queue.
   // Null for medium/low signals (out of scope) and when the gate is off.
   faithfulness: jsonb("faithfulness"),
+  // Deterministic post-hoc grounding of the generated prose (Véracité v2 P3):
+  // 'verified'   — every figure and quotation in the insight is in the source;
+  // 'unverified' — at least one was not, and the field carrying it was WITHHELD
+  //                (the signal still carries its human before/after and fact block);
+  // 'skipped'    — the check could not run honestly (no source, truncated reply).
+  // Null on every pre-P3 signal and on the synthesized paths that write no prose.
+  groundingStatus: text("grounding_status"),
+  // The figures/quotations the source did not support, as
+  // { kind, text, field }[] — what was withheld, and out of which field. Kept even
+  // though the prose is gone: it is the only record of what the model claimed, and
+  // the review queue reads it. Null unless groundingStatus = 'unverified'.
+  groundingUnverified: jsonb("grounding_unverified").$type<
+    Array<{ kind: string; text: string; field?: string }>
+  >(),
   // The dispatcher's decision for this signal: the channel it routed to, and —
   // when it was held back from an immediate email — why. The signal feed reads
   // filteredReason to show "N less relevant signals hidden". Both null until the

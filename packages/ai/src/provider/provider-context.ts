@@ -36,6 +36,13 @@ interface Scope {
   truncated: boolean;
   /** Someone is waiting on this call at a screen (see withAiContext). */
   interactive: boolean;
+  /**
+   * The scope this one was opened inside, so a truncation raised deep in a nested
+   * call (a task's loggedAi inside a job's own span) is visible to the caller that
+   * has to DECIDE about it. Only `truncated` propagates upward: provider, model and
+   * usage are per-unit-of-attribution by design.
+   */
+  parent: Scope | null;
 }
 
 const zeroUsage = (): TokenUsage => ({ promptTokens: 0, completionTokens: 0, totalTokens: 0 });
@@ -45,7 +52,14 @@ const store = new AsyncLocalStorage<Scope>();
 function scope(): Scope {
   let s = store.getStore();
   if (!s) {
-    s = { id: null, model: null, usage: zeroUsage(), truncated: false, interactive: false };
+    s = {
+      id: null,
+      model: null,
+      usage: zeroUsage(),
+      truncated: false,
+      interactive: false,
+      parent: null,
+    };
     store.enterWith(s);
   }
   return s;
@@ -76,11 +90,39 @@ export function withAiContext<T>(
   fn: () => Promise<T>,
   opts?: { interactive?: boolean },
 ): Promise<T> {
-  const interactive = store.getStore()?.interactive || (opts?.interactive ?? false);
+  const parent = store.getStore() ?? null;
+  const interactive = parent?.interactive || (opts?.interactive ?? false);
   return store.run(
-    { id: null, model: null, usage: zeroUsage(), truncated: false, interactive },
+    { id: null, model: null, usage: zeroUsage(), truncated: false, interactive, parent },
     fn,
   );
+}
+
+/**
+ * Run `fn` and report whether ANY model call inside it was cut off at its output
+ * ceiling — nested `withAiContext` spans included (that is what the parent link is
+ * for).
+ *
+ * The caller needs this because a truncation and a malformed reply are the same
+ * symptom (a parse miss, a null) with opposite repairs: another attempt gets a
+ * different roll of the dice on malformed JSON, and reproduces a truncation exactly,
+ * since the prompt and the token budget are both unchanged. A job that cannot tell
+ * them apart burns its whole retry budget on the one that was never going to work.
+ */
+export async function withTruncationReport<T>(
+  fn: () => Promise<T>,
+): Promise<{ value: T; truncated: boolean }> {
+  const parent = store.getStore() ?? null;
+  const s: Scope = {
+    id: null,
+    model: null,
+    usage: zeroUsage(),
+    truncated: false,
+    interactive: parent?.interactive ?? false,
+    parent,
+  };
+  const value = await store.run(s, fn);
+  return { value, truncated: s.truncated };
 }
 
 /** Whether the current async scope is a call someone is waiting on. */
@@ -121,7 +163,9 @@ export function markUsage(u: TokenUsage): void {
  * it the only trace was a `SyntaxError: Unterminated string` in a worker log.
  */
 export function markTruncated(): void {
-  scope().truncated = true;
+  // Up the chain too: the span that owns the retry decision is usually two frames
+  // above the call that ran out of room (job → loggedAi → complete).
+  for (let s: Scope | null = scope(); s; s = s.parent) s.truncated = true;
 }
 
 /** Whether any `complete()` call in this scope was cut off at its output ceiling. */

@@ -1,4 +1,13 @@
-import { pgTable, text, timestamp, pgEnum, jsonb, integer, index } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  timestamp,
+  pgEnum,
+  jsonb,
+  integer,
+  doublePrecision,
+  index,
+} from "drizzle-orm/pg-core";
 import { monitors } from "./monitors";
 
 export const snapshotStatusEnum = pgEnum("snapshot_status", [
@@ -36,6 +45,37 @@ export const snapshots = pgTable("snapshots", {
   // and are invisible to normal latest-snapshot diffing (older than any live row);
   // generate-signal reads it to keep an archive-derived signal in-app only.
   origin: text("origin").notNull().default("live"),
+  // R1 completeness score (Véracité Intelligence v2 P1) — 0..1, the grade this
+  // capture got from @outrival/scrapers/completeness. Below its threshold the row
+  // is stored `partial`, which is the enforceable half; this column is the reason
+  // WHY, kept so a degraded monitor is queryable instead of only greppable in the
+  // worker logs. Null on rows written before P1 and whenever the grader is off.
+  completeness: doublePrecision("completeness"),
+  // Provenance of the capture (P1). Generalises the vocabulary price_points.method
+  // established: where a number came from changes how much it is worth. Written on
+  // every new snapshot, never backfilled — a null means "captured before P1", not
+  // "unknown method".
+  //   static   — L0 plain fetch, no browser
+  //   rendered — a browser served it (L1, or L2 with datacenter egress)
+  //   feed     — an RSS/Atom/sitemap/JSON feed parsed into a synthetic document
+  //   api      — the page's own runtime API captured (apiCaptureEnabled monitors)
+  captureMethod: text("capture_method"),
+  // Where we stood when we captured. Prices, availability and even copy are
+  // geo-dependent, and the pricing pipeline already carries an observed_region it
+  // stamps onto every batch — hoisted to the capture itself so every source has it.
+  observedRegion: text("observed_region"),
+  // The URL R6's "did we land where we asked" assertion was evaluated against —
+  // the post-redirect landing URL at capture time. It carries the SAME value as
+  // resolvedUrl today, and is kept separate on purpose: resolvedUrl is scraper-
+  // owned (a source rewrites it during its own path discovery, so it answers
+  // "which page did we decide to scrape"), while this one is the worker's record
+  // of where the bytes came from. Without it, a scraper that starts rewriting
+  // resolvedUrl silently rewrites the evidence behind every past redirect verdict.
+  finalUrl: text("final_url"),
+  // HTTP status the body was served with. A 4xx/5xx captured as content is the
+  // audit's clearest lying success; storing it makes the claim checkable after
+  // the fact rather than only at capture time.
+  httpStatus: integer("http_status"),
 }, (t) => [
   // Every scrape fetches the previous snapshot: latest per monitor.
   index("snapshots_monitor_scraped_idx").on(t.monitorId, t.scrapedAt),

@@ -1,3 +1,5 @@
+import { protectRegression, keepRatio } from "@outrival/shared";
+
 // Pricing anti-overwrite decision (extracted from extract-pricing.job.ts so it
 // can be tested).
 //
@@ -14,6 +16,19 @@
 // `visiblePrices` is low and the batch is allowed through — the guard never
 // suppresses a real strategic move, it only blocks garbage.
 
+// Both guards below are usages of the shared `protectRegression` arithmetic
+// (P1 / audit R4-R5 unification): "the prior state was substantial AND the fresh
+// count keeps too little of it". Only the EVIDENCE differs — pricing corroborates
+// with an independent harvest of the page, entitlements have no such probe — so
+// only the thresholds and the corroboration live here.
+
+/** Prior batches smaller than this are not protected: a real move is plausible. */
+const PRICING_MIN_PRIOR_TIERS = 3;
+/** A healthy pricing extraction of a multi-tier page keeps at least 2 priced tiers. */
+const PRICING_MIN_KEPT_TIERS = 2;
+/** Prices the AI-free harvest must still see for the collapse to read as a mis-parse. */
+const PRICING_MIN_VISIBLE_PRICES = 3;
+
 export function isSuspectedPricingCollapse(args: {
   /** Priced (price>0) tiers in the prior (latest stored) batch. */
   pricedBefore: number;
@@ -23,7 +38,14 @@ export function isSuspectedPricingCollapse(args: {
   visiblePrices: number;
 }): boolean {
   const { pricedBefore, pricedNow, visiblePrices } = args;
-  return pricedBefore >= 3 && pricedNow <= 1 && visiblePrices >= 3;
+  return (
+    protectRegression({
+      prevCount: pricedBefore,
+      nextCount: pricedNow,
+      minPrev: PRICING_MIN_PRIOR_TIERS,
+      minKeep: PRICING_MIN_KEPT_TIERS,
+    }) && visiblePrices >= PRICING_MIN_VISIBLE_PRICES
+  );
 }
 
 // Same philosophy for the entitlement matrix (Pricing Intelligence P2), simpler
@@ -34,6 +56,11 @@ export function isSuspectedPricingCollapse(args: {
 // prompt miss must never read as "they un-gated everything". A real packaging
 // simplification below that cliff still surfaces next scrape via the plans/
 // price diff, and partial shrinkage above 30% diffs normally.
+/** Matrices smaller than this are too thin for a shrink to read as a failure. */
+const ENTITLEMENT_MIN_PRIOR_ROWS = 5;
+/** A healthy extraction keeps at least this fraction of a known matrix. */
+const ENTITLEMENT_MIN_KEPT_RATIO = 0.3;
+
 export function isSuspectedEntitlementCollapse(args: {
   /** Entitlement rows in the prior (latest stored) batch. */
   prevCount: number;
@@ -41,5 +68,10 @@ export function isSuspectedEntitlementCollapse(args: {
   nextCount: number;
 }): boolean {
   const { prevCount, nextCount } = args;
-  return prevCount >= 5 && (nextCount === 0 || nextCount < prevCount * 0.3);
+  return protectRegression({
+    prevCount,
+    nextCount,
+    minPrev: ENTITLEMENT_MIN_PRIOR_ROWS,
+    minKeep: keepRatio(prevCount, ENTITLEMENT_MIN_KEPT_RATIO),
+  });
 }

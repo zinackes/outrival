@@ -84,6 +84,21 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
     });
     if (!snapshot) throw new AbortTaskRunError(`Snapshot ${input.snapshotId} not found`);
 
+    // P1 (audit R5) — a batch derived from a degraded capture is REJECTED before any
+    // delta is computed. The stakes here are closures: a truncated or half-rendered
+    // board makes every posting it did not see look closed, which fires a phantom
+    // "hiring freeze" and its inverse on the next scrape. scrape-monitor already
+    // declines to enqueue on a partial; this covers forced re-scans, admin re-runs
+    // and retries. A log, not an exception — nothing failed, we decline to write.
+    if (snapshot.status === "partial") {
+      logger.warn("Rejecting jobs batch from a partial capture", {
+        snapshotId: snapshot.id,
+        competitorId: input.competitorId,
+        completeness: snapshot.completeness,
+      });
+      return { ok: false, reason: "partial_capture" as const };
+    }
+
     const html = await getFromR2(`${snapshot.r2Key}.html`);
 
     // Structured ATS path: when the jobs scraper resolved postings via a public

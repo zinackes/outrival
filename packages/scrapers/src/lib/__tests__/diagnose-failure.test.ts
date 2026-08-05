@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { diagnoseFailure, isOffsiteRedirect, type AttemptInfo } from "../diagnose-failure";
+import {
+  diagnoseFailure,
+  isOffsiteRedirect,
+  classifyRedirect,
+  type AttemptInfo,
+} from "../diagnose-failure";
 
 const URL = "https://linear.app";
 
@@ -113,5 +118,47 @@ describe("isOffsiteRedirect", () => {
   test("unparseable finalUrl → NOT offsite (fail safe, never grade partial on garbage)", () => {
     expect(isOffsiteRedirect("https://acme.com", "not a url")).toBe(false);
     expect(isOffsiteRedirect("also not a url", "https://acme.com")).toBe(false);
+  });
+});
+
+describe("classifyRedirect — R6 success-path assertion", () => {
+  test("a different registrable domain is offsite", () => {
+    expect(classifyRedirect("https://acme.com/pricing", "https://parked.io/")).toBe("offsite");
+  });
+
+  test("a path with segments landing on the bare root is a root bounce", () => {
+    expect(classifyRedirect("https://acme.com/pricing", "https://acme.com/")).toBe("root_bounce");
+    expect(classifyRedirect("https://acme.com/careers/jobs", "https://acme.com")).toBe(
+      "root_bounce",
+    );
+  });
+
+  test("a homepage monitor can never root-bounce (it asked for the root)", () => {
+    expect(classifyRedirect("https://acme.com/", "https://acme.com/")).toBe(null);
+    expect(classifyRedirect("https://acme.com", "https://www.acme.com/")).toBe(null);
+  });
+
+  test("a locale redirect is the same page, localised — not a mismatch", () => {
+    expect(classifyRedirect("https://acme.com/pricing", "https://acme.com/fr/pricing")).toBe(null);
+    expect(classifyRedirect("https://acme.com/pricing", "https://acme.com/en-US/pricing")).toBe(
+      null,
+    );
+  });
+
+  test("a locale-only redirect of a homepage is not a root bounce", () => {
+    expect(classifyRedirect("https://acme.com/", "https://acme.com/fr/")).toBe(null);
+  });
+
+  test("a renamed or deeper section is deliberately not flagged", () => {
+    // Would stick forever (the monitor URL never changes) and silence the source.
+    expect(classifyRedirect("https://acme.com/pricing", "https://acme.com/plans")).toBe(null);
+    expect(classifyRedirect("https://acme.com/pricing", "https://acme.com/pricing/teams")).toBe(
+      null,
+    );
+  });
+
+  test("an unreadable URL never grades a capture", () => {
+    expect(classifyRedirect("not a url", "https://acme.com/")).toBe(null);
+    expect(classifyRedirect("https://acme.com/pricing", "not a url")).toBe(null);
   });
 });

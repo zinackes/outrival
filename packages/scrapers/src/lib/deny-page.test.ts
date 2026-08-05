@@ -137,3 +137,34 @@ describe("isSyntheticDocument", () => {
     expect(isSyntheticDocument(html)).toBe(true);
   });
 });
+
+describe("detectDenyPage — consent wall (R6, success path)", () => {
+  test("a consent interstitial that replaced the page is a deny page", () => {
+    const html =
+      `<html><head><title>Acme</title></head><body>` +
+      `<h1>We value your privacy</h1>` +
+      `<p>We and our partners use cookies to personalise content.</p>` +
+      `<button>Accept all</button><button>Reject all</button>` +
+      `</body></html>`;
+    expect(detectDenyPage(html)).toBe("consent_wall");
+  });
+
+  test("the same copy as a BANNER over a real page is not a deny page", () => {
+    // The length gate is the whole separation: a banner never makes a page short.
+    const article = "Our pricing is built around how much you actually ship. ".repeat(80);
+    const html =
+      `<html><head><title>Pricing — Acme</title></head><body>` +
+      `<div class="cookie-banner"><p>This site uses cookies.</p>` +
+      `<button>Accept all</button></div>` +
+      `<main><h1>Pricing</h1><p>${article}</p></main>` +
+      `</body></html>`;
+    expect(detectDenyPage(html)).toBe(null);
+  });
+
+  test("consent copy with no consent control is not enough", () => {
+    const html =
+      `<html><body><h1>Privacy</h1><p>We value your privacy.</p>` +
+      `<a href="/policy">Read our policy</a></body></html>`;
+    expect(detectDenyPage(html)).toBe(null);
+  });
+});

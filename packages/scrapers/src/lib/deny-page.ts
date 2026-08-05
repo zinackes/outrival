@@ -24,7 +24,12 @@
 // competitor's diffs/signals/pricing/jobs forever (visible only in a logger.warn).
 // That asymmetric cost is why the length gate is mandatory on all four kinds.
 
-export type DenyPageKind = "soft_404" | "access_denied" | "login_wall" | "verification_wall";
+export type DenyPageKind =
+  | "soft_404"
+  | "access_denied"
+  | "login_wall"
+  | "verification_wall"
+  | "consent_wall";
 
 const VISIBLE_TEXT_LIMIT = 3000;
 
@@ -57,6 +62,14 @@ const SIGNIN_RE = /\b(sign in|log in|sign-in|log-in)\b/i;
 const SIGNIN_CONTEXT_RE = /\b(continue with|email address|password)\b/i;
 const VERIFICATION_RE =
   /\b(verify(ing)? (you are|that you.re) (a )?human|one moment, please|request is being verified|robot challenge)\b/i;
+// R6 — a consent interstitial that REPLACED the page (an EU/GDPR gate rendered
+// server-side, common on media and enterprise sites). Two conditions, both
+// required: the copy AND a consent control. On a real page the same copy appears
+// in a BANNER over full content, so the shared `< 3000 visible chars` gate is what
+// separates the two — a banner never makes a page short.
+const CONSENT_COPY_RE =
+  /\b(we value your privacy|before you continue|we (and our partners )?use cookies|this (site|website) uses cookies|manage (your )?(cookie|consent|privacy) (preferences|settings))\b/i;
+const CONSENT_CONTROL_RE = /\b(accept all|reject all|agree and continue|allow all cookies)\b/i;
 
 function visibleText(html: string): string {
   return html
@@ -87,6 +100,9 @@ export function detectDenyPage(html: string): DenyPageKind | null {
   }
   if (short && VERIFICATION_RE.test(text.slice(0, 3000))) {
     return "verification_wall";
+  }
+  if (short && CONSENT_COPY_RE.test(text) && CONSENT_CONTROL_RE.test(text)) {
+    return "consent_wall";
   }
   return null;
 }

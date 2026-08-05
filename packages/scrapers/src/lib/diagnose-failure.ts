@@ -179,6 +179,61 @@ export function isOffsiteRedirect(originalUrl: string, finalUrl: string): boolea
   return from !== to && !sameRootDomain(from, to);
 }
 
+/**
+ * Why the URL we landed on is not the URL we asked for (R6). Runs on the SUCCESS
+ * path: a 200 that followed a redirect somewhere else is the audit's T5 hole —
+ * the pipeline stores it "as the page" and every diff, price and posting derived
+ * from it is attributed to a URL that did not serve it.
+ *
+ *   "offsite"     — a different registrable domain (parked, acquired, hijacked).
+ *   "root_bounce" — same site, but a path with segments landed on the bare root:
+ *                   the page we monitor is gone and the site bounced us home.
+ *   null          — the same page, however it is spelled.
+ *
+ * Deliberately NOT flagged, though both are "a different path":
+ *   - a locale prefix (/pricing → /fr/pricing) is the SAME page, localised. The
+ *     region it was served for is recorded on the snapshot instead; grading it
+ *     partial would silence every monitor whose site geo-redirects, i.e. most.
+ *   - a renamed or moved section (/pricing → /plans). It reads like a mismatch,
+ *     but the monitor URL never changes, so the verdict would stick forever and
+ *     silence the source permanently. URL discovery re-finds those; a partial
+ *     capture is the wrong tool for a stale URL.
+ *
+ * The root bounce is kept because it is unambiguous, self-clearing (the next
+ * complete capture of a restored page grades complete), and is exactly the shape
+ * that makes a pricing or jobs source read "unknown" forever with no error
+ * anywhere.
+ */
+export type RedirectMismatch = "offsite" | "root_bounce";
+
+export function classifyRedirect(
+  intendedUrl: string,
+  finalUrl: string,
+): RedirectMismatch | null {
+  if (isOffsiteRedirect(intendedUrl, finalUrl)) return "offsite";
+  const intended = safeSegments(intendedUrl);
+  const final = safeSegments(finalUrl);
+  if (intended === null || final === null) return null;
+  if (intended.length > 0 && final.length === 0) return "root_bounce";
+  return null;
+}
+
+/** `fr`, `en-US`, `pt-br` — a language segment, not a page. */
+const LOCALE_SEGMENT_RE = /^[a-z]{2}([-_][a-z]{2})?$/i;
+
+/** Path segments with a leading locale dropped. null when the URL is unreadable. */
+function safeSegments(url: string): string[] | null {
+  let pathname: string;
+  try {
+    pathname = new URL(url).pathname;
+  } catch {
+    return null;
+  }
+  const segments = pathname.split("/").filter(Boolean);
+  const first = segments[0];
+  return first !== undefined && LOCALE_SEGMENT_RE.test(first) ? segments.slice(1) : segments;
+}
+
 function safeHostname(url: string): string | null {
   try {
     return new URL(url).hostname.replace(/^www\./, "");

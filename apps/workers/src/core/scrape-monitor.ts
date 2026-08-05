@@ -19,7 +19,7 @@ import {
   backfillHistory,
 } from "@outrival/queue";
 import { z } from "zod";
-import { and, count, desc, eq, gte, isNotNull } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNotNull, ne } from "drizzle-orm";
 import {
   db,
   monitors,
@@ -115,7 +115,7 @@ import { diffTestimonialsStable } from "@outrival/scrapers/social-proof";
 // Pure subpath — composite relevance score to silence low-impact changes (patch-17).
 import { scoreRelevance } from "@outrival/scrapers/relevance";
 // Pure subpath — median anti-void guard (patch-17).
-import { checkAntiVoid } from "@outrival/scrapers/anti-void";
+import { checkAntiVoid, computeMedian } from "@outrival/scrapers/anti-void";
 // Pure subpath — per-monitor volatile-line learning (patch-17).
 import { computeVolatileUpdates, filterVolatileLines } from "@outrival/scrapers/volatile";
 import { diagnoseFailure, type AttemptInfo, type FailureCategory } from "@outrival/scrapers/diagnose-failure";
@@ -123,7 +123,7 @@ import { diagnoseFailure, type AttemptInfo, type FailureCategory } from "@outriv
 // access-denied/geo-block, login wall, worded verification interstitial) that the
 // vendor-string challenge detector misses (R1 follow-up, patch-25 audit).
 import { detectDenyPage, isSyntheticDocument } from "@outrival/scrapers/deny-page";
-import { isOffsiteRedirect } from "@outrival/scrapers/diagnose-failure";
+import { classifyRedirect } from "@outrival/scrapers/diagnose-failure";
 import { generateAlternatives } from "@outrival/scrapers/alternatives";
 import { filterRelevantApiCalls, apiCallsToHtmlDoc, toEndpoints } from "@outrival/scrapers/spa-filter";
 import type { ScrapeOutcome } from "@outrival/scrapers";
@@ -132,7 +132,11 @@ import {
   insertNumericClaims,
   getLastNumericClaims,
 } from "../lib/analytics";
-import { assessCompleteness, type CompletenessVerdict } from "../lib/completeness";
+import {
+  computeCompleteness,
+  countCaptureAnchors,
+  isPartialScore,
+} from "@outrival/scrapers/completeness";
 
 const SCRAPER_REGION = process.env.SCRAPER_REGION ?? "FR";
 
@@ -171,8 +175,15 @@ const VOLATILE_RESET = Number(process.env.ENRICHMENTS_VOLATILE_RESET ?? 10);
 // (phantom-change guard) and it drops out of the anti-void median. Kill-switch +
 // tunable band; append-y sources are exempt from the size signal (they swing).
 const COMPLETENESS_ENABLED = process.env.SNAPSHOT_COMPLETENESS_ENABLED !== "false";
-const COMPLETENESS_MIN_RATIO = Number(process.env.SNAPSHOT_COMPLETENESS_MIN_RATIO ?? 0.5);
 const COMPLETENESS_MIN_PRIORS = 3;
+// How many consecutive partial captures make a source DEGRADED rather than
+// unlucky. Below it a partial is a one-off (a deploy mid-scrape, a slow hydration);
+// at it, the source has been failing to serve us its content for long enough that
+// nobody should be reading its tab as current. Emits a structured log — never a
+// throw, never markedUnscrapable: a partial capture is not a failed one, and
+// burning the 3-strike budget on it would auto-pause sources that are merely
+// degraded (audit T4, the failure mode this whole phase exists to stop).
+const DEGRADED_PARTIAL_RUNS = 3;
 const SIZE_VARIABLE_SOURCES = new Set(["blog", "changelog", "news", "sitemap", "subdomains", "youtube", "hackernews", "wellknown", "docs", "roadmap"]);
 // Content Intelligence v2 P3 — customer-proof URLs handed to one ingest run. A
 // sitemap that publishes forty case studies at once is a site migration or a first
@@ -714,10 +725,30 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       );
     }
 
+    // P1 — the BASELINE, not merely the latest row. A `partial` capture is a
+    // degraded read of the page, so letting it be the baseline hands it the two
+    // powers the whole phase exists to deny it: its contentHash would short-circuit
+    // the next healthy scrape as "no change" (masking whatever really moved), and
+    // its content would be the "before" side of every diff below. Excluding it here
+    // does both at once, for every diff branch, instead of guarding each one.
+    // `hasAnySnapshot` keeps "has this monitor ever captured anything" separate —
+    // that question drives one-shot side effects (archive backfill) that must not
+    // fire twice because the first capture happened to be partial.
     const lastSnapshot = await db.query.snapshots.findFirst({
-      where: eq(snapshots.monitorId, monitor.id),
+      where: and(eq(snapshots.monitorId, monitor.id), ne(snapshots.status, "partial")),
       orderBy: desc(snapshots.scrapedAt),
     });
+    // The most recent capture WHATEVER its status. Two questions need it and the
+    // baseline cannot answer either: "has this monitor ever captured anything"
+    // (one-shot side effects must not re-fire because the first capture was
+    // partial) and "was the page already this small last time" (anti-void's
+    // new-normal escape hatch — see the guard below).
+    const latestAnySnapshot = await db.query.snapshots.findFirst({
+      where: eq(snapshots.monitorId, monitor.id),
+      orderBy: desc(snapshots.scrapedAt),
+      columns: { id: true, contentSize: true },
+    });
+    const hasAnySnapshot = latestAnySnapshot !== undefined;
 
     // Self-heal the content summary: a homepage already captured but still missing
     // an aiSummary means a prior refresh-competitor-summary failed (AI outage,
@@ -1016,10 +1047,22 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
     // Median anti-void guard (patch-17, ADDITIVE to the absolute collapse guard
     // above): content that dropped far below this monitor's historical median AND
     // is absolutely small is almost certainly a soft-block returning a shell — not
-    // a real reduction. Throw so Trigger retries (a re-probe may switch to proxy and
-    // render real content). Conservative: a large page that merely shrank, or a
-    // stably-small monitor, is never flagged. Skips gracefully without prior sizes.
+    // a real reduction. Conservative: a large page that merely shrank, or a stably-
+    // small monitor, is never flagged. Skips gracefully without prior sizes.
+    //
+    // P1 changed what happens next. It used to THROW, which is audit T6: a page a
+    // competitor genuinely gutted (~2000 → ~300 chars) trips the median band, the
+    // throw prevents it ever being STORED, so it can never become its own precedent
+    // — every run re-throws, three failures mark the source unscrapable, and the
+    // "they emptied their page" signal is never captured. The throw bought one
+    // thing: it kept a soft-block from becoming the baseline. `partial` now buys
+    // exactly that (no baseline, no diff, no extraction) without the deadlock, so
+    // the capture is graded instead of discarded. The reduction then persists into
+    // `lastSize`, the guard's new-normal rule clears it on the next run, and the
+    // real change is finally captured. Recovery from a true transient block is the
+    // next scheduled run rather than an immediate retry.
     let priorSizes: number[] = [];
+    let antiVoidReason: string | null = null;
     if (lastSnapshot) {
       const recentSizes = await db.query.snapshots.findMany({
         where: and(eq(snapshots.monitorId, monitor.id), eq(snapshots.status, "success")),
@@ -1032,16 +1075,15 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         .filter((n): n is number => typeof n === "number" && n > 0);
       const decision = checkAntiVoid(afterContent.length, priorSizes, {
         ratioThreshold: ANTIVOID_THRESHOLD,
+        lastSize: latestAnySnapshot?.contentSize ?? undefined,
       });
       if (decision.isVoid) {
-        logger.warn("Anti-void guard triggered — likely soft-block, retrying", {
+        antiVoidReason = decision.reason ?? "anti_void";
+        logger.warn("Anti-void guard triggered — grading capture partial", {
           monitorId: monitor.id,
           reason: decision.reason,
           currentSize: afterContent.length,
         });
-        throw new Error(
-          `Anti-void: content below historical median for monitor ${monitor.id} (${decision.reason})`,
-        );
       }
     }
 
@@ -1078,22 +1120,48 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         : null;
 
     // R1 completeness: grade this capture. A degraded render is stored `partial` —
-    // excluded from the anti-void median (its query filters status="success") and
-    // skipped by the diff below so it never becomes a phantom-change baseline.
-    const homepageIncomplete =
+    // excluded from the anti-void median (its query filters status="success"),
+    // never the diff baseline (the lastSnapshot query excludes it) and never fed to
+    // the destructive extractors below.
+    //
+    // The scoring itself is a pure module in @outrival/scrapers: what counts as a
+    // complete capture is a property of the SOURCE, not of the worker, and keeping
+    // it out here is what makes the thresholds testable against fixtures. The worker
+    // owns only the three inputs it alone can answer — the monitor's own median, how
+    // many anchors THIS source carries, and which render level was expected.
+    //
+    // Homepages count their anchor through the structure parser rather than the
+    // module's heading regex: `isIncompleteRender` (no hero AND ≤1 section) reads a
+    // failed SPA render that still emits headings, which a regex cannot.
+    const anchorsFound =
       monitor.sourceType === "homepage" && homepageStructure
         ? isIncompleteRender(homepageStructure)
-        : false;
-    const completeness = COMPLETENESS_ENABLED
-      ? assessCompleteness({
-          contentLength: afterContent.length,
-          priorSizes,
-          homepageIncomplete,
-          ratioEligible: !SIZE_VARIABLE_SOURCES.has(monitor.sourceType),
-          minRatio: COMPLETENESS_MIN_RATIO,
-          minPriors: COMPLETENESS_MIN_PRIORS,
+          ? 0
+          : 1
+        : countCaptureAnchors(result.html, monitor.sourceType);
+    // A median is only evidence when there is enough of it AND the source doesn't
+    // legitimately swing in size (append-y blog/changelog/news/sitemap). 0 = "no
+    // median", which the module reads as "cannot tell" and never penalises.
+    const historicalMedian =
+      !SIZE_VARIABLE_SOURCES.has(monitor.sourceType) && priorSizes.length >= COMPLETENESS_MIN_PRIORS
+        ? computeMedian(priorSizes)
+        : 0;
+    const scored = COMPLETENESS_ENABLED
+      ? computeCompleteness({
+          textLength: afterContent.length,
+          historicalMedian,
+          sourceType: monitor.sourceType,
+          anchorsFound,
+          // Synthesized documents (feeds, ATS islands, sitemaps) carry no HTTP status
+          // of their own; 0 means "unknown" and is never penalised.
+          httpStatus: result.statusCode ?? 0,
+          renderLevelReached: result.level,
+          // During a re-probe the cascade deliberately restarts at L0 to find out
+          // whether a cheaper level now suffices — a cheap success there is the
+          // ANSWER, not a degradation, so nothing is expected of it.
+          renderLevelExpected: shouldReprobe ? 0 : (monitor.requiresLevel ?? 0),
         })
-      : { complete: true, reason: null };
+      : { score: 1, reasons: [] as string[] };
 
     // R1 follow-up (2026-07-09 audit): a deny page (soft-404, access-denied/geo-block,
     // login wall, worded verification interstitial) responds 200 and clears every
@@ -1106,31 +1174,64 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
     // there would silence the monitor forever.
     const denyCheckable = COMPLETENESS_ENABLED && !monitor.apiCaptureEnabled && !syntheticCapture;
     const denyKind = denyCheckable ? detectDenyPage(result.html) : null;
-    // R6 (2026-07 audit, T5): the same cross-root check diagnoseFailure runs on the
+    // R6 (2026-07 audit, T5): the same landing-URL check diagnoseFailure runs on the
     // failure path, applied to a 200. An own-domain source that silently resolved to
-    // a different registrable domain (parked/acquired/wrong target) is captured
-    // `partial` so it never becomes the diff baseline or feeds extraction. Scoped to
-    // OFFSITE_CHECKED_SOURCES (never jobs/reviews — they legitimately live off-domain);
-    // synthetic/api-capture docs carry finalUrl == scrapeUrl so they can't trip it.
-    const offsiteRedirect =
+    // a different registrable domain (parked/acquired/wrong target), or that was
+    // bounced from a real path to the bare root (the page we monitor is gone), is
+    // captured `partial` so it never becomes the diff baseline or feeds extraction.
+    // Scoped to OFFSITE_CHECKED_SOURCES (never jobs/reviews — they legitimately live
+    // off-domain); synthetic/api-capture docs carry finalUrl == scrapeUrl so they
+    // can't trip it. A locale redirect is NOT a mismatch — see classifyRedirect.
+    const redirectMismatch =
       COMPLETENESS_ENABLED &&
       OFFSITE_CHECKED_SOURCES.has(monitor.sourceType) &&
-      typeof scrapeUrl === "string" &&
-      isOffsiteRedirect(scrapeUrl, resolvedUrl);
-    const graded: CompletenessVerdict =
-      completeness.complete && (denyKind || offsiteRedirect)
-        ? { complete: false, reason: denyKind ? "deny_page" : "redirected_offsite" }
-        : completeness;
+      typeof scrapeUrl === "string"
+        ? classifyRedirect(scrapeUrl, resolvedUrl)
+        : null;
+    // Deny copy and a wrong landing URL are not degradations of the page — they mean
+    // this is not the page. They override the score rather than subtract from it, so
+    // a full-length, anchor-carrying soft-404 cannot score its way to `success`.
+    // `antiVoidReason` is deliberately NOT gated on the completeness kill-switch:
+    // it replaces a throw that was ungated, so turning the grader off must not turn
+    // a suspected soft-block back into a stored success. denyKind/redirectMismatch
+    // are already null when the switch is off.
+    const overridden =
+      denyKind !== null || redirectMismatch !== null || antiVoidReason !== null;
+    const captureScore = overridden ? 0 : scored.score;
+    const captureReasons: string[] = overridden
+      ? [
+          ...scored.reasons,
+          ...(denyKind ? [`deny_page:${denyKind}`] : []),
+          ...(redirectMismatch ? [`redirect:${redirectMismatch}`] : []),
+          ...(antiVoidReason ? [`anti_void:${antiVoidReason}`] : []),
+        ]
+      : scored.reasons;
+    const graded = {
+      complete: overridden ? false : !COMPLETENESS_ENABLED || !isPartialScore(scored.score),
+      reasons: captureReasons,
+    };
     if (!graded.complete) {
       logger.warn("Partial capture graded", {
         monitorId: monitor.id,
         sourceType: monitor.sourceType,
-        reason: graded.reason,
-        denyKind,
-        offsiteFinalUrl: offsiteRedirect ? resolvedUrl : undefined,
+        score: captureScore,
+        reasons: captureReasons,
+        landedUrl: redirectMismatch ? resolvedUrl : undefined,
         contentSize: afterContent.length,
       });
     }
+
+    // Provenance (P1) — written on every capture, never backfilled. `feed` covers
+    // both the always-synthetic sources and the per-capture feed/ATS/product-line
+    // variants of otherwise-HTML sources, which is why it reads `syntheticCapture`
+    // rather than the source type.
+    const captureMethod = monitor.apiCaptureEnabled
+      ? "api"
+      : syntheticCapture
+        ? "feed"
+        : result.level >= 1
+          ? "rendered"
+          : "static";
 
     const [newSnapshot] = await db
       .insert(snapshots)
@@ -1146,6 +1247,12 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         homepageStructure,
         screenshotPhash,
         contentSize: afterContent.length,
+        // Null means "nothing graded this capture", never "graded 1.0".
+        completeness: COMPLETENESS_ENABLED || overridden ? captureScore : null,
+        captureMethod,
+        observedRegion: SCRAPER_REGION,
+        finalUrl: resolvedUrl,
+        httpStatus: result.statusCode ?? null,
       })
       .returning();
 
@@ -1271,19 +1378,19 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
     // only; the next scrape will have two structures and use the structured diff.
     const prevStructure = (lastSnapshot?.homepageStructure ?? null) as HomepageStructure | null;
 
-    // R1: don't diff a degraded capture, and don't diff AGAINST a degraded baseline
-    // — either fabricates phantom changes. Prepended to the diff chain so no branch
-    // runs when this or the prior snapshot is partial. The homepage incomplete-render
-    // branch below stays as the fallback when the kill-switch is off. When the prior
-    // was partial we lose one diff round; the next complete capture diffs cleanly.
-    const skipDiffForPartial =
-      COMPLETENESS_ENABLED && (!graded.complete || lastSnapshot?.status === "partial");
+    // R1: don't diff a degraded capture — it fabricates phantom changes. Prepended
+    // to the diff chain so no branch runs when THIS capture is partial. The other
+    // half of the rule (never diff AGAINST a degraded baseline) is enforced upstream
+    // by the lastSnapshot query, which no longer returns a partial row at all — so a
+    // partial round is simply invisible to the next scrape, which diffs the last
+    // COMPLETE capture against the fresh one and loses nothing. The homepage
+    // incomplete-render branch below stays as the fallback when the kill-switch is off.
+    const skipDiffForPartial = !graded.complete;
     if (skipDiffForPartial) {
-      logger.log("Skipping diff — partial capture (current or prior)", {
+      logger.log("Skipping diff — partial capture", {
         monitorId: monitor.id,
         sourceType: monitor.sourceType,
-        currentPartial: !graded.complete,
-        priorPartial: lastSnapshot?.status === "partial",
+        reasons: graded.reasons,
       });
     } else if (
       lastSnapshot &&
@@ -2274,7 +2381,9 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
     // source for a real competitor. Reuses this fresh snapshot as the diff's
     // "after" side (race-free: it's already committed). Best-effort, never blocks.
     if (
-      !lastSnapshot &&
+      // "ever captured", not "has a complete baseline": a first capture that graded
+      // partial must not let the one-shot archive backfill fire a second time.
+      !hasAnySnapshot &&
       competitor.type !== "self" &&
       BACKFILL_ENABLED &&
       BACKFILL_SOURCES.includes(monitor.sourceType)
@@ -2293,20 +2402,58 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       changedAt ?? monitor.lastChangedAt,
       monitor.createdAt,
     );
+    // P1 — a partial capture is neither a success nor a failure, and the monitor
+    // state has to say so. It does NOT clear the failure counters (SCRAPE_SUCCESS_RESET
+    // is what turns "this source is broken" back into "this source is fine", and a
+    // degraded read is no evidence of that), and it does NOT increment them either:
+    // three partials in a row must never reach markedUnscrapable, because auto-pausing
+    // a source that IS answering us is the exact failure mode T4 describes. The run is
+    // still rescheduled and still released from in-flight — only the verdict is withheld.
     await db
       .update(monitors)
       .set({
         lastRunAt: new Date(),
         nextRunAt,
         scrapeStartedAt: null,
-        ...SCRAPE_SUCCESS_RESET,
+        ...(graded.complete ? SCRAPE_SUCCESS_RESET : { scrapePickedUpAt: null }),
       })
       .where(eq(monitors.id, monitor.id));
+
+    // A source that has been partial for several runs is DEGRADED: it answers, so
+    // nothing fails, but its tab has been showing stale data with no error anywhere —
+    // precisely the silent state the audit found in prod. Structured so the Sources
+    // page can read it; a log, never a throw.
+    if (!graded.complete) {
+      const recentPartials = await db.query.snapshots.findMany({
+        where: eq(snapshots.monitorId, monitor.id),
+        orderBy: desc(snapshots.scrapedAt),
+        limit: DEGRADED_PARTIAL_RUNS,
+        columns: { status: true },
+      });
+      if (
+        recentPartials.length === DEGRADED_PARTIAL_RUNS &&
+        recentPartials.every((s) => s.status === "partial")
+      ) {
+        logger.warn("Source degraded — consecutive partial captures", {
+          event: "source_degraded",
+          monitorId: monitor.id,
+          competitorId: monitor.competitorId,
+          sourceType: monitor.sourceType,
+          consecutivePartials: DEGRADED_PARTIAL_RUNS,
+          reasons: graded.reasons,
+          score: captureScore,
+        });
+      }
+    }
 
     await logScrapeRun({
       monitor_id: monitor.id,
       competitor_id: monitor.competitorId,
       source_type: monitor.sourceType,
+      // Deliberately still "success": ~8 SQL readers (activity feed, /admin health,
+      // public status, monthly recap) bucket on this exact string, and splitting it
+      // is its own change with its own audit. The capture's honest grade lives on
+      // snapshots.status / snapshots.completeness, which is where the pipeline reads it.
       status: "success",
       level: result.level,
       attempts: result.attempts,

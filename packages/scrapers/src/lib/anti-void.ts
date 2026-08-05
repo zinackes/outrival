@@ -23,6 +23,18 @@ export interface AntiVoidOptions {
   ratioThreshold?: number;
   /** only ever a candidate when content is also this small (chars). Default 600. */
   absoluteCeiling?: number;
+  /**
+   * Size of the most recent capture WHATEVER ITS STATUS, for the "the smaller size
+   * is the new normal" check. Defaults to `priorSizes[0]`.
+   *
+   * The two are not the same question. The median must be built from COMPLETE
+   * captures or a degraded one drags it down and hides the next degradation. But
+   * "has this reduction already persisted" has to see the degraded capture too:
+   * once `partial` rows are excluded from `priorSizes` (P1), a genuinely gutted
+   * page never shows up as its own precedent, so it reads as a fresh soft-block
+   * on every run and is suppressed forever. That is audit T6 with a new cause.
+   */
+  lastSize?: number;
 }
 
 export function computeMedian(values: number[]): number {
@@ -46,13 +58,13 @@ export function checkAntiVoid(
 ): AntiVoidDecision {
   const ratioThreshold = opts.ratioThreshold ?? 0.3;
   const absoluteCeiling = opts.absoluteCeiling ?? 600;
+  const last = opts.lastSize ?? priorSizes[0] ?? 0;
 
   // A large page that shrank is a genuine reduction, never a block — don't mask it.
   if (currentSize >= absoluteCeiling) return { isVoid: false };
 
   if (priorSizes.length < 2) {
     // Not enough history → simple last-vs-current fallback (the pre-median behavior).
-    const last = priorSizes[0] ?? 0;
     if (last > 1000 && currentSize < 200) {
       return { isVoid: true, reason: "much_smaller_than_last" };
     }
@@ -63,8 +75,7 @@ export function checkAntiVoid(
   if (median <= 0) return { isVoid: false };
   const ratio = currentSize / median;
   if (ratio < ratioThreshold) {
-    // The previous snapshot was already this small → it's the new normal, not a block.
-    const last = priorSizes[0] ?? 0;
+    // The previous capture was already this small → it's the new normal, not a block.
     if (last / median < ratioThreshold * 1.5) {
       return { isVoid: false, reason: "stable_smaller_content" };
     }

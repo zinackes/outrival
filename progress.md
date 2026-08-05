@@ -2578,3 +2578,109 @@ n'est plus lue — à retirer de l'env worker.
   voulu.
 - **La card Positioning Intelligence v2 est COMPLÈTE** (P1 messaging/claims · P2 market
   map · P3 ICP · P4 tab v2 · P5 Share of Model).
+
+## Véracité Intelligence v2 — P1 : complétude des captures, gardes unifiées, R6 (2026-08-05)
+
+**Le constat, corrigé.** La card annonçait « R1 (complétude + partial) pas encore
+implémenté ». C'est faux depuis une itération antérieure : `snapshot_status` porte déjà
+`partial`, `apps/workers/src/lib/completeness.ts` gradait déjà les captures, et
+`extractionAllowed`/`skipDiffForPartial` étaient déjà câblés. P1 n'a donc pas construit
+R1 de zéro — il a fermé les trous que la version booléenne laissait ouverts.
+
+**Le trou principal était la baseline.** `lastSnapshot` ne filtrait pas le statut. Un
+snapshot `partial` devenait donc la référence du run suivant : son `contentHash`
+court-circuitait la capture saine d'après en « no change » (le vrai changement était
+masqué), et son contenu était le côté « avant » de tous les diffs. La requête exclut
+maintenant `partial`, ce qui règle les deux d'un coup pour toutes les branches de diff
+au lieu de garder chacune. `hasAnySnapshot` isole la question « ce monitor a-t-il déjà
+capturé quoi que ce soit » pour les effets one-shot (backfill archive) qui ne doivent
+pas re-tirer parce que la première capture était partielle.
+
+**Le score remplace le booléen.** `@outrival/scrapers/completeness` est un module PUR :
+`computeCompleteness({textLength, historicalMedian, sourceType, anchorsFound, httpStatus,
+renderLevelReached, renderLevelExpected})` → `{score 0-1, reasons[]}`, scoring soustractif
+(1.0 moins une pénalité NOMMÉE par check raté) pour qu'un score se relise toujours comme
+« quels checks ont échoué ». Seuils en constantes commentées (`PARTIAL_SCORE_THRESHOLD`
+0.6, `MEDIAN_RATIO_FLOOR` 0.5, `DEAD_BAND_MIN/MAX` 100-600). Ancres attendues par source
+(`EXPECTED_ANCHORS` : pricing = ≥1 montant OU indicateur de modèle · jobs = ≥1 posting OU
+état vide EXPLICITE · homepage = ≥1 titre), plus `countCaptureAnchors` pour les compter.
+Le homepage compte son ancre via `isIncompleteRender` et non la regex : un rendu SPA raté
+émet quand même des titres. `SNAPSHOT_COMPLETENESS_MIN_RATIO` disparaît — un seuil
+calibré sur fixtures n'est pas une var d'env.
+
+**Le contrat `partial`, complété.** Il ne devient jamais la baseline (ci-dessus), ne
+déclenche aucune extraction (déjà là), ne reset PLUS les compteurs d'échec — et ne les
+incrémente pas non plus : trois partials d'affilée ne peuvent pas atteindre
+`markedUnscrapable`, parce qu'auto-pauser une source qui NOUS RÉPOND est exactement le
+mode de panne T4. Au 3ᵉ partial consécutif, un log structuré `event: "source_degraded"`
+pour la page Sources. `logScrapeRun` garde délibérément `status: "success"` : ~8 lecteurs
+SQL (feed d'activité, /admin, status public, recap mensuel) bucketisent sur cette chaîne
+exacte, et la scinder est un changement à part avec son propre audit. Le verdict honnête
+vit sur `snapshots.status` / `snapshots.completeness`, là où le pipeline le lit.
+
+**R6.** `classifyRedirect(intended, final)` remplace `isOffsiteRedirect` sur le chemin
+succès : `offsite` (autre domaine enregistrable) et `root_bounce` (un chemin à segments
+atterrit sur la racine nue — la page monitorée n'existe plus et le site nous renvoie à
+l'accueil). Un préfixe de locale n'est PAS un écart : c'est la même page, localisée, et
+la flaguer silencierait tout monitor dont le site géo-redirige. Une section renommée non
+plus — le verdict collerait pour toujours puisque l'URL du monitor ne bouge jamais. Mur
+de consentement ajouté à `detectDenyPage` (copie ET contrôle accept/reject, sous la même
+porte des 3000 chars : un bandeau ne rend jamais une page courte). Bande soft-block
+élargie de 100 à `SOFT_BLOCK_TEXT_BAND` = 600 via `isSoftBlockShell`, extrait en pur pour
+être calibré sur fixtures : la bande n'est qu'un DÉCLENCHEUR, le verdict reste le
+cross-check markup (cheerio, sans CSS calculé), qui est ce qui rend l'élargissement sûr.
+
+**R4/R5 par unification.** `protectRegression({prevCount, nextCount, minPrev, minKeep})`
+dans `@outrival/shared`. `minPrev` s'ajoute à la signature de la card parce que sans lui
+1 → 0 serait « protégé », c'est-à-dire qu'une vraie suppression du dernier tier serait
+supprimée. Les deux gardes existantes deviennent des usages, comportement identique,
+tests conservés : pricing (`minPrev 3, minKeep 2` + corroboration harvest) et
+entitlements (`minPrev 5, minKeep keepRatio(prev, 0.3)`). La garde jobs n'a PAS été
+convergée : sa règle est catégorielle (`authoritative`), pas une régression de compte —
+la forcer dans le moule aurait changé son comportement. Nouvelle règle à la place, dans
+les deux extracteurs : un batch issu d'un snapshot `partial` est REJETÉ (log, pas
+d'exception), défense en profondeur pour les chemins que scrape-monitor ne garde pas
+(re-scan forcé, re-run admin, retry).
+
+**T6 fermé.** L'anti-void ne throw plus. Il throwait, donc la page vidée n'était JAMAIS
+stockée, donc elle ne pouvait pas devenir son propre précédent : chaque run re-throwait,
+trois échecs marquaient la source unscrapable, et le signal « ils ont vidé leur page »
+n'était jamais capturé. Le throw n'achetait qu'une chose — empêcher un soft-block de
+devenir la baseline — et `partial` l'achète désormais sans le deadlock. `checkAntiVoid`
+gagne `opts.lastSize` (taille de la dernière capture QUEL QUE SOIT son statut) : la
+médiane doit rester bâtie sur les captures complètes, mais « cette réduction a-t-elle
+déjà persisté » doit voir la capture dégradée. Run 1 → partial ; run 2 →
+`stable_smaller_content` → le CHANGE est capturé.
+
+**Provenance** (migration `0075`, tout nullable, legacy intouché) : `completeness`,
+`capture_method` (`static|rendered|feed|api`, généralisation du vocabulaire de
+`price_points.method`), `observed_region`, `final_url`, `http_status`. Écrits au fil de
+l'eau sur chaque snapshot, zéro backfill.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · shared 869 ✓ · scrapers 1145 ✓ · workers 357 ✓ ·
+api 374 ✓ · web 204 ✓ · ai 214 ✓ · db 5 ✓ — 3168 au total, 0 fail. **Zéro appel IA
+ajouté** (aucun fichier neuf n'importe `@outrival/ai`, aucun fichier de `packages/ai`
+touché), **zéro nouveau signal**. Périmètre du plan 028 (diff/scoring/significance)
+intouché — vérifiable au `git status`. Plan 029 déjà DONE en code, donc non ré-exécuté.
+
+**Écart assumé vs le brief** : `final_url` porte aujourd'hui la même valeur que
+`resolved_url`. Les deux sont gardées séparées parce que `resolved_url` appartient au
+scraper (une source la réécrit pendant sa propre découverte de chemin) alors que
+`final_url` est la trace worker de l'URL contre laquelle l'assertion R6 a été évaluée —
+sans quoi un scraper qui se met à réécrire `resolved_url` réécrit rétroactivement la
+preuve derrière chaque verdict de redirection passé. C'est la seule des cinq colonnes
+qui est redondante à date.
+
+**Reste côté humain** :
+- **Migration `0075_pink_calypso.sql` à appliquer** (additive, 5 colonnes nullable) —
+  staging d'abord, puis prod. Vérifier les migrations PENDING avant tout `db:migrate`
+  sur un env partagé.
+- Retirer `SNAPSHOT_COMPLETENESS_MIN_RATIO` de `/opt/outrival/.env.worker` (plus lue).
+- Déployer workers (le contrat `partial` et la bande soft-block sont worker-side ; un CI
+  vert ne les rend pas vivants — il faut rebuild l'image et redémarrer les deux services).
+- **Surveiller le taux de `partial` après déploiement.** La bande soft-block passe de 100
+  à 600 chars et le dead band grade `partial` : si un type de source part en partial en
+  masse, c'est une calibration à revoir, pas un incident — `SNAPSHOT_COMPLETENESS_ENABLED=false`
+  reste le kill-switch (il ne désarme PAS l'anti-void, volontairement).
+- P2 à P5 (double-capture, grounding réel, preuve visible, porte faithfulness) NON
+  entamées — 1 phase = 1 session.

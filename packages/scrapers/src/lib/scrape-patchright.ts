@@ -17,7 +17,7 @@ import {
 import { browserLaunchOptions, type ProxyTier } from "./proxy";
 import { realisticHeaders, OUTRIVAL_UA } from "./fingerprint";
 import { navWaitUntil, settleAfterNav } from "./nav-strategy";
-import { isCloudflareChallenge } from "./block-detection";
+import { isCloudflareChallenge, isSoftBlockShell } from "./block-detection";
 import { collapseAnimatedCounters } from "./normalize-text";
 import { extractContent, isContentCollapsed } from "./extract-content";
 import { EXPAND_LABEL, EXPAND_LABEL_MAX_CHARS } from "./expand-controls";
@@ -409,7 +409,10 @@ export async function capturePage(
   // isn't fooled by either, so cross-check it before escalating: a genuine block
   // serves a thin shell that's empty in the markup too, whereas these pages carry
   // the real text in the DOM. Only pay the parse in the rare near-empty branch.
-  if (text.length < 100 && statusCode < 400 && isContentCollapsed(extractContent(html)))
+  // Band widened to SOFT_BLOCK_TEXT_BAND in P1 so the audit's 100-600 char dead
+  // band is inspected instead of accepted — see isSoftBlockShell for why the
+  // markup cross-check is what makes widening safe.
+  if (isSoftBlockShell(text.length, statusCode, isContentCollapsed(extractContent(html))))
     return { ok: false, statusCode, failureReason: "soft_block", durationMs: Date.now() - startedAt };
 
   // Screenshot only when asked (homepage pHash). For every other source it would

@@ -3301,6 +3301,8 @@ export interface ProductDetail {
 export interface AiVisibilitySubject {
   competitorId: string;
   name: string;
+  /** Homepage of the brand — the page draws its favicon from it. Null when unknown. */
+  url: string | null;
   isSelf: boolean;
   mentions: number;
   /** This subject's own organic denominator: the prompts that don't name it. Differs
@@ -3319,6 +3321,7 @@ export interface AiVisibilityLeaderboard {
 export interface AiVisibilityMention {
   competitorId: string;
   name: string;
+  url: string | null;
   rank: number | null;
 }
 export interface AiVisibilityCell {

@@ -35,6 +35,7 @@ import { formatDate } from "@/lib/format-date";
 import { disclosureMotion, feedItemMotion } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { paywallFromError } from "@/components/outrival/paywall-dialog";
+import { CompAvatar } from "@/components/dashboard/comp-avatar";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { useSetAskContext } from "@/components/dashboard/ask-context";
 import { PageHead } from "@/components/dashboard/page-head";
@@ -104,6 +105,38 @@ function buildColors(subjects: AiVisibilitySubject[]): Record<string, string> {
     map[s.name] = s.isSelf ? SELF_COLOR : (SERIES_COLORS[i++ % SERIES_COLORS.length] as string);
   }
   return map;
+}
+
+// A brand's face on this page. The colour used to be carried by a swatch beside every
+// name — on the board, on each question's "Named:" line, and again on each badge in the
+// evidence — which is four dots per brand and none of them says WHICH brand it is. The
+// logo does that job now, and the colour survives where it actually encodes something:
+// the board (which keys the trend chart's lines) wears it as a rule under the logo, and
+// the answer text keeps its tinted marks. Everywhere else it's just the logo and the name.
+function BrandMark({
+  name,
+  url,
+  color,
+  size = 16,
+}: {
+  name: string;
+  url: string | null;
+  /** Series colour to key against the trend chart; omit where the colour means nothing. */
+  color?: string;
+  size?: number;
+}) {
+  return (
+    <span
+      aria-hidden
+      className="flex shrink-0 flex-col items-center gap-[3px]"
+      style={{ width: size }}
+    >
+      <CompAvatar name={name} url={url} size={size} />
+      {color && (
+        <span className="h-0.5 w-full rounded-full" style={{ background: color }} />
+      )}
+    </span>
+  );
 }
 
 export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
@@ -296,7 +329,9 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
   const isTrendEngine = activeEngine === TREND_ENGINE;
   const showChart = isTrendEngine && data.trend.length >= 2 && data.trendKeys.length > 0;
   const colors = lb ? buildColors(lb.subjects) : {};
-  const selfName = lb?.subjects.find((s) => s.isSelf)?.name ?? null;
+  const selfSubject = lb?.subjects.find((s) => s.isSelf) ?? null;
+  const selfName = selfSubject?.name ?? null;
+  const selfUrl = selfSubject?.url ?? null;
 
   const questions = buildQuestions(data, activeEngine);
 
@@ -312,6 +347,7 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
       rows={questions}
       colors={colors}
       selfName={selfName}
+      selfUrl={selfUrl}
       draft={draft}
       setDraft={setDraft}
       onAdd={addPrompt}
@@ -721,11 +757,7 @@ function BoardRow({
         {rank}
       </span>
       <span className="flex min-w-0 items-center gap-2">
-        <span
-          aria-hidden
-          className="size-2.5 shrink-0 rounded-sm"
-          style={{ background: color }}
-        />
+        <BrandMark name={s.name} url={s.url} color={color} size={18} />
         <Link
           href={s.isSelf ? "/dashboard/products" : `/dashboard/competitors/${s.competitorId}`}
           className={cn(
@@ -815,6 +847,7 @@ function QuestionList({
   rows,
   colors,
   selfName,
+  selfUrl,
   draft,
   setDraft,
   onAdd,
@@ -825,6 +858,7 @@ function QuestionList({
   rows: QuestionRow[];
   colors: Record<string, string>;
   selfName: string | null;
+  selfUrl: string | null;
   draft: string;
   setDraft: (v: string) => void;
   onAdd: () => void;
@@ -933,7 +967,7 @@ function QuestionList({
                             >
                               {p.prompt}
                             </span>
-                            <MentionLine cell={cell} colors={colors} active={p.isActive} />
+                            <MentionLine cell={cell} active={p.isActive} />
                           </span>
                         </button>
                         <span className="flex shrink-0 items-center gap-1 py-3">
@@ -975,7 +1009,12 @@ function QuestionList({
                   <AnimatePresence initial={false}>
                     {expanded && cell && (
                       <motion.div {...disclosureMotion}>
-                        <QuestionEvidence cell={cell} colors={colors} selfName={selfName} />
+                        <QuestionEvidence
+                          cell={cell}
+                          colors={colors}
+                          selfName={selfName}
+                          selfUrl={selfUrl}
+                        />
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -1036,11 +1075,9 @@ function QuestionList({
 // page exists and it used to be collapsed on every row.
 function MentionLine({
   cell,
-  colors,
   active,
 }: {
   cell: AiVisibilityCell | null;
-  colors: Record<string, string>;
   active: boolean;
 }) {
   if (!active) return null;
@@ -1063,11 +1100,7 @@ function MentionLine({
       <span>Named:</span>
       {cell.mentioned.slice(0, 4).map((m) => (
         <span key={m.competitorId} className="inline-flex items-center gap-1.5 whitespace-nowrap">
-          <span
-            aria-hidden
-            className="size-1.5 shrink-0 rounded-sm"
-            style={{ background: colors[m.name] ?? "var(--muted)" }}
-          />
+          <BrandMark name={m.name} url={m.url} size={14} />
           <span className="text-foreground">{m.name}</span>
           {m.rank != null && <span className="tabular-nums">#{m.rank}</span>}
         </span>
@@ -1149,17 +1182,19 @@ function QuestionEvidence({
   cell,
   colors,
   selfName,
+  selfUrl,
 }: {
   cell: AiVisibilityCell;
   colors: Record<string, string>;
   selfName: string | null;
+  selfUrl: string | null;
 }) {
   // Everyone the answer named, self folded back in at its own position, so the order
   // on screen is the order the engine wrote them.
   const order = [
-    ...cell.mentioned.map((m) => ({ name: m.name, rank: m.rank, isSelf: false })),
+    ...cell.mentioned.map((m) => ({ name: m.name, url: m.url, rank: m.rank, isSelf: false })),
     ...(cell.selfMentioned && selfName
-      ? [{ name: selfName, rank: cell.selfRank, isSelf: true }]
+      ? [{ name: selfName, url: selfUrl, rank: cell.selfRank, isSelf: true }]
       : []),
   ].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
 
@@ -1189,13 +1224,9 @@ function QuestionEvidence({
           {order.map((m) => (
             <span
               key={m.name}
-              className="inline-flex items-center gap-1.5 rounded-sm bg-surface-2 px-2 py-1 text-xs"
+              className="inline-flex items-center gap-1.5 rounded-sm bg-surface-2 py-1 pl-1.5 pr-2 text-xs"
             >
-              <span
-                aria-hidden
-                className="size-1.5 shrink-0 rounded-sm"
-                style={{ background: colors[m.name] ?? "var(--muted)" }}
-              />
+              <BrandMark name={m.name} url={m.url} size={14} />
               <span className={cn(m.isSelf && "font-medium text-link")}>{m.name}</span>
               {m.rank != null && (
                 <span className="tabular-nums text-muted-foreground">#{m.rank}</span>

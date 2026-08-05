@@ -32,7 +32,7 @@ import {
   subjectsInCooldown,
   type SubjectShift,
 } from "../lib/ai-visibility/shift";
-import { textNamesSubject } from "../lib/ai-visibility/match";
+import { buildEvidenceExcerpt, textNamesSubject } from "../lib/ai-visibility/match";
 import { buildVisibilityPromptInput, seedVisibilityPrompts } from "../lib/ai-visibility/seed";
 import { notifyJobComplete } from "../lib/job-complete";
 
@@ -213,16 +213,32 @@ export async function runScrapeAiVisibility(payload: z.input<typeof InputSchema>
           // Index the model's verdicts by normalized subject name (identity is trusted
           // from the ROSTER, never the model — unmatched names are ignored).
           const verdict = new Map(extraction.mentions.map((m) => [norm(m.name), m]));
-          const excerpt = res.answer.slice(0, 2000);
+
+          // Deterministic guard: trust the model's mentioned=true only when the
+          // subject's name actually appears in the answer. The classifier tends to
+          // confirm any name handed to it in <subjects>, inventing phantom mentions
+          // (especially the self) — this drops those false positives.
+          const mentionedIds = new Set(
+            roster
+              .filter(
+                (c) =>
+                  (verdict.get(norm(c.name))?.mentioned ?? false) &&
+                  textNamesSubject(res.answer, c.name),
+              )
+              .map((c) => c.id),
+          );
+          // The evidence quote is built AROUND those names, not off the top of the answer:
+          // engines name vendors well past a 2000-char head cut, so the old slice showed a
+          // quote naming nobody under a row claiming three mentions.
+          const excerpt = buildEvidenceExcerpt(
+            res.answer,
+            roster.filter((c) => mentionedIds.has(c.id)).map((c) => c.name),
+          );
 
           // One row per roster subject, mentioned or not, so share-of-voice is derivable.
           const rows: AiVisibilityResultRow[] = roster.map((c) => {
             const v = verdict.get(norm(c.name));
-            // Deterministic guard: trust the model's mentioned=true only when the
-            // subject's name actually appears in the answer. The classifier tends to
-            // confirm any name handed to it in <subjects>, inventing phantom mentions
-            // (especially the self) — this drops those false positives.
-            const mentioned = (v?.mentioned ?? false) && textNamesSubject(res.answer, c.name);
+            const mentioned = mentionedIds.has(c.id);
             return {
               org_id: orgId,
               prompt_id: prompt.id,

@@ -248,7 +248,9 @@ export function PositioningTab({
         icp.personas.length > 0 ||
         icp.useCases.length > 0 ||
         icp.industries.declared.length > 0 ||
-        icp.industries.proven.length > 0) && <IcpSection icp={icp} loading={icpQuery.isPending} />}
+        icp.industries.proven.length > 0) && (
+        <IcpSection icp={icp} loading={icpQuery.isPending} failed={icpQuery.isError} />
+      )}
 
       <ShareOfModelSection summary={summary} loading={summaryQuery.isPending} />
 
@@ -864,14 +866,33 @@ const sourceLabel = (s: string) => SOURCE_LABELS[s] ?? s;
  * one with stories and no page is a market they landed without claiming it. Two
  * lists side by side hide both.
  */
-function IcpSection({ icp, loading }: { icp: AudienceProfile | null; loading: boolean }) {
-  if (loading || !icp) {
+function IcpSection({
+  icp,
+  loading,
+  failed,
+}: {
+  icp: AudienceProfile | null;
+  loading: boolean;
+  failed: boolean;
+}) {
+  if (loading) {
     return (
       <TabSection title="Who they sell to">
         <Skeleton className="h-20 w-full" />
       </TabSection>
     );
   }
+  // A failed read is NOT a slow one. The parent collapses an errored query to a
+  // null profile, so a skeleton on `!icp` kept spinning forever on a 500 and the
+  // section read as permanently loading — say what happened instead.
+  if (failed) {
+    return (
+      <TabSection title="Who they sell to">
+        <Empty text="Couldn't load this data right now. Try again in a moment." />
+      </TabSection>
+    );
+  }
+  if (!icp) return null;
 
   const provenBySlug = new Map(icp.industries.proven.map((p) => [p.slug, p]));
   const declaredSlugs = new Set(icp.industries.declared.map((d) => d.slug));

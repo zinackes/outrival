@@ -671,7 +671,13 @@ export function MyProductView({
                 Where your entry price sits
               </h3>
               <Separator className="mb-3" />
-              <PriceLadder productId={productId} />
+              <PriceLadder
+                productId={productId}
+                name={p.name}
+                url={p.url}
+                repoUrl={p.repoUrl}
+                position={row?.position}
+              />
             </Card>
           )}
           <PricingCard pricing={p.pricing} onSave={(pr) => patch({ pricing: pr })} />

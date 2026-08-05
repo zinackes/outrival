@@ -11,7 +11,7 @@ import {
   EnvelopeIcon,
 } from "@/components/icons";
 import { format } from "date-fns";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { api, ApiError, type DigestDetail } from "@/lib/api";
 import { digestDetailQuery, digestsQuery } from "@/lib/queries";
 import { digestToMarkdown } from "@/lib/digest-markdown";

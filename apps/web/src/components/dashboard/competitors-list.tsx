@@ -20,7 +20,7 @@ import {
   ShieldSlashIcon,
 } from "@/components/icons";
 import { EmptyState } from "./empty-state";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { api, type Competitor } from "@/lib/api";
 import { competitorsQuery } from "@/lib/queries";
 import { track } from "@/lib/posthog/events";

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { CaretRightIcon, XIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { api, type ActivitySource } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toastApiError } from "@/lib/error-helpers";
@@ -166,7 +166,12 @@ function AttentionRow({
   onChanged: () => void;
 }) {
   const [resuming, setResuming] = useState(false);
-  const { forceRescan, isRescanning } = useForceRescan(source.monitorId, { onDone: onChanged });
+  const { forceRescan, isRescanning } = useForceRescan(source.monitorId, {
+    onDone: onChanged,
+    // This list mixes competitors, so an unnamed "Re-scan complete" told the user
+    // nothing about which row it answered.
+    label: `${source.competitorName} · ${sourceLabel(source.sourceType)}`,
+  });
 
   // "Resume" means two different repairs. An auto-paused source has to have its
   // refusal cleared before the scheduler will look at it again (the alternatives

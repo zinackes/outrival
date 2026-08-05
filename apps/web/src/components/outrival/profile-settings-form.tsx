@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckIcon, SpinnerIcon } from "@/components/icons";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { emailSchema } from "@outrival/shared";
 import { useSession, authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";

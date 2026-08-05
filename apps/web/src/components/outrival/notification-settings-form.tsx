@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CheckIcon, SpinnerIcon, LockIcon, EnvelopeIcon } from "@/components/icons";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { PLANS, PLAN_LABELS, PLAN_LIMITS, type Plan } from "@outrival/shared";
 import { api, type NotificationSettings } from "@/lib/api";
 import { notificationSettingsQuery, planQuery } from "@/lib/queries";
@@ -94,10 +94,10 @@ export function NotificationSettingsForm() {
     if (pristine) setSettings(pristine);
   }
 
-  // Fires one message down every configured channel and reports each verdict
-  // separately. The provider's raw error is surfaced on purpose: it is the only
-  // place a refused send (unverified sender domain, quota, bad webhook) is
-  // readable from the product instead of the logs.
+  // Fires one message down every configured channel. One click gets one toast,
+  // whichever way the three channels went. The provider's raw error is surfaced on
+  // purpose: it is the only place a refused send (unverified sender domain, quota,
+  // bad webhook) is readable from the product instead of the logs.
   async function handleTest() {
     setTesting(true);
     try {
@@ -108,12 +108,19 @@ export function NotificationSettingsForm() {
         toast.info("Nothing to test yet — save a digest email or a webhook first.");
         return;
       }
-      for (const channel of attempted) {
-        if (results[channel] === "sent") {
-          toast.success(`Test ${channel} sent.`);
-        } else {
-          toast.error(`Test ${channel} failed.`, { description: errors[channel] });
-        }
+      const sent = attempted.filter((ch) => results[ch] === "sent");
+      const refused = attempted.filter((ch) => results[ch] !== "sent");
+      if (refused.length === 0) {
+        toast.success(`Test sent to ${sent.join(", ")}.`);
+      } else {
+        toast.error(`Test failed on ${refused.join(", ")}.`, {
+          description: [
+            ...refused.map((ch) => `${ch}: ${errors[ch] ?? "no reason given"}`),
+            sent.length > 0 ? `Sent to ${sent.join(", ")}.` : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        });
       }
     } catch (e) {
       toastApiError(e, { title: "Couldn't send the test" });

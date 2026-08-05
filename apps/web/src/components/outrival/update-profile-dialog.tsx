@@ -15,7 +15,7 @@ import {
   ArrowRightIcon,
   ArrowLeftIcon,
 } from "@/components/icons";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { api, type ProductProfile, type ProjectStage } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
 import {

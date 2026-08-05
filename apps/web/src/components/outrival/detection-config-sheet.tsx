@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SpinnerIcon } from "@/components/icons";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { DETECTION_OVERLAP_PRESETS, DISCOVERY_REGIONS } from "@outrival/shared";
 import { api, type DetectionConfig } from "@/lib/api";
 import {

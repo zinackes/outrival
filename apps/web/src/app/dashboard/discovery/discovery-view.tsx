@@ -19,7 +19,7 @@ import {
   CaretRightIcon,
 } from "@/components/icons";
 import { EmptyState } from "@/components/dashboard/empty-state";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { DISCOVERY_REGIONS } from "@outrival/shared";
 import {
   ApiError,

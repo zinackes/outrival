@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { api, type QualityFeedbackVerdict } from "@/lib/api";
 import {
   Dialog,

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { DownloadSimpleIcon, SpinnerIcon } from "@/components/icons";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { PLAN_LIMITS } from "@outrival/shared";
 import { api } from "@/lib/api";
 import { planQuery } from "@/lib/queries";

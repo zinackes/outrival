@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ThumbsUpIcon, ThumbsDownIcon, XIcon } from "@/components/icons";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   api,
   type QualityFeedbackReason,

@@ -371,6 +371,47 @@ export function looksLikeCatalog(planNames: readonly string[]): boolean {
   return prefixes.size >= 2;
 }
 
+/**
+ * How two ladders' price ranges sit against each other, or null when either side
+ * publishes no comparable number.
+ *
+ * `ratio` is how far apart the ranges are: their entry over our top when theirs
+ * is above, our entry over their top when theirs is below. It is what the reader
+ * actually needs ("their cheapest plan costs 15x your dearest"), and it stays
+ * meaningful at any distance, unlike a per-rung % between two ladders that never
+ * touch.
+ */
+export type SpanRelation =
+  | { kind: "overlap" }
+  | { kind: "above"; ratio: number }
+  | { kind: "below"; ratio: number };
+
+/**
+ * Compare two ladders' price spans. Callers pass the PAID rung prices of each
+ * side, already on one axis and one currency.
+ *
+ * Free rungs ($0) must be excluded by the caller: a free tier drags a span down
+ * to zero and makes every pair overlap, which is the opposite of what the test
+ * is for. Quote-based rungs carry no number and cannot enter a span either.
+ *
+ * Disjoint spans are the case the rank pairing could never express: when their
+ * cheapest plan costs more than your dearest, rung 1 against rung 1 is two
+ * unrelated offers and the % between them is arithmetic about nothing.
+ */
+export function compareLadderSpans(
+  ourPaidPrices: readonly number[],
+  theirPaidPrices: readonly number[],
+): SpanRelation | null {
+  if (ourPaidPrices.length === 0 || theirPaidPrices.length === 0) return null;
+  const ourMin = Math.min(...ourPaidPrices);
+  const ourMax = Math.max(...ourPaidPrices);
+  const theirMin = Math.min(...theirPaidPrices);
+  const theirMax = Math.max(...theirPaidPrices);
+  if (theirMin > ourMax) return { kind: "above", ratio: theirMin / ourMax };
+  if (ourMin > theirMax) return { kind: "below", ratio: ourMin / theirMax };
+  return { kind: "overlap" };
+}
+
 export type PricingRepositioningType =
   | "pricing_gated" // pulled public prices behind a gate
   | "pricing_public" // exposed previously gated prices

@@ -10,7 +10,9 @@ import {
   PRICING_STATUS_LABELS,
   sharedLadderAxes,
   looksLikeCatalog,
+  compareLadderSpans,
   type LadderAxis,
+  type SpanRelation,
 } from "@outrival/shared";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
 import {
@@ -607,6 +609,26 @@ function DeltaCell({ cmp, from, to }: { cmp: TierCmp | null; from?: string; to?:
   );
 }
 
+/**
+ * What to say when the two ladders never touch, in place of the rung-to-rung %.
+ *
+ * The distance IS the finding, so it leads: "their cheapest costs 15x your
+ * dearest" is the sentence a positioning decision is made on, and it survives a
+ * gap of any size. Under 1.5x the ranges are merely adjacent and a multiple
+ * would overstate it, so those read as "just above" / "just below" instead.
+ */
+function spanVerdict(competitorName: string, span: Exclude<SpanRelation, { kind: "overlap" }>): string {
+  const near = span.ratio < 1.5;
+  const times = `${span.ratio.toFixed(span.ratio < 10 ? 1 : 0)}x`;
+  return span.kind === "above"
+    ? near
+      ? `${competitorName}'s cheapest plan sits just above your top plan, so no tier lines up.`
+      : `${competitorName}'s cheapest plan costs ${times} your top plan, so no tier lines up.`
+    : near
+      ? `${competitorName}'s dearest plan sits just below your entry plan, so no tier lines up.`
+      : `Your entry plan costs ${times} ${competitorName}'s dearest plan, so no tier lines up.`;
+}
+
 // Pricing comparison (patch-29): our product's captured tiers vs the competitor's
 // latest tiers, aligned by ascending price rank. No AI. A % is shown when the
 // billing period matches and the currencies either match or can be converted via
@@ -677,16 +699,34 @@ function PricingComparison({
   const rates = fx?.rates ?? null;
   const ourCurrency = oursSorted[0]?.currency ?? theirsSorted[0]?.currency ?? "";
 
+  // The two spans, in OUR currency, over the paid rungs only. A free rung would
+  // drag a span to zero and make every pair overlap, which is the opposite of
+  // what the test is for; a rung we cannot convert is left out rather than
+  // compared at its face value in a foreign currency.
+  const paidSpan = (tiers: { price: number | null; currency: string }[]): number[] =>
+    tiers
+      .map((t) =>
+        t.price == null || t.price <= 0
+          ? null
+          : t.currency === ourCurrency
+            ? t.price
+            : convertCurrency(t.price, t.currency, ourCurrency, rates),
+      )
+      .filter((p): p is number => p != null);
+  const span = compareLadderSpans(paidSpan(oursSorted), paidSpan(theirsSorted));
+
   // Why these two tables cannot be ranked against each other, or null when they
-  // can. Stated up front and once: a rung-to-rung % computed across a catalogue
-  // or across two different billing axes is precise and meaningless, and the old
-  // "lines up by price rank, not feature parity" footnote admitted the problem
-  // rather than declining to draw it.
+  // can. Stated up front and once: a rung-to-rung % computed across a catalogue,
+  // across two billing axes, or across two ladders that never touch is precise
+  // and meaningless, and the old "lines up by price rank, not feature parity"
+  // footnote admitted the problem rather than declining to draw it.
   const incomparable: string | null = looksLikeCatalog(theirs.map((t) => t.plan_name))
     ? `${competitorName}'s pricing page lists individual items, not tiers of one offer, so there is no rung to match yours against.`
     : axes.length === 0
       ? `${competitorName} prices on a different basis than you do, so no tier lines up.`
-      : null;
+      : span && span.kind !== "overlap"
+        ? spanVerdict(competitorName, span)
+        : null;
 
   const rowCount = Math.max(oursSorted.length, theirsSorted.length);
   const rankLabel = (i: number) =>

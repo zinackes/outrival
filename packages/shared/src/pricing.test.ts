@@ -6,6 +6,7 @@ import {
   resolveCurrentPricing,
   sharedLadderAxes,
   looksLikeCatalog,
+  compareLadderSpans,
   type PricingTier,
   type CompetitorOverrides,
 } from "./pricing";
@@ -182,4 +183,34 @@ test("a real ladder survives, even a sparsely named one", () => {
   // Two unlabelled plans stay a ladder: too small a sample to call it a catalogue.
   expect(looksLikeCatalog(["On Cloud", "On Premises"])).toBe(false);
   expect(looksLikeCatalog([])).toBe(false);
+});
+
+test("ladders that never touch report the distance, not an overlap", () => {
+  // holofolio $1.99-$19.90 against Pulltrader $300-$3000.
+  expect(compareLadderSpans([1.99, 19.9], [300, 3000])).toEqual({
+    kind: "above",
+    ratio: 300 / 19.9,
+  });
+  // Reversed: our whole ladder above theirs.
+  expect(compareLadderSpans([300, 3000], [1.99, 19.9])).toEqual({
+    kind: "below",
+    ratio: 300 / 19.9,
+  });
+});
+
+test("adjacent ranges still count as disjoint", () => {
+  // capydex $19.90 top against Prodmap.ai $20 entry: a 1.005x gap, but no rung
+  // of ours sits inside theirs, so rank pairing has nothing to pair.
+  const rel = compareLadderSpans([1.99, 19.9], [20, 500]);
+  expect(rel?.kind).toBe("above");
+});
+
+test("touching ranges overlap", () => {
+  expect(compareLadderSpans([29, 99], [29, 99])).toEqual({ kind: "overlap" });
+  expect(compareLadderSpans([10, 880], [29, 59])).toEqual({ kind: "overlap" });
+});
+
+test("a span needs a paid rung on both sides", () => {
+  expect(compareLadderSpans([], [29])).toBeNull();
+  expect(compareLadderSpans([29], [])).toBeNull();
 });

@@ -22,6 +22,8 @@ import {
   WarningIcon,
   PauseIcon,
 } from "@/components/icons";
+// Aliased: a bare `Icon` collides with the `const Icon = …` of dynamic renders.
+import type { Icon as IconComponent } from "@/components/icons";
 import { aiVisibilityQuery, productsListQuery } from "@/lib/queries";
 import {
   api,
@@ -32,6 +34,7 @@ import {
   type AiVisibilitySubject,
 } from "@/lib/api";
 import { formatDate } from "@/lib/format-date";
+import { errorConfig } from "@/lib/error-helpers";
 import { disclosureMotion, feedItemMotion } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { paywallFromError } from "@/components/outrival/paywall-dialog";
@@ -152,9 +155,13 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
   const scopedToPrimary = productId === undefined && activeProducts.length > 1 && !!primaryProduct;
   const [running, setRunning] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
-  // Set when a finished run produced no rows (engine unreachable / quota) so the page
-  // says so plainly instead of silently reverting to the empty state.
-  const [emptyRun, setEmptyRun] = useState(false);
+  // How the last run ended, when it didn't end well. Held until the reader retries or
+  // dismisses it: this used to be a toast, which meant the outcome of a job that takes
+  // about a minute was only ever seen by someone who happened to be looking.
+  const [problem, setProblem] = useState<RunProblem | null>(null);
+  // Same for the question editor: a failed add/edit/remove reverted the optimistic row
+  // and said why for five seconds, which reads as the row deleting itself.
+  const [promptProblem, setPromptProblem] = useState<PromptProblem | null>(null);
   const [draft, setDraft] = useState("");
   const [engine, setEngine] = useState<string | null>(null);
 
@@ -184,19 +191,39 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["ai-visibility"] });
 
+  // Resume a run parked by an earlier visit in this tab. A run outlives the page — the
+  // reader is free to walk away for the minute it takes — so its outcome is picked back
+  // up here rather than lost with the component that started it.
+  useEffect(() => {
+    const parked = readParkedRun();
+    if (!parked) return;
+    if (Date.now() > parked.deadline) {
+      clearParkedRun();
+      return;
+    }
+    baselineRunAt.current = parked.baseline;
+    runDeadline.current = parked.deadline;
+    setRunId(parked.runId);
+    setRunning(true);
+  }, []);
+
   async function runNow() {
-    baselineRunAt.current = q.data?.latestRunAt ?? null;
-    runDeadline.current = Date.now() + 180_000;
+    const baseline = q.data?.latestRunAt ?? null;
+    const deadline = Date.now() + 180_000;
+    baselineRunAt.current = baseline;
+    runDeadline.current = deadline;
     jobDoneAt.current = 0;
-    setEmptyRun(false);
+    setProblem(null);
     setRunId(null);
     setRunning(true);
     try {
       const { runId: id } = await api.runAiVisibility();
       setRunId(id);
-    } catch {
+      parkRun({ runId: id, baseline, deadline });
+    } catch (e) {
       setRunning(false);
-      toast.error("Couldn't start the run.");
+      clearParkedRun();
+      setProblem({ kind: "start", error: e });
     }
   }
 
@@ -218,15 +245,24 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
 
     if (advanced) {
       setRunning(false);
+      setProblem(null);
+      clearParkedRun();
       toast.success("AI Visibility results updated.");
     } else if (graceElapsed || deadlineHit) {
       setRunning(false);
-      setEmptyRun(true);
-      toast.error(
-        "The run finished but no results came back. The answer engine may be temporarily unavailable.",
-      );
+      // A job that ended in `failed` never got as far as an engine; one that completed
+      // and still wrote nothing did reach out and got nothing back. Different sentence.
+      setProblem(statusQ.data?.state === "failed" ? { kind: "failed" } : { kind: "empty" });
+      clearParkedRun();
     }
-  }, [q.dataUpdatedAt, q.errorUpdatedAt, q.data?.latestRunAt, statusQ.data?.done, running]);
+  }, [
+    q.dataUpdatedAt,
+    q.errorUpdatedAt,
+    q.data?.latestRunAt,
+    statusQ.data?.done,
+    statusQ.data?.state,
+    running,
+  ]);
 
   const runLanding =
     running && !!q.data?.latestRunAt && q.data.latestRunAt !== baselineRunAt.current;
@@ -236,9 +272,10 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
     try {
       await api.addAiVisibilityPrompt(p, productId);
       setDraft("");
+      setPromptProblem(null);
       refresh();
-    } catch {
-      toast.error("Couldn't add the question.");
+    } catch (e) {
+      setPromptProblem({ title: "Couldn't add that question", error: e });
     }
   }
   // Optimistic: flip the switch in the cache immediately (the round-trip + refetch
@@ -253,9 +290,13 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
     );
     try {
       await api.updateAiVisibilityPrompt(id, { isActive });
-    } catch {
+      setPromptProblem(null);
+    } catch (e) {
       if (prev) qc.setQueryData(key, prev);
-      toast.error("Couldn't update the question.");
+      setPromptProblem({
+        title: isActive ? "Couldn't resume that question" : "Couldn't pause that question",
+        error: e,
+      });
     }
   }
   // Optimistic: drop the question from the list AND from the evidence right away (the
@@ -274,9 +315,10 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
     );
     try {
       await api.deleteAiVisibilityPrompt(id);
-    } catch {
+      setPromptProblem(null);
+    } catch (e) {
       if (prev) qc.setQueryData(key, prev);
-      toast.error("Couldn't remove the question.");
+      setPromptProblem({ title: "Couldn't remove that question", error: e });
     }
   }
   // Optimistic: rewrite the text in the list AND relabel its evidence row (past runs
@@ -295,9 +337,10 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
     );
     try {
       await api.updateAiVisibilityPrompt(id, { prompt });
-    } catch {
+      setPromptProblem(null);
+    } catch (e) {
       if (prev) qc.setQueryData(key, prev);
-      toast.error("Couldn't update the question.");
+      setPromptProblem({ title: "Couldn't save that question", error: e });
     }
   }
 
@@ -308,13 +351,21 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
   if (q.isLoading && !q.data) return <LoadingState />;
   const data = q.data;
   if (!data) {
+    // The load failed with nothing cached to fall back on. Say what the API said rather
+    // than "Couldn't load AI Visibility", which is true of a rate limit, an outage and a
+    // dropped connection alike, and tells the reader which of them to wait out.
     return (
       <Shell>
         <PageHead title="AI Visibility" flush />
-        <p className="text-sm text-muted-foreground">Couldn&apos;t load AI Visibility.</p>
-        <Button onClick={refresh} size="sm" variant="outline" className="mt-3 w-fit">
-          Retry
-        </Button>
+        <Notice
+          tone="critical"
+          title={q.error ? errorConfig(q.error).title : "Couldn't load AI Visibility"}
+          action={{ label: "Retry", onClick: refresh }}
+        >
+          {q.error
+            ? errorConfig(q.error).description
+            : "The page came back empty. Try again in a moment."}
+        </Notice>
       </Shell>
     );
   }
@@ -354,6 +405,8 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
       onToggle={togglePrompt}
       onEdit={editPrompt}
       onRemove={removePrompt}
+      problem={promptProblem}
+      onDismissProblem={() => setPromptProblem(null)}
     />
   );
 
@@ -401,7 +454,38 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
 
       {running && <RunProgressBanner landing={runLanding} />}
 
-      {emptyRun && !running && <EngineUnreachableBanner onRetry={runNow} />}
+      {problem && !running && (
+        <RunProblemNotice
+          problem={problem}
+          onRetry={runNow}
+          onDismiss={() => setProblem(null)}
+        />
+      )}
+
+      {/* A refetch that fails once the page already holds numbers used to be silent: the
+          board kept printing the last run as though it were current. */}
+      {q.isError && (
+        <Notice
+          tone="critical"
+          title="Couldn't refresh these numbers"
+          action={{ label: "Retry", onClick: refresh }}
+        >
+          {errorConfig(q.error).description} Everything below is the last run we could read.
+        </Notice>
+      )}
+
+      {/* The API answered, but one of its reads didn't. Without this the board simply
+          renders short and reads as a product nobody names. */}
+      {data.degraded && !q.isError && (
+        <Notice
+          tone="warn"
+          title="Part of this page couldn't be read"
+          action={{ label: "Retry", onClick: refresh }}
+        >
+          Some of the visibility history didn&apos;t come back, so the board or the trend may
+          be incomplete. This usually clears on its own.
+        </Notice>
+      )}
 
       {/* The scheduled run that named nobody. Distinct from the banner above (which
           reports the run YOU just started) and shown until a check comes back with
@@ -854,6 +938,8 @@ function QuestionList({
   onToggle,
   onEdit,
   onRemove,
+  problem,
+  onDismissProblem,
 }: {
   rows: QuestionRow[];
   colors: Record<string, string>;
@@ -865,6 +951,10 @@ function QuestionList({
   onToggle: (id: string, isActive: boolean) => void;
   onEdit: (id: string, prompt: string) => void;
   onRemove: (id: string) => void;
+  /** The last edit that failed. Sits above the list until it's retried or dismissed,
+   *  next to the row that snapped back to its old value. */
+  problem: PromptProblem | null;
+  onDismissProblem: () => void;
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<AiVisibilityPrompt | null>(null);
@@ -891,6 +981,14 @@ function QuestionList({
           and you don&apos;t come first. Open one to read what the engine said.
         </p>
       </div>
+
+      {problem && (
+        <div className="px-5 pt-3">
+          <Notice tone="critical" title={problem.title} onDismiss={onDismissProblem}>
+            {errorConfig(problem.error).description}
+          </Notice>
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <p className="px-5 py-6 text-sm text-muted-foreground">
@@ -1261,6 +1359,151 @@ function SourceFooter({ engines }: { engines: string[] }) {
   );
 }
 
+// --- Problems, said once and left on screen. -----------------------------------------
+
+/** How a "Run now" ended, when it didn't end with results. */
+type RunProblem =
+  | { kind: "start"; error: unknown }
+  | { kind: "failed" }
+  | { kind: "empty" };
+
+/** A question-editor action that didn't go through, with the context of which one. */
+type PromptProblem = { title: string; error: unknown };
+
+/**
+ * One shape for every problem this page reports.
+ *
+ * These were toasts. A toast is the wrong carrier here: an AI Visibility run resolves on
+ * a worker about a minute after the click, so the message routinely fired at a reader who
+ * had moved on, and the page it described went back to looking healthy. Whatever went
+ * wrong now stays where the numbers it invalidates are, until it's retried or dismissed.
+ */
+function Notice({
+  tone = "warn",
+  title,
+  children,
+  action,
+  onDismiss,
+}: {
+  /** `critical` for something that failed, `warn` for something that is merely partial. */
+  tone?: "warn" | "critical";
+  title: string;
+  children: React.ReactNode;
+  action?: { label: string; onClick: () => void; icon?: IconComponent };
+  onDismiss?: () => void;
+}) {
+  const critical = tone === "critical";
+  const ActionIcon = action?.icon;
+  return (
+    <div
+      // A failure follows a click and has to interrupt; a partial read is context.
+      role={critical ? "alert" : "status"}
+      className={cn(
+        "flex items-start gap-3 rounded-md border px-4 py-3",
+        critical ? "border-critical/25 bg-critical/8" : "border-border bg-card",
+      )}
+    >
+      <WarningIcon
+        className={cn("mt-0.5 size-4 shrink-0", critical ? "text-critical" : "text-medium")}
+        aria-hidden
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className="text-dense leading-relaxed text-muted-foreground">{children}</p>
+      </div>
+      {action && (
+        <Button onClick={action.onClick} size="sm" variant="outline" className="shrink-0">
+          {ActionIcon && <ActionIcon className="size-4" />}
+          {action.label}
+        </Button>
+      )}
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="shrink-0 rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-surface-3 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <XIcon className="size-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+// The three ways a run fails, kept apart because they don't resolve the same way: one
+// never left the browser, one died on the worker, one reached out and got nothing back.
+function RunProblemNotice({
+  problem,
+  onRetry,
+  onDismiss,
+}: {
+  problem: RunProblem;
+  onRetry: () => void;
+  onDismiss: () => void;
+}) {
+  const copy =
+    problem.kind === "start"
+      ? {
+          title: "Couldn't start the check",
+          body: errorConfig(problem.error).description,
+        }
+      : problem.kind === "failed"
+        ? {
+            title: "The last check stopped before it finished",
+            body: "It wrote no results, so the numbers below are unchanged. Try again in a moment.",
+          }
+        : {
+            title: "The last check couldn't reach the answer engine",
+            body: "No results came back, so the numbers below are unchanged. This is usually a temporary engine or quota issue, so try again in a moment.",
+          };
+  return (
+    <Notice
+      tone="critical"
+      title={copy.title}
+      action={{ label: "Try again", onClick: onRetry, icon: PlayIcon }}
+      onDismiss={onDismiss}
+    >
+      {copy.body}
+    </Notice>
+  );
+}
+
+// A run outlives the page that started it (~a minute on a worker), so the one in flight is
+// parked in sessionStorage: coming back to the page resumes the poll and settles into the
+// same notice. Per tab, and dropped as soon as the run resolves either way.
+const RUN_KEY = "outrival.ai-visibility.run";
+type ParkedRun = { runId: string | null; baseline: string | null; deadline: number };
+
+function parkRun(run: ParkedRun) {
+  // Storage can be denied (private mode, blocked cookies). Losing the resume is a
+  // downgrade to today's behaviour, never a reason to fail the run.
+  try {
+    sessionStorage.setItem(RUN_KEY, JSON.stringify(run));
+  } catch {
+    /* no session storage — the run still polls for as long as the page is open */
+  }
+}
+
+function readParkedRun(): ParkedRun | null {
+  try {
+    const raw = sessionStorage.getItem(RUN_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ParkedRun;
+    return typeof parsed?.deadline === "number" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearParkedRun() {
+  try {
+    sessionStorage.removeItem(RUN_KEY);
+  } catch {
+    /* nothing was parked */
+  }
+}
+
 // --- Scaffolding: shell, empty, loading, locked. ------------------------------------
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -1313,33 +1556,6 @@ function RunProgressBanner({ landing }: { landing: boolean }) {
   );
 }
 
-// Shown after a run finishes having reached no answer engine (missing key / quota /
-// outage) — the honest counterpart to the completion toast, so an empty board reads as
-// "the engine didn't respond", not "you're invisible everywhere".
-function EngineUnreachableBanner({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div
-      role="status"
-      className="flex items-start gap-3 rounded-md border border-border bg-card px-4 py-3"
-    >
-      <WarningIcon className="mt-0.5 size-4 shrink-0 text-critical" aria-hidden />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">
-          The last run couldn&apos;t reach the answer engine
-        </p>
-        <p className="text-dense text-muted-foreground">
-          No results came back, so the numbers below are unchanged. This is usually a
-          temporary engine or quota issue, so try again in a moment.
-        </p>
-      </div>
-      <Button onClick={onRetry} size="sm" variant="outline" className="shrink-0">
-        <PlayIcon className="size-4" />
-        Retry
-      </Button>
-    </div>
-  );
-}
-
 // The SCHEDULED check came back naming nobody, so the board below is the last standing
 // we could measure. Without this the page presented an engine outage as a verdict: a
 // wall of 0% beside a trend chart that (correctly) skips runs carrying no answers.
@@ -1355,26 +1571,15 @@ function StaleRunNotice({
   onRetry: () => void;
 }) {
   return (
-    <div
-      role="status"
-      className="flex items-start gap-3 rounded-md border border-border bg-card px-4 py-3"
+    <Notice
+      tone="warn"
+      title={`The check on ${shortDate(attemptedAt)} came back with nobody named`}
+      action={{ label: "Check again", onClick: onRetry, icon: PlayIcon }}
     >
-      <WarningIcon className="mt-0.5 size-4 shrink-0 text-medium" aria-hidden />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">
-          The check on {shortDate(attemptedAt)} came back with nobody named
-        </p>
-        <p className="text-dense leading-relaxed text-muted-foreground">
-          {engine} answered but named none of the brands tracked here, including ones it named
-          on {shortDate(measuredAt)}. That points at the engine or its free quota rather than at
-          your visibility, so the standing below is the last one we could measure.
-        </p>
-      </div>
-      <Button onClick={onRetry} size="sm" variant="outline" className="shrink-0">
-        <PlayIcon className="size-4" />
-        Check again
-      </Button>
-    </div>
+      {engine} answered but named none of the brands tracked here, including ones it named on{" "}
+      {shortDate(measuredAt)}. That points at the engine or its free quota rather than at your
+      visibility, so the standing below is the last one we could measure.
+    </Notice>
   );
 }
 

@@ -38,6 +38,7 @@ export * from "./entitlement-diff";
 export * from "./price-tier-diff";
 export * from "./credit-burn-diff";
 export * from "./regression-guard";
+export * from "./verification-delta";
 export * from "./unit-alias";
 export * from "./cost-model";
 export * from "./pricing-model";

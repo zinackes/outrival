@@ -218,6 +218,12 @@ export const SOURCE_TYPES = [
   // surge. No scrape-monitor branch — it rides the generic snapshot → diff → classify
   // chain. Kept in sync with the DB source_type enum.
   "roadmap",
+  // Page-variance anchor (Véracité Intelligence v2 P2). Like pricing_probe, an
+  // INTERNAL anchor source — never seeded, never scraped, never user-selectable. It
+  // anchors the chain for `ab_test_suspected`: a page that served a delta and then
+  // its exact inverse twice inside fourteen days is a competitor running a test, not
+  // a competitor changing its mind. Kept in sync with the DB source_type enum.
+  "page_variance",
 ] as const;
 
 export type SourceType = typeof SOURCE_TYPES[number];

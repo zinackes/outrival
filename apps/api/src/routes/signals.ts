@@ -11,6 +11,7 @@ import {
   aiQualityChecks,
   signalComments,
   signalBatches,
+  signalVerifications,
   users,
   user as authUser,
 } from "@outrival/db";
@@ -688,6 +689,12 @@ signalsRouter.get("/:id/detail", async (c) => {
       // it impossible for it to carry a screenshot).
       beforeOrigin: beforeSnap.origin,
       beforeResolvedUrl: beforeSnap.resolvedUrl,
+      // Double capture (Véracité P2). Present only for the signals that went through
+      // one: critical on any source, high on a volatile one. Data only here; the
+      // badge that reads it is P4.
+      verificationOutcome: signalVerifications.outcome,
+      verificationQuickAt: signalVerifications.quickCheckAt,
+      verificationIndependentAt: signalVerifications.independentCheckAt,
     })
     .from(signals)
     .innerJoin(competitors, eq(competitors.id, signals.competitorId))
@@ -695,6 +702,7 @@ signalsRouter.get("/:id/detail", async (c) => {
     .leftJoin(monitors, eq(monitors.id, changes.monitorId))
     .leftJoin(snapshots, eq(snapshots.id, changes.snapshotAfterId))
     .leftJoin(beforeSnap, eq(beforeSnap.id, changes.snapshotBeforeId))
+    .leftJoin(signalVerifications, eq(signalVerifications.changeId, signals.changeId))
     .where(and(eq(signals.id, id), eq(signals.orgId, orgId)))
     .limit(1);
 
@@ -805,6 +813,25 @@ signalsRouter.get("/:id/detail", async (c) => {
         beforeCapturedAt: row.beforeCapturedAt,
         afterCapturedAt: row.afterCapturedAt,
       },
+      // What the double capture found (Véracité P2). Null when this signal was never
+      // in the perimeter, which is most of them. `gapMinutes` is the interval between
+      // the two captures — the number that makes "verified twice" a claim with a
+      // measurement behind it rather than a badge.
+      verification: row.verificationOutcome
+        ? {
+            outcome: row.verificationOutcome,
+            quickCheckAt: row.verificationQuickAt,
+            independentCheckAt: row.verificationIndependentAt,
+            gapMinutes:
+              row.verificationQuickAt && row.verificationIndependentAt
+                ? Math.round(
+                    (new Date(row.verificationIndependentAt).getTime() -
+                      new Date(row.verificationQuickAt).getTime()) /
+                      60_000,
+                  )
+                : null,
+          }
+        : null,
       competitor: { id: row.competitorId, name: row.competitorName },
     },
   });

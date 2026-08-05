@@ -190,6 +190,15 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // Scraped via getScraper, diffed by the generic path — no scrape-monitor branch.
   // Kept in sync with shared SOURCE_TYPES.
   "roadmap",
+  // Page-variance anchor (Véracité Intelligence v2 P2). Infra-only, same shape as
+  // pricing_probe: never seeded, never scraped, never user-selectable. It anchors the
+  // snapshot → change → signal chain for `ab_test_suspected`, emitted when the same
+  // page serves a delta and then its inverse twice inside fourteen days. A dedicated
+  // source_type rather than the flapping monitor's own: that chain is what content-hash
+  // dedup diffs the NEXT real capture against, and the change the variance is about
+  // already carries a verification row whose verdict is "do not emit this". Always
+  // isActive=false; the ab-test emitter owns it.
+  "page_variance",
 ]);
 
 export const frequencyEnum = pgEnum("frequency", ["realtime", "daily", "weekly"]);

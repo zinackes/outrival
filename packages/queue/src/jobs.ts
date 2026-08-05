@@ -33,6 +33,22 @@ export type GenerateSignalPayload = {
   changeId: string;
   classification?: unknown; // ClassificationSchema (parsed by the handler)
   pricingTransition?: unknown;
+  /**
+   * Bypass the P2 double-capture interception (Véracité Intelligence v2).
+   *
+   * One caller, one reason: `ab_test_suspected` is emitted BY the verification
+   * machinery, off an anchor whose whole content is "this page could not be
+   * reproduced twice". Sending it back through a check it is the conclusion of
+   * would defer it forever. Everything else leaves this unset.
+   */
+  skipVerification?: boolean;
+};
+/** The two passes of one verification, carrying the emission payload it defers. */
+export type VerifySignalDeltaPayload = {
+  changeId: string;
+  pass: "quick" | "independent";
+  classification?: unknown;
+  pricingTransition?: unknown;
 };
 export type SendAlertPayload = { signalId: string };
 export type CompetitorRefPayload = { competitorId: string };
@@ -215,6 +231,21 @@ export const classifyChange = defineJob<ClassifyChangePayload>("classify-change"
 export const generateSignal = defineJob<GenerateSignalPayload>("generate-signal", {
   expireInSeconds: 120,
   concurrency: 1, // groq lane
+  deadLetter: PIPELINE_DLQ,
+});
+// Double-capture verification (Véracité Intelligence v2 P2). Two passes, ONE fetch
+// each, and `retryLimit: 0` is what makes that literal: a retry would be a third
+// (and fourth) hit on a competitor's page for a single change, which is the opposite
+// of the crawl courtesy the collection doctrine asks for. Every failure inside the
+// handler is therefore terminal AND self-resolving: the body degrades to outcome
+// 'skipped' and emits the signal unbadged rather than leaving it stranded.
+// Deduplicated by the unique change_id on signal_verifications, not by singletonKey
+// (plans/004: `standard` queues ignore it).
+export const verifySignalDelta = defineJob<VerifySignalDeltaPayload>("verify-signal-delta", {
+  retryLimit: 0,
+  // A rendered re-capture goes through the same Chromium path as a normal scrape.
+  expireInSeconds: 300,
+  concurrency: Number(process.env.VERIFY_CONCURRENCY ?? 2),
   deadLetter: PIPELINE_DLQ,
 });
 export const sendAlert = defineJob<SendAlertPayload>("send-alert", {

@@ -45,6 +45,7 @@ import { sendEmail, ALERT_FROM } from "../lib/resend";
 import { decideDispatch } from "../lib/notification-dispatcher";
 import { applySeverityGuard } from "../lib/severity-guard";
 import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfulness-gate";
+import { interceptEmission, recordEmission } from "../lib/emission-verification";
 
 // A pricing status transition (patch-11) carries its own severity and replaces
 // the generic diff classification for that change.
@@ -60,6 +61,9 @@ const InputSchema = z
     changeId: z.string(),
     classification: ClassificationSchema.optional(),
     pricingTransition: PricingTransitionSchema.optional(),
+    // Véracité P2 — see GenerateSignalPayload: the ab_test_suspected emitter is the
+    // conclusion of a verification, so it cannot be subject to one.
+    skipVerification: z.boolean().optional(),
   })
   .refine((v) => v.classification || v.pricingTransition, {
     message: "generate-signal needs a classification or a pricingTransition",
@@ -303,6 +307,45 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
       ? PRICING_STATUS_LABELS[input.pricingTransition.current]
       : (input.classification!.humanChangeAfter ?? null);
 
+    // Double capture before a high-stakes emission (Véracité Intelligence v2 P2).
+    //
+    // Placed HERE on purpose: after the severity guard, so the perimeter reads the
+    // severity that will actually be written, and before the insight call, so a
+    // deferred signal costs nothing. On confirmation this job is re-enqueued with the
+    // same payload and generates its insight then — the AI call is moved, never
+    // doubled, and the classification is never revisited.
+    //
+    // Out of the perimeter (medium/low, aggregated-data signals, synthetic anchors,
+    // partial captures) this is a single indexed lookup and the run continues exactly
+    // as it did before P2.
+    if (!input.skipVerification) {
+      const verification = await interceptEmission({
+        change: {
+          id: change.id,
+          monitorId: change.monitorId,
+          snapshotAfterId: change.snapshotAfterId,
+          diffText: change.diffText,
+        },
+        monitor: { id: monitor.id, sourceType: monitor.sourceType, config: monitor.config },
+        competitorId: competitor.id,
+        competitorUrl: competitor.url,
+        severity,
+        humanChangeBefore,
+        humanChangeAfter,
+        payload: {
+          classification: input.classification,
+          pricingTransition: input.pricingTransition,
+        },
+      });
+      if (verification.deferred) {
+        logger.log("generate-signal deferred", {
+          changeId: input.changeId,
+          reason: verification.reason,
+        });
+        return { deferred: true, reason: verification.reason };
+      }
+    }
+
     // Ops quality logging (patch-02): success / parse_failed (null) / error
     // (thrown). Both insight paths use the 70b model.
     const attribution = { orgId: competitor.orgId, competitorId: competitor.id };
@@ -433,6 +476,10 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
       logger.log("Signal already created concurrently, skipping", { changeId: input.changeId });
       return { skipped: true };
     }
+
+    // Close the verification loop (P2): which signal it produced, and that it did.
+    // No-op for the changes that were never verified.
+    await recordEmission(input.changeId, newSignal.id);
 
     // Anti-hallucination (patch-24): persist the grounding + self-check envelope for
     // this signal so the UI can surface a ConfidenceDot / flagged warning and the ops

@@ -192,6 +192,7 @@ export const ANCHOR_SOURCES: readonly SourceType[] = [
   "roadmap_shift",
   "integration_catalog",
   "audience_page",
+  "page_variance",
 ];
 
 /**

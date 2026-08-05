@@ -72,6 +72,13 @@ export function getScraper(sourceType: SourceType): ScraperFn {
 // must call this so a long-lived worker doesn't leak browsers across scrapes.
 export { closeScraperBrowsers } from "./lib/scrape-page";
 
+// The SOURCE-AGNOSTIC cascade entry (robots, per-domain gap, L0→render, refusal
+// doctrine), exported for the one caller that must NOT go through getScraper: the
+// P2 verification re-capture. A source scraper does path discovery and, for some
+// sources, asks for a screenshot — which floors the cascade at a render and would
+// re-capture a `static` original with a browser, comparing two different things.
+export { scrapePage, scrapeStatic, ScrapeFailedError } from "./lib/crawler";
+
 export type { ScraperResult, ScrapeOptions, ScrapeOutcome } from "./types";
 export { findSimilarCompanies } from "./discovery/discover";
 export type { DiscoveredCompany } from "./discovery/discover";

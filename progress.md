@@ -2684,3 +2684,120 @@ qui est redondante à date.
   reste le kill-switch (il ne désarme PAS l'anti-void, volontairement).
 - P2 à P5 (double-capture, grounding réel, preuve visible, porte faithfulness) NON
   entamées — 1 phase = 1 session.
+
+## Véracité Intelligence v2 — P2 : double-capture, rétention silencieuse, ab_test_suspected (2026-08-05)
+
+**Le point d'interception, corrigé.** La card désigne `severity-guard.ts` comme « LE point
+d'interception ». Ce n'est pas vrai : `applySeverityGuard` n'a qu'un seul appelant. Mais il
+est appelé DANS `generate-signal.ts`, et c'est là que se trouve la vraie frontière — la
+seule insertion `signals` de tout le code de production (les ~20 émetteurs, classifieur IA
+comme détecteurs déterministes, y convergent tous via la queue). L'interception vit donc là,
+juste APRÈS la garde de sévérité (la sévérité lue est celle qui sera écrite) et juste AVANT
+l'appel insight. Hors périmètre, c'est une lecture indexée et le run continue exactement
+comme avant P2.
+
+**Zéro appel IA ajouté, littéralement.** Un signal différé n'a pas encore coûté un token :
+`interceptEmission` rend la main avant `generateInsight`. À la confirmation, generate-signal
+est ré-enfilé avec LE MÊME payload et produit son insight à ce moment-là. L'appel est
+DÉPLACÉ, jamais doublé, et la classification n'est jamais rejouée. Aucun des six fichiers
+neufs n'importe `@outrival/ai` (vérifiable au grep).
+
+**Le périmètre est une propriété de la CAPTURE, pas une liste d'exceptions.** `capture_method`
+(provenance P1) fait le tri tout seul : seuls `static` et `rendered` sont rejouables. Les
+signaux dérivés de données agrégées (hiring_shift, review_shift, salary_band_shift,
+ai_visibility_shift) et tous les anchors synthétiques ont un `capture_method` NULL parce
+qu'aucune page n'a été fetchée — ils sont exempts par construction, sans liste à maintenir.
+S'ajoutent `partial` (P1 : une capture déjà connue comme dégradée ne se fait pas vouchée par
+une seconde) et l'absence d'URL. Puis seulement : critical toutes sources, high sur
+`VOLATILE_SOURCES` = pricing + homepage. Un medium/low n'est JAMAIS différé.
+
+**Le délai EST le mécanisme.** Quick check à T+2 min (`QUICK_CHECK_DELAY_MIN`) : tue le
+transitoire — rendu à moitié fini, page d'erreur servie dix secondes. Capture indépendante à
+T+30 (`VERIFY_DELAY_MIN`, compté depuis la détection) : un re-fetch immédiat relit le même
+objet CDN (TTL en minutes), le même bucket A/B (bucketing par IP), le même déploiement en
+cours — il ne peut qu'être d'accord avec le premier. Deux fetches par change, jamais trois :
+`retryLimit: 0` sur la queue rend la politesse littérale au lieu de la promettre.
+
+**Ce qui est comparé : le DELTA, pas la page.** `@outrival/shared/verification-delta` est
+PUR. `buildDeltaProof` sort ≤3 extraits par côté (normalisés casse+espaces, tronqués à 160,
+plancher de 8 chars — matcher « 12 » ne prouve rien) et un `fingerprint` stable au tri.
+`checkDeltaAgainst` exige les ajouts PRÉSENTS **et** les retraits ABSENTS : la seconde moitié
+est celle qui attrape le flip A/B, où l'ancienne variante revient et la page contient
+maintenant l'avant ET l'après d'un changement qui n'a pas eu lieu. `parseExcerpts` relit le
+blob stocké : le job vérifie les extraits ENREGISTRÉS, pas des extraits re-dérivés 30 min
+plus tard (toute dérive entre les deux dérivations changerait silencieusement ce qui est
+vérifié).
+
+**`skipped` n'a jamais retenu un signal.** Même posture que `faithfulness/gate.ts`. Refus,
+timeout, 404, capture gradée `partial` par le grader P1, méthode de capture différente de
+l'originale (un `static` re-capturé au navigateur est un autre document), et jusqu'aux bugs
+du vérificateur lui-même : chacun écrit `outcome='skipped'` et ÉMET. Un signal déjà jugé
+digne d'être envoyé ne disparaît pas parce que NOTRE scraper a échoué. Test dédié : 403 →
+signal émis.
+
+**Non-reproduit = silence.** Pas d'alerte « non vérifié », pas de signal dégradé : le
+prochain scrape re-détectera si c'était réel. La rétention est logguée et la ligne
+`signal_verifications` reste, parce qu'elle est ce que compte le détecteur A/B.
+
+**Anti-flap.** À l'interception, si le fingerprint du change — ou son INVERSE — matche un
+`not_reproduced` des 14 derniers jours sur le même monitor, le change part en vérification
+même si sa sévérité seule ne le déclencherait pas. L'override ne franchit PAS le test
+capture-live : une page qu'on ne peut pas re-fetcher ne peut pas être vérifiée, et l'y router
+échouerait son signal pour toujours (test dédié). L'extraction et l'historique continuent
+d'écrire ce qu'ils observent — l'historique reflète les variantes, c'est honnête.
+
+**`ab_test_suspected`.** Le seul signal AJOUTÉ par la phase, entièrement fait de signaux
+qu'elle a retenus. ≥2 `not_reproduced` (même delta ou inverse) en 14 j sur la même page →
+une émission, cooldown 30 j par monitor. MEDIUM sur pricing, LOW ailleurs ; catégorie
+`pricing` ou `content` — l'enum n'est PAS étendu. Ancré sur un `page_variance` dédié
+(`isActive: false`, pattern `hiring_salary` / `pricing_probe`), pas sur le monitor qui flappe :
+cette chaîne-là est ce que le dédup content-hash diffe à la capture SUIVANTE, et le change
+concerné porte déjà une vérification dont le verdict est « ne pas émettre celui-ci ». Le
+payload porte `skipVerification: true` — un signal qui EST la conclusion d'une vérification
+ne peut pas être soumis à une vérification. Seul appelant de ce flag.
+
+**Dédup sans `singletonKey`.** Plan 004 est TODO : les queues `standard` ignorent
+`singletonKey`. La dédup est donc applicative et tenue par la DB — `unique(change_id)` sur
+`signal_verifications` + `onConflictDoNothing().returning()`. Deux runs concurrents arrivent,
+un seul insert survit, un seul fetch part. La double émission est bornée deux fois : ce
+verrou, plus l'index unique préexistant `signals_change_id_uq`.
+
+**La jointure fact block tient.** Vérifié puis testé : `buildSignalFacts` est ancré sur
+`changes.detectedAt` (routes/signals.ts passe `row.changeDetectedAt`), pas sur
+`signals.createdAt`. Une émission différée de 32 min est invisible à la fenêtre. Rien à
+corriger — le test existe pour que ça reste vrai.
+
+**Migration `0076`** : table `signal_verifications` (unique `change_id`, index
+`(competitor_id, monitor_id, recorded_at)` et `(delta_fingerprint, recorded_at)`) + valeur
+d'enum `page_variance` sur `source_type`. `emitted`/`signal_id` sont écrits par
+generate-signal après l'insert : sans eux, « vérifié puis perdu dans un crash » et « vérifié
+et livré » sont la même ligne, et la promesse de la phase devient inauditable.
+
+**API** : `GET /signals/:id/detail` expose `verification` (outcome, les deux timestamps,
+`gapMinutes`). Données seulement — le badge « ✓✓ 2 captures à N min d'écart » est P4.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · shared 900 ✓ · scrapers 1145 ✓ · workers 418 ✓ ·
+api 383 ✓ · web 214 ✓ · ai 214 ✓ · db 5 ✓ — 3279 au total, 0 fail. Périmètre du plan 028
+(diff/scoring/significance) intouché, vérifiable au `git status`. Plan 004 lu, NON implémenté.
+
+**Scénarios sur fixture, en dev** : `bun test test/verify-signal-delta.test.ts
+test/ab-test-signal.test.ts` depuis `apps/workers` déroule les six chemins contre une page
+stubée et une vraie Postgres in-process, en imprimant les lignes de log du worker
+(quick → independent → confirmed · flip → not_reproduced · 403 → skipped + émis · 2 flips →
+un `ab_test_suspected` · 3e flip sous cooldown → rien). Pas de script de démo séparé : il
+serait du code mort à côté de tests qui montrent déjà exactement ça.
+
+**Reste côté humain** :
+- **Migration `0076` à appliquer** (une table neuve + une valeur d'enum) — staging d'abord,
+  puis prod. Vérifier les migrations PENDING avant tout `db:migrate` sur un env partagé
+  (`0075` de P1 est peut-être encore en attente).
+- Déployer les workers (l'interception et le job sont worker-side ; le job tourne sur le
+  worker `browser`). Rappel : `.env.worker` est lu au boot, il faut REDÉMARRER.
+- Surveiller le premier `VERIFY_DELAY_MIN`. Deux nombres à regarder dans
+  `signal_verifications` : la part de `skipped` (si elle est haute, la re-capture échoue et
+  la vérification n'achète rien) et la part de `not_reproduced` (si elle est haute, soit les
+  pages bougent vraiment beaucoup, soit 30 min est trop long). Le retune de `VERIFY_DELAY_MIN`
+  vers 15 se décide sur ces données, pas avant.
+- `SIGNAL_VERIFICATION_ENABLED=false` est le kill-switch : tout émet immédiatement,
+  comportement pré-P2 exact.
+- P3 à P5 (grounding réel, preuve visible, porte faithfulness) NON entamées.

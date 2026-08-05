@@ -102,7 +102,12 @@ aiVisibilityRouter.get("/", async (c) => {
   const [roster, scopedSelfId, linked, promptRows, latestRows] = await Promise.all([
     // Roster (relational, org-scoped) — names for every subject the run wrote rows for.
     db
-      .select({ id: competitors.id, name: competitors.name, type: competitors.type })
+      .select({
+        id: competitors.id,
+        name: competitors.name,
+        type: competitors.type,
+        url: competitors.url,
+      })
       .from(competitors)
       .where(and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt))),
     productId ? productSelfCompetitorId(orgId, productId) : Promise.resolve(null),
@@ -138,6 +143,9 @@ aiVisibilityRouter.get("/", async (c) => {
       LIMIT ${DISPLAY_RUN_WINDOW}`),
   ]);
   const nameById = new Map(roster.map((r) => [r.id, r.name]));
+  // The page draws each brand's favicon beside its name, so the roster's url travels with
+  // it — a board of six colour swatches told you nothing about WHICH brand a row is.
+  const urlById = new Map(roster.map((r) => [r.id, r.url ?? null]));
 
   // In-scope subject set = the product's self + its linked competitors (phase B). scopeIds
   // keeps the product-scoped self only; selfId itself falls back to the org's type="self"
@@ -266,6 +274,7 @@ aiVisibilityRouter.get("/", async (c) => {
       .map((s) => ({
         competitorId: s.competitorId,
         name: nameById.get(s.competitorId) ?? "Unknown",
+        url: urlById.get(s.competitorId) ?? null,
         isSelf: s.competitorId === selfId,
         mentions: num(s.mentions),
         // The subject's OWN organic denominator (the prompts that don't name it), which
@@ -329,6 +338,7 @@ aiVisibilityRouter.get("/", async (c) => {
             .map((r) => ({
               competitorId: r.competitorId,
               name: nameById.get(r.competitorId) ?? "Unknown",
+              url: urlById.get(r.competitorId) ?? null,
               rank: r.rank,
             })),
           excerpt: er.find((r) => r.answerExcerpt)?.answerExcerpt ?? null,

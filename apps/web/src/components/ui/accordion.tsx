@@ -52,10 +52,14 @@ function AccordionContent({
   children,
   ...props
 }: React.ComponentProps<typeof AccordionPrimitive.Content>) {
+  // duration + ease are stated rather than left to tw-animate-css's defaults (.2s
+  // and the CSS `ease-out` KEYWORD). The `ease-out` UTILITY resolves to our system
+  // curve, so the landing FAQ folds on the same curve and the same clock as every
+  // disclosure in the dashboard.
   return (
     <AccordionPrimitive.Content
       data-slot="accordion-content"
-      className="overflow-hidden text-sm data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
+      className="overflow-hidden text-sm duration-[var(--duration-standard)] ease-out data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
       {...props}
     >
       <div className={cn("pt-0 pb-4", className)}>{children}</div>

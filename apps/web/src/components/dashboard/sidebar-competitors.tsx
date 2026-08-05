@@ -9,7 +9,7 @@ import { UsersIcon, CaretRightIcon, CaretUpIcon, DotsThreeIcon } from "@/compone
 
 import { type Competitor } from "@/lib/api";
 import { competitorsQuery } from "@/lib/queries";
-import { feedItemTransition } from "@/lib/motion";
+import { disclosureTransition } from "@/lib/motion";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { cn } from "@/lib/utils";
 import {
@@ -49,7 +49,7 @@ const rowMotion = {
   initial: { opacity: 0, height: 0 },
   animate: { opacity: 1, height: "auto" },
   exit: { opacity: 0, height: 0 },
-  transition: feedItemTransition,
+  transition: disclosureTransition,
 } as const;
 
 function activity(c: Competitor) {

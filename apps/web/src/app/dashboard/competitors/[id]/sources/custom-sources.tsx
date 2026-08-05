@@ -354,7 +354,7 @@ function CustomMonitorRow({
       <div
         id={drawerId}
         className={cn(
-          "grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none",
+          "grid transition-[grid-template-rows] duration-[var(--duration-standard)] ease-out motion-reduce:transition-none",
           open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
         )}
       >

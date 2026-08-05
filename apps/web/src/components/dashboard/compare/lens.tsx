@@ -14,7 +14,7 @@ import {
   competitorColorVars,
   competitorNameColor,
 } from "@/lib/competitor-color";
-import { feedItemTransition, feedItemVariants } from "@/lib/motion";
+import { disclosureTransition, feedItemTransition, feedItemVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 /**
@@ -318,7 +318,7 @@ export function MeasureRow({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
+            transition={disclosureTransition}
             className="col-start-2 col-end-[-1] overflow-hidden"
           >
             {detail}

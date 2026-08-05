@@ -150,8 +150,23 @@ export interface SlopeRow {
    * drawn dashed: we are not claiming the price held, only that we read it once.
    */
   single: boolean;
-  /** Palette slot, taken from the full roster so it survives filtering. */
-  slot: number;
+}
+
+/**
+ * A pointer from one line's end dot to the label that names it.
+ *
+ * `decollide` pushes stacked labels apart, so in a bundle a label can sit tens of
+ * pixels off the line it belongs to — and the reader has no way to tell which is
+ * which. Emitted only where the label actually moved: a leader on a label already at
+ * its own height points at nothing and is pure clutter, which in the common case
+ * (few competitors, no collisions) means none are drawn at all.
+ */
+export interface SlopeLeader {
+  competitorId: string;
+  /** Where the line ends. */
+  endY: number;
+  /** Where its label ended up after de-collision. */
+  labelY: number;
 }
 
 export interface SlopeModel {
@@ -160,6 +175,7 @@ export interface SlopeModel {
   drawn: SlopeRow[];
   /** Label position per row, de-collided, ordered top-down. */
   labels: Array<{ row: SlopeRow; top: number }>;
+  leaders: SlopeLeader[];
   height: number;
   y: (value: number) => number;
   ticks: number[];
@@ -181,10 +197,10 @@ const MIN_HEIGHT = 200;
 
 export function buildSlopeModel(series: TrendsMarketSeries[]): SlopeModel | null {
   const rows: SlopeRow[] = [];
-  series.forEach((item, slot) => {
+  for (const item of series) {
     const first = item.points[0];
     const last = item.points[item.points.length - 1];
-    if (!first || !last) return;
+    if (!first || !last) continue;
     const pct = first.value
       ? Math.round(((last.value - first.value) / first.value) * 1000) / 10
       : 0;
@@ -195,9 +211,8 @@ export function buildSlopeModel(series: TrendsMarketSeries[]): SlopeModel | null
       pct,
       moved: last.value !== first.value,
       single: item.points.length < 2,
-      slot,
     });
-  });
+  }
   if (rows.length === 0) return null;
 
   const values = rows.flatMap((r) => [r.from, r.to]);
@@ -220,6 +235,16 @@ export function buildSlopeModel(series: TrendsMarketSeries[]): SlopeModel | null
   );
   const labels = ordered.map((row, i) => ({ row, top: tops[i]! }));
 
+  // Sub-pixel drift is not a collision, so a label the de-collision left alone gets
+  // no pointer.
+  const leaders: SlopeLeader[] = labels
+    .filter(({ row, top }) => Math.abs(top - y(row.to)) > 1)
+    .map(({ row, top }) => ({
+      competitorId: row.item.competitorId,
+      endY: y(row.to),
+      labelY: top,
+    }));
+
   const drawn = [...rows].sort((a, b) => Number(a.moved) - Number(b.moved));
 
   const byTime = series
@@ -240,6 +265,7 @@ export function buildSlopeModel(series: TrendsMarketSeries[]): SlopeModel | null
     rows,
     drawn,
     labels,
+    leaders,
     height,
     y,
     ticks: span === 0 ? [min] : [max, min + span / 2, min],

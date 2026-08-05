@@ -18,7 +18,8 @@ import {
   chartTooltipMotion,
 } from "@/components/dashboard/chart-motion";
 import { formatDate } from "@/lib/format-date";
-import { seriesStroke } from "@/lib/series-color";
+import { paintFor, type SeriesPaint } from "@/lib/series-color";
+import { SeriesSwatch } from "@/components/dashboard/series-swatch";
 import {
   asOfKey,
   buildCarriedGrid,
@@ -63,6 +64,8 @@ export interface MarketChartProps {
   height?: number;
   /** Renders the raw captured value in the tooltip (money, roles, score). */
   formatValue: (value: number, series: TrendsMarketSeries) => string;
+  /** One paint per competitor, dealt once for the whole page. */
+  paint: Map<string, SeriesPaint>;
   /** Competitor ids the legend has switched off. */
   hidden?: Set<string>;
   /**
@@ -81,12 +84,12 @@ function TooltipCard({
   mode,
   formatValue,
   labelFor,
+  paint,
 }: {
   active?: boolean;
   payload?: Array<{
     dataKey?: string | number;
     value?: number;
-    color?: string;
     payload?: ChartRow;
   }>;
   label?: number;
@@ -94,6 +97,7 @@ function TooltipCard({
   mode: "index" | "absolute";
   formatValue: MarketChartProps["formatValue"];
   labelFor: (stamp: number) => string;
+  paint: Map<string, SeriesPaint>;
 }) {
   if (!active || !payload?.length) return null;
   const byId = new Map(series.map((s) => [s.competitorId, s]));
@@ -113,7 +117,6 @@ function TooltipCard({
         // of a capture it would put "as of today" on every row.
         staleSince:
           typeof asOf === "number" && label != null && asOf < label ? asOf : null,
-        color: entry.color,
       };
     })
     .filter((entry) => entry !== null)
@@ -134,11 +137,7 @@ function TooltipCard({
             className="flex items-baseline justify-between gap-4 text-xs"
           >
             <span className="inline-flex min-w-0 items-center gap-1.5">
-              <span
-                aria-hidden
-                className="h-0.5 w-2.5 shrink-0 rounded-full"
-                style={{ background: entry.color }}
-              />
+              <SeriesSwatch paint={paintFor(paint, entry.item.competitorId)} />
               <span className="truncate">{entry.item.competitorName}</span>
             </span>
             <span className="shrink-0 tabular-nums">
@@ -167,21 +166,13 @@ export function TrendsMarketChart({
   mode,
   height = 200,
   formatValue,
+  paint,
   hidden,
   highlighted,
 }: MarketChartProps) {
   const visible = useMemo(
     () => series.filter((s) => !hidden?.has(s.competitorId)),
     [series, hidden],
-  );
-
-  // A competitor's colour is its identity, so it has to survive the legend being
-  // used as a filter. Indexing into the fallback palette by position in `visible`
-  // repainted every unassigned line below a switched-off one, and left the key's
-  // swatch pointing at a colour no longer on the plot.
-  const paletteSlot = useMemo(
-    () => new Map(series.map((s, i) => [s.competitorId, i])),
-    [series],
   );
 
   // Switching a series off while pointing at its key entry would otherwise leave
@@ -261,11 +252,13 @@ export function TrendsMarketChart({
                 mode={mode}
                 formatValue={formatValue}
                 labelFor={labelFor}
+                paint={paint}
               />
             }
           />
           {visible.map((item) => {
             const dimmed = active != null && active !== item.competitorId;
+            const { stroke, dash } = paintFor(paint, item.competitorId);
             return (
               <Line
                 key={item.competitorId}
@@ -275,7 +268,10 @@ export function TrendsMarketChart({
                 type="stepAfter"
                 dataKey={item.competitorId}
                 name={item.competitorName}
-                stroke={seriesStroke(item.color, paletteSlot.get(item.competitorId) ?? 0)}
+                stroke={stroke}
+                // Past the palette's eleven hues the paint laps, and the dash is what
+                // keeps the twelfth line from being the first one twice.
+                strokeDasharray={dash}
                 // Your own product is the reference every other line is read against,
                 // so it carries the only heavier stroke on the chart.
                 strokeWidth={item.isSelf ? 2.5 : 1.5}

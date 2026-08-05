@@ -9,7 +9,6 @@ import {
   RowsIcon,
   MagnifyingGlassIcon,
   SlidersHorizontalIcon,
-  XIcon,
 } from "@/components/icons";
 import type { SavedViewFilters, Signal } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -24,11 +23,11 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { SavedViewsMenu } from "./saved-views-menu";
 import { CatText } from "./cat-pill";
 import { CompAvatar } from "./comp-avatar";
+import { FilterChip } from "./filter-chip";
 
 export type Sev = Signal["severity"];
 export type QuickView =
@@ -390,31 +389,5 @@ export function SignalsListHeader({
         </TabsList>
       </Tabs>
     </div>
-  );
-}
-
-function FilterChip({
-  children,
-  onRemove,
-}: {
-  children: React.ReactNode;
-  onRemove: () => void;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-0.5 text-xs">
-      {children}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={onRemove}
-            className="ml-0.5 text-muted-foreground transition-colors hover:text-foreground"
-            aria-label="Remove filter"
-          >
-            <XIcon size={16} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Remove filter</TooltipContent>
-      </Tooltip>
-    </span>
   );
 }

@@ -3,9 +3,11 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { TrendsMarketSeries } from "@/lib/api";
+import { EyeSlashIcon } from "@/components/icons";
 import { formatDate } from "@/lib/format-date";
-import { seriesStroke } from "@/lib/series-color";
+import { paintFor, type SeriesPaint } from "@/lib/series-color";
 import { cn } from "@/lib/utils";
+import { CompAvatar } from "./comp-avatar";
 import { buildSlopeModel, type SlopeRow } from "@/components/dashboard/trends-chart-model";
 
 /**
@@ -20,10 +22,23 @@ import { buildSlopeModel, type SlopeRow } from "@/components/dashboard/trends-ch
  * read, the two endpoints, and makes the answer the shape: a flat bundle with the
  * one or two lines that left it.
  *
- * The palette problem disappears with the form rather than being worked around.
- * Only the movers take a competitor colour; everything that held is one muted
- * grey, so a plot of twenty competitors still asks the reader to tell apart as
- * many hues as there were moves.
+ * Three channels carry three different facts, and none borrows another's:
+ *
+ *   hue              which competitor        — always, mover or not
+ *   weight + opacity moved, or held
+ *   dash             captured once, so the flat line is unproven
+ *
+ * The hue used to be spent on "moved", which left everyone who held on the same
+ * grey. That reads as a tidy chart right up to the moment the reader does the only
+ * thing anyone does here — trace one line to one label. Twelve identical greys make
+ * that impossible; a muted hue matching the label's own mark makes it free. The
+ * bundle still recedes, thinner and at half opacity, it just recedes as itself.
+ *
+ * Where labels stack, `decollide` pushes them off their own line, so a leader elbow
+ * runs from each end dot to its label. It is drawn inside the plot's own reserved
+ * gutter (X_TO stops short of the edge): the label column is a sibling grid cell,
+ * and a percentage x inside the SVG resolves against the plot's width, never the
+ * page's, so a leader can never be made to reach it.
  *
  * The Y axis is linear on price, not log. Log would give a 15% move the same
  * slope at $6 as at $600, which reads well but is a lie on an axis labelled in
@@ -33,9 +48,11 @@ import { buildSlopeModel, type SlopeRow } from "@/components/dashboard/trends-ch
  * judging an angle.
  */
 
-/** X of the two capture columns, as a share of the plot width. */
+/** X of the two capture columns, then the leader's elbow, as a share of plot width. */
 const X_FROM = "3%";
-const X_TO = "97%";
+const X_TO = "88%";
+const X_ELBOW = "94%";
+const X_LEADER_END = "100%";
 
 /**
  * Ladder · plot · labels. On a phone the ladder is dropped and the label column
@@ -50,19 +67,38 @@ export interface TrendsSlopeChartProps {
   series: TrendsMarketSeries[];
   /** Renders a captured value the way its metric is written (money, roles). */
   formatValue: (value: number, series: TrendsMarketSeries) => string;
+  /** One paint per competitor, dealt once for the whole page. */
+  paint: Map<string, SeriesPaint>;
+  /** Competitors excluded page-wide. */
+  hidden?: Set<string>;
+  /** Excluding from a label writes the same page-wide filter the toolbar does. */
+  onToggle?: (competitorId: string) => void;
 }
 
-export function TrendsSlopeChart({ series, formatValue }: TrendsSlopeChartProps) {
+export function TrendsSlopeChart({
+  series,
+  formatValue,
+  paint,
+  hidden,
+  onToggle,
+}: TrendsSlopeChartProps) {
   const [active, setActive] = useState<string | null>(null);
 
-  const model = useMemo(() => buildSlopeModel(series), [series]);
+  // Filtered BEFORE the model, not after: the model derives the price range from the
+  // rows it is handed, so dropping the one $499 competitor rescales the ladder and
+  // gives ten $9-$49 lines back the height they were flattened out of. That rescale
+  // is the reason to offer a filter on a price chart at all.
+  const visible = useMemo(
+    () => series.filter((s) => !hidden?.has(s.competitorId)),
+    [series, hidden],
+  );
+  const model = useMemo(() => buildSlopeModel(visible), [visible]);
 
   if (!model) return null;
 
   const { height, y } = model;
   const shortDate = (iso: string) => formatDate(iso, { month: "short", day: "numeric" });
-  const strokeFor = (row: SlopeRow) =>
-    row.moved ? seriesStroke(row.item.color, row.slot) : "var(--muted-foreground)";
+  const paintOf = (row: SlopeRow) => paintFor(paint, row.item.competitorId);
 
   return (
     <div className="w-full">
@@ -107,9 +143,20 @@ export function TrendsSlopeChart({ series, formatValue }: TrendsSlopeChartProps)
                 stroke="var(--border)"
               />
             ))}
+            {/* Under the series: a leader points at a line, it is never one. */}
+            {model.leaders.map((leader) => (
+              <polyline
+                key={`leader-${leader.competitorId}`}
+                points={`${X_TO},${leader.endY} ${X_ELBOW},${leader.labelY} ${X_LEADER_END},${leader.labelY}`}
+                fill="none"
+                stroke={paintFor(paint, leader.competitorId).stroke}
+                strokeWidth={1}
+                strokeOpacity={active != null && active !== leader.competitorId ? 0.08 : 0.35}
+              />
+            ))}
             {model.drawn.map((row) => {
               const dimmed = active != null && active !== row.item.competitorId;
-              const stroke = strokeFor(row);
+              const { stroke } = paintOf(row);
               const y1 = y(row.from);
               const y2 = y(row.to);
               return (
@@ -137,11 +184,26 @@ export function TrendsSlopeChart({ series, formatValue }: TrendsSlopeChartProps)
                     y1={y1}
                     y2={y2}
                     stroke={stroke}
-                    strokeWidth={row.moved ? 2 : 1.5}
+                    // A held line keeps its colour and gives up weight instead, so the
+                    // bundle recedes without going anonymous.
+                    strokeWidth={row.moved ? 2.25 : 1.25}
+                    strokeOpacity={row.moved ? 1 : 0.5}
                     strokeDasharray={row.single ? "3 3" : undefined}
                   />
-                  <circle cx={X_FROM} cy={y1} r={3} fill={stroke} />
-                  <circle cx={X_TO} cy={y2} r={3} fill={stroke} />
+                  <circle
+                    cx={X_FROM}
+                    cy={y1}
+                    r={3}
+                    fill={stroke}
+                    fillOpacity={row.moved ? 1 : 0.5}
+                  />
+                  <circle
+                    cx={X_TO}
+                    cy={y2}
+                    r={3}
+                    fill={stroke}
+                    fillOpacity={row.moved ? 1 : 0.5}
+                  />
                 </g>
               );
             })}
@@ -152,39 +214,61 @@ export function TrendsSlopeChart({ series, formatValue }: TrendsSlopeChartProps)
           {model.labels.map(({ row, top }) => {
             const dimmed = active != null && active !== row.item.competitorId;
             return (
-              <Link
+              <div
                 key={row.item.competitorId}
-                href={`/dashboard/competitors/${row.item.competitorId}?tab=pricing`}
+                className="group absolute inset-x-0 flex -translate-y-1/2 items-center"
+                style={{ top }}
                 onPointerEnter={() => setActive(row.item.competitorId)}
                 onPointerLeave={() => setActive(null)}
-                onFocus={() => setActive(row.item.competitorId)}
-                onBlur={() => setActive(null)}
-                className={cn(
-                  "absolute inset-x-0 flex -translate-y-1/2 items-center gap-1.5 rounded-sm py-0.5 text-xs",
-                  "transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  dimmed ? "opacity-30" : "hover:opacity-70",
-                )}
-                style={{ top }}
               >
-                <span
-                  aria-hidden
-                  className="h-0.5 w-2.5 shrink-0 rounded-full"
-                  style={{ background: strokeFor(row) }}
-                />
-                <span className={cn("min-w-0 truncate", row.item.isSelf && "font-medium")}>
-                  {row.item.competitorName}
-                  {row.item.isSelf && <span className="text-muted-foreground"> (you)</span>}
-                </span>
-                <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
-                  {formatValue(row.to, row.item)}
-                </span>
-                {row.moved && (
-                  <span className="shrink-0 tabular-nums text-foreground">
-                    {row.pct > 0 ? "+" : ""}
-                    {row.pct}%
+                <Link
+                  href={`/dashboard/competitors/${row.item.competitorId}?tab=pricing`}
+                  onFocus={() => setActive(row.item.competitorId)}
+                  onBlur={() => setActive(null)}
+                  className={cn(
+                    "flex min-w-0 flex-1 items-center gap-1.5 rounded-sm py-0.5 text-xs",
+                    "transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    dimmed ? "opacity-30" : "hover:opacity-70",
+                  )}
+                >
+                  {/* The leader already carries the hue into this row, so the label
+                      spends its width on the identity a hue cannot give: the mark. */}
+                  <CompAvatar
+                    name={row.item.competitorName}
+                    url={row.item.competitorUrl}
+                    size={14}
+                  />
+                  <span className={cn("min-w-0 truncate", row.item.isSelf && "font-medium")}>
+                    {row.item.competitorName}
+                    {row.item.isSelf && <span className="text-muted-foreground"> (you)</span>}
                   </span>
+                  <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
+                    {formatValue(row.to, row.item)}
+                  </span>
+                  {row.moved && (
+                    <span className="shrink-0 tabular-nums text-foreground">
+                      {row.pct > 0 ? "+" : ""}
+                      {row.pct}%
+                    </span>
+                  )}
+                </Link>
+                {onToggle && (
+                  <button
+                    type="button"
+                    onClick={() => onToggle(row.item.competitorId)}
+                    onFocus={() => setActive(row.item.competitorId)}
+                    onBlur={() => setActive(null)}
+                    aria-label={`Hide ${row.item.competitorName}`}
+                    className={cn(
+                      "ml-1 shrink-0 rounded-sm p-0.5 text-muted-foreground opacity-0 transition",
+                      "hover:text-foreground group-hover:opacity-100",
+                      "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    )}
+                  >
+                    <EyeSlashIcon size={14} />
+                  </button>
                 )}
-              </Link>
+              </div>
             );
           })}
         </div>

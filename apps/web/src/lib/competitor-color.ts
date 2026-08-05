@@ -55,7 +55,9 @@ export function competitorColorVars(
 // Palette hues handed out when a competitor carries no user-assigned color but the UI
 // still has to tell N series apart. `slate` sits this one out: at chroma 0.025 it
 // renders as the neutral grey the fallback exists to escape.
-const SERIES_TOKENS = COMPETITOR_COLORS.filter((c) => c.chroma > 0.05).map((c) => c.token);
+export const SERIES_TOKENS = COMPETITOR_COLORS.filter((c) => c.chroma > 0.05).map(
+  (c) => c.token,
+);
 
 /**
  * Per-entity color for a compared SET (compare page): an explicit color always wins,

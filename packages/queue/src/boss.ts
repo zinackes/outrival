@@ -172,6 +172,60 @@ export async function stopQueue(timeoutMs = 30_000): Promise<void> {
  * e.g. "monitor deleted"). Mirrors Trigger's AbortTaskRunError intent. */
 export class NonRetriable extends Error {}
 
+/**
+ * Thrown by a handler for a failure that a retry cannot repair but that nobody may
+ * silently forget (Véracité Intelligence v2 P3).
+ *
+ * The queue has two terminal outcomes and neither fits: a plain throw spends the
+ * whole retry budget re-running something deterministic, and `NonRetriable`
+ * completes the job — which is right for "the monitor was deleted" and wrong for
+ * "this change never became a signal". This third outcome sends the job's ORIGINAL
+ * payload to the dead-letter queue with a reason, so the work is replayable and the
+ * failure is countable, then completes the job so no attempt is wasted.
+ *
+ * The payload lands verbatim, plus a `__dlq` envelope naming the queue it came from
+ * and why — pg-boss's own dead-lettering carries neither, which is how 600 jobs
+ * ended up in `outrival-dlq` with no way to tell what they were.
+ */
+export class DeadLetter extends Error {
+  constructor(
+    message: string,
+    /** Short, queryable cause: "truncated_reply", "schema_drift"… */
+    readonly reason: string,
+  ) {
+    super(message);
+  }
+}
+
+/** What a dead-lettered job leaves on the job row it completed. */
+export type DeadLetteredOutput = { deadLettered: true; reason: string; queue: string };
+
+export function isDeadLetteredOutput(output: unknown): output is DeadLetteredOutput {
+  return !!output && typeof output === "object" && (output as DeadLetteredOutput).deadLettered === true;
+}
+
+/** The envelope a hand-routed dead letter carries alongside the original payload. */
+export interface DeadLetterEnvelope {
+  __dlq: { queue: string; reason: string; jobId: string };
+}
+
+/**
+ * What lands on the dead-letter queue: the job's payload UNCHANGED, plus where it
+ * came from and why.
+ *
+ * The payload has to survive verbatim — that is what makes the work replayable, and
+ * replayability is the whole guarantee: a change whose signal generation failed is
+ * never marked done, so re-enqueuing this payload on `queue` recreates the signal.
+ */
+export function deadLetterPayload<P extends object>(
+  queue: string,
+  data: P,
+  reason: string,
+  jobId: string,
+): P & DeadLetterEnvelope {
+  return { ...data, __dlq: { queue, reason, jobId } };
+}
+
 export interface JobConfig {
   /** pg-boss retryLimit = number of RETRIES. Trigger maxAttempts N → retryLimit N-1. */
   retryLimit?: number;
@@ -378,6 +432,24 @@ export function work<P extends object>(
           // Terminal + expected → complete the job, but say so in the output.
           last = { aborted: true, message: err.message } satisfies AbortedOutput;
           continue;
+        }
+        if (err instanceof DeadLetter) {
+          // Terminal + WRONG → park the work where it can be found and replayed,
+          // then complete: retrying a deterministic failure only spends the budget.
+          // With no dead-letter queue configured there is nowhere safe to park it,
+          // so it falls through to the normal retry policy rather than vanishing.
+          const dlq = def.queueOptions.deadLetter;
+          if (dlq) {
+            const payload = deadLetterPayload(def.name, jobData(job.data), err.reason, job.id);
+            await getBoss().send(dlq, payload, {});
+            console.error(`[queue] ${def.name} dead-lettered (${err.reason}): ${err.message}`);
+            last = {
+              deadLettered: true,
+              reason: err.reason,
+              queue: def.name,
+            } satisfies DeadLetteredOutput;
+            continue;
+          }
         }
         // A fault that will still be there a second from now (the AI pool being
         // rate-limited) is rescheduled rather than retried, because the queue's

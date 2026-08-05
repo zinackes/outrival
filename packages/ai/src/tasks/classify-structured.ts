@@ -138,6 +138,25 @@ SAME ORDER as the numbered list above.
 }
 
 /**
+ * Zip the model's significances back onto the input changes by index — or refuse.
+ *
+ * A wrong-length array is a PARSE FAILURE, not a shape to patch up (audit §3.2). The
+ * prompt asks for exactly one significance per change, IN ORDER, and the whole point
+ * of the per-change breakdown is that assessment i describes change i. Coercing the
+ * missing tail to "minor" — as this did until Véracité P3 — published a fabricated
+ * judgement per change under the model's name, silently, as a success, straight into
+ * the "Why this insight?" panel. Null instead: the caller already has a retry path
+ * for a parse miss, and this IS one.
+ */
+export function zipAssessments(
+  changes: StructuredChangeInput[],
+  assessments: Array<"major" | "minor" | "trivial">,
+): PerChangeAssessment[] | null {
+  if (assessments.length !== changes.length) return null;
+  return changes.map((c, i) => ({ ...c, significance: assessments[i]! }));
+}
+
+/**
  * Classify a list of structural homepage changes (patch-16). Reasons over the
  * typed, located changes instead of a flat diff blob, returning an overall
  * severity/category plus a per-change significance. Uses the 70b "smart" model
@@ -175,13 +194,14 @@ export async function classifyStructuredChanges(
   if (!result) return null;
 
   const { assessments, ...model } = result.output;
+  const perChangeAssessment = zipAssessments(changes, assessments);
+  if (!perChangeAssessment) {
+    console.error(
+      `classify_structured parse failed: ${assessments.length} assessments for ${changes.length} changes`,
+    );
+    return null;
+  }
   const classification = resolveClassification(model, renderForPrompt(changes));
-  // Zip the model's significances back onto the input changes by index. If the
-  // model returned a mismatched length, default to "minor" — never crash.
-  const perChangeAssessment: PerChangeAssessment[] = changes.map((c, i) => ({
-    ...c,
-    significance: assessments[i] ?? "minor",
-  }));
 
   return attachQuality({ classification, perChangeAssessment }, result.quality);
 }

@@ -195,6 +195,18 @@ AI_PROVIDER_4_ID=mistral           # La Plateforme free : 1 Md tokens/mois, 1 re
 # Plus de plancher PAYANT : `AI_PROVIDER_3_ID=hyperbolic` était documenté depuis patch-22
 # mais n'a jamais eu de clé en prod et n'a jamais servi une requête (ai_runs ne connaît que
 # groq et cerebras du 05/06 au 31/07/2026). Quand les gratuits sont épuisés, l'IA s'arrête.
+AI_PROVIDER_N_JSON_SCHEMA=         # "true" = ce provider honore response_format
+                                   # json_schema (décodage contraint, Véracité v2 P3) :
+                                   # le schéma est compilé dans le décodeur, une réponse
+                                   # malformée devient impossible au lieu d'improbable.
+                                   # Zéro surcoût (même appel, mêmes tokens) et seules
+                                   # generate_signal + narrate_change envoient un schéma.
+                                   # DÉFAUT OFF, à vérifier provider par provider : un
+                                   # provider qui annonce le champ mais refuse notre
+                                   # schéma répond 400, le SEUL statut sur lequel le pool
+                                   # ne bascule volontairement pas (une requête mal
+                                   # construite échouerait pareil partout). Vide = mode
+                                   # json_object, identique à aujourd'hui
 AI_PROVIDER_N_TPM_LIMIT=           # plafond TOKENS PAR MINUTE du provider (cerebras 30000,
                                    # groq 8000). C'est LE plafond qui mordait : le quota
                                    # journalier n'a jamais été atteint. Mesuré en prod le

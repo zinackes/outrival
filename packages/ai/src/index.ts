@@ -8,6 +8,7 @@ export {
   consumeUsage,
   wasTruncated,
   withAiContext,
+  withTruncationReport,
   isInteractive,
 } from "./provider/provider-context";
 export type { TokenUsage } from "./provider/provider-context";
@@ -26,10 +27,20 @@ export type {
   GroundedQuality,
   GroundedResult,
   GroundedCallParams,
+  PostHocGrounding,
   SelfCheckResult,
   SelfCheckTrigger,
   WithQuality,
 } from "./grounding/types";
+// Deterministic post-hoc grounding + abstention (Véracité Intelligence v2 P3)
+export {
+  extractVerifiableTokens,
+  verifyAgainstSource,
+  verifyFieldsAgainstSource,
+} from "./grounding/posthoc-grounding";
+export type { VerifiableToken, VerifiableTokens } from "./grounding/posthoc-grounding";
+export { abstainFromUnverified, deterministicInsight } from "./grounding/abstention";
+export type { AbstentionResult, InsightProse } from "./grounding/abstention";
 export {
   classifyChange,
   ClassificationSchema,

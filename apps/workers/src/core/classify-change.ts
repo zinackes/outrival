@@ -10,7 +10,7 @@ import {
   competitors,
   selfProductChanges,
 } from "@outrival/db";
-import { retriableClassifyError } from "../lib/classify-errors";
+import { retriableClassifyError, truncatedReplyError } from "../lib/classify-errors";
 import {
   classifyChange,
   classifyStructuredChanges,
@@ -18,6 +18,7 @@ import {
   gateAppliesTo,
   suppressesAsCosmetic,
   formatCorroborationSurface,
+  withTruncationReport,
   AI_CONFIG,
   type Classification,
   type PerChangeAssessment,
@@ -154,25 +155,32 @@ export async function runClassifyChange(payload: z.input<typeof InputSchema>) {
     // (thrown). The classify task itself stays DB-free — the job logs it.
     // Homepage structured changes (patch-16) take the structured classifier (70b,
     // per-change significance); everything else keeps the lexical fast classifier.
-    let classification: Classification | null;
-    let perChange: PerChangeAssessment[] | null = null;
-    if (isStructured) {
-      const structured = change.structuredDiff as StructuredChange[];
-      const res = await loggedAi(
-        "classify_structured",
-        AI_CONFIG.classification,
-        () =>
-          classifyStructuredChanges(structured, {
-            sourceType: monitor?.sourceType,
-            competitorName: competitor?.name,
-            recentSignals,
-          }),
-        attribution,
-      );
-      classification = res?.classification ?? null;
-      perChange = res?.perChangeAssessment ?? null;
-    } else {
-      classification = await loggedAi(
+    // Wrapped so "the model ran out of room" and "the model wrote bad JSON" stop
+    // looking identical here: both surface as the same null, and their repairs are
+    // opposites — see the throw below.
+    const { value: classified, truncated } = await withTruncationReport<{
+      classification: Classification | null;
+      perChange: PerChangeAssessment[] | null;
+    }>(async () => {
+      if (isStructured) {
+        const structured = change.structuredDiff as StructuredChange[];
+        const res = await loggedAi(
+          "classify_structured",
+          AI_CONFIG.classification,
+          () =>
+            classifyStructuredChanges(structured, {
+              sourceType: monitor?.sourceType,
+              competitorName: competitor?.name,
+              recentSignals,
+            }),
+          attribution,
+        );
+        return {
+          classification: res?.classification ?? null,
+          perChange: res?.perChangeAssessment ?? null,
+        };
+      }
+      const lexical = await loggedAi(
         "classify",
         AI_CONFIG.classificationFast,
         () =>
@@ -186,16 +194,29 @@ export async function runClassifyChange(payload: z.input<typeof InputSchema>) {
           }),
         attribution,
       );
-    }
+      return { classification: lexical, perChange: null };
+    });
+    const { classification, perChange } = classified;
     if (!classification) {
-      // A null here is a PARSE miss (malformed/empty JSON), not a thrown provider
-      // error — and on the free reasoning providers the grounding/JSON envelope is
-      // malformed transiently. So this is RETRIABLE: aborting used to drop the
-      // signal permanently (the change stayed orphaned, no later scrape recreated
-      // it). Throw a plain error so Trigger re-runs (the null result is never
-      // cached → a fresh LLM call); after maxAttempts it dead-letters as a real
-      // failure instead of a silent abort. The re-run is idempotent — nothing is
-      // persisted before this point (the existing-signal guard covers a race).
+      // A reply cut off at its output ceiling reproduces: same prompt, same budget,
+      // same cut. Retrying it spends the whole budget re-buying the identical
+      // failure, so it goes STRAIGHT to the dead-letter, payload intact — replaying
+      // it once maxTokens or the prompt has been fixed recreates the signal, and
+      // nothing about the change is marked done in the meantime.
+      if (truncated) {
+        logger.error("Classification reply truncated at maxTokens — dead-lettering", {
+          changeId: input.changeId,
+        });
+        throw truncatedReplyError("Classification", input.changeId);
+      }
+      // Otherwise it is a PARSE miss (malformed/empty JSON), not a thrown provider
+      // error — and on the free reasoning providers that is transient. So this is
+      // RETRIABLE: aborting used to drop the signal permanently (the change stayed
+      // orphaned, no later scrape recreated it). Throw a plain error so pg-boss
+      // re-runs (the null result is never cached → a fresh LLM call); after
+      // retryLimit it dead-letters as a real failure instead of a silent abort. The
+      // re-run is idempotent — nothing is persisted before this point (the
+      // existing-signal guard covers a race).
       logger.error("Classification returned null (parse failed) — retrying", {
         changeId: input.changeId,
       });

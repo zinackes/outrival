@@ -20,6 +20,23 @@ export const SelfProfileExtractionSchema = z.object({
 export type SelfProfileExtraction = z.infer<typeof SelfProfileExtractionSchema>;
 
 /**
+ * Whether an extraction found NOTHING at all — every text field blank and both lists
+ * empty. It parses, so it used to count as a success (audit §3.2): the job wrote its
+ * "nothing detected" over nothing, logged success, and the user's My Product page
+ * stayed empty while the scrape reported the page analysed. One field found is a
+ * partial extraction and stands; zero is a miss.
+ */
+export function isEmptyProfile(profile: SelfProfileExtraction): boolean {
+  return (
+    !profile.category.trim() &&
+    !profile.audience.trim() &&
+    !profile.valueProp.trim() &&
+    profile.features.length === 0 &&
+    profile.techStack.length === 0
+  );
+}
+
+/**
  * Extract the self-competitor's profile from its homepage: category, audience and
  * value proposition (refreshed on each scrape so a re-scan keeps them current), plus
  * its feature list and detectable tech stack (which have no other source). Used only
@@ -73,5 +90,21 @@ list at 12 items.
     sourceText: homepageText.slice(0, 6000),
     schema: SelfProfileExtractionSchema,
   });
-  return result ? attachQuality(result.output, result.quality) : null;
+  if (!result) return null;
+
+  // An extraction where EVERY field came back empty is a failed extraction, not a
+  // profile (audit §3.2). It parsed, so it used to count as a success: the job wrote
+  // its "nothing detected" over nothing, logged success, and the user's My Product
+  // page stayed empty while the scrape said it had been analysed. Returning null puts
+  // it on the parse_failed path — which also means the caller never reaches its
+  // update, so an existing non-empty profile cannot be touched by a run that read
+  // nothing. (Field by field, `refreshAuto` already refuses to overwrite a value with
+  // a blank; this closes the case where the whole extraction is blank.)
+  const o = result.output;
+  if (isEmptyProfile(o)) {
+    console.error("extract_features returned an entirely empty profile — treated as a miss");
+    return null;
+  }
+
+  return attachQuality(o, result.quality);
 }

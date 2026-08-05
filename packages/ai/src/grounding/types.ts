@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import type { Citation, GroundingValidation } from "./citations";
+import type { VerifiableToken } from "./posthoc-grounding";
 import type { AITaskConfig } from "../config";
 
 export type Confidence = "low" | "medium" | "high";
@@ -19,6 +20,25 @@ export interface SelfCheckResult {
 
 export type SelfCheckTrigger = "systematic_battle_card" | "sampling" | "low_confidence";
 
+/**
+ * Result of the deterministic post-hoc grounding check (Véracité P3). Costs no
+ * tokens and never re-calls the model: every figure and quotation in the output is
+ * looked for in the source the model was shown (see grounding/posthoc-grounding).
+ *
+ * `skipped` is NOT a failure and never blocks anything — it means the check could
+ * not run honestly (no source to check against, or a reply cut off at its ceiling
+ * whose half-written figures would flag spuriously). Same posture as the
+ * faithfulness gate: an unavailable check is silence, not a verdict.
+ */
+export interface PostHocGrounding {
+  status: "verified" | "unverified" | "skipped";
+  /** The figures/quotations the source does not support. Empty unless unverified. */
+  unverified: VerifiableToken[];
+  /** How many tokens were checked — 0 means "nothing to check", not "clean". */
+  checked: number;
+  reason?: "no_source" | "truncated_output";
+}
+
 // The serialisable quality envelope attached to a task's output and persisted to
 // ai_quality_checks. `selfCheck` is null unless a second pass ran.
 export interface GroundedQuality {
@@ -28,6 +48,8 @@ export interface GroundedQuality {
   selfCheck: SelfCheckResult | null;
   selfCheckTriggeredBy: SelfCheckTrigger | null;
   flaggedForHumanReview: boolean;
+  /** Null for the tasks the post-hoc policy doesn't cover (see GROUNDING_POLICY). */
+  postHoc: PostHocGrounding | null;
 }
 
 export interface GroundedResult<T> {
@@ -81,6 +103,7 @@ export function emptyQuality(confidence: Confidence = "low"): GroundedQuality {
     selfCheck: null,
     selfCheckTriggeredBy: null,
     flaggedForHumanReview: false,
+    postHoc: null,
   };
 }
 

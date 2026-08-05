@@ -68,6 +68,13 @@ export interface CompletionOptions {
   maxTokens?: number;
   json?: boolean;
   /**
+   * A JSON Schema to decode against (Véracité P3). Honoured only by a pool provider
+   * that declares `supportsJsonSchema`; everywhere else the call falls back to the
+   * plain `json` object mode, byte-identical to what it sends today. Same call, same
+   * tokens — this constrains the decoder, it does not add a round trip.
+   */
+  jsonSchema?: { name: string; schema: Record<string, unknown> };
+  /**
    * Static, byte-identical-across-calls instructions (role, rules, schema). Sent
    * as a separate `system` message so the variable payload stays in `prompt` at
    * the tail — Groq/Cerebras auto-cache the shared prefix for free, and the Claude
@@ -381,7 +388,25 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
           { role: "user" as const, content: options.prompt },
         ],
         max_tokens: maxTokens,
-        ...(options.json && { response_format: { type: "json_object" as const } }),
+        // Constrained decoding when this provider declares it (P3): the schema is
+        // compiled to a grammar and an invalid token cannot be emitted, so "the model
+        // wrote bad JSON" stops being a failure mode. Providers without the
+        // capability keep the plain object mode — one pool, two request shapes, no
+        // change to failover.
+        ...(options.jsonSchema && provider.supportsJsonSchema
+          ? {
+              response_format: {
+                type: "json_schema" as const,
+                json_schema: {
+                  name: options.jsonSchema.name,
+                  schema: options.jsonSchema.schema,
+                  strict: true,
+                },
+              },
+            }
+          : options.json
+            ? { response_format: { type: "json_object" as const } }
+            : {}),
         // Only sent for reasoning models (gpt-oss) — never for Llama (undefined).
         ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
       };

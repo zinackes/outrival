@@ -43,6 +43,19 @@ export interface Provider {
   // "low" for gpt-oss (cheapest, validated equal quality) and sends nothing for
   // non-reasoning models. Only set this to deviate (e.g. "medium").
   reasoningEffort?: "low" | "medium" | "high";
+  /**
+   * Whether this provider/model honours `response_format: { type: "json_schema" }`
+   * — constrained decoding against a schema, which makes a malformed reply
+   * impossible rather than unlikely (Véracité P3). A capability, not a preference:
+   * the same task sends a plain `json_object` to a provider without it, so the pool
+   * stays heterogeneous and no failover path changes.
+   *
+   * Declared per provider (AI_PROVIDER_N_JSON_SCHEMA=true) and DEFAULT OFF: a
+   * provider that advertises the field but rejects our schema answers 400, which is
+   * the one status the pool does NOT fail over on (a request we built wrong hits
+   * every provider identically). Turn it on per provider once verified.
+   */
+  supportsJsonSchema?: boolean;
 }
 
 // Log the loaded pool ONCE per process (ids + base URLs + models, never keys). A
@@ -91,6 +104,7 @@ export function loadProviders(): Provider[] {
       tpmLimit: Number(process.env[`AI_PROVIDER_${i}_TPM_LIMIT`] ?? 0),
       priority: Number(process.env[`AI_PROVIDER_${i}_PRIORITY`] ?? 99),
       reasoningEffort: re === "low" || re === "medium" || re === "high" ? re : undefined,
+      supportsJsonSchema: process.env[`AI_PROVIDER_${i}_JSON_SCHEMA`] === "true",
     });
   }
 

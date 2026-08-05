@@ -2801,3 +2801,126 @@ serait du code mort à côté de tests qui montrent déjà exactement ça.
 - `SIGNAL_VERIFICATION_ENABLED=false` est le kill-switch : tout émet immédiatement,
   comportement pré-P2 exact.
 - P3 à P5 (grounding réel, preuve visible, porte faithfulness) NON entamées.
+
+## Véracité Intelligence v2, P3 : grounding réel, abstention, sorties contraintes (2026-08-05)
+
+**Le fix n'est PAS de rallumer l'enveloppe de citations.** C'est la nuance de l'audit §3.1 :
+le carve-out `grounding: false` sur les générations user-facing existe PARCE QUE l'enveloppe
+casse les providers gratuits (un modèle de raisonnement malforme le JSON de citation, parse
+miss, null, profil vide affiché comme « scan terminé »). P3 met à la place un contrôle
+DÉTERMINISTE post-hoc : après le MÊME appel, on vérifie nous-mêmes que chaque chiffre et
+chaque citation de la sortie existe dans la source montrée au modèle. Zéro token de sortie en
+plus, zéro appel ajouté.
+
+**Bilan net des appels IA : deux sites en moins, aucun en plus.** `insight.ts` régénérait une
+fois quand un nombre n'était pas soutenu, `narrate-change.ts` re-rollait sur le même critère.
+Les deux sont supprimés : redemander la même phrase sur la même source ne la rend pas plus
+vraie, seulement plus assurée. `narrate_change` passe désormais par `groundedAiCall` mais
+reste UN appel. Le null-rate d'`ai_runs` devrait baisser (deux tâches qui rendaient null
+rendent maintenant un objet parsé), la volumétrie ne peut que descendre.
+
+**`posthoc-grounding.ts` a MANGÉ `numeric-grounding.ts`, il ne le double pas.** L'ancien
+module faisait déjà la moitié du travail, la règle de significativité : on ne vérifie pas le
+« 2 » de « 2 plans », ni une année nue. Elle est reprise mot pour mot, plus la normalisation
+des séparateurs de milliers et des espaces insécables, la lecture locale-consciente
+(`1,299` = groupement en, `1.299` = groupement de/fr, `12,34` = décimale), une table explicite
+k/M/bn, et les spans entre guillemets (substring exact après normalisation casse/espaces).
+Chaque token porte le CHAMP d'où il vient, ce qui est ce qui rend l'abstention chirurgicale.
+L'ancien fichier et son test sont supprimés, ses 11 cas repris dans les 19 du nouveau.
+
+**Périmètre v1 assumé : chiffres et citations, pas les noms propres.** Un nom de produit ou de
+personne est paraphrasé, décliné, possessivé : un test de présence littérale y étiquetterait
+surtout des phrases vraies. Documenté dans l'en-tête du module comme une question V2.
+L'appariement se fait sur la VALEUR, pas sur l'unité (« 32% » est soutenu par une source qui
+imprime « 32 »). Volontairement lâche sur cet axe, le contrôle porte sur la fabrication.
+
+**Abstention, jamais réécriture.** Un `unverified` sur `generate_signal` retire le CHAMP
+fautif avant l'insert. `so_what` et `recommended_action` sont nullables, ils passent à null.
+`insight` est NOT NULL : il est remplacé par une phrase déterministe construite sur le
+human_change que le classifieur a extrait du diff (`Acme changed "$149/mo" to "$99/mo".`), et
+aucun texte de modèle ne survit. Le signal SORT quand même, avec sa sévérité, sa catégorie,
+son human_change et son fact block, qui n'ont jamais dépendu de la prose. Sur
+`narrate_change`, la narration entière tombe (un paragraphe optionnel, rien à découper) et le
+panneau rend le before/after déterministe qui est déjà sur la ligne.
+
+**Ordre vérifié avec P2.** `interceptEmission` (P2) court AVANT l'appel insight et ne raisonne
+que sur la sévérité, l'abstention court APRÈS et ne touche que la prose : les deux ne se
+croisent jamais. L'abstention est en revanche placée AVANT la porte faithfulness, parce que la
+porte doit juger ce qui sera publié et non une phrase déjà retirée (sinon elle bloque un
+signal sur un texte que personne ne lira). La porte reste ÉTEINTE (plan 017 = P5).
+
+**`narrate_change` a enfin un schéma**, défini depuis son usage réel en aval :
+`signals.narrative` est UNE colonne texte nullable rendue en un paragraphe, donc
+`{ narrative: string }` et rien de plus. Fini le parse de prose brute (audit §3.1,
+`narrate-change.ts:63`) : un modèle qui préfaçait, écrivait du markdown ou répondait en deux
+paragraphes mettait tout ça devant l'utilisateur.
+
+**Sorties structurées natives, par capability.** `AI_PROVIDER_N_JSON_SCHEMA=true` déclare
+qu'un provider honore `response_format: json_schema`. Le pool envoie alors le schéma zod durci
+(`additionalProperties: false`, tout requis) sur `generate_signal` et `narrate_change`, et le
+mode `json_object` partout ailleurs. Même appel, mêmes tokens, décodage contraint. DÉFAUT OFF
+et il le reste : un provider qui annonce le champ mais refuse notre schéma répond 400, le seul
+statut sur lequel le pool ne bascule volontairement PAS. À activer provider par provider après
+vérification.
+
+**Sémantique retry, auditée avant d'y toucher.** L'audit §3.2 décrit `classify-change.job.ts`
+côté Trigger, or Trigger est retiré (#413/#415). Sous pg-boss le poison-pill est DÉJÀ corrigé :
+`retriableClassifyError` (R2) lève une `Error` nue, `retryLimit: 2` par défaut, et
+`deadLetter: outrival-dlq` est posé sur classify-change comme sur generate-signal. Ce qui
+manquait, c'est la TRONCATURE : une réponse coupée à `max_tokens` se reproduit à l'identique
+(même prompt, même budget), donc les trois tentatives achètent trois fois le même échec sur un
+quota gratuit.
+
+**Un troisième dénouement dans la queue : `DeadLetter`.** Il en manquait un. Un throw nu
+dépense tout le budget de retry, `NonRetriable` complète en silence (c'est fait pour « le
+monitor a été supprimé », pas pour « ce change n'est jamais devenu un signal »). `DeadLetter`
+envoie le payload ORIGINAL sur la dead-letter avec une raison, puis complète le job. Le
+payload part verbatim, accompagné d'une enveloppe `__dlq { queue, reason, jobId }` que le
+dead-lettering natif de pg-boss n'emporte pas, ce qui est exactement comment 602 jobs se
+retrouvent dans `outrival-dlq` sans qu'on puisse dire ce qu'ils étaient. Rejouer, c'est
+renvoyer ce payload sur la queue qu'il nomme : rien n'a marqué le change comme traité, et
+generate-signal est idempotent par `change_id`. Périmètre du plan 025 respecté (tuile et
+paging NON implémentés), la capability atterrit proprement là où 025 ira compter.
+
+**§3.2, les partiels persistés en valide.** `zipAssessments` : un tableau `assessments` de
+longueur différente du nombre de changes est un PARSE FAIL, plus une queue de « minor »
+fabriquée sous le nom du modèle et affichée dans « Why this insight? ». `isEmptyProfile` : une
+extraction dont TOUS les champs sont vides n'est plus un succès, elle part sur le chemin
+`parse_failed`. Le job n'atteint donc jamais son update, et un profil non-vide existant ne
+peut pas être écrasé par un run qui n'a rien lu (au champ près, `refreshAuto` le tenait déjà).
+
+**Migration `0077`** : `signals.grounding_status` (text) et `signals.grounding_unverified`
+(jsonb), additive, deux colonnes nullables. `GET /signals/:id/detail` expose
+`grounding { status, unverified }`. Données seulement : le badge « chiffres non vérifiés
+omis » et le rendu des `validCitations` sont P4.
+
+**Tests** : `pnpm typecheck` ✓ (8/8) · shared 900 ✓ · scrapers 1145 ✓ · workers 424 ✓ ·
+api 383 ✓ · web 214 ✓ · ai 245 ✓ · db 5 ✓, soit 3316 au total, 0 fail (+37 vs P2). Les
+nouveaux couvrent la normalisation (`1 299 €` = `$1,299` = `1299`, `32 %` = `32%`,
+`10k` = `10 000`), les faux positifs (« 3 plans and 4 add-ons » n'est jamais lu comme 3004 et
+n'est pas vérifié), la chaîne complète contrôle puis abstention (un `34%` inventé disparaît,
+l'insight soutenu reste), `skipped` qui ne bloque jamais, la politique par tâche (battle_card
+et digest hors P3), et la dead-letter (payload rejouable, raison distincte, jamais un
+`NonRetriable`).
+
+**Plans relus** : 025 TODO (alignement, rien de sa tuile implémenté) · 009 TODO (une erreur de
+CONFIG n'est pas masquée, `isConfigError` continue de sortir en `misconfigured` et aucun retry
+n'est ajouté dessus) · 006 TODO (logger inchangé) · 002 TODO, `packages/queue` n'a toujours
+pas de runner de test, donc l'invariant dead-letter est testé depuis `apps/workers` qui
+importe déjà `@outrival/queue` · 028 et le périmètre P1/P2 intouchés.
+
+**Reste côté humain** :
+- **Migration `0077` à appliquer** (deux colonnes additives), staging d'abord. Vérifier les
+  PENDING avant tout `db:migrate` sur un env partagé (`0075` et `0076` de P1/P2 peuvent encore
+  attendre).
+- Déployer les workers (l'abstention et la sémantique dead-letter sont worker-side) puis
+  l'API. `.env.worker` est lu au boot : REDÉMARRER.
+- `AI_PROVIDER_N_JSON_SCHEMA` : laisser OFF au déploiement, puis tester provider par provider
+  (Cerebras et Groq annoncent `json_schema` sur gpt-oss, et un 400 ne bascule pas).
+- Regarder la répartition de `grounding_status` sur la première semaine. Une part
+  d'`unverified` élevée veut dire une abstention trop agressive (donc des insights amputés),
+  pas forcément un modèle menteur : c'est ce chiffre qui décidera d'un ajustement du seuil de
+  significativité, pas une intuition. Un `skipped` élevé veut dire que les sources n'arrivent
+  pas jusqu'au contrôle.
+- P4 (preuve visible dans l'UI) et P5 (porte faithfulness, plan 017) NON entamées, la porte
+  reste éteinte.

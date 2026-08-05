@@ -4,19 +4,26 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowLeftIcon, CaretRightIcon, SpinnerIcon, PlayIcon } from "@/components/icons";
+import { ArrowLeftIcon, CaretRightIcon, LockIcon, SpinnerIcon, PlayIcon } from "@/components/icons";
 import {
   ALL_CONFIGURABLE_SOURCES,
   ATTENTION_OF,
   AUTOMATIC_SOURCES,
   CONFIGURABLE_SOURCES,
+  PLAN_LABELS,
   RIBBON_ATTENTIONS,
   SOURCE_GROUPS,
   SOURCE_GROUP_LABELS,
+  automaticFrequencyOptions,
+  automaticSourceFrequencies,
   buildCoverage,
+  minPlanForFeature,
+  planIncludesFeature,
   sourceState,
   validateMonitorUrl,
   type DetectedTargets,
+  type MonitorFrequency,
+  type Plan,
   type SourceAttention,
   type SourceState,
   type SourceType,
@@ -37,7 +44,7 @@ import { toastApiError } from "@/lib/error-helpers";
 import { useCompetitorScopeGuard } from "@/hooks/use-competitor-scope-guard";
 import CompetitorDetailLoading from "../detail-skeleton";
 import { scrapeActivity } from "../competitor-detail/shared";
-import { lastScanLabel, monitorStatus } from "../competitor-detail/monitor-status";
+import { lastScanLabel, monitorStatus, nextScanIn } from "../competitor-detail/monitor-status";
 import { useMonitorActions } from "../competitor-detail/use-monitor-actions";
 import { CustomSources } from "./custom-sources";
 import { SourceRow, SourceName } from "./source-row";
@@ -177,8 +184,9 @@ function CollapsedBlock({
  * reads as "no channel" forever. The monitor already exists (it ran and threw), so
  * this retargets it rather than enabling anything.
  *
- * Deliberately inline and tiny: this block is read-only by design, and one source
- * having an escape hatch must not turn it into a configuration surface.
+ * Deliberately inline and tiny: the only thing this block configures is a cadence,
+ * and one source having a URL escape hatch must not turn it into a second Sources
+ * page.
  */
 function PinChannel({
   monitor,
@@ -247,6 +255,80 @@ function PinChannel({
         </Button>
       </div>
       {error && <p className="mt-1.5 text-xs text-critical">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * How often we look at an always-on source. Same one-track segmented control as a
+ * configurable row's drawer, because it is the same setting — the difference is
+ * WHICH positions exist, and that is the source's own ceiling
+ * (automaticSourceFrequencies), not the tier's.
+ *
+ * Below pro the track still renders, locked: these rows were an unexplained "watched
+ * weekly" for every plan, and a padlock on the cadence says what the upgrade buys far
+ * better than a sentence in the block summary.
+ */
+function AlwaysOnCadence({
+  sourceType,
+  monitor,
+  plan,
+  monitoringPaused,
+  scraping,
+  queued,
+  onEdit,
+  onLocked,
+}: {
+  sourceType: SourceType;
+  monitor: Monitor;
+  plan: Plan;
+  monitoringPaused: boolean;
+  scraping: boolean;
+  queued: boolean;
+  onEdit: (id: string, patch: { frequency?: MonitorFrequency }) => Promise<void>;
+  onLocked: () => void;
+}) {
+  const segments = automaticSourceFrequencies(sourceType);
+  const allowed = automaticFrequencyOptions(plan, sourceType);
+  const locked = allowed.length === 0;
+  const next = nextScanIn(monitor, monitorStatus(monitor, scraping, queued), monitoringPaused);
+
+  return (
+    <div className="ml-auto flex items-center gap-2">
+      <div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-surface-2 p-0.5">
+        {segments.map((freq) => {
+          const selected = monitor.frequency === freq;
+          return (
+            <button
+              key={freq}
+              type="button"
+              aria-pressed={selected}
+              className={cn(
+                "inline-flex h-6 items-center gap-1 rounded px-2.5 text-xs capitalize",
+                "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                selected
+                  ? "bg-surface text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => (locked ? onLocked() : void onEdit(monitor.id, { frequency: freq }))}
+            >
+              {locked && selected && <LockIcon size={14} className="opacity-70" />}
+              {freq}
+            </button>
+          );
+        })}
+      </div>
+      {locked ? (
+        <span className="text-meta uppercase tracking-wide text-muted-foreground">
+          {PLAN_LABELS[minPlanForFeature("alwaysOnCadence")]}
+        </span>
+      ) : (
+        next && (
+          <span className="hidden text-xs tabular-nums text-muted-foreground sm:inline">
+            {next === "paused" ? next : `next ${next}`}
+          </span>
+        )
+      )}
     </div>
   );
 }
@@ -376,6 +458,13 @@ export function SourcesView({ id }: { id: string }) {
   );
 
   const automaticSummary = AUTOMATIC_SOURCES.map((s) => sourceShortLabel(s)).join(", ");
+  // These rows are seeded and free on every plan; from pro up each one also carries a
+  // cadence. The summary has to say which of the two is true here, because the block
+  // is collapsed and the padlock inside it is the only other place that says so.
+  const canTuneAlwaysOn = planIncludesFeature(plan, "alwaysOnCadence");
+  const automaticSummaryLine = canTuneAlwaysOn
+    ? `Watched for free, cadence yours to set: ${automaticSummary}, tech stack.`
+    : `Watched for free, nothing to configure: ${automaticSummary}, tech stack.`;
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -544,11 +633,7 @@ export function SourcesView({ id }: { id: string }) {
           }
         />
 
-        <CollapsedBlock
-          title="Always on"
-          summary={`Watched for free, nothing to configure: ${automaticSummary}, tech stack.`}
-          cta="Show"
-        >
+        <CollapsedBlock title="Always on" summary={automaticSummaryLine} cta="Show">
           <ul className="divide-y divide-border">
             {AUTOMATIC_SOURCES.map((sourceType) => {
               const monitor =
@@ -591,6 +676,25 @@ export function SourcesView({ id }: { id: string }) {
                   </span>
                   {sourceType === "youtube" && state === "not_available" && monitor && (
                     <PinChannel monitor={monitor} onEdit={editMonitor} />
+                  )}
+                  {/* Only where a schedule is a real thing to state. A source we've
+                      never run, one the site refuses, or one this competitor simply
+                      doesn't have has no next scan to move. */}
+                  {monitor && (state === "tracking" || state === "pending") && (
+                    <AlwaysOnCadence
+                      sourceType={sourceType}
+                      monitor={monitor}
+                      plan={plan}
+                      monitoringPaused={
+                        competitor.monitoringPaused || Boolean(competitor.pausedByPlan)
+                      }
+                      scraping={activityOf(monitor) === "scraping"}
+                      queued={activityOf(monitor) === "queued"}
+                      onEdit={editMonitor}
+                      onLocked={() =>
+                        setPaywall({ code: "plan_locked_feature", feature: "alwaysOnCadence", plan })
+                      }
+                    />
                   )}
                 </li>
               );

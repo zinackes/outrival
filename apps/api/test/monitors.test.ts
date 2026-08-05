@@ -137,6 +137,14 @@ beforeEach(async () => {
     },
     // Infra-only anchor — a manual toggle must refuse to flip it on.
     { id: "m-tech", competitorId: "c-a", sourceType: "tech_stack", isActive: false },
+    // Always-on sources on the PRO org: `news` tops out at realtime (one cheap RSS
+    // GET), `subdomains` at daily (crt.sh + up to 100 DNS probes per run). Seeded
+    // weekly like seedCompetitorMonitors does — the column default is `daily`, which
+    // is not what these rows are born with.
+    { id: "m-c-news", competitorId: "c-c", sourceType: "news", frequency: "weekly" },
+    { id: "m-c-subs", competitorId: "c-c", sourceType: "subdomains", frequency: "weekly" },
+    // The same kind of source on the FREE org — the cadence control is pro+.
+    { id: "m-e-auto", competitorId: "c-e", sourceType: "news", frequency: "weekly" },
     // Plan-gating fixtures on free org D. m-e-gated is a premium source (jobs, starter+)
     // frozen by the free plan; m-e-ungated is a free-tier source that must stay refreshable.
     { id: "m-e-gated", competitorId: "c-e", sourceType: "jobs", lastRunAt: new Date(Date.now() - 60_000) },
@@ -373,6 +381,57 @@ describe("PATCH url change clears the OLD page's failure state", () => {
     const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-d-broken"));
     expect(m?.frequency).toBe("weekly");
     expect(m?.nextRunAt).toBeNull();
+  });
+});
+
+// The always-on sources are seeded on every plan and carry no toggle, so a cadence is
+// the only thing they can hold. Two independent refusals guard it: the plan may have
+// no say at all (pro+), and even a plan that does cannot ask a given endpoint for more
+// than it tolerates.
+describe("PATCH frequency on an always-on source", () => {
+  test("pro moves an always-on source to daily → 200", async () => {
+    const res = await patchMonitor(C, "m-c-subs", { frequency: "daily" });
+    expect(res.status).toBe(200);
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-c-subs"));
+    expect(m?.frequency).toBe("daily");
+    // A tighter cadence takes effect now, not after the previously-scheduled run.
+    expect(m?.nextRunAt).not.toBeNull();
+  });
+
+  test("pro moves a same-day source to realtime → 200", async () => {
+    const res = await patchMonitor(C, "m-c-news", { frequency: "realtime" });
+    expect(res.status).toBe(200);
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-c-news"));
+    expect(m?.frequency).toBe("realtime");
+  });
+
+  test("realtime above the source's own ceiling → 400, whatever the plan", async () => {
+    const res = await patchMonitor(C, "m-c-subs", { frequency: "realtime" });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("frequency_above_source_max");
+    expect(body.source).toBe("subdomains");
+    expect(body.max).toBe("daily");
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-c-subs"));
+    expect(m?.frequency).toBe("weekly"); // untouched
+  });
+
+  test("below pro the control is locked → 403 plan_locked_feature", async () => {
+    // `weekly` is on the free plan and within the source ceiling, so the ONLY gate
+    // that can fire here is the feature one — which is the point.
+    const res = await patchMonitor(D, "m-e-auto", { frequency: "weekly" });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("plan_locked_feature");
+    expect(body.feature).toBe("alwaysOnCadence");
+    expect(body.plan).toBe("free");
+  });
+
+  test("a configurable source is untouched by the always-on ceiling", async () => {
+    const res = await patchMonitor(C, "m-c-ran", { frequency: "realtime" });
+    expect(res.status).toBe(200);
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-c-ran"));
+    expect(m?.frequency).toBe("realtime");
   });
 });
 

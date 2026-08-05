@@ -24,6 +24,7 @@ upgrade prompt.
 | `historyRetentionDays` | 7 | 30 | 365 | 1095 |
 | `features.battleCards` | ✓ | ✓ | ✓ | ✓ |
 | `features.api` | — | — | — | planned |
+| `features.alwaysOnCadence` | ✗ | ✗ | ✓ | ✓ |
 | `features.crmIntegrations` | ✗ | ✗ | ✗ | ✓ |
 | `features.fullMode` | ✗ | ✓ | ✓ | ✓ |
 | `features.multiUser` | — | — | — | planned |
@@ -85,6 +86,40 @@ Notes:
 Whether a free workspace ever *encounters* these gates (vs. hitting them silently)
 is a separate question from whether they're enforced. 📄 docs/monetization-first-encounter.md
 
+### Always-on source cadence (`features.alwaysOnCadence`, pro+)
+
+The always-on sources (`AUTOMATIC_SOURCES` — sitemap, news, subdomains, youtube,
+hackernews, wellknown) are seeded on **every** competitor whatever the plan, cost the
+user nothing, and carry no toggle and no URL. From pro up they also carry a cadence.
+
+Two independent gates on `PATCH /monitors/:id { frequency }`, and they refuse for
+different reasons — the second one is not about the plan at all:
+
+| Gate | Where | Error / status |
+|---|---|---|
+| plan may tune always-on cadence | `isFeatureAllowed(plan, "alwaysOnCadence")` → monitors.ts | `plan_locked_feature` 403 (`feature: "alwaysOnCadence"`) |
+| requested cadence within the tier | `isFrequencyAllowed` → monitors.ts | `plan_locked_frequency` 403 |
+| requested cadence within the **source's** ceiling | `automaticSourceMaxFrequency` → monitors.ts | `frequency_above_source_max` 400 |
+
+The feature gate runs **first**: a starter org asking for `daily` is entitled to daily,
+so `plan_locked_frequency` would name the wrong lock.
+
+The ceiling is a property of the **endpoint**, not of the tier — every one of these
+reads a third party we neither pay nor rate-negotiate with, so no plan buys past it
+(`AUTOMATIC_SOURCE_MAX_FREQUENCY` in `packages/shared/src/sources/catalog.ts`):
+
+| Source | Max | Why |
+|---|---|---|
+| `news`, `hackernews` | realtime (hourly) | One cheap GET each (Google News RSS, HN Algolia). A funding round or a Show HN is stale by tomorrow. |
+| `sitemap`, `wellknown`, `youtube` | daily | A sitemap walk, a handful of `/.well-known` GETs, a channel RSS — all move on release/upload cadence, so an hourly poll returns the same bytes. |
+| `subdomains` | daily | crt.sh (a donated public CT service) plus up to 100 DNS+HEAD liveness probes per run. CT propagation is measured in hours anyway. |
+
+Below pro nothing changes: the rows stay seeded and free, watched weekly
+(`seedFrequencyFor`), with the Sources page rendering the cadence track locked behind
+a Pro padlock. A **downgrade** never freezes an always-on source either — the stored
+frequency is untouched and `clampFrequencyToPlan` drops the reschedule to the tier
+cadence, so re-upgrading restores it on the next run.
+
 ## Deferred (TODO — value in the source of truth, enforcement later)
 
 - **`historyRetentionDays`** — no purge job yet. Needs a per-org cron purging PG
@@ -115,3 +150,10 @@ Until pushed, the discovery monthly cap reads 0/null → effectively unlimited (
 `packages/shared/src/constants/plans.test.ts` (`bun test`) — pins the grid per dimension
 × tier, business `maxCompetitors`=50 (finite), business `forcedRescansPerDay`=100, the env
 override, and `isWithinLimit` below/at/above the threshold.
+
+`packages/shared/src/sources/catalog.test.ts` — every always-on source states its cadence
+ceiling explicitly (the weekly fallback must never be reached by omission), hourly stays
+reserved to `news`/`hackernews`, and no plan is offered a cadence its own tier forbids.
+
+`apps/api/test/monitors.test.ts` — the three refusals above, plus the proof that a
+configurable source is untouched by the always-on ceiling.

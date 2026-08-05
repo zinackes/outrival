@@ -145,7 +145,7 @@ API gating, web UI, paywalls, et workers (send-alert).
 |-----------|-----------------|--------------------------------------------------------|---------------|-------------------------|----------|
 | free      | 2               | homepage, pricing, blog                                | weekly        | email                   | —        |
 | starter   | 5               | + jobs                                                 | daily         | + slack                 | —        |
-| pro       | 15              | + g2_reviews, capterra_reviews, docs                   | realtime      | + webhook               | battleCards, realtimeAlerts |
+| pro       | 15              | + g2_reviews, capterra_reviews, docs                   | realtime      | + webhook               | battleCards, realtimeAlerts, alwaysOnCadence |
 | business  | ∞               | + appstore_reviews                                     | realtime      | email + slack + webhook | + api, multiUser |
 
 Codes d'erreur structurés sur les routes gating : `plan_limit_competitors`,

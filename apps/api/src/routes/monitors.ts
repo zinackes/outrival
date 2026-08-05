@@ -9,6 +9,9 @@ import {
   computeNextRun,
   forcedRescansPerDay,
   planAllowsMonitorSource,
+  isAutomaticSource,
+  automaticSourceMaxFrequency,
+  frequencyWithin,
   type MonitorFrequency,
 } from "@outrival/shared";
 import { db } from "../lib/db";
@@ -18,6 +21,7 @@ import { ensureUserOrg } from "../lib/org";
 import { enqueueJob } from "../lib/queue";
 import {
   getOrgPlan,
+  isFeatureAllowed,
   isFrequencyAllowed,
   countUserForcedRescansToday,
   rescanLimitBody,
@@ -128,8 +132,34 @@ monitorsRouter.patch("/:id", async (c) => {
 
   if (parsed.data.frequency !== undefined) {
     const plan = await getOrgPlan(orgId);
+    // Always-on sources (sitemap, news, subdomains, youtube, hackernews, wellknown)
+    // are seeded on every plan and carry no toggle, so their cadence is the one thing
+    // they can hold — and it only opens from pro up. Checked BEFORE the tier frequency
+    // gate on purpose: a starter org asking for `daily` is entitled to daily, so
+    // answering "daily needs a higher plan" would name the wrong lock.
+    if (isAutomaticSource(monitor.sourceType) && !isFeatureAllowed(plan, "alwaysOnCadence")) {
+      return c.json({ error: "plan_locked_feature", feature: "alwaysOnCadence", plan }, 403);
+    }
     if (!isFrequencyAllowed(plan, parsed.data.frequency)) {
       return c.json({ error: "plan_locked_frequency", frequency: parsed.data.frequency, plan }, 403);
+    }
+    // The second refusal is not about the plan at all: every always-on source reads a
+    // third party we neither pay nor rate-negotiate with, so each carries its own
+    // ceiling. A donated CT log plus 100 DNS probes, or a channel RSS, answers an
+    // hourly poll with the same bytes — no tier buys that.
+    if (isAutomaticSource(monitor.sourceType)) {
+      const ceiling = automaticSourceMaxFrequency(monitor.sourceType);
+      if (!frequencyWithin(parsed.data.frequency, ceiling)) {
+        return c.json(
+          {
+            error: "frequency_above_source_max",
+            source: monitor.sourceType,
+            frequency: parsed.data.frequency,
+            max: ceiling,
+          },
+          400,
+        );
+      }
     }
     updates.frequency = parsed.data.frequency;
     // Frequency is the next-run cap; recompute so a tighter cadence takes effect

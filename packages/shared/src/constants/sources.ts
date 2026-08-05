@@ -237,6 +237,22 @@ export function supportsConditionalFetch(sourceType: SourceType): boolean {
 export const MONITOR_FREQUENCIES = ["realtime", "daily", "weekly"] as const;
 export type MonitorFrequency = typeof MONITOR_FREQUENCIES[number];
 
+/**
+ * Fastest → slowest, matching MONITOR_FREQUENCIES' own order. `realtime` is hourly,
+ * not instant — see computeNextRun, where it is a 1h base interval capped at 12h.
+ */
+const FREQUENCY_RANK: Record<MonitorFrequency, number> = { realtime: 0, daily: 1, weekly: 2 };
+
+/**
+ * Whether `freq` runs no more often than `ceiling` — the comparison a per-source
+ * cadence cap needs. Frequencies are an ordered scale, not a set, so a cap has to be
+ * expressed as "at most this fast" rather than an allow-list that drifts whenever the
+ * enum gains a value.
+ */
+export function frequencyWithin(freq: MonitorFrequency, ceiling: MonitorFrequency): boolean {
+  return FREQUENCY_RANK[freq] >= FREQUENCY_RANK[ceiling];
+}
+
 export const SIGNAL_SEVERITIES = ["low", "medium", "high", "critical"] as const;
 export type SignalSeverity = typeof SIGNAL_SEVERITIES[number];
 

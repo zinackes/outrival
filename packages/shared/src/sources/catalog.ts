@@ -1,4 +1,11 @@
-import { SOURCE_TYPES, type SourceType } from "../constants/sources";
+import {
+  MONITOR_FREQUENCIES,
+  SOURCE_TYPES,
+  frequencyWithin,
+  type MonitorFrequency,
+  type SourceType,
+} from "../constants/sources";
+import { planIncludesFeature, planIncludesFrequency, type Plan } from "../constants/plans";
 
 /**
  * Where every source_type lives in the product surface. The buckets below are a
@@ -91,9 +98,10 @@ export const ALL_SELF_CONFIGURABLE_SOURCES: readonly SourceType[] = SELF_SOURCE_
 );
 
 /**
- * Seeded automatically at competitor creation and scraped on their own cadence.
- * Shown READ-ONLY ("Monitored automatically — can't be turned off"): no toggle, no
- * frequency, no URL. They cost the user nothing and carry no decision.
+ * Seeded automatically at competitor creation, on every plan. No toggle and no URL:
+ * the user neither chooses nor pays for them, so the only thing they can ever carry
+ * is a cadence — and only from pro up (features.alwaysOnCadence). Below that they
+ * stay exactly what they were: watched weekly, nothing to decide.
  */
 export const AUTOMATIC_SOURCES: readonly SourceType[] = [
   "sitemap",
@@ -103,6 +111,65 @@ export const AUTOMATIC_SOURCES: readonly SourceType[] = [
   "hackernews",
   "wellknown",
 ];
+
+/**
+ * Fastest cadence an always-on source may be configured at, per source.
+ *
+ * The ceiling is a property of the ENDPOINT, not of the plan: every one of these
+ * reads a third party we neither pay nor rate-negotiate with, so "what pro is
+ * entitled to" and "what this host tolerates" are two different questions and only
+ * the second one belongs here. The plan answers the first (allowedFrequencies), and
+ * the offered set is the intersection — see automaticFrequencyOptions.
+ *
+ * `realtime` is hourly (computeNextRun), so the split is between the two sources
+ * that carry a same-day event and the four that cannot produce one:
+ *   news / hackernews  — one cheap GET each (Google News RSS, HN Algolia). A funding
+ *     round or a Show HN is worth hours, not a day: both are stale by tomorrow.
+ *   sitemap / wellknown / youtube — a sitemap walk, a handful of /.well-known GETs,
+ *     a channel RSS. All three move on release or upload cadence, so an hourly poll
+ *     multiplies the fetch and returns the same bytes.
+ *   subdomains — the one with a real third-party cost: crt.sh (a donated public CT
+ *     service) plus up to 100 DNS+HEAD liveness probes per run. CT propagation is
+ *     measured in hours anyway, so hourly would spend that budget for nothing.
+ */
+export const AUTOMATIC_SOURCE_MAX_FREQUENCY: Partial<Record<SourceType, MonitorFrequency>> = {
+  news: "realtime",
+  hackernews: "realtime",
+  sitemap: "daily",
+  wellknown: "daily",
+  youtube: "daily",
+  subdomains: "daily",
+};
+
+/**
+ * The cadence ceiling for `source`. Weekly for anything that is not an always-on
+ * source, which is the safe answer rather than a throw: the callers are a plan gate
+ * and a UI, and neither should widen when the catalog gains a value nobody placed.
+ */
+export function automaticSourceMaxFrequency(source: SourceType): MonitorFrequency {
+  return AUTOMATIC_SOURCE_MAX_FREQUENCY[source] ?? "weekly";
+}
+
+/**
+ * Every cadence always-on `source` itself offers, fastest first — what the Sources
+ * page draws as segments, whatever the plan. Plan-independent on purpose: a free
+ * workspace sees the same two or three positions, locked, which is the upsell.
+ */
+export function automaticSourceFrequencies(source: SourceType): MonitorFrequency[] {
+  if (!isAutomaticSource(source)) return [];
+  const ceiling = automaticSourceMaxFrequency(source);
+  return MONITOR_FREQUENCIES.filter((f) => frequencyWithin(f, ceiling));
+}
+
+/**
+ * The cadences `plan` may actually pick for always-on `source`, fastest first —
+ * empty when the plan has no say at all. The empty array is what the Sources page
+ * renders locked, and what the API refuses.
+ */
+export function automaticFrequencyOptions(plan: Plan, source: SourceType): MonitorFrequency[] {
+  if (!planIncludesFeature(plan, "alwaysOnCadence")) return [];
+  return automaticSourceFrequencies(source).filter((f) => planIncludesFrequency(plan, f));
+}
 
 /**
  * Infra-only anchors: never scraped, never scheduled, isActive=false. They exist

@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { productPricingPositionQuery } from "@/lib/queries";
 import { competitorColorVars, COMP_ACCENT } from "@/lib/competitor-color";
+import { productColorVars } from "@/lib/product-color";
 import { CompAvatar } from "@/components/dashboard/comp-avatar";
+import { ProductTile } from "@/components/dashboard/product-tile";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -25,8 +27,28 @@ const money = (price: number, currency: string) => {
  * our method. What cannot reach that axis is named for what it is: a rival that
  * publishes nothing reads as quote-only, one that publishes on another basis says
  * so, and neither is silently counted as the other.
+ *
+ * Our own row wears the product's identity — its favicon and its name — rather
+ * than the label "Your product": the rivals around it are named and marked, so
+ * the one line that wasn't read as a placeholder next to them. The identity comes
+ * down as props because the caller already holds it; the pricing-position response
+ * carries prices, not names.
  */
-export function PriceLadder({ productId }: { productId: string }) {
+export function PriceLadder({
+  productId,
+  name,
+  url,
+  repoUrl,
+  position,
+}: {
+  productId: string;
+  name: string;
+  url: string | null;
+  repoUrl: string | null;
+  /** Display position of the product row, which its colour is derived from.
+   * Absent on a cold ["products"] cache — the row then falls back to the accent. */
+  position?: number;
+}) {
   const q = useQuery(productPricingPositionQuery(productId));
   const data = q.data;
 
@@ -54,11 +76,11 @@ export function PriceLadder({ productId }: { productId: string }) {
       ? [
           {
             key: "self",
-            name: "Your product",
+            name,
             monthly: data.mineMonthly,
             period: data.mine.billingPeriod,
             self: true,
-            url: null,
+            url,
             color: null,
           },
         ]
@@ -82,6 +104,11 @@ export function PriceLadder({ productId }: { productId: string }) {
       ? Math.round(((data.mineMonthly - data.median) / data.median) * 100)
       : null;
   const currency = data.currency ?? "USD";
+  // The product's own hue — the one its tile is ringed with on this very page's
+  // header and in the sidebar switcher — so the mark and the underline agree.
+  // No row in cache means no position to derive it from: fall back to the accent
+  // rather than to a palette colour that would contradict the tile.
+  const selfVars = position !== undefined ? productColorVars(position) : null;
   // What the axis could not hold, said in the competitor's own terms rather than
   // rolled into one number the compare page would contradict. Only two things put
   // a published price off a monthly axis: another currency, or a one-time price.
@@ -110,16 +137,34 @@ export function PriceLadder({ productId }: { productId: string }) {
           <div key={r.key} className="grid grid-cols-[minmax(7rem,9rem)_minmax(0,1fr)_4.5rem] items-center gap-3">
             <span className="flex min-w-0 items-center gap-2 text-dense">
               {r.self ? (
-                <span aria-hidden className="size-2 shrink-0 rounded-full bg-primary" />
+                <ProductTile
+                  name={r.name}
+                  url={r.url}
+                  repoUrl={repoUrl}
+                  position={position}
+                  size={18}
+                  ring={selfVars !== null}
+                />
               ) : (
                 <CompAvatar name={r.name} url={r.url} size={18} />
               )}
               <span
-                className={cn("truncate", r.self && "font-semibold")}
+                className={cn(
+                  "truncate",
+                  // The name keeps the foreground (a rival's is tinted, ours is the
+                  // one being read against them); the colour lands on the rule under
+                  // it, which is the row's identity without costing it contrast.
+                  r.self && "font-semibold underline decoration-2 underline-offset-4",
+                )}
                 style={
-                  !r.self && r.color
-                    ? { ...competitorColorVars(r.color), color: COMP_ACCENT }
-                    : undefined
+                  r.self
+                    ? {
+                        ...(selfVars ?? {}),
+                        textDecorationColor: selfVars ? COMP_ACCENT : "var(--primary)",
+                      }
+                    : r.color
+                      ? { ...competitorColorVars(r.color), color: COMP_ACCENT }
+                      : undefined
                 }
               >
                 {r.name}

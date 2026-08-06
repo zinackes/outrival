@@ -7,3 +7,8 @@ apps/api/.env.local
 apps/web/.env.local
 apps/workers/.env
 apps/workers/.env.local
+
+# Allowlist locale des commandes réécrites par le hook RTK. Gitignorée globalement
+# (~/.config/git/ignore), donc absente d'un worktree neuf : sans elle une session y
+# redemande l'approbation de chaque `rtk read` / `rtk grep`.
+.claude/settings.local.json

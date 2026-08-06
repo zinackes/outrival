@@ -22,4 +22,5 @@ jobs:
       # can't fail every PR. Revisit once pnpm defaults to the bulk advisory endpoint.
       - run: pnpm audit --prod --audit-level=high || true
       - run: pnpm typecheck
+      - run: pnpm check:lint
       - run: pnpm test

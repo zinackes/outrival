@@ -1,5 +1,5 @@
-import { emailButton, emailShell } from "./shell";
-import { e, type EmailRole } from "./theme";
+import { emailButton, emailSectionHead, emailShell, type EmailSeverity } from "./shell";
+import { e, t, type EmailRole } from "./theme";
 import { escapeHtml } from "./escape-html";
 
 // Structural shape the digest email needs. Kept local to @outrival/shared (rather
@@ -23,7 +23,9 @@ export interface DigestEmailData {
 }
 
 // The urgency hue is a themed role, not a literal: the dark-mode 400/500 values
-// don't clear 4.5:1 on the light canvas, so each side comes from theme.ts.
+// don't clear 4.5:1 on the light canvas, so each side comes from theme.ts. The
+// roles are the product's own severity steps — an urgency band and a signal
+// severity are the same scale, and used to be two.
 //
 // Labels mirror URGENCY_META in apps/web/src/lib/digest-shape.ts (shared can't
 // import from an app). A brief tells you what to do about a week, so the buckets
@@ -31,12 +33,42 @@ export interface DigestEmailData {
 // already carries the band and emoji-as-UI reads as a template, not a briefing.
 const URGENCY_META: Record<
   "action_required" | "watch" | "fyi",
-  { label: string; role: EmailRole }
+  { label: string; role: EmailRole; severity: EmailSeverity }
 > = {
-  action_required: { label: "Needs an answer", role: "critical" },
-  watch: { label: "Worth watching", role: "watch" },
-  fyi: { label: "Noted", role: "muted" },
+  action_required: { label: "Needs an answer", role: "critical", severity: "critical" },
+  watch: { label: "Worth watching", role: "medium", severity: "medium" },
+  fyi: { label: "Noted", role: "muted", severity: "low" },
 };
+
+// One signal, boxless: a hairline above every row but the first, instead of a
+// bordered card per item. Three groups of identical cards gave the week no shape
+// — "Needs an answer" and "Noted" rendered the same weight (DESIGN.md §5).
+function signalRow(
+  s: DigestEmailData["sections"][number],
+  isFirst: boolean,
+): string {
+  const divider = isFirst
+    ? ""
+    : "margin-top:14px;padding-top:14px;border-top-width:1px;border-top-style:solid;";
+  return `
+  <div ${e("rule", divider)}>
+    <div ${e("muted", t("dense", "margin-bottom:5px;"))}>${escapeHtml(s.competitor)} · ${escapeHtml(s.category.replace(/_/g, " "))}</div>
+    <div ${e("text", t("lead", "margin-bottom:6px;"))}>${escapeHtml(s.insight)}</div>
+    ${s.so_what ? `<div ${e("muted", t("body"))}>→ ${escapeHtml(s.so_what)}</div>` : ""}
+  </div>`;
+}
+
+// Trends and watched questions share one shape: a bold line over a muted one.
+function pairRow(title: string, detail: string, isFirst: boolean): string {
+  const divider = isFirst
+    ? ""
+    : "margin-top:14px;padding-top:14px;border-top-width:1px;border-top-style:solid;";
+  return `
+  <div ${e("rule", divider)}>
+    <div ${e("text", t("body", "font-weight:600;margin-bottom:4px;"))}>${escapeHtml(title)}</div>
+    <div ${e("muted", t("body"))}>${escapeHtml(detail)}</div>
+  </div>`;
+}
 
 export function renderDigestEmail(
   digest: DigestEmailData,
@@ -57,19 +89,10 @@ export function renderDigestEmail(
       const items = digest.sections.filter((s) => s.urgency === urgency);
       if (items.length === 0) return "";
       const meta = URGENCY_META[urgency];
-      const rows = items
-        .map(
-          (s) => `
-  <div ${e("card", "border-radius:6px;padding:16px;margin-bottom:12px;")}>
-    <div ${e("muted", "font-size:13px;margin-bottom:6px;")}>${escapeHtml(s.competitor)} · ${escapeHtml(s.category.replace(/_/g, " "))}</div>
-    <div ${e("text", "font-size:15px;line-height:1.5;margin-bottom:8px;")}>${escapeHtml(s.insight)}</div>
-    ${s.so_what ? `<div ${e("muted", "font-size:14px;line-height:1.5;")}>→ ${escapeHtml(s.so_what)}</div>` : ""}
-  </div>`,
-        )
-        .join("");
+      const rows = items.map((s, i) => signalRow(s, i === 0)).join("");
       return `
-<div style="margin-bottom:24px;">
-  <h3 ${e(meta.role, "font-size:15px;margin:0 0 12px;")}>${meta.label} (${items.length})</h3>
+<div style="margin-bottom:28px;">
+  ${emailSectionHead(`${meta.label} (${items.length})`, meta.role, meta.severity)}
   ${rows}
 </div>`;
     })
@@ -79,10 +102,7 @@ export function renderDigestEmail(
   // email opens on that sentence instead of on a "Temperature" label.
   const [headline, ...rest] = digest.tldr;
   const supportingHtml = rest
-    .map(
-      (t) =>
-        `<li style="margin-bottom:6px;line-height:1.5;">${escapeHtml(t)}</li>`,
-    )
+    .map((line) => `<li style="margin-bottom:8px;">${escapeHtml(line)}</li>`)
     .join("");
   const moves = digest.sections.length;
   const needAnswer = digest.sections.filter((s) => s.urgency === "action_required").length;
@@ -98,17 +118,9 @@ export function renderDigestEmail(
     sectoral.length === 0
       ? ""
       : `
-<div ${e("rule", "margin-top:8px;margin-bottom:24px;border-top-width:1px;border-top-style:solid;padding-top:20px;")}>
-  <h3 ${e("text", "font-size:15px;margin:0 0 12px;")}>Sector trends</h3>
-  ${sectoral
-    .map(
-      (t) => `
-  <div ${e("card", "border-radius:6px;padding:16px;margin-bottom:12px;")}>
-    <div ${e("text", "font-size:14px;font-weight:600;margin-bottom:6px;")}>${escapeHtml(t.title)}</div>
-    <div ${e("muted", "font-size:13px;")}>${escapeHtml(t.insight)}</div>
-  </div>`,
-    )
-    .join("")}
+<div style="margin-bottom:28px;">
+  ${emailSectionHead("Sector trends", "text")}
+  ${sectoral.map((s, i) => pairRow(s.title, s.insight, i === 0)).join("")}
 </div>`;
 
   // Watched questions: standing queries whose answer materially moved this week.
@@ -117,59 +129,50 @@ export function renderDigestEmail(
     watched.length === 0
       ? ""
       : `
-<div ${e("rule", "margin-top:8px;margin-bottom:24px;border-top-width:1px;border-top-style:solid;padding-top:20px;")}>
-  <h3 ${e("text", "font-size:15px;margin:0 0 12px;")}>Your watched questions</h3>
-  ${watched
-    .map(
-      (w) => `
-  <div ${e("card", "border-radius:6px;padding:16px;margin-bottom:12px;")}>
-    <div ${e("text", "font-size:14px;font-weight:600;margin-bottom:6px;")}>${escapeHtml(w.question)}</div>
-    <div ${e("muted", "font-size:13px;")}>${escapeHtml(w.changeSummary)}</div>
-  </div>`,
-    )
-    .join("")}
+<div style="margin-bottom:28px;">
+  ${emailSectionHead("Your watched questions", "text")}
+  ${watched.map((w, i) => pairRow(w.question, w.changeSummary, i === 0)).join("")}
 </div>`;
 
   return emailShell(
     // The wordmark now lives in the shared shell's brand header, so the digest
     // opens straight on its subtitle to avoid a duplicate "Outrival".
-    `<div style="margin-bottom:20px;">
-        <div ${e("muted", "font-size:13px;")}>${escapeHtml(subtitle)} · ${weekStart} to ${weekEnd}</div>
-      </div>
+    `<div ${e("muted", t("meta", "margin-bottom:10px;"))}>${escapeHtml(subtitle)} · ${weekStart} to ${weekEnd}</div>
       ${
         headline
-          ? `<h1 ${e("text", "font-size:21px;line-height:1.3;font-weight:600;margin:0 0 16px;")}>${escapeHtml(headline)}</h1>`
+          ? `<h1 ${e("text", t("display", "margin:0 0 14px;"))}>${escapeHtml(headline)}</h1>`
           : ""
       }
       ${
         supportingHtml
-          ? `<ul ${e("muted", "margin:0 0 16px;padding-left:18px;font-size:15px;")}>${supportingHtml}</ul>`
+          ? `<ul ${e("muted", t("body", "margin:0 0 20px;padding-left:18px;"))}>${supportingHtml}</ul>`
           : ""
       }
-      <div ${e(["rule", "muted"], "border-top-width:1px;border-top-style:solid;border-bottom-width:1px;border-bottom-style:solid;padding:10px 0;margin-bottom:24px;font-size:13px;")}>${escapeHtml(facts)}</div>
+      <div ${e(["panel", "muted"], t("dense", "border-radius:6px;padding:11px 14px;margin-bottom:28px;font-variant-numeric:tabular-nums;"))}>${escapeHtml(facts)}</div>
       ${sectionsHtml}
       ${sectoralHtml}
       ${watchedHtml}
       ${
         readUrl
-          ? `<div style="margin-top:28px;text-align:center;">${emailButton(readUrl, "Open the full briefing")}</div>`
+          ? `<div style="margin-top:4px;margin-bottom:4px;">${emailButton(readUrl, "Open the full briefing")}</div>`
           : ""
       }
       ${
         feedbackLinks
-          ? `<div ${e(["rule", "muted"], "margin-top:28px;border-top-width:1px;border-top-style:solid;padding-top:18px;text-align:center;font-size:13px;")}>
+          ? `<div ${e(["rule", "muted"], t("dense", "margin-top:28px;border-top-width:1px;border-top-style:solid;padding-top:18px;"))}>
         Was this briefing useful?
-        <a href="${feedbackLinks.useful}" ${e("ok", "text-decoration:none;margin:0 8px;")}>👍 Yes</a>
-        <a href="${feedbackLinks.notUseful}" ${e("critical", "text-decoration:none;margin:0 8px;")}>👎 No</a>
+        <a href="${feedbackLinks.useful}" ${e(["rule", "positive"], "display:inline-block;text-decoration:none;font-weight:600;padding:4px 12px;margin-left:8px;border-radius:4px;border-width:1px;border-style:solid;")}>Yes</a>
+        <a href="${feedbackLinks.notUseful}" ${e(["rule", "muted"], "display:inline-block;text-decoration:none;font-weight:600;padding:4px 12px;margin-left:6px;border-radius:4px;border-width:1px;border-style:solid;")}>No</a>
       </div>`
           : ""
       }
-      <div ${e("faint", "margin-top:32px;font-size:11px;text-align:center;")}>Outrival · Automated competitive intelligence${
+      <div ${e("faint", t("meta", "margin-top:32px;letter-spacing:normal;"))}>Outrival · Automated competitive intelligence${
         unsubscribeUrl
           ? ` · <a href="${unsubscribeUrl}" ${e("faint", "text-decoration:underline;")}>Unsubscribe</a>`
           : ""
       }</div>`,
     640,
+    headline,
   );
 }
 
@@ -202,23 +205,20 @@ export function renderAllQuietDigest({
   const copy = `We checked ${pages} ${pageWord}${checksClause} this week. No significant moves. Your market was calm.`;
 
   return emailShell(
-    `<div style="margin-bottom:24px;">
-        <div ${e("muted", "font-size:12px;")}>Your weekly competitive briefing · ${weekStart} → ${weekEnd}</div>
-      </div>
+    // The one email that IS a single statement keeps its card: there is one
+    // object to look at, so a panel reads better than a boxless run of rows.
+    `<div ${e("muted", t("meta", "margin-bottom:10px;"))}>Your weekly competitive briefing · ${weekStart} → ${weekEnd}</div>
       <div ${e("card", "border-radius:6px;padding:20px;margin-bottom:24px;")}>
-        <div ${e("muted", "font-size:13px;margin-bottom:8px;")}>All quiet</div>
-        <div ${e("text", "font-size:15px;line-height:1.5;")}>${escapeHtml(copy)}</div>
+        <div style="margin-bottom:10px;"><span ${e("dotPositive", "display:inline-block;width:8px;height:8px;border-radius:2px;vertical-align:middle;margin-right:8px;")}></span><span ${e("positive", t("heading", "vertical-align:middle;"))}>All quiet</span></div>
+        <div ${e("text", t("lead"))}>${escapeHtml(copy)}</div>
       </div>
-      ${
-        readUrl
-          ? `<div style="margin-top:28px;text-align:center;">${emailButton(readUrl, "See what we checked")}</div>`
-          : ""
-      }
-      <div ${e("faint", "margin-top:32px;font-size:11px;text-align:center;")}>Outrival · Automated competitive intelligence${
+      ${readUrl ? `<div style="margin-top:4px;">${emailButton(readUrl, "See what we checked")}</div>` : ""}
+      <div ${e("faint", t("meta", "margin-top:32px;letter-spacing:normal;"))}>Outrival · Automated competitive intelligence${
         unsubscribeUrl
           ? ` · <a href="${unsubscribeUrl}" ${e("faint", "text-decoration:underline;")}>Unsubscribe</a>`
           : ""
       }</div>`,
     640,
+    copy,
   );
 }

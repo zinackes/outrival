@@ -16,7 +16,7 @@ import { sendSlackMessage } from "../lib/slack";
 import { pushWebhook } from "../lib/crm-webhook";
 import { sendEmail, ALERT_FROM } from "../lib/resend";
 import { escapeHtml } from "../lib/escape-html";
-import { emailShell, e } from "../lib/email-shell";
+import { emailShell, e, t, severityDot, type EmailSeverity } from "../lib/email-shell";
 
 const InputSchema = z.object({
   signalId: z.string(),
@@ -36,6 +36,15 @@ const SEVERITY_LABEL: Record<string, string> = {
   high: "High",
   medium: "Medium",
   low: "Low",
+};
+
+// Same scale, as an email theme role — the alert body colours its severity band
+// from the product's five-step scale instead of rendering it as neutral text.
+const SEVERITY_ROLE: Record<string, EmailSeverity> = {
+  critical: "critical",
+  high: "high",
+  medium: "medium",
+  low: "low",
 };
 
 // Runtime-neutral job body: shared verbatim by the pg-boss handler and the thin
@@ -171,12 +180,18 @@ export async function runSendAlert(payload: z.input<typeof InputSchema>) {
 
     if (org.digestEmail && !sentChannels.has("email")) {
       try {
+        // The severity band leads, marked AND coloured (DESIGN.md §2 — never hue
+        // alone). The eyebrow keeps its wording; it just stops being a tracked
+        // all-caps line, which the design system rejects as a section header.
+        const sevRole = SEVERITY_ROLE[signal.severity] ?? "low";
         const html = emailShell(
-          `<p ${e("muted", "font-size:12px;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px;")}>${signal.severity.toUpperCase()} · ${signal.category}</p>
-  <h2 ${e("text", "margin:0 0 12px;")}>${escapeHtml(competitor.name)}</h2>
-  <p ${e("text", "margin:0 0 12px;")}>${escapeHtml(signal.insight)}</p>
-  ${signal.soWhat ? `<p ${e("accent", "margin:0 0 12px;")}>→ ${escapeHtml(signal.soWhat)}</p>` : ""}
-  ${signal.recommendedAction ? `<p ${e("muted", "margin:0;")}><strong>Action:</strong> ${escapeHtml(signal.recommendedAction)}</p>` : ""}`,
+          `<div style="margin:0 0 10px;">${severityDot(sevRole)}<span ${e(sevRole, t("meta", "vertical-align:middle;"))}>${signal.severity.toUpperCase()} · ${signal.category}</span></div>
+  <h1 ${e("text", t("title", "margin:0 0 14px;"))}>${escapeHtml(competitor.name)}</h1>
+  <p ${e("text", t("lead", "margin:0 0 12px;"))}>${escapeHtml(signal.insight)}</p>
+  ${signal.soWhat ? `<p ${e("muted", t("body", "margin:0 0 12px;"))}>→ ${escapeHtml(signal.soWhat)}</p>` : ""}
+  ${signal.recommendedAction ? `<p ${e("muted", t("body", "margin:0;"))}><strong ${e("text")}>Action:</strong> ${escapeHtml(signal.recommendedAction)}</p>` : ""}`,
+          520,
+          signal.insight,
         );
         await sendEmail({
           from: ALERT_FROM,

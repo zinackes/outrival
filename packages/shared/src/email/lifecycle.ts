@@ -1,5 +1,5 @@
 import { emailButton, emailShell } from "./shell";
-import { e } from "./theme";
+import { e, t } from "./theme";
 import { escapeHtml } from "./escape-html";
 
 // Behavioral lifecycle emails (Lever 5, docs/post-onboarding-activation.md). Pure
@@ -14,24 +14,24 @@ export function renderWelcomeEmail(input: {
   const count = input.competitorNames.length;
   const list =
     count > 0
-      ? `<ul ${e("muted", "margin:0 0 20px;padding-left:18px;font-size:14px;line-height:1.7;")}>${input.competitorNames
+      ? `<ul ${e("muted", t("body", "margin:0 0 24px;padding-left:18px;"))}>${input.competitorNames
           .slice(0, 12)
-          .map((n) => `<li>${escapeHtml(n)}</li>`)
+          .map((n) => `<li style="margin-bottom:6px;">${escapeHtml(n)}</li>`)
           .join("")}</ul>`
       : "";
   const inner = `
-<div ${e("text", "font-size:20px;font-weight:600;margin-bottom:12px;")}>You're all set.</div>
-<div ${e("muted", "font-size:14px;line-height:1.6;margin-bottom:16px;")}>
+<h1 ${e("text", t("title", "margin:0 0 12px;"))}>You're all set.</h1>
+<div ${e("muted", t("body", "margin-bottom:20px;"))}>
   We're now tracking ${count} competitor${count === 1 ? "" : "s"} and have captured where they
   stand today — pricing, hiring, reviews and more. From here, we watch for changes and email
   you the moment something moves.
 </div>
 ${list}
 ${emailButton(input.dashboardUrl, "Open your dashboard")}
-<div ${e("faint", "font-size:12px;margin-top:28px;")}>You'll only hear from us when it matters.</div>`;
+<div ${e("faint", t("dense", "margin-top:28px;"))}>You'll only hear from us when it matters.</div>`;
   return {
     subject: "You're all set — here's your competitive starting position",
-    html: emailShell(inner),
+    html: emailShell(inner, 520, "We're watching your competitors from today."),
   };
 }
 
@@ -44,19 +44,21 @@ export function renderCelebrationEmail(input: {
   soWhat?: string | null;
   signalUrl: string;
 }): { subject: string; html: string } {
+  // The one change IS the email, so it keeps a card: a single object to look at,
+  // where the digest's boxless run of rows would have nothing to separate.
   const inner = `
-<div ${e("text", "font-size:20px;font-weight:600;margin-bottom:6px;")}>Your monitoring just paid off.</div>
-<div ${e("muted", "font-size:13px;margin-bottom:18px;")}>We caught the first change since we started watching.</div>
-<div ${e("card", "border-radius:6px;padding:16px;margin-bottom:20px;")}>
-  <div ${e("muted", "font-size:11px;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;")}>${escapeHtml(input.competitorName)} · ${escapeHtml(input.category)}</div>
-  <div ${e("text", "font-size:14px;margin-bottom:8px;")}>${escapeHtml(input.insight)}</div>
-  ${input.soWhat ? `<div ${e("watch", "font-size:13px;")}>→ ${escapeHtml(input.soWhat)}</div>` : ""}
+<h1 ${e("text", t("title", "margin:0 0 6px;"))}>Your monitoring just paid off.</h1>
+<div ${e("muted", t("body", "margin-bottom:20px;"))}>We caught the first change since we started watching.</div>
+<div ${e("card", "border-radius:6px;padding:18px;margin-bottom:24px;")}>
+  <div ${e("muted", t("dense", "margin-bottom:8px;"))}>${escapeHtml(input.competitorName)} · ${escapeHtml(input.category)}</div>
+  <div ${e("text", t("lead", "margin-bottom:8px;"))}>${escapeHtml(input.insight)}</div>
+  ${input.soWhat ? `<div ${e("muted", t("body"))}>→ ${escapeHtml(input.soWhat)}</div>` : ""}
 </div>
 ${emailButton(input.signalUrl, "See what changed")}
-<div ${e("faint", "font-size:12px;margin-top:28px;")}>This is the first of many. We'll keep watching.</div>`;
+<div ${e("faint", t("dense", "margin-top:28px;"))}>This is the first of many. We'll keep watching.</div>`;
   return {
     subject: `Your monitoring just paid off — ${input.competitorName} moved`,
-    html: emailShell(inner),
+    html: emailShell(inner, 520, input.insight),
   };
 }
 
@@ -70,28 +72,29 @@ export function renderMonthlyRecapEmail(input: {
   biggestInsight?: string | null;
   recapUrl: string;
 }): { subject: string; html: string } {
+  // Figures the product measured: sans + tabular-nums, never mono (DESIGN.md §3).
   const stat = (n: number, label: string) =>
-    `<td style="padding:0 8px;"><div ${e("text", "font-size:30px;font-weight:700;line-height:1;")}>${n}</div><div ${e("muted", "font-size:11px;text-transform:uppercase;letter-spacing:0.05em;margin-top:6px;")}>${escapeHtml(label)}</div></td>`;
+    `<td width="50%" ${e("panel", "border-radius:6px;padding:16px 18px;")}><div ${e("text", t("stat"))}>${n}</div><div ${e("muted", t("meta", "margin-top:8px;"))}>${escapeHtml(label)}</div></td>`;
   const inner = `
-<div ${e("muted", "font-size:11px;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;")}>${escapeHtml(input.monthLabel)}</div>
-<div ${e("text", "font-size:20px;font-weight:600;margin-bottom:18px;")}>Your competitive recap is ready.</div>
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;text-align:center;">
+<div ${e("muted", t("meta", "margin-bottom:8px;"))}>${escapeHtml(input.monthLabel)}</div>
+<h1 ${e("text", t("title", "margin:0 0 20px;"))}>Your competitive recap is ready.</h1>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 22px;border-collapse:separate;border-spacing:10px 0;">
   <tr>${stat(input.totalMoves, "moves caught")}${stat(input.competitorsTracked, "competitors")}</tr>
 </table>
 ${
   input.busiestName
-    ? `<div ${e("muted", "font-size:14px;line-height:1.6;margin-bottom:8px;")}>Your most active rival was <strong ${e("text")}>${escapeHtml(input.busiestName)}</strong>.</div>`
+    ? `<div ${e("muted", t("body", "margin-bottom:10px;"))}>Your most active rival was <strong ${e("text")}>${escapeHtml(input.busiestName)}</strong>.</div>`
     : ""
 }
 ${
   input.biggestInsight
-    ? `<div ${e(["card", "text"], "border-radius:6px;padding:14px;margin-bottom:20px;font-size:13px;")}>Biggest move: ${escapeHtml(input.biggestInsight)}</div>`
+    ? `<div ${e(["card", "text"], t("body", "border-radius:6px;padding:14px 16px;margin-bottom:24px;"))}>Biggest move: ${escapeHtml(input.biggestInsight)}</div>`
     : ""
 }
 ${emailButton(input.recapUrl, "See your full recap →")}
-<div ${e("faint", "font-size:12px;margin-top:28px;")}>A quick look back — tap through your month.</div>`;
+<div ${e("faint", t("dense", "margin-top:28px;"))}>A quick look back — tap through your month.</div>`;
   return {
     subject: `Your ${input.monthLabel} competitive recap`,
-    html: emailShell(inner),
+    html: emailShell(inner, 520, `${input.totalMoves} moves across ${input.competitorsTracked} competitors.`),
   };
 }

@@ -9,9 +9,9 @@ import {
   notifications,
   organizations,
 } from "@outrival/db";
-import { sendSlackMessage } from "@outrival/shared";
+import { sendSlackMessage, emailButton } from "@outrival/shared";
 import { decideDispatch } from "../lib/notification-dispatcher";
-import { emailShell, e } from "../lib/email-shell";
+import { emailShell, e, t } from "../lib/email-shell";
 import { sendEmail, ALERT_FROM } from "../lib/resend";
 
 // Patch-27 — daily sweep for monitors that have produced nothing for a long time.
@@ -203,8 +203,10 @@ async function notifyOrg(orgId: string, list: SilentMonitor[]): Promise<void> {
 
 function silentEmailHtml(title: string, body: string, href: string): string {
   return emailShell(
-    `<h1 ${e("text", "font-size:18px;margin:0 0 12px;")}>${title}</h1>
-      <p ${e("muted", "font-size:14px;line-height:1.6;margin:0 0 24px;")}>${body}</p>
-      <a href="${href}" ${e("btn", "display:inline-block;font-weight:600;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:8px;")}>Review the source</a>`,
+    `<h1 ${e("text", t("title", "margin:0 0 12px;"))}>${title}</h1>
+      <p ${e("muted", t("body", "margin:0 0 24px;"))}>${body}</p>
+      ${emailButton(href, "Review the source")}`,
+    520,
+    body,
   );
 }

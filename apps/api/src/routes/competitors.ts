@@ -24,6 +24,7 @@ import {
 } from "@outrival/queue";
 import {
   competitors,
+  competitorCandidates,
   monitors,
   changes,
   signals,
@@ -83,6 +84,7 @@ import {
   CUSTOM_MONITOR_HINTS,
   customMonitorLimit,
   validatePublicUrl,
+  normalizeDomain,
   aggregateFreshness,
   deriveAnalysisStatus,
   computeNextScanAt,
@@ -153,6 +155,76 @@ async function assertOwnedCompetitor(competitorId: string, orgId: string) {
       eq(competitors.orgId, orgId),
       isNull(competitors.deletedAt),
     ),
+  });
+}
+
+/**
+ * Soft-delete competitors and release the discovery candidates that produced them.
+ * The single DELETE and the bulk sweep both go through here so the two writes can
+ * never drift apart.
+ *
+ * A candidate left at `added` pointing at a deleted competitor is what made discovery
+ * blind: detect-candidates dedupes against every candidate of the product REGARDLESS
+ * of status, so the company could never be suggested again — permanently, since no
+ * retention pass ever collects a candidate row. It goes back to `dismissed` rather
+ * than `new` (deleting a competitor means "not relevant", and the review queue must
+ * not re-propose it next week) with its pointer cleared, so the row survives as the
+ * record of what discovery proposed and /candidates/restore is the way back.
+ */
+async function softDeleteCompetitors(
+  orgId: string,
+  rows: { id: string; url: string | null }[],
+): Promise<void> {
+  const ids = rows.map((r) => r.id);
+  const hosts = new Set(
+    rows.flatMap((r) => {
+      const h = normalizeDomain(r.url);
+      return h ? [h] : [];
+    }),
+  );
+
+  // Candidates predating competitor_candidates.competitor_id carry no link, so they
+  // resolve by hostname — the same fallback /candidates/added uses. Matched in JS
+  // because the normaliser (www stripping) has no SQL equivalent. Only `added` rows:
+  // discovery never proposes a host the org already tracks, so anything still `new`
+  // on that host is a different company.
+  const legacyIds =
+    hosts.size > 0
+      ? (
+          await db.query.competitorCandidates.findMany({
+            where: and(
+              eq(competitorCandidates.orgId, orgId),
+              eq(competitorCandidates.status, "added"),
+              isNull(competitorCandidates.competitorId),
+            ),
+            columns: { id: true, url: true },
+          })
+        )
+          .filter((cand) => {
+            const h = normalizeDomain(cand.url);
+            return h !== null && hosts.has(h);
+          })
+          .map((cand) => cand.id)
+      : [];
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(competitors)
+      .set({ deletedAt: new Date() })
+      .where(inArray(competitors.id, ids));
+
+    await tx
+      .update(competitorCandidates)
+      .set({ status: "dismissed", competitorId: null })
+      .where(
+        and(
+          eq(competitorCandidates.orgId, orgId),
+          or(
+            inArray(competitorCandidates.competitorId, ids),
+            legacyIds.length > 0 ? inArray(competitorCandidates.id, legacyIds) : undefined,
+          ),
+        ),
+      );
   });
 }
 
@@ -866,8 +938,8 @@ competitorsRouter.post("/bulk/sources", async (c) => {
   return c.json({ created: result.created, competitorsTouched: result.competitorsTouched });
 });
 
-// Soft-delete the selection. Same write as the per-competitor DELETE (deletedAt), so
-// everything downstream that already filters on it hides them at once.
+// Soft-delete the selection. Same write as the per-competitor DELETE (softDeleteCompetitors),
+// so everything downstream that already filters on it hides them at once.
 competitorsRouter.post("/bulk/delete", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
@@ -877,10 +949,7 @@ competitorsRouter.post("/bulk/delete", async (c) => {
   const rows = await resolveBulkSelection(orgId, parsed.data.ids);
   if (rows.length === 0) return c.json({ ok: true, deleted: 0 });
 
-  await db
-    .update(competitors)
-    .set({ deletedAt: new Date() })
-    .where(inArray(competitors.id, rows.map((r) => r.id)));
+  await softDeleteCompetitors(orgId, rows);
 
   void captureServerEvent(user.id, "competitor_deleted", {
     orgId,
@@ -3705,7 +3774,7 @@ competitorsRouter.delete("/:id", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  await db.update(competitors).set({ deletedAt: new Date() }).where(eq(competitors.id, id));
+  await softDeleteCompetitors(orgId, [competitor]);
 
   void captureServerEvent(user.id, "competitor_deleted", {
     competitorId: id,

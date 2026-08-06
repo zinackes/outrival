@@ -146,6 +146,13 @@ export function MultiLineChart({
             // captures); otherwise only the newest one, which is what a monitoring
             // reader is looking for.
             dot={(props) => {
+              // A series with no value at this date still gets asked for its dot,
+              // with no y to put it at. Drawing it anyway pins the circle to the
+              // top of the plot area — a stray colored dot in the corner, half
+              // over the axis, marking nothing. Draw nothing.
+              if (!Number.isFinite(props.cx) || !Number.isFinite(props.cy)) {
+                return <g key={`${k}-${props.index}`} />;
+              }
               const point = props.payload as Record<string, unknown> | undefined;
               // Hollow ring: the shape says "reconstructed" before any tooltip is
               // opened, and it is drawn whether or not the series shows dots —

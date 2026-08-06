@@ -256,10 +256,25 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
 
     const now = new Date();
 
+    // The board as it stands AFTER this run — what survived, plus what landed —
+    // not what this run happened to see. On the authoritative path the two are the
+    // same set. On the fallback path they are not: nothing closes there (closure
+    // guard), so counting the raw extraction files a partial subset as if it were
+    // the board, and job_counts then disagrees with the postings table it was
+    // derived from. That is the Hiring tab reading 37 open roles while the chart of
+    // the same day reads 25. Same set, same number, one place it is computed.
+    const closedSet = new Set(closedIds);
+    const activeExisting = existing.filter((j) => !closedSet.has(j.id));
     const countsByDept = new Map<string, number>();
-    for (const j of jobs) {
-      countsByDept.set(j.department, (countsByDept.get(j.department) ?? 0) + 1);
+    // `?? "Other"` matches how GET /:id/jobs groups a department-less posting, so
+    // the fallback bucket is the same bucket on both sides.
+    for (const dept of [
+      ...activeExisting.map((j) => j.department ?? "Other"),
+      ...inserts.map((j) => j.department),
+    ]) {
+      countsByDept.set(dept, (countsByDept.get(dept) ?? 0) + 1);
     }
+    const boardTotal = activeExisting.length + inserts.length;
     const closedTitles = existing.filter((j) => closedIds.includes(j.id)).map((j) => j.title);
 
     // First scrape (no prior active postings) has no diff to classify — give the
@@ -278,7 +293,7 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
               department,
               count,
             })),
-            total: jobs.length,
+            total: boardTotal,
             added: inserts.map((j) => j.title),
             closed: closedTitles,
             previousTotal: existing.length > 0 ? existing.length : null,
@@ -370,8 +385,6 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
       // so they are stamped here on the way past. That is a one-time cost per
       // posting (the filter is `geoResolution is null`), which means the feature
       // fills itself in over one scrape cycle even without the backfill command.
-      const closed = new Set(closedIds);
-      const activeExisting = existing.filter((j) => !closed.has(j.id));
       const stamped = await stampMissingGeo(
         activeExisting.filter((j) => j.geoResolution === null),
       );

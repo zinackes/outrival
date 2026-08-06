@@ -39,7 +39,30 @@ test("mergeTrendsByDate orders points by instant, not by label", () => {
 
   expect(merged).toHaveLength(2);
   expect(merged[0]).toEqual({ date: shortDate("2026-06-01 12:00:00+00"), Engineering: 4, Sales: 2 });
-  expect(merged[1]).toEqual({ date: shortDate("2026-07-01 12:00:00+00"), Engineering: 7 });
+  // Sales carries an explicit 0 on the day it wrote no row: the areas are stacked,
+  // so a hole makes the top edge under-read the board total, and recharts paints
+  // the missing point's end dot at the top of the plot area.
+  expect(merged[1]).toEqual({
+    date: shortDate("2026-07-01 12:00:00+00"),
+    Engineering: 7,
+    Sales: 0,
+  });
+});
+
+test("mergeTrendsByDate stacks to the board total on every day", () => {
+  const merged = mergeTrendsByDate([
+    { department: "Engineering", count: 20, recorded_at: "2026-07-01 12:00:00+00" },
+    { department: "Sales", count: 5, recorded_at: "2026-07-01 12:00:00+00" },
+    { department: "Engineering", count: 25, recorded_at: "2026-07-02 12:00:00+00" },
+    { department: "Sales", count: 7, recorded_at: "2026-07-02 12:00:00+00" },
+    { department: "Support", count: 5, recorded_at: "2026-07-02 12:00:00+00" },
+  ]);
+
+  const departments = ["Engineering", "Sales", "Support"];
+  const totals = merged.map((point) =>
+    departments.reduce((sum, d) => sum + (point[d] as number), 0),
+  );
+  expect(totals).toEqual([25, 37]);
 });
 
 const tier = (plan: string, price: number | null, recorded_at: string) => ({

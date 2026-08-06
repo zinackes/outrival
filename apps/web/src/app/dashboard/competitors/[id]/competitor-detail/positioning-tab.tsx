@@ -149,7 +149,15 @@ export function PositioningTab({
     (claims?.length ?? 0) > 0 ||
     (map?.targetsTotal ?? 0) > 0 ||
     (map?.namedBy.length ?? 0) > 0 ||
-    (icp ? icp.personas.length + icp.useCases.length + icp.industries.declared.length : 0) > 0 ||
+    // Counts `proven` too: the ICP section renders on it alone (a vertical their case
+    // studies name and they publish no page for), so leaving it out of the tab's own
+    // "is there anything here" test hid that section behind the empty state.
+    (icp
+      ? icp.personas.length +
+        icp.useCases.length +
+        icp.industries.declared.length +
+        icp.industries.proven.length
+      : 0) > 0 ||
     changes.length > 0;
 
   // Nothing captured at all — a competitor added minutes ago, or one whose

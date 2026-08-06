@@ -77,6 +77,31 @@ export function shortAge(input: Date | string | number): string {
   return `${Math.floor(days / 30)}mo`;
 }
 
+// Month bucket — "2026-02" → "Feb 2026".
+//
+// The API buckets months by their key, and that key stays the data: sort order, React
+// keys and CSV exports keep reading "2026-02". Only the label changes, because a
+// column of "2026-02 / 2026-03" makes the reader parse digits to know which month
+// they are looking at.
+//
+// Built and formatted in UTC on purpose: `new Date("2026-02")` is UTC midnight, and
+// rendering that in a local timezone west of Greenwich would print January.
+// Anything that is not a YYYY-MM key is echoed back rather than turned into
+// "Invalid Date".
+export function formatMonth(
+  input: string,
+  opts: Intl.DateTimeFormatOptions = { month: "short", year: "numeric" },
+): string {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(input);
+  if (!match) return input;
+  const [, year, month] = match;
+  if (!year || !month) return input;
+  return new Date(Date.UTC(Number(year), Number(month) - 1, 1)).toLocaleDateString(LOCALE, {
+    timeZone: "UTC",
+    ...opts,
+  });
+}
+
 // Time only — e.g. "21:08" (FR) / "9:08 PM" (US).
 export function formatTime(
   input: Date | string | number,

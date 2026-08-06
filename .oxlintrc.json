@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "rules": {
+    "no-unsafe-optional-chaining": "error"
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/.next/**",
+    "**/node_modules/**",
+    "**/*.generated.ts",
+    "packages/db/drizzle/**"
+  ],
+  "overrides": [
+    {
+      "files": ["**/test/**", "**/__tests__/**", "**/*.test.ts", "**/*.test.tsx"],
+      "rules": {
+        "no-unsafe-optional-chaining": "warn"
+      }
+    }
+  ]
+}

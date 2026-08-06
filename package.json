@@ -6,6 +6,7 @@
     "dev:app": "turbo dev --filter @outrival/web --filter @outrival/api",
     "build": "turbo build",
     "typecheck": "turbo typecheck",
+    "check:lint": "oxlint apps packages",
     "test": "turbo test",
     "test:local": "turbo test --concurrency=1",
     "test:fast": "turbo test --concurrency=1 --filter=...[origin/main]",
@@ -21,6 +22,7 @@
   },
   "packageManager": "pnpm@10.11.0",
   "devDependencies": {
+    "oxlint": "^1.77.0",
     "turbo": "latest",
     "typescript": "^5.4.0"
   },

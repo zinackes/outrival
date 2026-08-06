@@ -23,10 +23,18 @@ la demande. Ne pas l'importer avec `@`, ça le remettrait dans chaque session.
 ## Valider un changement
 
 ```bash
-pnpm typecheck                           # LE gate : il n'y a aucun linter dans ce repo
+pnpm typecheck                           # gate 1 — la CI le rejoue
+pnpm check:lint                          # gate 2 — oxlint, ~100 ms sur tout le repo
 pnpm test:local --filter @outrival/api   # tests, un package à la fois (~1,1 Go)
 pnpm test:fast                           # seulement les packages touchés vs origin/main
 ```
+
+Le script s'appelle `check:lint` et **pas** `lint` : le hook RTK réécrit `pnpm lint`
+en `rtk lint`, qui meurt en OOM tout en renvoyant 0 — un gate vert à tort.
+
+`.oxlintrc.json` ne met en **erreur** que `no-unsafe-optional-chaining` (hors tests).
+Le reste sort en warning : 81 aujourd'hui, surtout des imports morts. Les nettoyer est
+un chantier à part, pas un prérequis pour passer le gate.
 
 `pnpm test` (tout en parallèle, ~3,4 Go) reproduit la CI mais fait OOM la VM WSL2,
 `pnpm build` aussi. Ne pas les lancer pour vérifier : `typecheck` suffit.

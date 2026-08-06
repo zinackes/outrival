@@ -37,7 +37,7 @@ const URGENCY_META: Record<
 > = {
   action_required: { label: "Needs an answer", role: "critical", severity: "critical" },
   watch: { label: "Worth watching", role: "medium", severity: "medium" },
-  fyi: { label: "Noted", role: "muted", severity: "low" },
+  fyi: { label: "Noted", role: "low", severity: "low" },
 };
 
 // One signal, boxless: a hairline above every row but the first, instead of a

@@ -5,6 +5,7 @@ import {
   avgReview,
   axisTicks,
   buildVerdict,
+  costAxis,
   countWord,
   displayCurrency,
   median,
@@ -163,6 +164,36 @@ describe("scales", () => {
 
   test("priceScale reports no data when nobody published a number", () => {
     expect(priceScale([priced("a", "A", null, null)]).hasData).toBe(false);
+  });
+
+  // The cost curve reads volumes from 1 to 10M, so its costs span decades too and a
+  // linear Y flattens every volume under ~100k onto the floor — the crush the price
+  // lens fixes with a trimmed ceiling, arriving one chart over.
+  describe("costAxis", () => {
+    const rows = (...points: Array<[number, number, number]>) =>
+      points.map(([qty, a, b]) => ({ qty, a, b }));
+
+    test("goes log once the costs span decades", () => {
+      const axis = costAxis(rows([1, 0.05, 0.1], [1_000, 25, 40], [1_000_000, 9_000, 22_000]));
+      expect(axis.log).toBe(true);
+      expect(axis.domain).toEqual([0.01, 100_000]);
+      expect(axis.ticks).toEqual([0.01, 0.1, 1, 10, 100, 1_000, 10_000, 100_000]);
+    });
+
+    test("stays linear on a narrow spread, where log only costs legibility", () => {
+      expect(costAxis(rows([1, 20, 25], [1_000, 40, 55])).log).toBe(false);
+    });
+
+    // Clipping a $0 to the floor of a log axis would draw "free" as "cheap", which
+    // is the one number on this chart a reader would act on.
+    test("stays linear when a free tier puts a $0 on the curve", () => {
+      expect(costAxis(rows([1, 0, 0.1], [1_000_000, 9_000, 22_000])).log).toBe(false);
+    });
+
+    test("an empty set has no axis to build", () => {
+      expect(costAxis([]).log).toBe(false);
+      expect(costAxis([{ qty: 10 }]).log).toBe(false);
+    });
   });
 
   test("robustCeiling drops a top that dwarfs the median, keeps a merely-high one", () => {

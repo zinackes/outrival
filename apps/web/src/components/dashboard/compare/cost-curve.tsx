@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import { meterUnitLabel } from "@outrival/shared";
 import { ChartCursorLine, chartTooltipMotion } from "@/components/dashboard/chart-motion";
-import type { CostCurveSeries } from "./derive";
+import { costAxis, type CostCurveSeries } from "./derive";
 
 /**
  * What every compared competitor charges for one meter, across the whole volume
@@ -33,6 +33,7 @@ import type { CostCurveSeries } from "./derive";
  */
 
 const DECADE_TICKS = [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000];
+
 
 const compactQty = (q: number): string =>
   new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(q);
@@ -75,6 +76,7 @@ export function CostCurveChart({
   const rows = mergeRows(series);
   if (rows.length === 0) return null;
 
+  const cost = costAxis(rows);
   const money = (v: number) =>
     new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -83,7 +85,8 @@ export function CostCurveChart({
     }).format(v);
 
   return (
-    <ResponsiveContainer width="100%" height={260}>
+    <>
+      <ResponsiveContainer width="100%" height={260}>
       <ComposedChart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
         <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
         <XAxis
@@ -106,6 +109,11 @@ export function CostCurveChart({
           tickLine={false}
           axisLine={false}
           width={56}
+          // Log when the costs span decades, which on a seven-decade X axis is the
+          // normal case — otherwise every volume under 100k draws on the floor.
+          scale={cost.log ? "log" : "auto"}
+          domain={cost.domain}
+          ticks={cost.ticks}
           tickFormatter={(v: number) => money(v)}
         />
         <ChartTooltip
@@ -179,8 +187,17 @@ export function CostCurveChart({
               isAnimationActive={false}
             />
           ))}
-      </ComposedChart>
-    </ResponsiveContainer>
+        </ComposedChart>
+      </ResponsiveContainer>
+      {/* Neither axis is linear, and a reader judging a gap by eye has to be told:
+          on two log axes a straight line is a constant rate per unit, and equal
+          heights apart are equal MULTIPLES of cost, not equal dollars. */}
+      <p className="text-muted-foreground text-meta">
+        {cost.log
+          ? "Both axes are log: equal steps are ×10, and a straight line is a flat rate per unit."
+          : "Volume axis is log (equal steps are ×10); cost is linear."}
+      </p>
+    </>
   );
 }
 

@@ -70,6 +70,49 @@ export function niceMax(value: number): number {
   return step * magnitude;
 }
 
+export interface CostAxis {
+  log: boolean;
+  /** Set only on a log axis: recharts needs an explicit domain to build one. */
+  domain: [number, number] | undefined;
+  ticks: number[] | undefined;
+}
+
+/**
+ * The cost-curve Y axis, and whether it can be read on a log scale.
+ *
+ * Its X axis spans seven orders of magnitude, so the costs plotted against it do
+ * too: on a linear Y the whole first half of every curve — every volume under about
+ * 100k — lies flat on the floor, and "where does the ranking flip" (the only
+ * question that chart exists for) is unreadable exactly where most readers sit.
+ * Log fixes it, and unlike a price ladder it is the honest scale here: both axes
+ * are then ratios, so a straight line means a constant rate per unit.
+ *
+ * It only works on strictly positive costs, though. A free tier costs $0 at low
+ * volume, which has no place on a log axis, and floor-clipping it would draw "free"
+ * as merely "cheap" — a chart lying about the one number a reader would act on. So
+ * a set containing a $0 stays linear, and the chart's caption says which scale is
+ * in force either way.
+ */
+export function costAxis(rows: Array<Record<string, number>>): CostAxis {
+  const LINEAR: CostAxis = { log: false, domain: undefined, ticks: undefined };
+  const costs = rows.flatMap((row) =>
+    Object.entries(row)
+      .filter(([key]) => key !== "qty")
+      .map(([, value]) => value),
+  );
+  if (costs.length === 0 || costs.some((c) => c <= 0)) return LINEAR;
+
+  const lo = 10 ** Math.floor(Math.log10(Math.min(...costs)));
+  const hi = 10 ** Math.ceil(Math.log10(Math.max(...costs)));
+  // Under two decades of spread there is nothing being crushed, and log ticks read
+  // worse than linear ones.
+  if (hi / lo < 100) return LINEAR;
+
+  const ticks: number[] = [];
+  for (let t = lo; t <= hi; t *= 10) ticks.push(t);
+  return { log: true, domain: [lo, hi], ticks };
+}
+
 /** Evenly spaced axis labels from 0 to max, inclusive of both ends. */
 export function axisTicks(max: number, count = 4): number[] {
   const out: number[] = [];

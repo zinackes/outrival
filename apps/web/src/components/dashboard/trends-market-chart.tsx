@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -23,6 +23,7 @@ import { SeriesSwatch } from "@/components/dashboard/series-swatch";
 import {
   asOfKey,
   buildCarriedGrid,
+  buildIndexDomain,
   rawKey,
   type ChartRow,
 } from "@/components/dashboard/trends-chart-model";
@@ -75,6 +76,10 @@ export interface MarketChartProps {
    */
   highlighted?: string | null;
 }
+
+/** The axis's own unit, so the note under the plot reads in the same terms as it. */
+const formatPercent = (value: number) =>
+  `${value > 0 ? "+" : ""}${Number.isInteger(value) ? value : value.toFixed(1)}%`;
 
 function TooltipCard({
   active,
@@ -180,6 +185,11 @@ export function TrendsMarketChart({
   // with nothing to look at.
   const active = visible.some((s) => s.competitorId === highlighted) ? highlighted : null;
 
+  // Trimmed by default, with the way back below the plot. Index mode only: absolute
+  // mode plots review scores, where 0 to 5 is already a shared scale and there is
+  // no outlier to trim.
+  const [full, setFull] = useState(false);
+
   const { data, ticks, domain, labelFor } = useMemo(() => {
     const grid = buildCarriedGrid(visible, mode);
     // The original timestamp string is kept for formatting: round-tripping a
@@ -201,6 +211,11 @@ export function TrendsMarketChart({
     };
   }, [visible, mode]);
 
+  const yScale = useMemo(
+    () => (mode === "index" ? buildIndexDomain(visible, data, { full }) : null),
+    [mode, visible, data, full],
+  );
+
   if (visible.length === 0 || data.length === 0) {
     return (
       <div
@@ -212,9 +227,14 @@ export function TrendsMarketChart({
     );
   }
 
+  const clippedNames = (yScale?.clipped ?? [])
+    .map((id) => visible.find((s) => s.competitorId === id)?.competitorName)
+    .filter((name): name is string => name != null);
+
   return (
-    <div style={{ height }} className="w-full">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="w-full">
+      <div style={{ height }}>
+        <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -8 }}>
           <CartesianGrid stroke="var(--border)" vertical={false} />
           <XAxis
@@ -235,7 +255,11 @@ export function TrendsMarketChart({
             tickLine={false}
             axisLine={false}
             width={46}
-            domain={mode === "index" ? ["auto", "auto"] : ["dataMin - 0.3", "dataMax + 0.3"]}
+            // Trimmed to the readable range in index mode, and CLIPPED there rather
+            // than left to overflow: a +2,900% line drawn past the frame would cross
+            // the tooltip and the axis of a plot it is no longer on.
+            allowDataOverflow={(yScale?.clipped.length ?? 0) > 0}
+            domain={yScale?.domain ?? ["dataMin - 0.3", "dataMax + 0.3"]}
             tickFormatter={(v: number) =>
               mode === "index" ? `${v > 0 ? "+" : ""}${v}%` : v.toFixed(1)
             }
@@ -288,8 +312,31 @@ export function TrendsMarketChart({
               />
             );
           })}
-        </LineChart>
-      </ResponsiveContainer>
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* A trimmed axis has to say it is trimmed, and hand back the way out. Named,
+          not just counted: "one line runs past the top" is useless if the reader
+          cannot tell which of twelve it is. */}
+      {yScale?.trimmable && (
+        <p className="mt-1 flex flex-wrap items-baseline gap-x-1.5 text-meta text-muted-foreground">
+          <span>
+            {full
+              ? `Full range, to ${formatPercent(yScale.fullExtreme)}`
+              : clippedNames.length > 0
+                ? `${clippedNames.join(", ")} ${clippedNames.length > 1 ? "run" : "runs"} past the axis`
+                : "Outliers trimmed off the axis"}
+          </span>
+          <button
+            type="button"
+            onClick={() => setFull((f) => !f)}
+            className="text-link rounded-sm underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {full ? "Trim the outliers" : `Show full range to ${formatPercent(yScale.fullExtreme)}`}
+          </button>
+        </p>
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import type { TrendsMarketSeries } from "../src/lib/api";
 import {
   asOfKey,
   buildCarriedGrid,
+  buildIndexDomain,
   buildSlopeModel,
   decollide,
   rawKey,
@@ -131,6 +132,83 @@ describe("buildCarriedGrid", () => {
     expect(hi).toBeGreaterThan(lo);
     expect(lo).toBeLessThan(stamp("2026-05-01"));
     expect(hi).toBeGreaterThan(stamp("2026-05-01"));
+  });
+});
+
+describe("buildIndexDomain", () => {
+  // Indexing removes the units problem, not the magnitude one: a competitor that
+  // went from 1 open role to 30 is a +2,900% line, and a field moving ±20% against
+  // it is a flat rule on the floor.
+  const field = () => [
+    series("a", [
+      ["2026-05-01", 100],
+      ["2026-06-01", 120],
+    ]),
+    series("b", [
+      ["2026-05-01", 80],
+      ["2026-06-01", 60],
+    ]),
+    series("c", [
+      ["2026-05-01", 50],
+      ["2026-06-01", 55],
+    ]),
+    series("d", [
+      ["2026-05-01", 40],
+      ["2026-06-01", 44],
+    ]),
+    series("runaway", [
+      ["2026-05-01", 1],
+      ["2026-06-01", 30],
+    ]),
+  ];
+
+  const domainOf = (set: TrendsMarketSeries[], full = false) => {
+    const grid = buildCarriedGrid(set, "index");
+    return buildIndexDomain(set, grid.rows, { full })!;
+  };
+
+  test("the runaway line is trimmed off and named", () => {
+    const trimmed = domainOf(field());
+    expect(trimmed.clipped).toEqual(["runaway"]);
+    expect(trimmed.trimmable).toBe(true);
+    expect(trimmed.fullExtreme).toBe(2900);
+    // The rest of the field gets the plot back: ±25 rather than ±2,900.
+    expect(trimmed.domain[1]).toBeLessThan(50);
+    expect(trimmed.domain[0]).toBeLessThan(-25);
+  });
+
+  test("the full range puts every line back inside the axis", () => {
+    const full = domainOf(field(), true);
+    expect(full.clipped).toEqual([]);
+    expect(full.domain[1]).toBeGreaterThanOrEqual(2900);
+  });
+
+  test("zero stays on the plot — it is the rule every line is read against", () => {
+    const rising = [
+      series("a", [
+        ["2026-05-01", 100],
+        ["2026-06-01", 140],
+      ]),
+      series("b", [
+        ["2026-05-01", 100],
+        ["2026-06-01", 130],
+      ]),
+    ];
+    const d = domainOf(rising);
+    expect(d.domain[0]).toBeLessThanOrEqual(0);
+    expect(d.domain[1]).toBeGreaterThan(0);
+  });
+
+  test("a field with no runaway is not trimmed and keeps its own bounds", () => {
+    const set = field().filter((s) => s.competitorId !== "runaway");
+    const d = domainOf(set);
+    expect(d.trimmable).toBe(false);
+    expect(d.clipped).toEqual([]);
+    expect(d.domain[1]).toBeGreaterThanOrEqual(20);
+  });
+
+  test("an empty window has no domain to build", () => {
+    expect(buildIndexDomain([], [], {})).toBeNull();
   });
 });
 

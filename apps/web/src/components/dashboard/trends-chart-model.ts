@@ -118,6 +118,79 @@ export function buildCarriedGrid(
   };
 }
 
+export interface IndexDomain {
+  /** Y bounds the lines are read against, outliers trimmed unless `full`. */
+  domain: [number, number];
+  /** Series with at least one point past those bounds, drawn clipped. */
+  clipped: string[];
+  /** The furthest any line actually travelled — what the way-back button offers. */
+  fullExtreme: number;
+  /** True once trimming would change anything at all. */
+  trimmable: boolean;
+}
+
+/**
+ * The Y bounds of a percent-change plot, with the runaway line trimmed off.
+ *
+ * Indexing to each competitor's own first capture already removes the units
+ * problem, but not the magnitude one: a competitor that went from 1 open role to
+ * 30 is a +2,900% line, and against it a field moving ±20% is a flat rule at the
+ * bottom of the plot. Same crush as the price ladder, same answer — scale to the
+ * readable range, clip the rest, say so.
+ *
+ * Zero is always inside the bounds: it is the "unchanged" rule every line is read
+ * against, and a plot that trims it away has nothing left to mean anything.
+ */
+export function buildIndexDomain(
+  series: TrendsMarketSeries[],
+  rows: ChartRow[],
+  opts: { full?: boolean } = {},
+): IndexDomain | null {
+  // One reading per LINE, not per point. Every series is indexed to its own first
+  // capture, so the grid is half zeros by construction, and a yardstick taken over
+  // the points would be dragged onto that baseline until an ordinary -25% counted
+  // as an outlier. What is or isn't an outlier here is a fact about a competitor's
+  // whole travel, so that is what gets measured: how far it went at its furthest.
+  const lines = series
+    .map((item) => {
+      const values = rows
+        .map((row) => row[item.competitorId])
+        .filter((v): v is number => typeof v === "number");
+      if (values.length === 0) return null;
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      return {
+        id: item.competitorId,
+        min,
+        max,
+        extreme: Math.abs(min) > Math.abs(max) ? min : max,
+      };
+    })
+    .filter((line) => line !== null);
+  if (lines.length === 0) return null;
+
+  const extent = robustExtent(lines.map((l) => l.extreme))!;
+  const kept = opts.full
+    ? lines
+    : lines.filter((l) => l.extreme >= extent.min && l.extreme <= extent.max);
+
+  // Zero is kept in view whatever the readings do: it is the "unchanged" rule the
+  // whole plot is read against.
+  const lo = Math.min(0, ...kept.map((l) => l.min));
+  const hi = Math.max(0, ...kept.map((l) => l.max));
+  // Breathing room, so the outermost line is traced rather than hidden under the frame.
+  const pad = (hi - lo) * 0.08 || 1;
+  const domain: [number, number] = [lo - pad, hi + pad];
+
+  return {
+    domain,
+    clipped: lines.filter((l) => l.min < domain[0] || l.max > domain[1]).map((l) => l.id),
+    fullExtreme:
+      Math.abs(extent.fullMax) >= Math.abs(extent.fullMin) ? extent.fullMax : extent.fullMin,
+    trimmable: extent.clippedCount > 0,
+  };
+}
+
 /**
  * Push stacked labels apart without reordering them, then pull the overflow back
  * off the bottom edge. Input must be sorted by true y ascending; the dots stay

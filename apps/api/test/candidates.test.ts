@@ -34,7 +34,10 @@ beforeAll(async () => {
   // subject here, and a real enqueue would need a running pg-boss.
   installQueueMock();
   const { candidatesRouter } = await import("../src/routes/candidates");
-  app = mountApp("/api/candidates", candidatesRouter);
+  // The competitor delete paths are mounted alongside: deleting a competitor is what
+  // releases the candidate that produced it, and that contract spans both routers.
+  const { competitorsRouter } = await import("../src/routes/competitors");
+  app = mountApp("/api/candidates", candidatesRouter).route("/api/competitors", competitorsRouter);
 });
 
 // Per test, not per file: /add and /dismiss move a candidate out of `new`, and the
@@ -279,5 +282,67 @@ describe("POST /api/candidates/:id/add", () => {
       asUser(B.userId, B.email, { method: "POST" }),
     );
     expect(res.status).toBe(404);
+  });
+});
+
+// Deleting a competitor must release the candidate it came from. Left at `added`, the
+// row kept pointing at a competitor nothing can resolve, and — because detection
+// dedupes against every candidate of the product whatever its status — that company
+// could never be suggested again. `dismissed` is the state the user can undo.
+describe("deleting a competitor releases its discovery candidate", () => {
+  const candidate = async (id: string) =>
+    (await testDb.query.competitorCandidates.findFirst({
+      where: eq(competitorCandidates.id, id),
+    }))!;
+
+  const del = (id: string, who = A) =>
+    app.request(`/api/competitors/${id}`, asUser(who.userId, who.email, { method: "DELETE" }));
+
+  test("the linked candidate goes back to dismissed, pointer cleared", async () => {
+    expect((await del("cand-comp-1")).status).toBe(200);
+
+    const row = await candidate("cnd-added");
+    expect(row.status).toBe("dismissed");
+    expect(row.competitorId).toBeNull();
+  });
+
+  test("a candidate tracked before the link column is released by hostname", async () => {
+    // cnd-added-legacy carries no competitorId and stores "https://www.crayon.co/":
+    // only the normalised host ties it to the competitor being deleted.
+    expect((await del("cand-comp-2")).status).toBe(200);
+    expect((await candidate("cnd-added-legacy")).status).toBe("dismissed");
+  });
+
+  test("nothing else in the queue moves", async () => {
+    await del("cand-comp-1");
+
+    // Still pending review, and the other tracked candidate is on another host.
+    expect((await candidate("cnd-strong")).status).toBe("new");
+    expect((await candidate("cnd-added-legacy")).status).toBe("added");
+    expect((await candidate("cnd-other-org")).status).toBe("new");
+  });
+
+  test("the bulk sweep releases them too", async () => {
+    const res = await app.request(
+      "/api/competitors/bulk/delete",
+      asUser(A.userId, A.email, {
+        method: "POST",
+        body: JSON.stringify({ ids: ["cand-comp-1", "cand-comp-2"] }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect((await candidate("cnd-added")).status).toBe("dismissed");
+    expect((await candidate("cnd-added-legacy")).status).toBe("dismissed");
+  });
+
+  test("a released candidate is restorable to the review queue", async () => {
+    await del("cand-comp-1");
+
+    const res = await app.request(
+      "/api/candidates/restore",
+      asUser(A.userId, A.email, { method: "POST", body: JSON.stringify({ ids: ["cnd-added"] }) }),
+    );
+    expect(res.status).toBe(200);
+    expect((await candidate("cnd-added")).status).toBe("new");
   });
 });

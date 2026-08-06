@@ -881,7 +881,8 @@ export function CompetitorDetailView({ id }: { id: string }) {
               <DialogTitle>Delete competitor?</DialogTitle>
               <DialogDescription>
                 {competitor.name} and all its monitors, snapshots, changes,
-                signals and battle cards will be soft-deleted. This cannot be
+                signals and battle cards will be soft-deleted. If it came from
+                discovery, that entry moves back to Dismissed. This cannot be
                 undone from the UI.
               </DialogDescription>
             </DialogHeader>

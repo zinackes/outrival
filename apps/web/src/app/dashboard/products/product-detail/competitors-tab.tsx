@@ -131,8 +131,9 @@ export function ProductCompetitors({
             <DialogTitle>Delete competitor?</DialogTitle>
             <DialogDescription>
               {deleteTarget?.name} and all its monitors, snapshots, changes, signals and battle
-              cards will be soft-deleted, for every product. To keep watching it elsewhere, remove
-              it from this product instead.
+              cards will be soft-deleted, for every product. If it came from discovery, that entry
+              moves back to Dismissed. To keep watching it elsewhere, remove it from this product
+              instead.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

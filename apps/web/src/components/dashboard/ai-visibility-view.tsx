@@ -45,8 +45,8 @@ import { PageHead } from "@/components/dashboard/page-head";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { Fact, FactStrip, Verdict } from "@/components/outrival/data-marks";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -927,6 +927,23 @@ function buildQuestions(data: AiVisibilityData, engine: string): QuestionRow[] {
   );
 }
 
+// Mirrors the route's `z.string().trim().min(3).max(200)` (apps/api/src/routes/
+// ai-visibility.ts) and the seeder's own cap. Enforced in the field so a long question
+// stops at the cap while you write it, instead of being refused after you press Add.
+const PROMPT_MAX_LEN = 200;
+
+/** A question is a single line. Paste a wrapped block and the newlines fold into
+ *  spaces — the engines are handed one sentence either way, and the row stays a row. */
+const oneLine = (v: string) => v.replace(/\s*[\r\n]+\s*/g, " ");
+
+// The question fields grow with their content (`field-sizing-content` on Textarea) so a
+// 200-character question is read whole instead of scrolling past a one-line input. The
+// rest keeps the Input surface they replaced: same field background, same focus ring —
+// the base Textarea is a paler, taller thing that would read as a different control.
+// The base `text-base md:text-sm` is left alone: 16px on mobile is what stops iOS
+// zooming the page in on focus.
+const fieldSurface = "resize-none bg-field shadow-none focus-visible:ring-ring/20 dark:bg-field";
+
 function QuestionList({
   rows,
   colors,
@@ -995,7 +1012,7 @@ function QuestionList({
           No questions yet. Add one below, or run a check to seed a starting set.
         </p>
       ) : (
-        <ul className="mt-3">
+        <ul className="@container mt-3">
           <AnimatePresence initial={false} mode="popLayout">
             {rows.map((r) => {
               const { prompt: p, cell } = r;
@@ -1010,31 +1027,57 @@ function QuestionList({
                 // layout="position": the row's own height is animated by the evidence
                 // opening inside it, so only its place is projected.
                 <motion.li key={p.id} {...feedItemMotion} layout="position" className="group border-t border-border">
-                  <div className="flex items-start gap-2 pr-4 transition-colors hover:bg-surface-2">
+                  {/* On a narrow list the status and its controls drop UNDER the question
+                      instead of sharing its line. That column is `shrink-0` and never wraps,
+                      so on a 390px screen it held 188 of the 292 available pixels and left
+                      the question a 98px ribbon: 13 lines of one word each. Stacked, the same
+                      question reads across the full width in four.
+
+                      Keyed on the LIST's width (@container), not the viewport's: the sidebar
+                      is 16rem or 3rem or off-canvas, so the same 768px viewport leaves this row
+                      406px or 669px. A `md:` fold flipped to side-by-side at exactly the width
+                      where the sidebar appeared and took 256px with it, cutting the question to
+                      249px, narrower than it had been one pixel earlier. */}
+                  <div className="flex flex-col pr-4 transition-colors hover:bg-surface-2 @2xl:flex-row @2xl:items-start @2xl:gap-2">
                     {editing ? (
-                      <div className="flex flex-1 items-center gap-2 py-2.5 pl-5">
-                        <Input
+                      <div className="flex flex-1 items-start gap-2 py-2.5 pl-5">
+                        <Textarea
                           value={editDraft}
-                          onChange={(e) => setEditDraft(e.target.value)}
+                          onChange={(e) => setEditDraft(oneLine(e.target.value))}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") saveEdit();
+                            if (e.key === "Enter") {
+                              // A question is one line; Enter saves rather than
+                              // opening a second one the engines would never see.
+                              e.preventDefault();
+                              saveEdit();
+                            }
                             if (e.key === "Escape") setEditingId(null);
                           }}
                           autoFocus
-                          className="h-8 min-w-0 flex-1"
+                          // Caret at the end, not at character 0: a textarea does not
+                          // place it there on autofocus the way the input it replaced did.
+                          onFocus={(e) =>
+                            e.currentTarget.setSelectionRange(
+                              e.currentTarget.value.length,
+                              e.currentTarget.value.length,
+                            )
+                          }
+                          rows={2}
+                          maxLength={PROMPT_MAX_LEN}
+                          className={cn(fieldSurface, "min-h-0 min-w-0 flex-1 px-2.5 py-1")}
                           aria-label="Edit question"
                         />
                         <button
                           onClick={saveEdit}
                           disabled={editDraft.trim().length < 3}
-                          className={iconBtn}
+                          className={cn(iconBtn, "mt-1")}
                           aria-label="Save question"
                         >
                           <CheckIcon className="size-4" />
                         </button>
                         <button
                           onClick={() => setEditingId(null)}
-                          className={iconBtn}
+                          className={cn(iconBtn, "mt-1")}
                           aria-label="Cancel edit"
                         >
                           <XIcon className="size-4" />
@@ -1046,7 +1089,7 @@ function QuestionList({
                           onClick={() => toggleOpen(p.id)}
                           aria-expanded={expanded}
                           disabled={!cell}
-                          className="flex min-w-0 flex-1 items-start gap-3 py-3 pl-5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset disabled:cursor-default"
+                          className="flex min-w-0 flex-1 items-start gap-3 pb-2 pl-5 pt-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset disabled:cursor-default @2xl:py-3"
                         >
                           <CaretRightIcon
                             className={cn(
@@ -1068,7 +1111,9 @@ function QuestionList({
                             <MentionLine cell={cell} active={p.isActive} />
                           </span>
                         </button>
-                        <span className="flex shrink-0 items-center gap-1 py-3">
+                        {/* Stacked, it sits under the question at the text's own indent
+                            (pl-12 = pl-5 + caret + gap) rather than back at the edge. */}
+                        <span className="flex items-center gap-1 pb-3 pl-12 @2xl:shrink-0 @2xl:py-3 @2xl:pl-0">
                           <QuestionStatus cell={cell} active={p.isActive} />
                           <span className="flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                             <button
@@ -1123,13 +1168,19 @@ function QuestionList({
         </ul>
       )}
 
-      <div className="flex gap-2 border-t border-border px-5 py-3">
-        <Input
+      <div className="flex items-start gap-2 border-t border-border px-5 py-3">
+        <Textarea
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => setDraft(oneLine(e.target.value))}
           onKeyDown={(e) => {
-            if (e.key === "Enter") onAdd();
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onAdd();
+            }
           }}
+          rows={2}
+          maxLength={PROMPT_MAX_LEN}
+          className={cn(fieldSurface, "min-h-0 py-2")}
           placeholder="Ask the engines what your buyers ask, e.g. best CRM for startups"
           aria-label="New question"
         />

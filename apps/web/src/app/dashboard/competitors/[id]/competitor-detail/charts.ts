@@ -113,16 +113,32 @@ export function buildJobTrend(
   return byDept;
 }
 
+/**
+ * One point per capture day, carrying EVERY department the window knows about.
+ *
+ * A capture writes one row per department that has open roles, so a department
+ * missing from a day means zero roles that day, not "not measured". Leaving the
+ * hole cost twice, and both are visible on the Hiring tab: the areas are stacked,
+ * so the top edge is meant to be the board total, and a hole made that edge fall
+ * short of the number the tab states for the same day; and recharts still asks the
+ * series for its end dot at a point with no y, which paints it at the top of the
+ * plot area — the stray colored dot in the chart's top-right corner.
+ */
 export function mergeTrendsByDate(
   points: JobTrendPoint[],
 ): Array<Record<string, number | string>> {
-  return mergeByDay(
+  const departments = Array.from(new Set(points.map((p) => p.department)));
+  const merged = mergeByDay(
     points,
     (p) => p.recorded_at,
     (point, p) => {
       point[p.department] = p.count;
     },
   );
+  for (const point of merged) {
+    for (const department of departments) point[department] ??= 0;
+  }
+  return merged;
 }
 
 export function buildReviewScoreSeries(points: ReviewScorePoint[]): {

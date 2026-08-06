@@ -9,6 +9,7 @@ import { COMP_ACCENT, competitorColorVars } from "@/lib/competitor-color";
 import { SeverityGauge } from "@/components/outrival/severity-scale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, type CompareColumn } from "@/lib/api";
+import { formatMonth } from "@/lib/format-date";
 import { formatMoney } from "@/lib/format-money";
 import { fxDateLabel, useFx } from "@/lib/fx";
 import { cn } from "@/lib/utils";
@@ -808,7 +809,8 @@ export function ShippingLens({ entities, expanded, onToggle }: LensProps) {
                     <DetailBar
                       key={m.month}
                       entity={e}
-                      label={m.month}
+                      /* The key stays "2026-02" — only the label is written out. */
+                      label={formatMonth(m.month)}
                       value={m.count}
                       ratio={m.count / scale.monthMax}
                     />

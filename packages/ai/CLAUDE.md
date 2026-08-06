@@ -1,18 +1,40 @@
-# @outrival/ai — Pipeline Claude + Groq
+# @outrival/ai
 
-Stack : Anthropic SDK, Groq SDK
+## Pureté
 
-## Conventions
-- Lire @.claude/skills/ai-pipeline/SKILL.md avant toute modification
-- Groq d'abord (classification), Claude ensuite (insights) — règle absolue
-- Prompts dans src/prompts/[name].prompt.ts — fonctions pures qui retournent des strings
-- Parsing JSON : toujours try/catch, jamais de JSON.parse sans guard
+Les tâches de `src/tasks/*` sont **pures** : elles prennent des données, appellent le
+pool, retournent du parsé. Elles ne loguent pas et n'écrivent pas en DB. Le logging
+`ai_runs` est fait par l'appelant, via `loggedAi()` (`apps/workers/src/lib/analytics.ts`).
 
-## Modèles
-- Pool (Cerebras p1 → Cloudflare p2 → Groq p3 → Mistral p4) : gpt-oss-120b (smart),
-  gpt-oss-20b (fast, Groq + Cloudflare — Cerebras n'expose pas de petit modèle).
-  Plus de plancher payant : Hyperbolic n'a jamais eu de clé et n'a jamais servi une
-  seule requête (ai_runs, 05/06 au 31/07/2026), il est retiré. Les anciens
-  llama-3.3-70b-versatile / llama-3.1-8b-instant sont arrêtés par Groq le 2026-08-16.
-  ⚠️ `AI_CONFIG.model` est IGNORÉ sur le chemin pool : seul `tier` route le choix.
-- Claude : claude-sonnet-4-6 (insights stratégiques, digests, battle cards)
+## Routing du pool
+
+`src/provider.ts` cascade Cerebras p1, Cloudflare Workers AI p2, Groq p3, Mistral p4.
+
+⚠️ **`AI_CONFIG.model` est IGNORÉ sur le chemin pool.** Seul `tier` route le choix :
+`"smart"` donne `gpt-oss-120b`, `"fast"` donne `gpt-oss-20b`. Poser un `model` en
+pensant changer de modèle ne fait rien, et l'échec est silencieux.
+
+La liste des modèles vit dans `docs/architecture.md`. Ne pas la dupliquer ici, elle
+bouge au rythme des arrêts côté fournisseur.
+
+## Prompts
+
+- Un prompt = une fonction pure qui retourne une string, dans le fichier de sa tâche.
+- Écrits en anglais **et** instruisant explicitement le modèle de répondre en anglais
+  (`.claude/rules/language.md`) : un prompt français produit une sortie française qui
+  atterrit telle quelle dans l'UI.
+- Parsing de la sortie : toujours gardé (try/catch), jamais un `JSON.parse` nu.
+
+## Grounding
+
+`src/grounding/` impose de citer sa source et **d'abstenir plutôt que d'inventer un
+chiffre**. Une tâche absente de `GROUNDING_POLICY` (`grounding/grounded-call.ts`)
+hérite du défaut `{ grounding: true, confidence: true }` : si son prompt ne produit
+pas cette enveloppe, elle échoue en `parse_failed` sans dire pourquoi. Ajouter une
+tâche factuelle veut dire ajouter son entrée.
+
+## Tests
+
+Tests **colocalisés** (`src/**/*.test.ts`, exclus du tsconfig) :
+`pnpm test:local --filter @outrival/ai`. Les scripts `eval:*` tapent de vrais
+providers et ne font pas partie de la suite.

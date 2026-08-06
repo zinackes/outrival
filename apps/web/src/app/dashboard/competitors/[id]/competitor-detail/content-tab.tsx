@@ -748,14 +748,15 @@ function quietState(monitor: Monitor | undefined, scrapingIds: Set<string>): str
   const activity = scrapeActivity(monitor, scrapingIds.has(monitor.id));
   if (activity === "scraping") return "reading it now";
   if (activity === "queued") return "queued";
-  if (monitor.markedUnscrapable) {
-    // The neutral outcomes ("they publish no portal") read as a fact about the
-    // competitor; anything else is a failure of ours, and the Sources page carries
-    // the detail. Neither belongs in a strip this size at full length.
-    return hasNoTargetError(monitor.sourceType, monitor.lastError)
-      ? "nothing public to read"
-      : "we could not read it";
-  }
+  // The neutral outcome ("they publish no portal") is a fact about the competitor and
+  // is checked FIRST, before any failure or freshness reading: the worker records it
+  // as a benign skip, which stamps lastRunAt and leaves markedUnscrapable false, so
+  // nesting it under the failure branch let a roadmap with no portal fall through to
+  // "watched, nothing filed yet" — a claim that we are reading a page that isn't there.
+  if (hasNoTargetError(monitor.sourceType, monitor.lastError)) return "nothing public to read";
+  // Anything else here is a failure of ours, and the Sources page carries the detail.
+  // It doesn't belong in a strip this size at full length.
+  if (monitor.markedUnscrapable) return "we could not read it";
   if (!monitor.lastRunAt) return "not read yet";
   return "watched, nothing filed yet";
 }

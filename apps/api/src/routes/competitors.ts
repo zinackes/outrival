@@ -1446,6 +1446,10 @@ competitorsRouter.get("/", async (c) => {
         lastRunAt: monitors.lastRunAt,
         lastFailedAt: monitors.lastFailedAt,
         markedUnscrapable: monitors.markedUnscrapable,
+        // A "no such surface" verdict rides in lastError on a run the pipeline
+        // counted as a success (benign skip), so without it the aggregate reads a
+        // page that doesn't exist as freshly collected.
+        lastError: monitors.lastError,
         // A refusal is not a failure, and the roster said it was: a site that
         // declines automated collection was counted alongside broken URLs and
         // timeouts, so a well-covered competitor read as failing.

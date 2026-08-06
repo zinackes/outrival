@@ -7,6 +7,7 @@ import {
   computeFreshnessState,
   type FreshnessLevel,
   type FreshnessState,
+  type FreshnessStatus,
   type SourceType,
 } from "@outrival/shared";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,9 @@ const CONFIG: Record<FreshnessLevel, { dot: string; label: string }> = {
   aging: { dot: "bg-medium", label: "Aging" },
   stale: { dot: "bg-high", label: "Stale" },
   failed: { dot: "bg-critical", label: "Last scan failed" },
+  // Hollow, not filled: this is the absence of a surface, not a severity. It carries
+  // no hue at all so it can never be read as a source we are collecting.
+  none: { dot: "border border-muted-foreground/60", label: "No such surface" },
 };
 
 // patch-27 — the actionable 4-state scale (per-source-type thresholds). Same
@@ -33,7 +37,7 @@ const STATE_CONFIG: Record<FreshnessState, { dot: string; label: string }> = {
 
 interface FreshnessDotProps {
   lastScrapedAt: string | null;
-  status: "success" | "failed" | null;
+  status: FreshnessStatus | null;
   // When the next scheduled scan is due. Surfaced in the tooltip so the user knows
   // not just how old the data is but when it refreshes next. Optional — callers
   // without a schedule (e.g. an aggregate dot) just omit it.
@@ -75,8 +79,11 @@ export function FreshnessDot({
       </span>
     ) : null;
 
-  // Legacy patch-14 path — unchanged behaviour for callers that don't opt in.
-  if (!sourceType) {
+  // Legacy patch-14 path — unchanged behaviour for callers that don't opt in. A
+  // surface the competitor doesn't have takes it too, whatever the caller asked for:
+  // there is no age to grade and no re-scan worth offering on a page that isn't
+  // there, so the actionable variant has nothing to add.
+  if (!sourceType || status === "not_available") {
     const level = computeFreshness(lastScrapedAt, status);
     const { dot, label } = CONFIG[level];
     return (

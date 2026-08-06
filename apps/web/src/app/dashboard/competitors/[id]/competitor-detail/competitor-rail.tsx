@@ -315,7 +315,12 @@ function SourceRow({
   // dot and "failed" three lines above it contradicted that note outright.
   const blocked = status === "blocked";
   const off = status === "disabled" || status === "paused";
-  const tone = failed ? "bad" : blocked || off ? "neutral" : status === "ok" ? "good" : "warn";
+  // A surface the competitor doesn't have is a non-event, like a refusal or a pause:
+  // neutral ink, never the green of a source we are actually reading and never the
+  // amber of one we are waiting on.
+  const absent = status === "not_available";
+  const tone =
+    failed ? "bad" : blocked || off || absent ? "neutral" : status === "ok" ? "good" : "warn";
   const age =
     status === "running"
       ? "…"
@@ -323,13 +328,15 @@ function SourceRow({
         ? "queued"
         : blocked
           ? "blocked"
-          : off
-          ? "off"
-          : failed
-            ? "failed"
-            : status === "ok" && m.lastRunAt
-              ? shortAge(new Date(m.lastRunAt))
-              : "never";
+          : absent
+            ? "none"
+            : off
+              ? "off"
+              : failed
+                ? "failed"
+                : status === "ok" && m.lastRunAt
+                  ? shortAge(new Date(m.lastRunAt))
+                  : "never";
   const nextText = nextScanLabel(m, status, monitoringPaused);
 
   return (

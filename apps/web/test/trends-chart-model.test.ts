@@ -275,24 +275,125 @@ describe("buildSlopeModel", () => {
   });
 });
 
+describe("buildSlopeModel ladder trimming", () => {
+  // A realistic seat-price field: six competitors between $8 and $13.49, one of
+  // which moved, plus one competitor publishing an enterprise-only monthly number.
+  const field = () => [
+    series("linear", [
+      ["2026-05-01", 8],
+      ["2026-07-01", 8],
+    ]),
+    series("jira", [
+      ["2026-05-01", 8.6],
+      ["2026-07-01", 8.6],
+    ]),
+    series("asana", [
+      ["2026-05-01", 10.99],
+      ["2026-07-01", 13.49],
+    ]),
+    series("monday", [
+      ["2026-05-01", 12],
+      ["2026-07-01", 12],
+    ]),
+    series("notion", [
+      ["2026-05-01", 10],
+      ["2026-07-01", 10],
+    ]),
+    series("smartsheet", [
+      ["2026-05-01", 9],
+      ["2026-07-01", 9],
+    ]),
+  ];
+  const enterprise = (price: number) =>
+    series("enterprise", [
+      ["2026-05-01", price],
+      ["2026-07-01", price],
+    ]);
+
+  // The bug in one number. On the untrimmed ladder Asana's real +22.7% drew 0.9px
+  // of travel, which is nothing — the whole plot was spent on the gap to $499.
+  test("one enterprise plan no longer flattens the field it is plotted against", () => {
+    const set = [...field(), enterprise(499)];
+    const trimmed = buildSlopeModel(set)!;
+    const full = buildSlopeModel(set, { full: true })!;
+
+    const travel = (m: NonNullable<ReturnType<typeof buildSlopeModel>>) =>
+      Math.abs(m.y(10.99) - m.y(13.49));
+    expect(travel(full)).toBeLessThan(1);
+    expect(travel(trimmed)).toBeGreaterThan(30);
+    // The ladder stops at the top of the bundle, not at the outlier.
+    expect(trimmed.max).toBe(13.49);
+    expect(trimmed.fullMax).toBe(499);
+  });
+
+  test("the trim is counted and reversible, so the axis can say what it did", () => {
+    const trimmed = buildSlopeModel([...field(), enterprise(499)])!;
+    expect(trimmed.trimmable).toBe(true);
+    expect(trimmed.clippedCount).toBe(1);
+    expect(trimmed.outside(499)).toBe("above");
+    expect(trimmed.outside(12)).toBeNull();
+
+    const full = buildSlopeModel([...field(), enterprise(499)], { full: true })!;
+    expect(full.max).toBe(499);
+    expect(full.clippedCount).toBe(0);
+    // The way back is still offered once taken, or the reader is stuck on the
+    // scale they just asked to leave.
+    expect(full.trimmable).toBe(true);
+  });
+
+  test("a price past the ladder is pinned to its edge, never drawn off the plot", () => {
+    const model = buildSlopeModel([...field(), enterprise(2400)])!;
+    expect(model.y(2400)).toBe(model.y(model.max));
+    expect(model.y(2400)).toBeGreaterThanOrEqual(0);
+  });
+
+  test("a field with no outlier is left exactly as it was", () => {
+    const model = buildSlopeModel(field())!;
+    expect(model.trimmable).toBe(false);
+    expect(model.clippedCount).toBe(0);
+    expect(model.min).toBe(8);
+    expect(model.max).toBe(13.49);
+  });
+
+  // Two prices are a spread, not an outlier: with nothing else on the ladder there
+  // is no majority to call one of them wrong, so both stay and the page's own
+  // competitor filter remains the way out.
+  test("two competitors are never trimmed against each other", () => {
+    const model = buildSlopeModel([
+      series("cheap", [
+        ["2026-05-01", 9],
+        ["2026-07-01", 12],
+      ]),
+      enterprise(499),
+    ])!;
+    expect(model.trimmable).toBe(false);
+    expect(model.max).toBe(499);
+  });
+});
+
 describe("buildSlopeModel leaders", () => {
   test("a label pushed off its own line gets a pointer back to it", () => {
     // The shape the pointers exist for: a bundle of similar prices plus one
     // enterprise plan that stretches the scale, so the bundle's end dots land within
     // a pixel of each other and decollide has to move every one of their labels.
+    // Read on the FULL ladder, which is the only way to still get that pile-up now
+    // that the default one trims the outlier off.
     const bundle = Array.from({ length: 5 }, (_, i) =>
       series(`c${i}`, [
         ["2026-05-01", 10 + i * 0.1],
         ["2026-07-01", 10 + i * 0.1],
       ]),
     );
-    const model = buildSlopeModel([
-      ...bundle,
-      series("enterprise", [
-        ["2026-05-01", 500],
-        ["2026-07-01", 500],
-      ]),
-    ])!;
+    const model = buildSlopeModel(
+      [
+        ...bundle,
+        series("enterprise", [
+          ["2026-05-01", 500],
+          ["2026-07-01", 500],
+        ]),
+      ],
+      { full: true },
+    )!;
 
     expect(model.leaders.length).toBe(bundle.length);
     // The outlier's label never moved, so it is not pointed at.

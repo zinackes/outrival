@@ -1,6 +1,7 @@
 import { isComparablePricePeriod, type CostMethod } from "@outrival/shared";
 import type { CompareColumn } from "@/lib/api";
 import { competitorStroke } from "@/lib/competitor-color";
+import { median, robustCeiling } from "@/lib/robust-scale";
 import type { CompareEntity } from "./lens";
 
 /**
@@ -49,13 +50,10 @@ export function engineeringMedianSalary(
   return c.hiring?.engineeringMedianSalary ?? null;
 }
 
-export function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const s = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  // Even count → the mean of the two middle values.
-  return s.length % 2 === 0 ? ((s[mid - 1] as number) + (s[mid] as number)) / 2 : (s[mid] as number);
-}
+// The outlier rule and the median it needs are shared with the Trends charts, which
+// are crushed by exactly the same one-enterprise-plan field — a lens and a slopegraph
+// disagreeing on what counts as an outlier would be two different products.
+export { median, robustCeiling } from "@/lib/robust-scale";
 
 // ── scales ──────────────────────────────────────────────────────────────────
 
@@ -319,25 +317,6 @@ export interface PriceScale {
   converted: string[];
   /** True when at least one band was read off annual plans (÷12). */
   annualised: boolean;
-}
-
-// How many times the median top a band may reach before it counts as an outlier that
-// owns the axis. One $2,400 enterprise tier against four $99 products flattens every
-// other bar into an invisible sliver, which is a chart that answers nothing.
-const OUTLIER_FACTOR = 4;
-
-/**
- * The largest top worth scaling to: the raw maximum, unless it dwarfs the median, in
- * which case the highest NON-outlier top. Bands past it are drawn clipped, and their
- * true number is still read in the row's own value.
- */
-export function robustCeiling(tops: number[]): number {
-  if (tops.length === 0) return 0;
-  const raw = Math.max(...tops);
-  const med = median(tops) ?? raw;
-  if (med <= 0 || raw <= med * OUTLIER_FACTOR) return raw;
-  const inliers = tops.filter((t) => t <= med * OUTLIER_FACTOR);
-  return inliers.length ? Math.max(...inliers) : raw;
 }
 
 export function priceScale(

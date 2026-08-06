@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { TrendsMarketSeries } from "@/lib/api";
-import { EyeSlashIcon } from "@/components/icons";
+import { CaretDownIcon, CaretUpIcon, EyeSlashIcon } from "@/components/icons";
 import { formatDate } from "@/lib/format-date";
 import { paintFor, type SeriesPaint } from "@/lib/series-color";
 import { cn } from "@/lib/utils";
@@ -46,6 +46,14 @@ import { buildSlopeModel, type SlopeRow } from "@/components/dashboard/trends-ch
  * between two competitors has to be the money between them. The percentage each
  * line travelled is direct-labelled instead, so the number never depends on
  * judging an angle.
+ *
+ * Which leaves the problem linear brings: one $499 enterprise plan against six $10
+ * seat prices spends the whole ladder on the gap and leaves the six inside two
+ * pixels. The ladder is therefore scaled to the readable range and the outlier is
+ * drawn PINNED to the top edge, wearing a chevron that says the line does not end
+ * where it appears to. Nothing is hidden by that: the pinned row still direct-labels
+ * its real price, the footer counts what is off the ladder, and one click puts the
+ * true spread back. A trimmed axis a reader can't see is worse than the crush.
  */
 
 /** X of the two capture columns, then the leader's elbow, as a share of plot width. */
@@ -83,6 +91,9 @@ export function TrendsSlopeChart({
   onToggle,
 }: TrendsSlopeChartProps) {
   const [active, setActive] = useState<string | null>(null);
+  // Trimmed by default; this is the way back to the true spread, for when the gap
+  // between the bundle and the enterprise plan IS the reading.
+  const [full, setFull] = useState(false);
 
   // Filtered BEFORE the model, not after: the model derives the price range from the
   // rows it is handed, so dropping the one $499 competitor rescales the ladder and
@@ -92,11 +103,14 @@ export function TrendsSlopeChart({
     () => series.filter((s) => !hidden?.has(s.competitorId)),
     [series, hidden],
   );
-  const model = useMemo(() => buildSlopeModel(visible), [visible]);
+  const model = useMemo(() => buildSlopeModel(visible, { full }), [visible, full]);
 
   if (!model) return null;
 
   const { height, y } = model;
+  // The ladder is trimmed AND something is off it: both halves have to hold before
+  // the chart says so, or it announces a trim that changed nothing.
+  const trimmed = model.trimmable && !full;
   const shortDate = (iso: string) => formatDate(iso, { month: "short", day: "numeric" });
   const paintOf = (row: SlopeRow) => paintFor(paint, row.item.competitorId);
 
@@ -114,13 +128,16 @@ export function TrendsSlopeChart({
       <div className={cn("grid gap-3", COLUMNS)}>
         {/* The price ladder itself, so a level can be read without a label. */}
         <div className="relative hidden sm:block" style={{ height }}>
-          {model.ticks.map((tick) => (
+          {model.ticks.map((tick, i) => (
             <span
               key={tick}
               className="absolute right-0 -translate-y-1/2 text-meta tabular-nums text-muted-foreground"
               style={{ top: y(tick) }}
             >
               {formatValue(tick, model.axisItem)}
+              {/* The top rung wears the "+" whenever prices run past it, so the
+                  ladder never claims to hold the whole field when it doesn't. */}
+              {i === 0 && trimmed && "+"}
             </span>
           ))}
         </div>
@@ -131,7 +148,11 @@ export function TrendsSlopeChart({
             height={height}
             className="overflow-visible"
             role="img"
-            aria-label={`Start and end of the window for ${model.rows.length} competitors. Every value is listed beside the chart.`}
+            aria-label={`Start and end of the window for ${model.rows.length} competitors. Every value is listed beside the chart.${
+              trimmed
+                ? ` The scale stops at ${formatValue(model.max, model.axisItem)}; ${model.clippedCount} priced above it are drawn at the edge.`
+                : ""
+            }`}
           >
             {model.ticks.map((tick) => (
               <line
@@ -208,6 +229,41 @@ export function TrendsSlopeChart({
               );
             })}
           </svg>
+
+          {/* Pinned endpoints wear a caret at the edge they were held against. Drawn
+              in the HTML layer, not the SVG: the two capture columns are placed at
+              percentages of the plot width, and no SVG polygon takes a percentage
+              plus a pixel offset — CSS does it in one transform. */}
+          {trimmed &&
+            model.rows.flatMap((row) =>
+              (
+                [
+                  [X_FROM, row.from],
+                  [X_TO, row.to],
+                ] as const
+              ).map(([left, value]) => {
+                const direction = model.outside(value);
+                if (!direction) return null;
+                const Caret = direction === "above" ? CaretUpIcon : CaretDownIcon;
+                return (
+                  <span
+                    key={`clip-${row.item.competitorId}-${left}`}
+                    className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
+                    style={{
+                      left,
+                      top: y(value),
+                      color: paintOf(row).stroke,
+                      opacity: active != null && active !== row.item.competitorId ? 0.18 : 1,
+                    }}
+                    // The line stops at the frame, the price does not. Said in text
+                    // too, because a caret is not readable by a screen reader.
+                    aria-label={`${row.item.competitorName} at ${formatValue(value, row.item)}, past the top of the scale`}
+                  >
+                    <Caret size={14} />
+                  </span>
+                );
+              }),
+            )}
         </div>
 
         <div className="relative" style={{ height }}>
@@ -274,9 +330,33 @@ export function TrendsSlopeChart({
         </div>
       </div>
 
-      <p className="mt-2 text-xs text-muted-foreground">
-        {model.movedCount} moved · {model.rows.length - model.movedCount} held steady
-        {model.singleCount > 0 && ` · ${model.singleCount} captured once`}
+      <p className="mt-2 flex flex-wrap items-baseline gap-x-1.5 text-xs text-muted-foreground">
+        <span>
+          {model.movedCount} moved · {model.rows.length - model.movedCount} held steady
+          {model.singleCount > 0 && ` · ${model.singleCount} captured once`}
+        </span>
+        {/* The trim is a claim about the axis, so it is stated on the axis's own line
+            and undoable from it — never left for the reader to infer from a flat
+            bundle at the top of the frame. */}
+        {model.trimmable && (
+          <>
+            <span aria-hidden>·</span>
+            <span>
+              {full
+                ? `scaled to ${formatValue(model.fullMax, model.axisItem)}`
+                : `${model.clippedCount} past ${formatValue(model.max, model.axisItem)}, drawn at the edge`}
+            </span>
+            <button
+              type="button"
+              onClick={() => setFull((f) => !f)}
+              className="text-link rounded-sm underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {full
+                ? "Trim the outliers"
+                : `Show full range to ${formatValue(model.fullMax, model.axisItem)}`}
+            </button>
+          </>
+        )}
       </p>
     </div>
   );

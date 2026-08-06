@@ -398,15 +398,31 @@ export function priceScale(
 
 export interface HiringScale {
   max: number;
+  /** The readable ceiling: outliers excluded. Stable whether or not `full` is on,
+   *  so the way-back control does not vanish the moment it is used. */
+  robustMax: number;
+  /** The ceiling that covers every column, outliers included. */
+  fullMax: number;
+  /** True when at least one bar runs past `max` and is drawn clipped. */
+  clipped: boolean;
   hasData: boolean;
   /** True when at least one column has a bucketed engineering count to pick out. */
   hasEngineering: boolean;
 }
 
-export function hiringScale(cols: CompareColumn[]): HiringScale {
+// One 800-role enterprise against five competitors hiring a dozen each does to this
+// lane exactly what a $2,400 tier does to the price one, so it gets the same
+// treatment: scale to the readable range, clip the rest, and offer the way back.
+export function hiringScale(cols: CompareColumn[], opts: { full?: boolean } = {}): HiringScale {
   const totals = cols.map(openRoles).filter((v): v is number => v != null);
+  const fullMax = totals.length ? Math.max(...totals) : 1;
+  const robustMax = totals.length ? robustCeiling(totals) : 1;
+  const max = opts.full ? fullMax : robustMax;
   return {
-    max: totals.length ? Math.max(...totals) : 1,
+    max,
+    robustMax,
+    fullMax,
+    clipped: totals.some((t) => t > max),
     hasData: totals.length > 0,
     hasEngineering: cols.some((c) => engineeringRoles(c) != null),
   };
@@ -441,6 +457,12 @@ const RELEASE_TREND_MIN_MOVE = 0.15;
 
 export interface ShippingScale {
   max: number;
+  /** The readable ceiling: outliers excluded, and stable across the `full` toggle. */
+  robustMax: number;
+  /** The ceiling that covers every column, outliers included. */
+  fullMax: number;
+  /** True when at least one bar runs past `max` and is drawn clipped. */
+  clipped: boolean;
   hasData: boolean;
   /** The tallest single MONTH across the set — the scale the mini bars share, so a
    *  competitor's spike reads as a spike next to the others rather than against
@@ -448,11 +470,20 @@ export interface ShippingScale {
   monthMax: number;
 }
 
-export function shippingScale(cols: CompareColumn[]): ShippingScale {
+export function shippingScale(
+  cols: CompareColumn[],
+  opts: { full?: boolean } = {},
+): ShippingScale {
   const rates = cols.map(releasesPerMonth).filter((v): v is number => v != null);
   const monthCounts = cols.flatMap((c) => (c.shipping?.months ?? []).map((m) => m.count));
+  const fullMax = rates.length ? Math.max(...rates) : 1;
+  const robustMax = rates.length ? robustCeiling(rates) : 1;
+  const max = opts.full ? fullMax : robustMax;
   return {
-    max: rates.length ? Math.max(...rates) : 1,
+    max,
+    robustMax,
+    fullMax,
+    clipped: rates.some((r) => r > max),
     hasData: rates.length > 0,
     monthMax: monthCounts.length ? Math.max(...monthCounts, 1) : 1,
   };

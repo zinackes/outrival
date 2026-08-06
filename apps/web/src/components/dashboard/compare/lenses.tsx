@@ -141,6 +141,35 @@ function plain(value: number): string {
 const pct = (value: number, max: number): number =>
   max <= 0 ? 0 : Math.max(0, Math.min(100, (value / max) * 100));
 
+/**
+ * The way back to the true spread, on any lane whose axis has been trimmed.
+ *
+ * Every lane here trims the outlier that would otherwise own its axis — one $2,400
+ * tier, one competitor hiring 800 — so every lane owes the reader the same two
+ * things: the trim stated on the axis, and one click that undoes it. Shared so the
+ * three of them cannot drift into three different affordances.
+ */
+function ScaleToggle({
+  full,
+  onToggle,
+  fullLabel,
+}: {
+  full: boolean;
+  onToggle: () => void;
+  /** What the full scale reaches, written in the lane's own unit. */
+  fullLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="text-link rounded-sm underline-offset-2 hover:underline"
+    >
+      {full ? "Trim the outlier" : `Show full scale to ${fullLabel}`}
+    </button>
+  );
+}
+
 // ── Price ───────────────────────────────────────────────────────────────────
 
 export function PriceLens({ entities, expanded, onToggle }: LensProps) {
@@ -210,15 +239,11 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
                   </LegendMedian>
                 )}
                 {canExpandScale && (
-                  <button
-                    type="button"
-                    onClick={() => setFull((f) => !f)}
-                    className="text-link rounded-sm underline-offset-2 hover:underline"
-                  >
-                    {full
-                      ? "Trim the outlier"
-                      : `Show full scale to ${money(scale.fullMax, scale.currency)}`}
-                  </button>
+                  <ScaleToggle
+                    full={full}
+                    onToggle={() => setFull((f) => !f)}
+                    fullLabel={money(scale.fullMax, scale.currency)}
+                  />
                 )}
                 {/* The volume metered competitors are read at. Changing it re-reads
                     the captured ladder; nothing is re-scanned. */}
@@ -608,7 +633,10 @@ export function RatingLens({ entities, expanded, onToggle }: LensProps) {
 
 export function HiringLens({ entities, expanded, onToggle }: LensProps) {
   const cols = loaded(entities);
-  const scale = hiringScale(cols);
+  // One competitor hiring 800 against five hiring a dozen leaves those five as
+  // slivers, so the lane trims it the way the price lane does.
+  const [full, setFull] = useState(false);
+  const scale = hiringScale(cols, { full });
   if (!lensHasContent.hiring(entities)) return null;
 
   return (
@@ -626,15 +654,28 @@ export function HiringLens({ entities, expanded, onToggle }: LensProps) {
           ticks={
             scale.hasData
               ? [0, Math.round(scale.max / 2), scale.max].map((t, i) =>
-                  i === 2 ? `${t} roles` : String(t),
+                  // The last tick wears the "+" when a board runs past it, so the
+                  // axis never claims to hold the whole set when it doesn't.
+                  i === 2 ? `${t}${scale.clipped ? "+" : ""} roles` : String(t),
                 )
               : undefined
           }
           legend={
-            scale.hasEngineering ? (
+            scale.hasEngineering || scale.fullMax > scale.robustMax ? (
               <>
-                <LegendSwatch className="bg-muted-foreground/45">all open roles</LegendSwatch>
-                <LegendSwatch className="bg-muted-foreground">engineering</LegendSwatch>
+                {scale.hasEngineering && (
+                  <>
+                    <LegendSwatch className="bg-muted-foreground/45">all open roles</LegendSwatch>
+                    <LegendSwatch className="bg-muted-foreground">engineering</LegendSwatch>
+                  </>
+                )}
+                {scale.fullMax > scale.robustMax && (
+                  <ScaleToggle
+                    full={full}
+                    onToggle={() => setFull((f) => !f)}
+                    fullLabel={`${scale.fullMax} roles`}
+                  />
+                )}
               </>
             ) : undefined
           }
@@ -711,7 +752,9 @@ export function HiringLens({ entities, expanded, onToggle }: LensProps) {
             }
           >
             <Track>
-              <Bar entity={e} left={0} width={pct(total, scale.max)} />
+              {/* Held inside the axis and marked as held; the row's own value column
+                  keeps the true count. */}
+              <Bar entity={e} left={0} width={pct(total, scale.max)} clipped={total > scale.max} />
               {eng != null && eng > 0 && <BarShare entity={e} width={pct(eng, scale.max)} />}
             </Track>
           </MeasureRow>
@@ -738,7 +781,10 @@ export function HiringLens({ entities, expanded, onToggle }: LensProps) {
  */
 export function ShippingLens({ entities, expanded, onToggle }: LensProps) {
   const cols = loaded(entities);
-  const scale = shippingScale(cols);
+  // One competitor publishing 40 releases a month flattens a field shipping 3 to 6
+  // into a row of stubs — same trim as the other lanes.
+  const [full, setFull] = useState(false);
+  const scale = shippingScale(cols, { full });
   if (!lensHasContent.shipping(entities)) return null;
 
   return (
@@ -752,9 +798,18 @@ export function ShippingLens({ entities, expanded, onToggle }: LensProps) {
           ticks={
             scale.hasData
               ? [0, scale.max / 2, scale.max].map((t, i) =>
-                  i === 2 ? `${round1(t)} / mo` : round1(t),
+                  i === 2 ? `${round1(t)}${scale.clipped ? "+" : ""} / mo` : round1(t),
                 )
               : undefined
+          }
+          legend={
+            scale.fullMax > scale.robustMax ? (
+              <ScaleToggle
+                full={full}
+                onToggle={() => setFull((f) => !f)}
+                fullLabel={`${round1(scale.fullMax)} / mo`}
+              />
+            ) : undefined
           }
         />
       }
@@ -824,7 +879,7 @@ export function ShippingLens({ entities, expanded, onToggle }: LensProps) {
             }
           >
             <Track>
-              <Bar entity={e} left={0} width={pct(rate, scale.max)} />
+              <Bar entity={e} left={0} width={pct(rate, scale.max)} clipped={rate > scale.max} />
             </Track>
           </MeasureRow>
         );

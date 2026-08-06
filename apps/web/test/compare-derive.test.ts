@@ -225,10 +225,34 @@ describe("scales", () => {
   test("hiringScale flags whether any engineering share can be picked out", () => {
     expect(hiringScale([hiring("a", "A", 6, 3), hiring("b", "B", 31, null)])).toEqual({
       max: 31,
+      robustMax: 31,
+      fullMax: 31,
+      clipped: false,
       hasData: true,
       hasEngineering: true,
     });
     expect(hiringScale([hiring("b", "B", 31, null)]).hasEngineering).toBe(false);
+  });
+
+  test("hiringScale trims the one competitor hiring ten times the field", () => {
+    const cols = [
+      hiring("a", "A", 12, 4),
+      hiring("b", "B", 9, 3),
+      hiring("c", "C", 18, 6),
+      hiring("d", "D", 800, 300),
+    ];
+    const scale = hiringScale(cols);
+    // Without the trim, 9 open roles drew 1.1% of the track — a stub, not a bar.
+    expect(scale.max).toBe(18);
+    expect(scale.fullMax).toBe(800);
+    expect(scale.clipped).toBe(true);
+
+    const full = hiringScale(cols, { full: true });
+    expect(full.max).toBe(800);
+    expect(full.clipped).toBe(false);
+    // The robust ceiling is what the way-back control is gated on, so it holds
+    // steady while the reader is looking at the full scale.
+    expect(full.robustMax).toBe(18);
   });
 
   test("ratingScale marks the winner only when there is something to win", () => {
@@ -701,6 +725,21 @@ describe("shipping velocity", () => {
     ]);
     expect(scale.max).toBe(9);
     expect(scale.monthMax).toBe(11);
+    expect(scale.clipped).toBe(false);
+  });
+
+  test("a competitor shipping ten times the field is trimmed off the lane", () => {
+    const cols = [
+      shipping("a", 3, null),
+      shipping("b", 4, null),
+      shipping("c", 6, null),
+      shipping("runaway", 60, null),
+    ];
+    const scale = shippingScale(cols);
+    expect(scale.max).toBe(6);
+    expect(scale.fullMax).toBe(60);
+    expect(scale.clipped).toBe(true);
+    expect(shippingScale(cols, { full: true }).max).toBe(60);
   });
 
   test("no previous window means no arrow", () => {

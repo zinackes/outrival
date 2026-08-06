@@ -13,19 +13,46 @@
       "Bash(cat *)",
       "Bash(ls *)",
       "Bash(echo *)",
-      "Bash(chmod +x *)"
+      "Bash(chmod +x *)",
+      "Bash(bun test *)",
+      "Bash(git show *)",
+      "Bash(rtk git status)",
+      "Bash(rtk git status *)",
+      "Bash(rtk git diff *)",
+      "Bash(rtk git add *)",
+      "Bash(rtk git commit *)",
+      "Bash(rtk git log *)",
+      "Bash(rtk git branch *)",
+      "Bash(rtk git show *)",
+      "Bash(rtk read *)",
+      "Bash(rtk ls *)",
+      "Bash(rtk grep *)",
+      "Bash(rtk find *)",
+      "Bash(rtk proxy *)"
     ],
     "ask": [
       "Bash(git push)",
       "Bash(git push *)",
+      "Bash(rtk git push)",
+      "Bash(rtk git push *)",
+      "Bash(gh pr create*)",
+      "Bash(gh pr merge*)",
+      "Bash(rtk gh pr create*)",
+      "Bash(rtk gh pr merge*)",
       "Bash(pnpm db:push)",
       "Bash(pnpm db:push *)",
       "Bash(pnpm --filter @outrival/db db:push *)"
     ],
     "deny": [
       "Bash(rm -rf *)",
+      "Bash(git reset --hard *)",
+      "Bash(rtk git reset --hard *)",
+      "Bash(git clean *)",
+      "Bash(rtk git clean *)",
       "Bash(curl * | bash)",
-      "Bash(wget * | sh)"
+      "Bash(rtk curl * | bash)",
+      "Bash(wget * | sh)",
+      "Bash(rtk wget * | sh)"
     ]
   },
   "hooks": {

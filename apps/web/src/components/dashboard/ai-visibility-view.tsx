@@ -1012,7 +1012,7 @@ function QuestionList({
           No questions yet. Add one below, or run a check to seed a starting set.
         </p>
       ) : (
-        <ul className="mt-3">
+        <ul className="@container mt-3">
           <AnimatePresence initial={false} mode="popLayout">
             {rows.map((r) => {
               const { prompt: p, cell } = r;
@@ -1027,7 +1027,18 @@ function QuestionList({
                 // layout="position": the row's own height is animated by the evidence
                 // opening inside it, so only its place is projected.
                 <motion.li key={p.id} {...feedItemMotion} layout="position" className="group border-t border-border">
-                  <div className="flex items-start gap-2 pr-4 transition-colors hover:bg-surface-2">
+                  {/* On a narrow list the status and its controls drop UNDER the question
+                      instead of sharing its line. That column is `shrink-0` and never wraps,
+                      so on a 390px screen it held 188 of the 292 available pixels and left
+                      the question a 98px ribbon: 13 lines of one word each. Stacked, the same
+                      question reads across the full width in four.
+
+                      Keyed on the LIST's width (@container), not the viewport's: the sidebar
+                      is 16rem or 3rem or off-canvas, so the same 768px viewport leaves this row
+                      406px or 669px. A `md:` fold flipped to side-by-side at exactly the width
+                      where the sidebar appeared and took 256px with it, cutting the question to
+                      249px, narrower than it had been one pixel earlier. */}
+                  <div className="flex flex-col pr-4 transition-colors hover:bg-surface-2 @2xl:flex-row @2xl:items-start @2xl:gap-2">
                     {editing ? (
                       <div className="flex flex-1 items-start gap-2 py-2.5 pl-5">
                         <Textarea
@@ -1078,7 +1089,7 @@ function QuestionList({
                           onClick={() => toggleOpen(p.id)}
                           aria-expanded={expanded}
                           disabled={!cell}
-                          className="flex min-w-0 flex-1 items-start gap-3 py-3 pl-5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset disabled:cursor-default"
+                          className="flex min-w-0 flex-1 items-start gap-3 pb-2 pl-5 pt-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset disabled:cursor-default @2xl:py-3"
                         >
                           <CaretRightIcon
                             className={cn(
@@ -1100,7 +1111,9 @@ function QuestionList({
                             <MentionLine cell={cell} active={p.isActive} />
                           </span>
                         </button>
-                        <span className="flex shrink-0 items-center gap-1 py-3">
+                        {/* Stacked, it sits under the question at the text's own indent
+                            (pl-12 = pl-5 + caret + gap) rather than back at the edge. */}
+                        <span className="flex items-center gap-1 pb-3 pl-12 @2xl:shrink-0 @2xl:py-3 @2xl:pl-0">
                           <QuestionStatus cell={cell} active={p.isActive} />
                           <span className="flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                             <button

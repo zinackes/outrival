@@ -211,20 +211,26 @@ export function TrendsSlopeChart({
                     strokeOpacity={row.moved ? 1 : 0.5}
                     strokeDasharray={row.single ? "3 3" : undefined}
                   />
-                  <circle
-                    cx={X_FROM}
-                    cy={y1}
-                    r={3}
-                    fill={stroke}
-                    fillOpacity={row.moved ? 1 : 0.5}
-                  />
-                  <circle
-                    cx={X_TO}
-                    cy={y2}
-                    r={3}
-                    fill={stroke}
-                    fillOpacity={row.moved ? 1 : 0.5}
-                  />
+                  {/* A pinned endpoint gives its dot up to the caret drawn over it:
+                      a round dot means "the price is here", and it is not. */}
+                  {model.outside(row.from) === null && (
+                    <circle
+                      cx={X_FROM}
+                      cy={y1}
+                      r={3}
+                      fill={stroke}
+                      fillOpacity={row.moved ? 1 : 0.5}
+                    />
+                  )}
+                  {model.outside(row.to) === null && (
+                    <circle
+                      cx={X_TO}
+                      cy={y2}
+                      r={3}
+                      fill={stroke}
+                      fillOpacity={row.moved ? 1 : 0.5}
+                    />
+                  )}
                 </g>
               );
             })}

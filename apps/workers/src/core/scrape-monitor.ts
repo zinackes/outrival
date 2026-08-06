@@ -38,6 +38,7 @@ import { recordMobileApps } from "../lib/mobile-apps";
 import { recordShopifyApp } from "../lib/shopify-app";
 import { recordMessagingVersion } from "../lib/messaging-versions";
 import { crossesRoundMilestone } from "../lib/claim-milestone";
+import { readAudienceMeta } from "../lib/audience-pages";
 import {
   clampFrequencyToPlan,
   computeHash,
@@ -199,6 +200,10 @@ const SITEMAP_COMPARISON_URL_CAP = 200;
 // capture, it is pure string work with no fetch, and a site with 200 `/industries/`
 // pages is a programmatic-SEO shop whose ICP grid we want in full.
 const SITEMAP_AUDIENCE_URL_CAP = 200;
+/** Every audience URL a sitemap capture names, capped — the ICP run's free reading. */
+function audienceUrlsOf(sitemapHtml: string): string[] {
+  return parseSitemapDoc(sitemapHtml).filter(isAudienceUrl).slice(0, SITEMAP_AUDIENCE_URL_CAP);
+}
 // Sources whose capture is ALWAYS a scraper-synthesized document (built from parsed
 // structured data — no HTML fetch path at all), so the deny-page copy heuristic is
 // meaningless on them: deny-shaped strings in a sitemap/feed listing are content, not
@@ -962,6 +967,24 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
     // downstream extractions, so e.g. "Re-scan profile" actually re-derives the profile.
     if (!input.force && lastSnapshot && lastSnapshot.contentHash === newHash) {
       logger.log("Hash identical, no change", { lastSnapshotId: lastSnapshot.id });
+      // Positioning Intelligence v2 P3 — the ICP registry is established here for a
+      // competitor whose sitemap has not moved since the feature shipped. Their back
+      // catalogue of `/industries/` pages was already in the sitemap the day the
+      // monitor was created, so no URL delta will ever carry it: the diff branch is
+      // the only thing that enqueues the ICP run, and an unchanged sitemap returns
+      // above it, forever. That is what left "Who they sell to" empty on every
+      // competitor. Gated on the baseline marker, so it fires ONCE and then goes
+      // quiet — a real new segment page IS a sitemap change and takes the diff path.
+      if (
+        monitor.sourceType === "sitemap" &&
+        !readAudienceMeta(competitor.metadata).baselinedAt
+      ) {
+        await ingestAudiencePages.enqueue({
+          snapshotId: lastSnapshot.id,
+          competitorId: competitor.id,
+          urls: audienceUrlsOf(result.html),
+        });
+      }
       const nextRunAt = computeNextRun(
         effectiveFrequency,
         monitor.lastChangedAt,
@@ -2251,6 +2274,21 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
     // content summary so the user sees what this competitor does from scrape #1.
     if (monitor.sourceType === "homepage" && !lastSnapshot) {
       await refreshCompetitorSummary.enqueue({ competitorId: competitor.id });
+    }
+
+    // Same hole, same shape, for the ICP registry: the first-ever sitemap capture has
+    // nothing to diff against either, and the diff branch is where the ICP run was
+    // enqueued from — so the capture that actually holds a competitor's whole back
+    // catalogue of `/for/`, `/industries/` and `/use-cases/` pages was the one capture
+    // that never read them. The job's first pass is a BASELINE by design (it records
+    // the catalogue and emits no signal), which is exactly what a scrape #1 owes the
+    // tab: "Who they sell to" is populated from the first run, as its phase promised.
+    if (monitor.sourceType === "sitemap" && !lastSnapshot) {
+      await ingestAudiencePages.enqueue({
+        snapshotId: newSnapshot.id,
+        competitorId: competitor.id,
+        urls: audienceUrlsOf(result.html),
+      });
     }
 
     // R1b: a partial capture must not feed the destructive extractors (pricing_history

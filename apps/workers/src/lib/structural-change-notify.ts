@@ -8,7 +8,8 @@ import {
 } from "@outrival/db";
 import { sendEmail, ALERT_FROM } from "./resend";
 import { escapeHtml } from "./escape-html";
-import { emailShell, e } from "./email-shell";
+import { emailShell, e, t, severityDot } from "./email-shell";
+import { emailButton } from "@outrival/shared";
 
 const WEB_URL = process.env.WEB_URL ?? "https://outrival.app";
 const EMAIL_THROTTLE_MS = 30 * 24 * 60 * 60 * 1000; // at most one email / competitor / month
@@ -80,11 +81,13 @@ export async function notifyStructuralChange(structuralChangeId: string): Promis
   if (!org?.digestEmail) return;
 
   const html = emailShell(
-    `<p ${e("muted", "font-size:12px;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px;")}>Structural change detected</p>
-  <h2 ${e("text", "margin:0 0 12px;")}>${escapeHtml(competitor.name)}</h2>
-  <p ${e("text", "margin:0 0 12px;")}>${label}</p>
-  ${summary ? `<p ${e("muted", "margin:0 0 16px;")}>${escapeHtml(summary)}</p>` : ""}
-  <a href="${linkUrl}" ${e("accent")}>Open your dashboard to decide what to do →</a>`,
+    `<div style="margin:0 0 10px;">${severityDot("critical")}<span ${e("critical", t("meta", "vertical-align:middle;"))}>Structural change detected</span></div>
+  <h1 ${e("text", t("title", "margin:0 0 8px;"))}>${escapeHtml(competitor.name)}</h1>
+  <p ${e("text", t("lead", "margin:0 0 12px;"))}>${label}</p>
+  ${summary ? `<p ${e("muted", t("body", "margin:0 0 24px;"))}>${escapeHtml(summary)}</p>` : ""}
+  ${emailButton(linkUrl, "Open your dashboard to decide what to do →")}`,
+    520,
+    summary || label,
   );
 
   try {

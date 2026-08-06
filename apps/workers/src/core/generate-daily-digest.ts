@@ -13,14 +13,16 @@ import { emailButton, signUnsubscribeToken } from "@outrival/shared";
 import { sendEmail, ALERT_FROM } from "../lib/resend";
 import { localHour } from "../lib/notification-dispatcher";
 import { escapeHtml } from "../lib/escape-html";
-import { emailShell, e } from "../lib/email-shell";
+import { emailShell, e, t, severityDot, type EmailSeverity } from "../lib/email-shell";
 
-const SEVERITY_EMOJI: Record<string, string> = {
-  critical: "🚨",
-  high: "🔴",
-  medium: "🟡",
-  low: "🟢",
-};
+// The severity mark on a row. Was 🚨🔴🟡🟢: emoji-as-UI, which DESIGN.md §1 rejects
+// and which send-alert already refuses for in-app notifications. A themed swatch
+// carries the same band, renders in every client, and matches the feed.
+const SEVERITIES: readonly EmailSeverity[] = ["critical", "high", "medium", "low"];
+function severityMark(severity: string): string {
+  const known = SEVERITIES.find((s) => s === severity) ?? "low";
+  return severityDot(known);
+}
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -151,14 +153,20 @@ export async function runGenerateDailyDigest(payload?: { timestamp?: Date }) {
         continue;
       }
 
+      // Boxless rows separated by a hairline, like the weekly digest: a bordered
+      // card per update gave every update the same weight and doubled the inset
+      // on mobile (DESIGN.md §5 — depth from rhythm, not boxes).
       const rows = deferred
-        .map((s) => {
-          const emoji = SEVERITY_EMOJI[s.severity] ?? "🔔";
+        .map((s, i) => {
+          const divider =
+            i === 0
+              ? ""
+              : "margin-top:14px;padding-top:14px;border-top-width:1px;border-top-style:solid;";
           return `
-  <div ${e("card", "border-radius:6px;padding:16px;margin-bottom:12px;")}>
-    <div ${e("muted", "font-size:11px;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;")}>${emoji} ${escapeHtml(s.competitorName)} · ${s.category}</div>
-    <div ${e("text", "font-size:14px;margin-bottom:8px;")}>${escapeHtml(s.insight)}</div>
-    ${s.soWhat ? `<div ${e("accent", "font-size:13px;")}>→ ${escapeHtml(s.soWhat)}</div>` : ""}
+  <div ${e("rule", divider)}>
+    <div style="margin-bottom:5px;">${severityMark(s.severity)}<span ${e("muted", t("dense", "vertical-align:middle;"))}>${escapeHtml(s.competitorName)} · ${s.category}</span></div>
+    <div ${e("text", t("lead", "margin-bottom:6px;"))}>${escapeHtml(s.insight)}</div>
+    ${s.soWhat ? `<div ${e("muted", t("body"))}>→ ${escapeHtml(s.soWhat)}</div>` : ""}
   </div>`;
         })
         .join("");
@@ -171,12 +179,15 @@ export async function runGenerateDailyDigest(payload?: { timestamp?: Date }) {
           : undefined;
       const webUrl = process.env.WEB_URL ?? "https://outrival.app";
 
+      const headline = `${deferred.length} update${deferred.length > 1 ? "s" : ""} since yesterday`;
       const html = emailShell(
-        `<p ${e("muted", "font-size:12px;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 4px;")}>Daily briefing</p>
-  <h2 ${e("text", "margin:0 0 16px;")}>${deferred.length} update${deferred.length > 1 ? "s" : ""} since yesterday</h2>
+        `<div ${e("muted", t("meta", "margin:0 0 10px;"))}>Daily briefing</div>
+  <h1 ${e("text", t("display", "margin:0 0 22px;"))}>${headline}</h1>
   ${rows}
-  <div style="margin-top:28px;text-align:center;">${emailButton(`${webUrl}/dashboard/signals?src=digest_daily`, "Open the full briefing")}</div>
-  ${unsubscribeUrl ? `<div ${e("faint", "margin-top:24px;font-size:11px;text-align:center;")}><a href="${unsubscribeUrl}" ${e("faint", "text-decoration:underline;")}>Unsubscribe</a></div>` : ""}`,
+  <div style="margin-top:28px;">${emailButton(`${webUrl}/dashboard/signals?src=digest_daily`, "Open the full briefing")}</div>
+  ${unsubscribeUrl ? `<div ${e("faint", t("meta", "margin-top:28px;letter-spacing:normal;"))}><a href="${unsubscribeUrl}" ${e("faint", "text-decoration:underline;")}>Unsubscribe</a></div>` : ""}`,
+        640,
+        headline,
       );
 
       try {

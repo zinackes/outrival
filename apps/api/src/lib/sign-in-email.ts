@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { emailShell, e } from "@outrival/shared";
+import { emailShell, emailButton, e, t } from "@outrival/shared";
 
 // Sign-in email — sent from the API process (Better Auth's emailOTP
 // sendVerificationOTP runs here, not in the workers). One email carries BOTH a
@@ -28,8 +28,11 @@ const renderShell = (inner: string): string => emailShell(inner, 440);
 // Solid surface/border colors (not rgba-on-transparent) so the code box reads even
 // if a client ignores the wrapper background.
 function renderCodeBox(code: string): string {
-  return `<div ${e("card", "border-radius:10px;padding:20px;text-align:center;margin:0 0 28px;")}>
-        <div ${e("text", "font-size:34px;font-weight:700;letter-spacing:0.35em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;")}>${code}</div>
+  // The one place mono is correct: a string read glyph by glyph, where a mistaken
+  // character changes the meaning (DESIGN.md §3, the Machine-Truth Rule). Radius
+  // drops to the 6px card step so it matches every other surface we send.
+  return `<div ${e(["panel", "rule"], "border-radius:6px;border-width:1px;border-style:solid;padding:22px 20px;text-align:center;margin:0 0 28px;")}>
+        <div ${e("text", "font-size:32px;font-weight:600;letter-spacing:0.3em;line-height:1.1;font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace;")}>${code}</div>
       </div>`;
 }
 
@@ -38,57 +41,55 @@ function renderSignInEmail(
   linkUrl: string,
   expiresInMinutes: number,
 ): string {
-  return renderShell(`<h1 ${e("text", "font-size:20px;font-weight:600;margin:0 0 12px;")}>Sign in to Outrival</h1>
+  return renderShell(`<h1 ${e("text", t("title", "margin:0 0 12px;"))}>Sign in to Outrival</h1>
 
-      <p ${e("muted", "font-size:14px;line-height:1.6;margin:0 0 28px;")}>
+      <p ${e("muted", t("body", "margin:0 0 28px;"))}>
         Enter this code to finish signing in. It expires in ${expiresInMinutes} minutes
         and can only be used once.
       </p>
 
       ${renderCodeBox(code)}
 
-      <p ${e("muted", "font-size:14px;line-height:1.6;margin:0 0 16px;")}>
+      <p ${e("muted", t("body", "margin:0 0 16px;"))}>
         Or just click the button to sign in on this device:
       </p>
 
-      <a href="${linkUrl}" ${e("btn", "display:inline-block;font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:6px;")}>
-        Sign in to Outrival →
-      </a>
+      ${emailButton(linkUrl, "Sign in to Outrival →")}
 
       <hr ${e("rule", "border-width:0;border-top-width:1px;border-top-style:solid;margin:28px 0 20px;")} />
 
-      <p ${e("faint", "font-size:12px;line-height:1.6;margin:0;")}>
+      <p ${e("faint", t("dense", "margin:0;"))}>
         If you didn't request this, you can ignore this email — your account stays secure.
       </p>`);
 }
 
 function renderEmailChangeEmail(code: string, expiresInMinutes: number): string {
-  return renderShell(`<h1 ${e("text", "font-size:20px;font-weight:600;margin:0 0 12px;")}>Confirm your new email</h1>
+  return renderShell(`<h1 ${e("text", t("title", "margin:0 0 12px;"))}>Confirm your new email</h1>
 
-      <p ${e("muted", "font-size:14px;line-height:1.6;margin:0 0 28px;")}>
+      <p ${e("muted", t("body", "margin:0 0 28px;"))}>
         Enter this code in Outrival to set this address as your new sign-in email.
         It expires in ${expiresInMinutes} minutes and can only be used once.
       </p>
 
       ${renderCodeBox(code)}
 
-      <p ${e("faint", "font-size:12px;line-height:1.6;margin:0;")}>
+      <p ${e("faint", t("dense", "margin:0;"))}>
         If you didn't request this change, you can ignore this email — your account
         email stays the same.
       </p>`);
 }
 
 function renderReauthEmail(code: string, expiresInMinutes: number): string {
-  return renderShell(`<h1 ${e("text", "font-size:20px;font-weight:600;margin:0 0 12px;")}>Confirm a sensitive action</h1>
+  return renderShell(`<h1 ${e("text", t("title", "margin:0 0 12px;"))}>Confirm a sensitive action</h1>
 
-      <p ${e("muted", "font-size:14px;line-height:1.6;margin:0 0 28px;")}>
+      <p ${e("muted", t("body", "margin:0 0 28px;"))}>
         Enter this code to confirm a destructive action on your account (such as
         deleting your workspace). It expires in ${expiresInMinutes} minutes.
       </p>
 
       ${renderCodeBox(code)}
 
-      <p ${e("faint", "font-size:12px;line-height:1.6;margin:0;")}>
+      <p ${e("faint", t("dense", "margin:0;"))}>
         If you didn't start this, ignore this email and consider changing how you sign in —
         nothing has been deleted.
       </p>`);
@@ -125,16 +126,16 @@ export async function sendReauthCodeEmail({
 }
 
 function renderSetPasswordEmail(code: string, expiresInMinutes: number): string {
-  return renderShell(`<h1 ${e("text", "font-size:20px;font-weight:600;margin:0 0 12px;")}>Confirm your new password</h1>
+  return renderShell(`<h1 ${e("text", t("title", "margin:0 0 12px;"))}>Confirm your new password</h1>
 
-      <p ${e("muted", "font-size:14px;line-height:1.6;margin:0 0 28px;")}>
+      <p ${e("muted", t("body", "margin:0 0 28px;"))}>
         Enter this code in Outrival to save your new account password. It expires in
         ${expiresInMinutes} minutes and can only be used once.
       </p>
 
       ${renderCodeBox(code)}
 
-      <p ${e("faint", "font-size:12px;line-height:1.6;margin:0;")}>
+      <p ${e("faint", t("dense", "margin:0;"))}>
         If you didn't request this, ignore this email — your password stays unchanged.
       </p>`);
 }

@@ -16,7 +16,8 @@
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "bun test src",
-    "geo:build": "bun scripts/build-geo-dataset.ts"
+    "geo:build": "bun scripts/build-geo-dataset.ts",
+    "email:preview": "bun scripts/build-email-previews.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",

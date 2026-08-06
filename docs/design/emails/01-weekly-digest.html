@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Weekly digest — Outrival email design</title>
+<style>
+  :root { color-scheme: light dark; --ink:#181b1f; --sub:#535861; --line:#dcdee1; --bg:#f9fafb; --card:#fefeff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink:#f2f5f8; --sub:#9aa2ad; --line:#2d2d2d; --bg:#0a0a0a; --card:#161616; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:40px 24px 72px; background:var(--bg); color:var(--ink);
+         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+         font-size:14px; line-height:1.6; }
+  .wrap { max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; font-weight:600; letter-spacing:-0.02em; margin:0 0 8px; }
+  h2 { font-size:15px; font-weight:600; letter-spacing:-0.01em; margin:40px 0 14px;
+       padding-bottom:8px; border-bottom:1px solid var(--line); }
+  p.lede { color:var(--sub); margin:0 0 8px; max-width:70ch; }
+  nav a { color:inherit; }
+  .cols { display:grid; gap:16px; grid-template-columns:1fr; }
+  @media (min-width: 900px) { .cols { grid-template-columns:1fr 1fr; } }
+  .mode { font-size:11px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase;
+          color:var(--sub); margin:0 0 8px; }
+  iframe { width:100%; height:760px; border:1px solid var(--line); border-radius:8px; background:var(--card); display:block; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { font-weight:600; color:var(--sub); font-size:11px; letter-spacing:0.04em; text-transform:uppercase; }
+  .demo table { width:auto; border-collapse:separate; }
+  .demo table td { border-bottom:0; padding:0; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
+  .sw { display:inline-block; width:22px; height:22px; border-radius:4px; border:1px solid var(--line);
+        vertical-align:middle; margin-right:8px; }
+  .pass { color:#047857; font-weight:600; }
+  .warn { color:#a16207; font-weight:600; }
+  .demo { border:1px solid var(--line); border-radius:8px; padding:22px; background:#f9fafb; color:#181b1f; }
+  ul.files { list-style:none; padding:0; margin:0; }
+  ul.files li { padding:10px 0; border-bottom:1px solid var(--line); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <nav style="margin-bottom:24px;font-size:13px;"><a href="./index.html">← All email artefacts</a></nav>
+    <h1>Weekly digest</h1>
+    <p class="lede">The flagship. Verdict first, then the week's shape as one line, then urgency groups as boxless hairline-separated rows — not three identical stacks of cards.</p>
+    <div class="cols">
+    <div><div class="mode">Light — what every client renders by default</div>
+      <iframe title="light" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+  &lt;meta charset=&quot;utf-8&quot; /&gt;
+  &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot; /&gt;
+  &lt;meta name=&quot;color-scheme&quot; content=&quot;light dark&quot; /&gt;
+  &lt;meta name=&quot;supported-color-schemes&quot; content=&quot;light dark&quot; /&gt;
+  &lt;style&gt;
+    :root { color-scheme: light dark; supported-color-schemes: light dark; }
+    @media (prefers-color-scheme: dark) { .e-bg{background-color:#0a0a0a !important;}.e-card{background-color:#161616 !important;border-color:#2d2d2d !important;}.e-panel{background-color:#1d1d1d !important;}.e-text{color:#f2f5f8 !important;}.e-muted{color:#9aa2ad !important;}.e-faint{color:#79808c !important;}.e-accent{color:#9a8cff !important;}.e-btn{background-color:#6c5dfd !important;color:#ffffff !important;}.e-rule{border-color:#2d2d2d !important;}.e-critical{color:#ff5c72 !important;}.e-high{color:#ff8a5b !important;}.e-medium{color:#ffc247 !important;}.e-low{color:#5b9cff !important;}.e-positive{color:#34d399 !important;}.e-dotCritical{background-color:#ff5c72 !important;}.e-dotHigh{background-color:#ff8a5b !important;}.e-dotMedium{background-color:#ffc247 !important;}.e-dotLow{background-color:#5b9cff !important;}.e-dotPositive{background-color:#34d399 !important;}.e-logo-l{display:none !important;}.e-logo-d{display:inline-block !important;max-height:none !important;overflow:visible !important;} }
+    [data-ogsc] .e-bg{background-color:#0a0a0a !important;}[data-ogsc] .e-card{background-color:#161616 !important;border-color:#2d2d2d !important;}[data-ogsc] .e-panel{background-color:#1d1d1d !important;}[data-ogsc] .e-text{color:#f2f5f8 !important;}[data-ogsc] .e-muted{color:#9aa2ad !important;}[data-ogsc] .e-faint{color:#79808c !important;}[data-ogsc] .e-accent{color:#9a8cff !important;}[data-ogsc] .e-btn{background-color:#6c5dfd !important;color:#ffffff !important;}[data-ogsc] .e-rule{border-color:#2d2d2d !important;}[data-ogsc] .e-critical{color:#ff5c72 !important;}[data-ogsc] .e-high{color:#ff8a5b !important;}[data-ogsc] .e-medium{color:#ffc247 !important;}[data-ogsc] .e-low{color:#5b9cff !important;}[data-ogsc] .e-positive{color:#34d399 !important;}[data-ogsc] .e-dotCritical{background-color:#ff5c72 !important;}[data-ogsc] .e-dotHigh{background-color:#ff8a5b !important;}[data-ogsc] .e-dotMedium{background-color:#ffc247 !important;}[data-ogsc] .e-dotLow{background-color:#5b9cff !important;}[data-ogsc] .e-dotPositive{background-color:#34d399 !important;}[data-ogsc] .e-logo-l{display:none !important;}[data-ogsc] .e-logo-d{display:inline-block !important;max-height:none !important;overflow:visible !important;}
+    [data-ogsb] .e-bg{background-color:#0a0a0a !important;}[data-ogsb] .e-card{background-color:#161616 !important;border-color:#2d2d2d !important;}[data-ogsb] .e-panel{background-color:#1d1d1d !important;}[data-ogsb] .e-text{color:#f2f5f8 !important;}[data-ogsb] .e-muted{color:#9aa2ad !important;}[data-ogsb] .e-faint{color:#79808c !important;}[data-ogsb] .e-accent{color:#9a8cff !important;}[data-ogsb] .e-btn{background-color:#6c5dfd !important;color:#ffffff !important;}[data-ogsb] .e-rule{border-color:#2d2d2d !important;}[data-ogsb] .e-critical{color:#ff5c72 !important;}[data-ogsb] .e-high{color:#ff8a5b !important;}[data-ogsb] .e-medium{color:#ffc247 !important;}[data-ogsb] .e-low{color:#5b9cff !important;}[data-ogsb] .e-positive{color:#34d399 !important;}[data-ogsb] .e-dotCritical{background-color:#ff5c72 !important;}[data-ogsb] .e-dotHigh{background-color:#ff8a5b !important;}[data-ogsb] .e-dotMedium{background-color:#ffc247 !important;}[data-ogsb] .e-dotLow{background-color:#5b9cff !important;}[data-ogsb] .e-dotPositive{background-color:#34d399 !important;}[data-ogsb] .e-logo-l{display:none !important;}[data-ogsb] .e-logo-d{display:inline-block !important;max-height:none !important;overflow:visible !important;}
+  &lt;/style&gt;
+&lt;/head&gt;
+&lt;body class=&quot;e-bg&quot; style=&quot;margin:0;padding:0;background-color:#f9fafb;&quot;&gt;
+  &lt;div style=&quot;display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;&quot;&gt;Linear moved its Business tier to usage-based pricing and bundled AI credits.&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&lt;/div&gt;
+  &lt;table role=&quot;presentation&quot; width=&quot;100%&quot; cellpadding=&quot;0&quot; cellspacing=&quot;0&quot; border=&quot;0&quot; bgcolor=&quot;#f9fafb&quot; class=&quot;e-bg&quot; style=&quot;background-color:#f9fafb;&quot;&gt;
+    &lt;tr&gt;
+      &lt;td align=&quot;center&quot; style=&quot;padding:32px 24px;&quot;&gt;
+        &lt;table role=&quot;presentation&quot; width=&quot;640&quot; cellpadding=&quot;0&quot; cellspacing=&quot;0&quot; border=&quot;0&quot; style=&quot;width:100%;max-width:640px;&quot;&gt;
+          &lt;tr&gt;
+            &lt;td class=&quot;e-text&quot; style=&quot;color:#181b1f;font-family:'Geist Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;text-align:left;&quot;&gt;
+              &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;margin-bottom:24px;padding-bottom:16px;border-bottom-width:1px;border-bottom-style:solid;&quot;&gt;
+                &lt;a href=&quot;https://outrival.app&quot; style=&quot;text-decoration:none;&quot;&gt;
+                  &lt;img class=&quot;e-logo-l&quot; src=&quot;https://outrival.app/logo-dark.png&quot; width=&quot;24&quot; height=&quot;24&quot; alt=&quot;&quot; style=&quot;vertical-align:middle;border:0;outline:none;&quot; /&gt;
+                  &lt;span class=&quot;e-logo-d&quot; style=&quot;display:none;max-height:0;overflow:hidden;mso-hide:all;&quot;&gt;
+                    &lt;img src=&quot;https://outrival.app/logo-light.png&quot; width=&quot;24&quot; height=&quot;24&quot; alt=&quot;&quot; style=&quot;vertical-align:middle;border:0;outline:none;&quot; /&gt;
+                  &lt;/span&gt;
+                  &lt;span class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:17px;font-weight:600;letter-spacing:-0.015em;vertical-align:middle;padding-left:8px;&quot;&gt;Outrival&lt;/span&gt;
+                &lt;/a&gt;
+              &lt;/div&gt;
+              &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:11px;font-weight:500;line-height:1.45;letter-spacing:0.04em;margin-bottom:10px;&quot;&gt;Your weekly competitive briefing · 2026-07-13 to 2026-07-20&lt;/div&gt;
+      &lt;h1 class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:22px;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin:0 0 14px;&quot;&gt;Linear moved its Business tier to usage-based pricing and bundled AI credits.&lt;/h1&gt;
+      &lt;ul class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;margin:0 0 20px;padding-left:18px;&quot;&gt;&lt;li style=&quot;margin-bottom:8px;&quot;&gt;Notion opened six enterprise AE roles across London and Berlin.&lt;/li&gt;&lt;li style=&quot;margin-bottom:8px;&quot;&gt;Height shipped a comparison page naming you first.&lt;/li&gt;&lt;/ul&gt;
+      &lt;div class=&quot;e-panel e-muted&quot; style=&quot;background-color:#f0f2f4;color:#535861;font-size:13px;line-height:1.5;border-radius:6px;padding:11px 14px;margin-bottom:28px;font-variant-numeric:tabular-nums;&quot;&gt;5 moves · 2 need an answer · activity high&lt;/div&gt;
+      
+&lt;div style=&quot;margin-bottom:28px;&quot;&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;padding-bottom:8px;margin-bottom:14px;border-bottom-width:1px;border-bottom-style:solid;&quot;&gt;
+    &lt;span class=&quot;e-dotCritical&quot; style=&quot;background-color:#b91c1c;display:inline-block;width:8px;height:8px;border-radius:2px;vertical-align:middle;margin-right:8px;&quot;&gt;&lt;/span&gt;&lt;span class=&quot;e-critical&quot; style=&quot;color:#b91c1c;font-size:15px;font-weight:600;line-height:1.35;letter-spacing:-0.01em;vertical-align:middle;&quot;&gt;Needs an answer (2)&lt;/span&gt;
+  &lt;/div&gt;
+  
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;&quot;&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:13px;line-height:1.5;margin-bottom:5px;&quot;&gt;Linear · pricing&lt;/div&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:15px;line-height:1.55;margin-bottom:6px;&quot;&gt;Business tier moved from $16 to $20 per seat, with 500 AI credits bundled at no extra cost.&lt;/div&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;&quot;&gt;→ Your $18 tier is no longer the mid-market anchor. Decide before the Q3 renewal cohort opens.&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;margin-top:14px;padding-top:14px;border-top-width:1px;border-top-style:solid;&quot;&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:13px;line-height:1.5;margin-bottom:5px;&quot;&gt;Supabase · funding&lt;/div&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:15px;line-height:1.55;margin-bottom:6px;&quot;&gt;Announced a $500M Series F led by Accel, at a $6.5B valuation.&lt;/div&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;&quot;&gt;→ The raise funds an AI backend push aimed at the same developers you sell to.&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;div style=&quot;margin-bottom:28px;&quot;&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;padding-bottom:8px;margin-bottom:14px;border-bottom-width:1px;border-bottom-style:solid;&quot;&gt;
+    &lt;span class=&quot;e-dotMedium&quot; style=&quot;background-color:#a16207;display:inline-block;width:8px;height:8px;border-radius:2px;vertical-align:middle;margin-right:8px;&quot;&gt;&lt;/span&gt;&lt;span class=&quot;e-medium&quot; style=&quot;color:#a16207;font-size:15px;font-weight:600;line-height:1.35;letter-spacing:-0.01em;vertical-align:middle;&quot;&gt;Worth watching (2)&lt;/span&gt;
+  &lt;/div&gt;
+  
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;&quot;&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:13px;line-height:1.5;margin-bottom:5px;&quot;&gt;Notion · hiring&lt;/div&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:15px;line-height:1.55;margin-bottom:6px;&quot;&gt;Six enterprise AE openings across London and Berlin, all posted this week.&lt;/div&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;&quot;&gt;→ An EMEA enterprise push is starting, one to two quarters out.&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;margin-top:14px;padding-top:14px;border-top-width:1px;border-top-style:solid;&quot;&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:13px;line-height:1.5;margin-bottom:5px;&quot;&gt;Citus Data · security compliance&lt;/div&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:15px;line-height:1.55;margin-bottom:6px;&quot;&gt;Published SOC 2 Type II and a data-residency page for the EU region.&lt;/div&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;&quot;&gt;→ Removes the compliance objection you have been winning on in regulated deals.&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;div style=&quot;margin-bottom:28px;&quot;&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;padding-bottom:8px;margin-bottom:14px;border-bottom-width:1px;border-bottom-style:solid;&quot;&gt;
+    &lt;span class=&quot;e-dotLow&quot; style=&quot;background-color:#52525b;display:inline-block;width:8px;height:8px;border-radius:2px;vertical-align:middle;margin-right:8px;&quot;&gt;&lt;/span&gt;&lt;span class=&quot;e-low&quot; style=&quot;color:#52525b;font-size:15px;font-weight:600;line-height:1.35;letter-spacing:-0.01em;vertical-align:middle;&quot;&gt;Noted (1)&lt;/span&gt;
+  &lt;/div&gt;
+  
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;&quot;&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:13px;line-height:1.5;margin-bottom:5px;&quot;&gt;Height · content&lt;/div&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:15px;line-height:1.55;margin-bottom:6px;&quot;&gt;Published a comparison page targeting three competitors, naming you first.&lt;/div&gt;
+    
+  &lt;/div&gt;
+&lt;/div&gt;
+      
+&lt;div style=&quot;margin-bottom:28px;&quot;&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;padding-bottom:8px;margin-bottom:14px;border-bottom-width:1px;border-bottom-style:solid;&quot;&gt;
+    &lt;span class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:15px;font-weight:600;line-height:1.35;letter-spacing:-0.01em;vertical-align:middle;&quot;&gt;Sector trends&lt;/span&gt;
+  &lt;/div&gt;
+  
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;&quot;&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:14px;line-height:1.6;font-weight:600;margin-bottom:4px;&quot;&gt;AI credits are becoming a pricing axis&lt;/div&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;&quot;&gt;Three tracked competitors now meter AI usage separately from seats, rather than folding it into the tier.&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;margin-top:14px;padding-top:14px;border-top-width:1px;border-top-style:solid;&quot;&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:14px;line-height:1.6;font-weight:600;margin-bottom:4px;&quot;&gt;Data residency moved from enterprise to mid-market&lt;/div&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;&quot;&gt;Two vendors now advertise EU-only storage on their self-serve plans.&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+      
+&lt;div style=&quot;margin-bottom:28px;&quot;&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;padding-bottom:8px;margin-bottom:14px;border-bottom-width:1px;border-bottom-style:solid;&quot;&gt;
+    &lt;span class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:15px;font-weight:600;line-height:1.35;letter-spacing:-0.01em;vertical-align:middle;&quot;&gt;Your watched questions&lt;/span&gt;
+  &lt;/div&gt;
+  
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;&quot;&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:14px;line-height:1.6;font-weight:600;margin-bottom:4px;&quot;&gt;Who undercuts us on the entry tier?&lt;/div&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;&quot;&gt;Linear left the bracket when it repriced. Height is now the only tracked vendor below you.&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+      &lt;div style=&quot;margin-top:4px;margin-bottom:4px;&quot;&gt;&lt;table role=&quot;presentation&quot; cellpadding=&quot;0&quot; cellspacing=&quot;0&quot; border=&quot;0&quot; style=&quot;border-collapse:separate;&quot;&gt;
+  &lt;tr&gt;
+    &lt;td align=&quot;center&quot; class=&quot;e-btn&quot; style=&quot;background-color:#007b80;color:#ffffff;border-radius:6px;padding:11px 20px;&quot;&gt;
+      &lt;a href=&quot;#open-the-briefing&quot; class=&quot;e-btn&quot; style=&quot;background-color:#007b80;color:#ffffff;background-color:transparent;text-decoration:none;font-weight:600;font-size:14px;line-height:1.2;display:inline-block;&quot;&gt;Open the full briefing&lt;/a&gt;
+    &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/table&gt;&lt;/div&gt;
+      &lt;div class=&quot;e-rule e-muted&quot; style=&quot;border-color:#dcdee1;color:#535861;font-size:13px;line-height:1.5;margin-top:28px;border-top-width:1px;border-top-style:solid;padding-top:18px;&quot;&gt;
+        Was this briefing useful?
+        &lt;a href=&quot;#useful&quot; class=&quot;e-rule e-positive&quot; style=&quot;border-color:#dcdee1;color:#047857;display:inline-block;text-decoration:none;font-weight:600;padding:4px 12px;margin-left:8px;border-radius:4px;border-width:1px;border-style:solid;&quot;&gt;Yes&lt;/a&gt;
+        &lt;a href=&quot;#not-useful&quot; class=&quot;e-rule e-muted&quot; style=&quot;border-color:#dcdee1;color:#535861;display:inline-block;text-decoration:none;font-weight:600;padding:4px 12px;margin-left:6px;border-radius:4px;border-width:1px;border-style:solid;&quot;&gt;No&lt;/a&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;e-faint&quot; style=&quot;color:#696e76;font-size:11px;font-weight:500;line-height:1.45;letter-spacing:0.04em;margin-top:32px;letter-spacing:normal;&quot;&gt;Outrival · Automated competitive intelligence · &lt;a href=&quot;#unsubscribe&quot; class=&quot;e-faint&quot; style=&quot;color:#696e76;text-decoration:underline;&quot;&gt;Unsubscribe&lt;/a&gt;&lt;/div&gt;
+            &lt;/td&gt;
+          &lt;/tr&gt;
+        &lt;/table&gt;
+      &lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/table&gt;
+&lt;/body&gt;
+&lt;/html&gt;"></iframe></div>
+    <div><div class="mode">Dark — prefers-color-scheme override, forced on</div>
+      <iframe title="dark" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+  &lt;meta charset=&quot;utf-8&quot; /&gt;
+  &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot; /&gt;
+  &lt;meta name=&quot;color-scheme&quot; content=&quot;light dark&quot; /&gt;
+  &lt;meta name=&quot;supported-color-schemes&quot; content=&quot;light dark&quot; /&gt;
+  &lt;style&gt;
+    :root { color-scheme: light dark; supported-color-schemes: light dark; }
+    @media all { .e-bg{background-color:#0a0a0a !important;}.e-card{background-color:#161616 !important;border-color:#2d2d2d !important;}.e-panel{background-color:#1d1d1d !important;}.e-text{color:#f2f5f8 !important;}.e-muted{color:#9aa2ad !important;}.e-faint{color:#79808c !important;}.e-accent{color:#9a8cff !important;}.e-btn{background-color:#6c5dfd !important;color:#ffffff !important;}.e-rule{border-color:#2d2d2d !important;}.e-critical{color:#ff5c72 !important;}.e-high{color:#ff8a5b !important;}.e-medium{color:#ffc247 !important;}.e-low{color:#5b9cff !important;}.e-positive{color:#34d399 !important;}.e-dotCritical{background-color:#ff5c72 !important;}.e-dotHigh{background-color:#ff8a5b !important;}.e-dotMedium{background-color:#ffc247 !important;}.e-dotLow{background-color:#5b9cff !important;}.e-dotPositive{background-color:#34d399 !important;}.e-logo-l{display:none !important;}.e-logo-d{display:inline-block !important;max-height:none !important;overflow:visible !important;} }
+    [data-ogsc] .e-bg{background-color:#0a0a0a !important;}[data-ogsc] .e-card{background-color:#161616 !important;border-color:#2d2d2d !important;}[data-ogsc] .e-panel{background-color:#1d1d1d !important;}[data-ogsc] .e-text{color:#f2f5f8 !important;}[data-ogsc] .e-muted{color:#9aa2ad !important;}[data-ogsc] .e-faint{color:#79808c !important;}[data-ogsc] .e-accent{color:#9a8cff !important;}[data-ogsc] .e-btn{background-color:#6c5dfd !important;color:#ffffff !important;}[data-ogsc] .e-rule{border-color:#2d2d2d !important;}[data-ogsc] .e-critical{color:#ff5c72 !important;}[data-ogsc] .e-high{color:#ff8a5b !important;}[data-ogsc] .e-medium{color:#ffc247 !important;}[data-ogsc] .e-low{color:#5b9cff !important;}[data-ogsc] .e-positive{color:#34d399 !important;}[data-ogsc] .e-dotCritical{background-color:#ff5c72 !important;}[data-ogsc] .e-dotHigh{background-color:#ff8a5b !important;}[data-ogsc] .e-dotMedium{background-color:#ffc247 !important;}[data-ogsc] .e-dotLow{background-color:#5b9cff !important;}[data-ogsc] .e-dotPositive{background-color:#34d399 !important;}[data-ogsc] .e-logo-l{display:none !important;}[data-ogsc] .e-logo-d{display:inline-block !important;max-height:none !important;overflow:visible !important;}
+    [data-ogsb] .e-bg{background-color:#0a0a0a !important;}[data-ogsb] .e-card{background-color:#161616 !important;border-color:#2d2d2d !important;}[data-ogsb] .e-panel{background-color:#1d1d1d !important;}[data-ogsb] .e-text{color:#f2f5f8 !important;}[data-ogsb] .e-muted{color:#9aa2ad !important;}[data-ogsb] .e-faint{color:#79808c !important;}[data-ogsb] .e-accent{color:#9a8cff !important;}[data-ogsb] .e-btn{background-color:#6c5dfd !important;color:#ffffff !important;}[data-ogsb] .e-rule{border-color:#2d2d2d !important;}[data-ogsb] .e-critical{color:#ff5c72 !important;}[data-ogsb] .e-high{color:#ff8a5b !important;}[data-ogsb] .e-medium{color:#ffc247 !important;}[data-ogsb] .e-low{color:#5b9cff !important;}[data-ogsb] .e-positive{color:#34d399 !important;}[data-ogsb] .e-dotCritical{background-color:#ff5c72 !important;}[data-ogsb] .e-dotHigh{background-color:#ff8a5b !important;}[data-ogsb] .e-dotMedium{background-color:#ffc247 !important;}[data-ogsb] .e-dotLow{background-color:#5b9cff !important;}[data-ogsb] .e-dotPositive{background-color:#34d399 !important;}[data-ogsb] .e-logo-l{display:none !important;}[data-ogsb] .e-logo-d{display:inline-block !important;max-height:none !important;overflow:visible !important;}
+  &lt;/style&gt;
+&lt;/head&gt;
+&lt;body class=&quot;e-bg&quot; style=&quot;margin:0;padding:0;background-color:#f9fafb;&quot;&gt;
+  &lt;div style=&quot;display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;&quot;&gt;Linear moved its Business tier to usage-based pricing and bundled AI credits.&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&amp;#847;&amp;zwnj;&amp;nbsp;&lt;/div&gt;
+  &lt;table role=&quot;presentation&quot; width=&quot;100%&quot; cellpadding=&quot;0&quot; cellspacing=&quot;0&quot; border=&quot;0&quot; bgcolor=&quot;#f9fafb&quot; class=&quot;e-bg&quot; style=&quot;background-color:#f9fafb;&quot;&gt;
+    &lt;tr&gt;
+      &lt;td align=&quot;center&quot; style=&quot;padding:32px 24px;&quot;&gt;
+        &lt;table role=&quot;presentation&quot; width=&quot;640&quot; cellpadding=&quot;0&quot; cellspacing=&quot;0&quot; border=&quot;0&quot; style=&quot;width:100%;max-width:640px;&quot;&gt;
+          &lt;tr&gt;
+            &lt;td class=&quot;e-text&quot; style=&quot;color:#181b1f;font-family:'Geist Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;text-align:left;&quot;&gt;
+              &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;margin-bottom:24px;padding-bottom:16px;border-bottom-width:1px;border-bottom-style:solid;&quot;&gt;
+                &lt;a href=&quot;https://outrival.app&quot; style=&quot;text-decoration:none;&quot;&gt;
+                  &lt;img class=&quot;e-logo-l&quot; src=&quot;https://outrival.app/logo-dark.png&quot; width=&quot;24&quot; height=&quot;24&quot; alt=&quot;&quot; style=&quot;vertical-align:middle;border:0;outline:none;&quot; /&gt;
+                  &lt;span class=&quot;e-logo-d&quot; style=&quot;display:none;max-height:0;overflow:hidden;mso-hide:all;&quot;&gt;
+                    &lt;img src=&quot;https://outrival.app/logo-light.png&quot; width=&quot;24&quot; height=&quot;24&quot; alt=&quot;&quot; style=&quot;vertical-align:middle;border:0;outline:none;&quot; /&gt;
+                  &lt;/span&gt;
+                  &lt;span class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:17px;font-weight:600;letter-spacing:-0.015em;vertical-align:middle;padding-left:8px;&quot;&gt;Outrival&lt;/span&gt;
+                &lt;/a&gt;
+              &lt;/div&gt;
+              &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:11px;font-weight:500;line-height:1.45;letter-spacing:0.04em;margin-bottom:10px;&quot;&gt;Your weekly competitive briefing · 2026-07-13 to 2026-07-20&lt;/div&gt;
+      &lt;h1 class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:22px;font-weight:600;line-height:1.25;letter-spacing:-0.02em;margin:0 0 14px;&quot;&gt;Linear moved its Business tier to usage-based pricing and bundled AI credits.&lt;/h1&gt;
+      &lt;ul class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;margin:0 0 20px;padding-left:18px;&quot;&gt;&lt;li style=&quot;margin-bottom:8px;&quot;&gt;Notion opened six enterprise AE roles across London and Berlin.&lt;/li&gt;&lt;li style=&quot;margin-bottom:8px;&quot;&gt;Height shipped a comparison page naming you first.&lt;/li&gt;&lt;/ul&gt;
+      &lt;div class=&quot;e-panel e-muted&quot; style=&quot;background-color:#f0f2f4;color:#535861;font-size:13px;line-height:1.5;border-radius:6px;padding:11px 14px;margin-bottom:28px;font-variant-numeric:tabular-nums;&quot;&gt;5 moves · 2 need an answer · activity high&lt;/div&gt;
+      
+&lt;div style=&quot;margin-bottom:28px;&quot;&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;padding-bottom:8px;margin-bottom:14px;border-bottom-width:1px;border-bottom-style:solid;&quot;&gt;
+    &lt;span class=&quot;e-dotCritical&quot; style=&quot;background-color:#b91c1c;display:inline-block;width:8px;height:8px;border-radius:2px;vertical-align:middle;margin-right:8px;&quot;&gt;&lt;/span&gt;&lt;span class=&quot;e-critical&quot; style=&quot;color:#b91c1c;font-size:15px;font-weight:600;line-height:1.35;letter-spacing:-0.01em;vertical-align:middle;&quot;&gt;Needs an answer (2)&lt;/span&gt;
+  &lt;/div&gt;
+  
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;&quot;&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:13px;line-height:1.5;margin-bottom:5px;&quot;&gt;Linear · pricing&lt;/div&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:15px;line-height:1.55;margin-bottom:6px;&quot;&gt;Business tier moved from $16 to $20 per seat, with 500 AI credits bundled at no extra cost.&lt;/div&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;&quot;&gt;→ Your $18 tier is no longer the mid-market anchor. Decide before the Q3 renewal cohort opens.&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;margin-top:14px;padding-top:14px;border-top-width:1px;border-top-style:solid;&quot;&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:13px;line-height:1.5;margin-bottom:5px;&quot;&gt;Supabase · funding&lt;/div&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:15px;line-height:1.55;margin-bottom:6px;&quot;&gt;Announced a $500M Series F led by Accel, at a $6.5B valuation.&lt;/div&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;&quot;&gt;→ The raise funds an AI backend push aimed at the same developers you sell to.&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;div style=&quot;margin-bottom:28px;&quot;&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;padding-bottom:8px;margin-bottom:14px;border-bottom-width:1px;border-bottom-style:solid;&quot;&gt;
+    &lt;span class=&quot;e-dotMedium&quot; style=&quot;background-color:#a16207;display:inline-block;width:8px;height:8px;border-radius:2px;vertical-align:middle;margin-right:8px;&quot;&gt;&lt;/span&gt;&lt;span class=&quot;e-medium&quot; style=&quot;color:#a16207;font-size:15px;font-weight:600;line-height:1.35;letter-spacing:-0.01em;vertical-align:middle;&quot;&gt;Worth watching (2)&lt;/span&gt;
+  &lt;/div&gt;
+  
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;&quot;&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:13px;line-height:1.5;margin-bottom:5px;&quot;&gt;Notion · hiring&lt;/div&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:15px;line-height:1.55;margin-bottom:6px;&quot;&gt;Six enterprise AE openings across London and Berlin, all posted this week.&lt;/div&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;&quot;&gt;→ An EMEA enterprise push is starting, one to two quarters out.&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;margin-top:14px;padding-top:14px;border-top-width:1px;border-top-style:solid;&quot;&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:13px;line-height:1.5;margin-bottom:5px;&quot;&gt;Citus Data · security compliance&lt;/div&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:15px;line-height:1.55;margin-bottom:6px;&quot;&gt;Published SOC 2 Type II and a data-residency page for the EU region.&lt;/div&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;&quot;&gt;→ Removes the compliance objection you have been winning on in regulated deals.&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;div style=&quot;margin-bottom:28px;&quot;&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;padding-bottom:8px;margin-bottom:14px;border-bottom-width:1px;border-bottom-style:solid;&quot;&gt;
+    &lt;span class=&quot;e-dotLow&quot; style=&quot;background-color:#52525b;display:inline-block;width:8px;height:8px;border-radius:2px;vertical-align:middle;margin-right:8px;&quot;&gt;&lt;/span&gt;&lt;span class=&quot;e-low&quot; style=&quot;color:#52525b;font-size:15px;font-weight:600;line-height:1.35;letter-spacing:-0.01em;vertical-align:middle;&quot;&gt;Noted (1)&lt;/span&gt;
+  &lt;/div&gt;
+  
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;&quot;&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:13px;line-height:1.5;margin-bottom:5px;&quot;&gt;Height · content&lt;/div&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:15px;line-height:1.55;margin-bottom:6px;&quot;&gt;Published a comparison page targeting three competitors, naming you first.&lt;/div&gt;
+    
+  &lt;/div&gt;
+&lt;/div&gt;
+      
+&lt;div style=&quot;margin-bottom:28px;&quot;&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;padding-bottom:8px;margin-bottom:14px;border-bottom-width:1px;border-bottom-style:solid;&quot;&gt;
+    &lt;span class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:15px;font-weight:600;line-height:1.35;letter-spacing:-0.01em;vertical-align:middle;&quot;&gt;Sector trends&lt;/span&gt;
+  &lt;/div&gt;
+  
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;&quot;&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:14px;line-height:1.6;font-weight:600;margin-bottom:4px;&quot;&gt;AI credits are becoming a pricing axis&lt;/div&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;&quot;&gt;Three tracked competitors now meter AI usage separately from seats, rather than folding it into the tier.&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;margin-top:14px;padding-top:14px;border-top-width:1px;border-top-style:solid;&quot;&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:14px;line-height:1.6;font-weight:600;margin-bottom:4px;&quot;&gt;Data residency moved from enterprise to mid-market&lt;/div&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;&quot;&gt;Two vendors now advertise EU-only storage on their self-serve plans.&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+      
+&lt;div style=&quot;margin-bottom:28px;&quot;&gt;
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;padding-bottom:8px;margin-bottom:14px;border-bottom-width:1px;border-bottom-style:solid;&quot;&gt;
+    &lt;span class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:15px;font-weight:600;line-height:1.35;letter-spacing:-0.01em;vertical-align:middle;&quot;&gt;Your watched questions&lt;/span&gt;
+  &lt;/div&gt;
+  
+  &lt;div class=&quot;e-rule&quot; style=&quot;border-color:#dcdee1;&quot;&gt;
+    &lt;div class=&quot;e-text&quot; style=&quot;color:#181b1f;font-size:14px;line-height:1.6;font-weight:600;margin-bottom:4px;&quot;&gt;Who undercuts us on the entry tier?&lt;/div&gt;
+    &lt;div class=&quot;e-muted&quot; style=&quot;color:#535861;font-size:14px;line-height:1.6;&quot;&gt;Linear left the bracket when it repriced. Height is now the only tracked vendor below you.&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+      &lt;div style=&quot;margin-top:4px;margin-bottom:4px;&quot;&gt;&lt;table role=&quot;presentation&quot; cellpadding=&quot;0&quot; cellspacing=&quot;0&quot; border=&quot;0&quot; style=&quot;border-collapse:separate;&quot;&gt;
+  &lt;tr&gt;
+    &lt;td align=&quot;center&quot; class=&quot;e-btn&quot; style=&quot;background-color:#007b80;color:#ffffff;border-radius:6px;padding:11px 20px;&quot;&gt;
+      &lt;a href=&quot;#open-the-briefing&quot; class=&quot;e-btn&quot; style=&quot;background-color:#007b80;color:#ffffff;background-color:transparent;text-decoration:none;font-weight:600;font-size:14px;line-height:1.2;display:inline-block;&quot;&gt;Open the full briefing&lt;/a&gt;
+    &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/table&gt;&lt;/div&gt;
+      &lt;div class=&quot;e-rule e-muted&quot; style=&quot;border-color:#dcdee1;color:#535861;font-size:13px;line-height:1.5;margin-top:28px;border-top-width:1px;border-top-style:solid;padding-top:18px;&quot;&gt;
+        Was this briefing useful?
+        &lt;a href=&quot;#useful&quot; class=&quot;e-rule e-positive&quot; style=&quot;border-color:#dcdee1;color:#047857;display:inline-block;text-decoration:none;font-weight:600;padding:4px 12px;margin-left:8px;border-radius:4px;border-width:1px;border-style:solid;&quot;&gt;Yes&lt;/a&gt;
+        &lt;a href=&quot;#not-useful&quot; class=&quot;e-rule e-muted&quot; style=&quot;border-color:#dcdee1;color:#535861;display:inline-block;text-decoration:none;font-weight:600;padding:4px 12px;margin-left:6px;border-radius:4px;border-width:1px;border-style:solid;&quot;&gt;No&lt;/a&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;e-faint&quot; style=&quot;color:#696e76;font-size:11px;font-weight:500;line-height:1.45;letter-spacing:0.04em;margin-top:32px;letter-spacing:normal;&quot;&gt;Outrival · Automated competitive intelligence · &lt;a href=&quot;#unsubscribe&quot; class=&quot;e-faint&quot; style=&quot;color:#696e76;text-decoration:underline;&quot;&gt;Unsubscribe&lt;/a&gt;&lt;/div&gt;
+            &lt;/td&gt;
+          &lt;/tr&gt;
+        &lt;/table&gt;
+      &lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/table&gt;
+&lt;/body&gt;
+&lt;/html&gt;"></iframe></div>
+  </div>
+  </div>
+  <script>
+    // srcdoc frames are same-origin, so the page can size each one to its email
+    // and the reviewer sees the whole message instead of a scrollable window.
+    // A pair renders at the taller of the two, so light and dark stay comparable.
+    function fit() {
+      for (const row of document.querySelectorAll(".cols")) {
+        const frames = [...row.querySelectorAll("iframe")];
+        for (const f of frames) f.style.height = "0px";
+        const h = Math.max(...frames.map((f) => f.contentDocument.body.scrollHeight));
+        for (const f of frames) f.style.height = h + 24 + "px";
+      }
+    }
+    addEventListener("load", fit);
+    addEventListener("resize", fit);
+  </script>
+</body>
+</html>

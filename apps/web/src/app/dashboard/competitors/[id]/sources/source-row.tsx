@@ -234,9 +234,15 @@ export function SourceRow({
   // One verdict, computed once by the caller: the server stamps say whether a
   // worker holds the job or it is still waiting, and the optimistic client marker
   // can only ever mean "queued" (a request is tracked from the moment it is sent).
+  // A source with no monitor row still has a verdict when platform detection looked
+  // and found nothing (no status page, no changelog). It gets the same mark as a
+  // recorded absence, so "they don't have this" reads identically whichever way we
+  // learned it — and never like a source simply waiting to be turned on.
   const status = monitor
     ? monitorStatus(monitor, activity === "scraping", activity === "queued")
-    : "idle";
+    : state === "not_available"
+      ? "not_available"
+      : "idle";
   const busy = activity !== null;
   const copy = sourceCopy({
     state,
@@ -361,7 +367,7 @@ export function SourceRow({
             expandable && "cursor-pointer",
           )}
         >
-          {monitor ? (
+          {monitor || state === "not_available" ? (
             <SourceStatusIcon status={status} />
           ) : (
             <span className="h-2 w-2 shrink-0 rounded-full border border-muted-foreground/40" />

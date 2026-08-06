@@ -6,9 +6,10 @@ import {
   ClockIcon,
   SpinnerIcon,
   PauseCircleIcon,
+  ProhibitIcon,
   ShieldSlashIcon,
 } from "@/components/icons";
-import { isRefused } from "@outrival/shared";
+import { hasNoTargetError, isRefused } from "@outrival/shared";
 import type { Monitor } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,8 @@ export type MonitorStatus =
   | "queued"
   /** The site refuses automated collection and we stop. Not a failure of ours. */
   | "blocked"
+  /** This competitor has no such surface. NEUTRAL — never a gap, never an error. */
+  | "not_available"
   | "failed"
   | "disabled"
   | "paused"
@@ -29,6 +32,13 @@ export function monitorStatus(m: Monitor, running: boolean, queued = false): Mon
   // worker has opened yet. Ranked above the settled states below because the
   // pending request is the newest thing that happened to this source.
   if (queued) return "queued";
+  // "No such surface" outranks every settled state, exactly as it does in
+  // `sourceState` — same predicate, same rank, so an icon can never contradict the
+  // sentence beside it. It has to be read from lastError because the worker records
+  // this verdict as a BENIGN SKIP: it stamps lastRunAt and clears the failure
+  // columns like a real capture, which landed the row on "ok" — a green dot and
+  // "Scanned 2 days ago" over "This competitor doesn't have this surface."
+  if (hasNoTargetError(m.sourceType, m.lastError)) return "not_available";
   // A refusal outranks both pause states below. Under the collection doctrine we
   // stop at a refusal by design, so reading it as "auto-paused after repeated
   // failures" describes a retry loop that never ran and offers a Resume that
@@ -61,6 +71,12 @@ export function SourceStatusIcon({ status }: { status: MonitorStatus }) {
   // broken and sent users looking for a fix that must not exist.
   if (status === "blocked")
     return <ShieldSlashIcon size={16} className="text-muted-foreground shrink-0" />;
+  // A surface that doesn't exist gets its own glyph rather than the hollow ring of
+  // an idle source: "we have never run this" and "there is nothing here to run" are
+  // different facts, and only one of them is worth turning on. Muted like the other
+  // non-events — it is neither a defect nor a task.
+  if (status === "not_available")
+    return <ProhibitIcon size={16} className="text-muted-foreground shrink-0" />;
   if (status === "failed") return <WarningCircleIcon size={16} className="text-critical shrink-0" />;
   if (status === "disabled" || status === "paused")
     return <PauseCircleIcon size={16} className="text-muted-foreground shrink-0" />;
@@ -105,11 +121,15 @@ export function nextScanIn(
   // A blocked source has no schedule to announce: we are not going to keep asking a
   // site that told us no. (The re-probe that eventually retries it is ours, not a
   // promise to make to the user.)
+  // A source the competitor doesn't have is on the same footing: we do keep
+  // re-probing it on its cadence, but that is our business — announcing a next scan
+  // for a page that doesn't exist reads as coverage of something.
   if (
     status === "running" ||
     status === "queued" ||
     status === "disabled" ||
-    status === "blocked"
+    status === "blocked" ||
+    status === "not_available"
   )
     return null;
   if (m.isActive === false) return null;
@@ -128,6 +148,9 @@ export function lastScanLabel(m: Monitor, status: MonitorStatus): string {
   // sat in the queue for half an hour looked like a scrape that had hung.
   if (status === "queued") return "queued, waiting for a scanner";
   if (status === "blocked") return "Site blocks automated collection";
+  // Never "Scanned 2 days ago": the run did happen, but it found no page to read,
+  // and a freshness stamp on it claims data we don't have.
+  if (status === "not_available") return "No such surface on this site";
   if (status === "paused") return "Paused, not scraping";
   if (status === "disabled") return "Paused after repeated failures";
   if (status === "failed" && m.lastFailedAt) {

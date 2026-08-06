@@ -13,6 +13,7 @@ import type {
   PricingModel,
   CostMethod,
   BlockedReach,
+  FreshnessStatus,
 } from "@outrival/shared";
 
 export type { DetectionConfig, AnalysisStatus, ScrapeActivity } from "@outrival/shared";
@@ -180,8 +181,9 @@ export interface Competitor {
   updatedAt: string;
   stats?: CompetitorStats;
   // Aggregate freshness for the global list dot (patch-14): the stalest active
-  // source's last scrape + whether any source's last scan failed.
-  freshness?: { lastScrapedAt: string | null; status: "success" | "failed" };
+  // source's last scrape + whether any source's last scan failed. `not_available`
+  // when every source behind the dot is a surface this competitor doesn't have.
+  freshness?: { lastScrapedAt: string | null; status: FreshnessStatus };
   // Where the first AI analysis is at (queued → scraping → summarizing → ready).
   // Present on the list endpoint only; the row shows an "Analyzing…" badge while
   // pending so a freshly-added competitor doesn't read as idle.

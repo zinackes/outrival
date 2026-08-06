@@ -1,6 +1,7 @@
 import { isComparablePricePeriod, type CostMethod } from "@outrival/shared";
 import type { CompareColumn } from "@/lib/api";
 import { competitorStroke } from "@/lib/competitor-color";
+import { median, robustCeiling } from "@/lib/robust-scale";
 import type { CompareEntity } from "./lens";
 
 /**
@@ -49,13 +50,10 @@ export function engineeringMedianSalary(
   return c.hiring?.engineeringMedianSalary ?? null;
 }
 
-export function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const s = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  // Even count → the mean of the two middle values.
-  return s.length % 2 === 0 ? ((s[mid - 1] as number) + (s[mid] as number)) / 2 : (s[mid] as number);
-}
+// The outlier rule and the median it needs are shared with the Trends charts, which
+// are crushed by exactly the same one-enterprise-plan field — a lens and a slopegraph
+// disagreeing on what counts as an outlier would be two different products.
+export { median, robustCeiling } from "@/lib/robust-scale";
 
 // ── scales ──────────────────────────────────────────────────────────────────
 
@@ -70,6 +68,49 @@ export function niceMax(value: number): number {
   const scaled = value / magnitude;
   const step = scaled <= 1 ? 1 : scaled <= 2 ? 2 : scaled <= 2.5 ? 2.5 : scaled <= 5 ? 5 : 10;
   return step * magnitude;
+}
+
+export interface CostAxis {
+  log: boolean;
+  /** Set only on a log axis: recharts needs an explicit domain to build one. */
+  domain: [number, number] | undefined;
+  ticks: number[] | undefined;
+}
+
+/**
+ * The cost-curve Y axis, and whether it can be read on a log scale.
+ *
+ * Its X axis spans seven orders of magnitude, so the costs plotted against it do
+ * too: on a linear Y the whole first half of every curve — every volume under about
+ * 100k — lies flat on the floor, and "where does the ranking flip" (the only
+ * question that chart exists for) is unreadable exactly where most readers sit.
+ * Log fixes it, and unlike a price ladder it is the honest scale here: both axes
+ * are then ratios, so a straight line means a constant rate per unit.
+ *
+ * It only works on strictly positive costs, though. A free tier costs $0 at low
+ * volume, which has no place on a log axis, and floor-clipping it would draw "free"
+ * as merely "cheap" — a chart lying about the one number a reader would act on. So
+ * a set containing a $0 stays linear, and the chart's caption says which scale is
+ * in force either way.
+ */
+export function costAxis(rows: Array<Record<string, number>>): CostAxis {
+  const LINEAR: CostAxis = { log: false, domain: undefined, ticks: undefined };
+  const costs = rows.flatMap((row) =>
+    Object.entries(row)
+      .filter(([key]) => key !== "qty")
+      .map(([, value]) => value),
+  );
+  if (costs.length === 0 || costs.some((c) => c <= 0)) return LINEAR;
+
+  const lo = 10 ** Math.floor(Math.log10(Math.min(...costs)));
+  const hi = 10 ** Math.ceil(Math.log10(Math.max(...costs)));
+  // Under two decades of spread there is nothing being crushed, and log ticks read
+  // worse than linear ones.
+  if (hi / lo < 100) return LINEAR;
+
+  const ticks: number[] = [];
+  for (let t = lo; t <= hi; t *= 10) ticks.push(t);
+  return { log: true, domain: [lo, hi], ticks };
 }
 
 /** Evenly spaced axis labels from 0 to max, inclusive of both ends. */
@@ -321,25 +362,6 @@ export interface PriceScale {
   annualised: boolean;
 }
 
-// How many times the median top a band may reach before it counts as an outlier that
-// owns the axis. One $2,400 enterprise tier against four $99 products flattens every
-// other bar into an invisible sliver, which is a chart that answers nothing.
-const OUTLIER_FACTOR = 4;
-
-/**
- * The largest top worth scaling to: the raw maximum, unless it dwarfs the median, in
- * which case the highest NON-outlier top. Bands past it are drawn clipped, and their
- * true number is still read in the row's own value.
- */
-export function robustCeiling(tops: number[]): number {
-  if (tops.length === 0) return 0;
-  const raw = Math.max(...tops);
-  const med = median(tops) ?? raw;
-  if (med <= 0 || raw <= med * OUTLIER_FACTOR) return raw;
-  const inliers = tops.filter((t) => t <= med * OUTLIER_FACTOR);
-  return inliers.length ? Math.max(...inliers) : raw;
-}
-
 export function priceScale(
   cols: CompareColumn[],
   opts: {
@@ -376,15 +398,31 @@ export function priceScale(
 
 export interface HiringScale {
   max: number;
+  /** The readable ceiling: outliers excluded. Stable whether or not `full` is on,
+   *  so the way-back control does not vanish the moment it is used. */
+  robustMax: number;
+  /** The ceiling that covers every column, outliers included. */
+  fullMax: number;
+  /** True when at least one bar runs past `max` and is drawn clipped. */
+  clipped: boolean;
   hasData: boolean;
   /** True when at least one column has a bucketed engineering count to pick out. */
   hasEngineering: boolean;
 }
 
-export function hiringScale(cols: CompareColumn[]): HiringScale {
+// One 800-role enterprise against five competitors hiring a dozen each does to this
+// lane exactly what a $2,400 tier does to the price one, so it gets the same
+// treatment: scale to the readable range, clip the rest, and offer the way back.
+export function hiringScale(cols: CompareColumn[], opts: { full?: boolean } = {}): HiringScale {
   const totals = cols.map(openRoles).filter((v): v is number => v != null);
+  const fullMax = totals.length ? Math.max(...totals) : 1;
+  const robustMax = totals.length ? robustCeiling(totals) : 1;
+  const max = opts.full ? fullMax : robustMax;
   return {
-    max: totals.length ? Math.max(...totals) : 1,
+    max,
+    robustMax,
+    fullMax,
+    clipped: totals.some((t) => t > max),
     hasData: totals.length > 0,
     hasEngineering: cols.some((c) => engineeringRoles(c) != null),
   };
@@ -419,6 +457,12 @@ const RELEASE_TREND_MIN_MOVE = 0.15;
 
 export interface ShippingScale {
   max: number;
+  /** The readable ceiling: outliers excluded, and stable across the `full` toggle. */
+  robustMax: number;
+  /** The ceiling that covers every column, outliers included. */
+  fullMax: number;
+  /** True when at least one bar runs past `max` and is drawn clipped. */
+  clipped: boolean;
   hasData: boolean;
   /** The tallest single MONTH across the set — the scale the mini bars share, so a
    *  competitor's spike reads as a spike next to the others rather than against
@@ -426,11 +470,20 @@ export interface ShippingScale {
   monthMax: number;
 }
 
-export function shippingScale(cols: CompareColumn[]): ShippingScale {
+export function shippingScale(
+  cols: CompareColumn[],
+  opts: { full?: boolean } = {},
+): ShippingScale {
   const rates = cols.map(releasesPerMonth).filter((v): v is number => v != null);
   const monthCounts = cols.flatMap((c) => (c.shipping?.months ?? []).map((m) => m.count));
+  const fullMax = rates.length ? Math.max(...rates) : 1;
+  const robustMax = rates.length ? robustCeiling(rates) : 1;
+  const max = opts.full ? fullMax : robustMax;
   return {
-    max: rates.length ? Math.max(...rates) : 1,
+    max,
+    robustMax,
+    fullMax,
+    clipped: rates.some((r) => r > max),
     hasData: rates.length > 0,
     monthMax: monthCounts.length ? Math.max(...monthCounts, 1) : 1,
   };

@@ -5,6 +5,7 @@ import {
   avgReview,
   axisTicks,
   buildVerdict,
+  costAxis,
   countWord,
   displayCurrency,
   median,
@@ -165,6 +166,36 @@ describe("scales", () => {
     expect(priceScale([priced("a", "A", null, null)]).hasData).toBe(false);
   });
 
+  // The cost curve reads volumes from 1 to 10M, so its costs span decades too and a
+  // linear Y flattens every volume under ~100k onto the floor — the crush the price
+  // lens fixes with a trimmed ceiling, arriving one chart over.
+  describe("costAxis", () => {
+    const rows = (...points: Array<[number, number, number]>) =>
+      points.map(([qty, a, b]) => ({ qty, a, b }));
+
+    test("goes log once the costs span decades", () => {
+      const axis = costAxis(rows([1, 0.05, 0.1], [1_000, 25, 40], [1_000_000, 9_000, 22_000]));
+      expect(axis.log).toBe(true);
+      expect(axis.domain).toEqual([0.01, 100_000]);
+      expect(axis.ticks).toEqual([0.01, 0.1, 1, 10, 100, 1_000, 10_000, 100_000]);
+    });
+
+    test("stays linear on a narrow spread, where log only costs legibility", () => {
+      expect(costAxis(rows([1, 20, 25], [1_000, 40, 55])).log).toBe(false);
+    });
+
+    // Clipping a $0 to the floor of a log axis would draw "free" as "cheap", which
+    // is the one number on this chart a reader would act on.
+    test("stays linear when a free tier puts a $0 on the curve", () => {
+      expect(costAxis(rows([1, 0, 0.1], [1_000_000, 9_000, 22_000])).log).toBe(false);
+    });
+
+    test("an empty set has no axis to build", () => {
+      expect(costAxis([]).log).toBe(false);
+      expect(costAxis([{ qty: 10 }]).log).toBe(false);
+    });
+  });
+
   test("robustCeiling drops a top that dwarfs the median, keeps a merely-high one", () => {
     // $2,400 against a $180 median owns the axis and flattens everyone else.
     expect(robustCeiling([16, 99, 159, 200, 500, 2400])).toBe(500);
@@ -194,10 +225,34 @@ describe("scales", () => {
   test("hiringScale flags whether any engineering share can be picked out", () => {
     expect(hiringScale([hiring("a", "A", 6, 3), hiring("b", "B", 31, null)])).toEqual({
       max: 31,
+      robustMax: 31,
+      fullMax: 31,
+      clipped: false,
       hasData: true,
       hasEngineering: true,
     });
     expect(hiringScale([hiring("b", "B", 31, null)]).hasEngineering).toBe(false);
+  });
+
+  test("hiringScale trims the one competitor hiring ten times the field", () => {
+    const cols = [
+      hiring("a", "A", 12, 4),
+      hiring("b", "B", 9, 3),
+      hiring("c", "C", 18, 6),
+      hiring("d", "D", 800, 300),
+    ];
+    const scale = hiringScale(cols);
+    // Without the trim, 9 open roles drew 1.1% of the track — a stub, not a bar.
+    expect(scale.max).toBe(18);
+    expect(scale.fullMax).toBe(800);
+    expect(scale.clipped).toBe(true);
+
+    const full = hiringScale(cols, { full: true });
+    expect(full.max).toBe(800);
+    expect(full.clipped).toBe(false);
+    // The robust ceiling is what the way-back control is gated on, so it holds
+    // steady while the reader is looking at the full scale.
+    expect(full.robustMax).toBe(18);
   });
 
   test("ratingScale marks the winner only when there is something to win", () => {
@@ -670,6 +725,21 @@ describe("shipping velocity", () => {
     ]);
     expect(scale.max).toBe(9);
     expect(scale.monthMax).toBe(11);
+    expect(scale.clipped).toBe(false);
+  });
+
+  test("a competitor shipping ten times the field is trimmed off the lane", () => {
+    const cols = [
+      shipping("a", 3, null),
+      shipping("b", 4, null),
+      shipping("c", 6, null),
+      shipping("runaway", 60, null),
+    ];
+    const scale = shippingScale(cols);
+    expect(scale.max).toBe(6);
+    expect(scale.fullMax).toBe(60);
+    expect(scale.clipped).toBe(true);
+    expect(shippingScale(cols, { full: true }).max).toBe(60);
   });
 
   test("no previous window means no arrow", () => {

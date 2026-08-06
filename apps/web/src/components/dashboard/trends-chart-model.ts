@@ -1,4 +1,5 @@
 import type { TrendsMarketSeries } from "@/lib/api";
+import { robustExtent } from "@/lib/robust-scale";
 
 /**
  * What the Trends charts plot, computed away from the rendering.
@@ -117,6 +118,79 @@ export function buildCarriedGrid(
   };
 }
 
+export interface IndexDomain {
+  /** Y bounds the lines are read against, outliers trimmed unless `full`. */
+  domain: [number, number];
+  /** Series with at least one point past those bounds, drawn clipped. */
+  clipped: string[];
+  /** The furthest any line actually travelled — what the way-back button offers. */
+  fullExtreme: number;
+  /** True once trimming would change anything at all. */
+  trimmable: boolean;
+}
+
+/**
+ * The Y bounds of a percent-change plot, with the runaway line trimmed off.
+ *
+ * Indexing to each competitor's own first capture already removes the units
+ * problem, but not the magnitude one: a competitor that went from 1 open role to
+ * 30 is a +2,900% line, and against it a field moving ±20% is a flat rule at the
+ * bottom of the plot. Same crush as the price ladder, same answer — scale to the
+ * readable range, clip the rest, say so.
+ *
+ * Zero is always inside the bounds: it is the "unchanged" rule every line is read
+ * against, and a plot that trims it away has nothing left to mean anything.
+ */
+export function buildIndexDomain(
+  series: TrendsMarketSeries[],
+  rows: ChartRow[],
+  opts: { full?: boolean } = {},
+): IndexDomain | null {
+  // One reading per LINE, not per point. Every series is indexed to its own first
+  // capture, so the grid is half zeros by construction, and a yardstick taken over
+  // the points would be dragged onto that baseline until an ordinary -25% counted
+  // as an outlier. What is or isn't an outlier here is a fact about a competitor's
+  // whole travel, so that is what gets measured: how far it went at its furthest.
+  const lines = series
+    .map((item) => {
+      const values = rows
+        .map((row) => row[item.competitorId])
+        .filter((v): v is number => typeof v === "number");
+      if (values.length === 0) return null;
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      return {
+        id: item.competitorId,
+        min,
+        max,
+        extreme: Math.abs(min) > Math.abs(max) ? min : max,
+      };
+    })
+    .filter((line) => line !== null);
+  if (lines.length === 0) return null;
+
+  const extent = robustExtent(lines.map((l) => l.extreme))!;
+  const kept = opts.full
+    ? lines
+    : lines.filter((l) => l.extreme >= extent.min && l.extreme <= extent.max);
+
+  // Zero is kept in view whatever the readings do: it is the "unchanged" rule the
+  // whole plot is read against.
+  const lo = Math.min(0, ...kept.map((l) => l.min));
+  const hi = Math.max(0, ...kept.map((l) => l.max));
+  // Breathing room, so the outermost line is traced rather than hidden under the frame.
+  const pad = (hi - lo) * 0.08 || 1;
+  const domain: [number, number] = [lo - pad, hi + pad];
+
+  return {
+    domain,
+    clipped: lines.filter((l) => l.min < domain[0] || l.max > domain[1]).map((l) => l.id),
+    fullExtreme:
+      Math.abs(extent.fullMax) >= Math.abs(extent.fullMin) ? extent.fullMax : extent.fullMin,
+    trimmable: extent.clippedCount > 0,
+  };
+}
+
 /**
  * Push stacked labels apart without reordering them, then pull the overflow back
  * off the bottom edge. Input must be sorted by true y ascending; the dots stay
@@ -178,6 +252,18 @@ export interface SlopeModel {
   leaders: SlopeLeader[];
   height: number;
   y: (value: number) => number;
+  /** Bottom and top of the ladder in force — outliers trimmed unless `full`. */
+  min: number;
+  max: number;
+  /** The ladder that would hold every price, for the way back to the true spread. */
+  fullMin: number;
+  fullMax: number;
+  /** True once trimming would actually change the ladder — the toggle's own gate. */
+  trimmable: boolean;
+  /** Competitors with at least one endpoint pinned to an edge of the ladder. */
+  clippedCount: number;
+  /** Whether a value is off the ladder, and which way — the UI marks the dot. */
+  outside: (value: number) => "above" | "below" | null;
   ticks: number[];
   /** Carries the field's most common unit, for the axis labels. */
   axisItem: TrendsMarketSeries;
@@ -187,6 +273,8 @@ export interface SlopeModel {
   singleCount: number;
 }
 
+const clamp = (value: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, value));
+
 /** Vertical breathing room so the top and bottom dots aren't on the frame. */
 const PAD = 12;
 /** Minimum distance between two stacked labels, in px. */
@@ -195,7 +283,16 @@ export const LABEL_GAP = 20;
 const ROW_HEIGHT = 26;
 const MIN_HEIGHT = 200;
 
-export function buildSlopeModel(series: TrendsMarketSeries[]): SlopeModel | null {
+export function buildSlopeModel(
+  series: TrendsMarketSeries[],
+  opts: {
+    /**
+     * Scale to the whole spread, outliers and all. The way back to the true
+     * distances, for when the gap between $12 and $499 IS what the reader came for.
+     */
+    full?: boolean;
+  } = {},
+): SlopeModel | null {
   const rows: SlopeRow[] = [];
   for (const item of series) {
     const first = item.points[0];
@@ -216,14 +313,27 @@ export function buildSlopeModel(series: TrendsMarketSeries[]): SlopeModel | null
   if (rows.length === 0) return null;
 
   const values = rows.flatMap((r) => [r.from, r.to]);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  // One $499 enterprise plan against six $10 seat prices owns the whole ladder and
+  // leaves the other six inside two pixels — measured: at 50× the median, two end
+  // dots land 0.14px apart and a real +22.7% move draws 0.9px of travel. So the
+  // ladder is scaled to the readable range, the outlier is drawn pinned to the edge
+  // and MARKED, and its true price stays on its own label. Same rule the compare
+  // price lens has always used.
+  const extent = robustExtent(values)!;
+  const min = opts.full ? extent.fullMin : extent.min;
+  const max = opts.full ? extent.fullMax : extent.max;
   const span = max - min;
   const height = Math.max(MIN_HEIGHT, rows.length * ROW_HEIGHT);
   // A field where every competitor sits at the same price has no range to map, so
-  // it draws on the centre line rather than dividing by zero.
+  // it draws on the centre line rather than dividing by zero. Anything off the
+  // ladder is pinned to its edge rather than drawn off the plot: a label floating
+  // above the chart names nothing, and the pinned dot is what the marker points at.
   const y = (value: number) =>
-    span === 0 ? height / 2 : PAD + (1 - (value - min) / span) * (height - 2 * PAD);
+    span === 0
+      ? height / 2
+      : PAD + (1 - (clamp(value, min, max) - min) / span) * (height - 2 * PAD);
+  const outside = (value: number): "above" | "below" | null =>
+    value > max ? "above" : value < min ? "below" : null;
 
   // Labels are laid out top-down by where their end value actually lands, which is
   // independent of the draw order.
@@ -268,6 +378,13 @@ export function buildSlopeModel(series: TrendsMarketSeries[]): SlopeModel | null
     leaders,
     height,
     y,
+    min,
+    max,
+    fullMin: extent.fullMin,
+    fullMax: extent.fullMax,
+    trimmable: extent.clippedCount > 0,
+    clippedCount: rows.filter((r) => outside(r.from) !== null || outside(r.to) !== null).length,
+    outside,
     ticks: span === 0 ? [min] : [max, min + span / 2, min],
     axisItem: { ...rows[0]!.item, unit: axisUnit || null },
     firstDate: byTime[0] ?? null,

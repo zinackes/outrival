@@ -6,6 +6,14 @@
 # ~1880 d'historique de patches déjà livrés, réinjectées à CHAQUE édition. On ne
 # remonte plus que l'en-tête (phases / phase en cours / patches) et les étapes
 # encore ouvertes ; l'historique se lit à la demande.
+#
+# Même réduit à ~70 lignes il restait cher, et pour une raison qui ne saute pas
+# aux yeux : un contexte injecté n'est PAS un coût ponctuel. Il entre dans la
+# conversation et repart avec chaque appel d'outil suivant jusqu'à la fin de la
+# session. Une session à 24 éditions payait donc ~900 tokens × 24 en injection,
+# puis les retransmettait à chaque tour. Or le rappel n'a de valeur qu'avant la
+# PREMIÈRE écriture : au vingtième edit du même fichier, il ne dit plus rien.
+# Il ne sort donc qu'une fois par session, gardé par un fichier témoin.
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
@@ -19,6 +27,14 @@ esac
 ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 PLAN="$ROOT/task_plan.md"
 [ -f "$PLAN" ] || exit 0
+
+# Une fois par session. `session_id` vient du payload du hook ; sans lui on
+# retombe sur le PPID, stable pour la durée du process Claude. Le témoin vit dans
+# le tmp de la machine, donc il disparaît au reboot et jamais dans le repo.
+SESSION=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
+MARKER="${TMPDIR:-/tmp}/claude-plan-reminder-${SESSION:-$PPID}"
+[ -e "$MARKER" ] && exit 0
+: >"$MARKER"
 
 HEAD_LINES=$(sed -n '1,40p' "$PLAN")
 OPEN_STEPS=$(grep -n '^\s*- \[ \]' "$PLAN" | head -20)

@@ -308,10 +308,19 @@ function meteredReading(
  * The meters the compared set can actually be read on, cheapest volume first.
  * Empty when nobody in the set publishes a rate we can price — the selector
  * then has nothing to offer and stays hidden.
+ *
+ * Only the columns whose reading DEPENDS on the volume count. `priceReading`
+ * consults the meter solely for a column with no comparable subscription plan
+ * (a rate is what it has instead of a price); a column that publishes $99/mo is
+ * read on the $99 whatever volume is picked, even when it also meters something.
+ * Collecting its volumes here is what made the control offer options that could
+ * not move a single row — a set where every metered competitor also has a plan
+ * left the selector fully inert.
  */
 export function availableMeters(cols: CompareColumn[]): MeterSelection[] {
   const seen = new Map<string, MeterSelection>();
   for (const c of cols) {
+    if (comparablePlans(c).length > 0) continue;
     for (const m of c.pricing?.meters ?? []) {
       const key = `${m.unit}|${m.qty}`;
       if (!seen.has(key)) seen.set(key, { unit: m.unit, qty: m.qty });

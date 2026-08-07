@@ -684,6 +684,23 @@ describe("availableMeters", () => {
   test("a set that meters nothing offers no volumes", () => {
     expect(availableMeters([priced("a", "Alpha", 29, 99)])).toEqual([]);
   });
+
+  // The control renames what a row READS AT, so offering a volume that cannot
+  // move a single row is the whole "I change it and nothing happens" bug: a
+  // column with a comparable subscription plan is read on that plan whatever
+  // volume is picked, however many meters it also publishes.
+  test("a metered column that also publishes a plan offers no volumes", () => {
+    const both = metered("a", "A", [{ unit: "request", qty: 1_000, cost: 1 }]);
+    both.pricing!.plans = [{ name: "Pro", price: 99, billingPeriod: "monthly", unit: null }];
+    expect(availableMeters([both])).toEqual([]);
+  });
+
+  test("only the columns the volume can move contribute their meters", () => {
+    const both = metered("a", "A", [{ unit: "gb", qty: 500, cost: 1 }]);
+    both.pricing!.plans = [{ name: "Pro", price: 99, billingPeriod: "monthly", unit: null }];
+    const rateOnly = metered("b", "B", [{ unit: "request", qty: 1_000, cost: 1 }]);
+    expect(availableMeters([both, rateOnly])).toEqual([{ unit: "request", qty: 1_000 }]);
+  });
 });
 
 // ── Shipping velocity (Content Intelligence v2 P5) ──────────────────────────

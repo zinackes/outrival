@@ -29,6 +29,7 @@ import {
   REFERENCE_VOLUME_PRESETS,
 } from "@outrival/shared";
 import { db } from "../lib/db";
+import { analyticsQuery, sql } from "../lib/analytics-safe";
 import {
   applyDefaultSourcesToExisting,
   defaultSourceGaps,
@@ -337,24 +338,77 @@ const ReferenceVolumesSchema = z.object({
     .nullable(),
 });
 
+/**
+ * The meters this workspace's own roster is actually charged on.
+ *
+ * The picker offers the whole canonical catalog, which let a workspace set a
+ * volume on a unit nobody it tracks bills for — a setting that then reads as
+ * broken, because no comparison anywhere can move. Marking the ones the roster
+ * meters is what tells those two cases apart before the volume is saved.
+ *
+ * Both provenances count: a published usage rate, and a cost measured on a
+ * calculator — a page priced only by its calculator publishes no usage row at
+ * all, so reading the rates alone would miss the meter entirely.
+ *
+ * Best-effort like every analytics read: on failure the set is empty and the
+ * picker simply offers the catalog ungrouped, as it did before.
+ */
+async function rosterMeterUnits(orgId: string): Promise<Set<string>> {
+  const owned = await db
+    .select({ id: competitors.id })
+    .from(competitors)
+    .where(and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)));
+  const out = new Set<string>();
+  if (owned.length === 0) return out;
+
+  const idList = sql.join(
+    owned.map((o) => sql`${o.id}`),
+    sql`, `,
+  );
+  const rows = await analyticsQuery<{ unit: string | null }>(sql`
+    SELECT DISTINCT unit FROM pricing_history
+    WHERE competitor_id IN (${idList}) AND origin = 'live'
+      AND billing_period = 'usage' AND unit IS NOT NULL
+    UNION
+    SELECT DISTINCT meter_unit AS unit FROM price_points
+    WHERE competitor_id IN (${idList}) AND meter_unit IS NOT NULL
+  `);
+  for (const r of rows) {
+    const meter = r.unit ? resolveMeterUnit(r.unit) : null;
+    if (meter?.canonical) out.add(meter.unit);
+  }
+  return out;
+}
+
 settingsRouter.get("/reference-volumes", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
-  const org = await db.query.organizations.findFirst({
-    where: eq(organizations.id, orgId),
-    columns: { referenceVolumes: true },
-  });
+  const [org, roster] = await Promise.all([
+    db.query.organizations.findFirst({
+      where: eq(organizations.id, orgId),
+      columns: { referenceVolumes: true },
+    }),
+    rosterMeterUnits(orgId),
+  ]);
 
   return c.json({
     // What the org stored (null = following the presets), and the vocabulary the
     // picker offers — a meter outside it has no comparable cost to read.
     referenceVolumes: org?.referenceVolumes ?? null,
     presetQuantities: REFERENCE_VOLUME_PRESETS,
-    units: [...CANONICAL_METER_UNITS].map((unit) => ({
-      unit,
-      label: meterUnitLabel(unit, 2),
-    })),
+    // Roster meters first: the ones a stored volume can actually change. The rest
+    // stay offered — a competitor added tomorrow may bill on one of them — but
+    // behind the ones that read today.
+    units: [...CANONICAL_METER_UNITS]
+      .map((unit) => ({
+        unit,
+        label: meterUnitLabel(unit, 2),
+        inRoster: roster.has(unit),
+      }))
+      .sort((a, b) =>
+        a.inRoster === b.inRoster ? a.label.localeCompare(b.label) : a.inRoster ? -1 : 1,
+      ),
   });
 });
 

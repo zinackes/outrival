@@ -12,7 +12,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -45,6 +48,12 @@ export function ReferenceVolumesCard() {
   const { referenceVolumes, presetQuantities, units } = q.data;
   const rows = referenceVolumes ?? [];
   const labelOf = (u: string) => units.find((x) => x.unit === u)?.label ?? u;
+  // The meters a competitor in this workspace is actually charged on. A volume set
+  // on any other unit is stored and then read by nothing, which is what made this
+  // setting feel dead — so the ones that can move a comparison come first, and the
+  // rest stay reachable for a competitor added later.
+  const rosterUnits = units.filter((u) => u.inRoster);
+  const otherUnits = units.filter((u) => !u.inRoster);
 
   async function save(next: ReferenceVolume[] | null) {
     setSaving(true);
@@ -120,11 +129,27 @@ export function ReferenceVolumesCard() {
             <SelectValue placeholder="Pick a meter" />
           </SelectTrigger>
           <SelectContent>
-            {units.map((u) => (
-              <SelectItem key={u.unit} value={u.unit}>
-                {u.label}
-              </SelectItem>
-            ))}
+            {rosterUnits.length > 0 && (
+              <SelectGroup>
+                <SelectLabel>Metered by your competitors</SelectLabel>
+                {rosterUnits.map((u) => (
+                  <SelectItem key={u.unit} value={u.unit}>
+                    {u.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            )}
+            {rosterUnits.length > 0 && otherUnits.length > 0 && <SelectSeparator />}
+            {otherUnits.length > 0 && (
+              <SelectGroup>
+                {rosterUnits.length > 0 && <SelectLabel>Other meters</SelectLabel>}
+                {otherUnits.map((u) => (
+                  <SelectItem key={u.unit} value={u.unit}>
+                    {u.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            )}
           </SelectContent>
         </Select>
         <Button variant="outline" size="sm" onClick={add} disabled={saving || !unit || !qty}>

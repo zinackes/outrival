@@ -8,6 +8,13 @@ import { CatText } from "@/components/dashboard/cat-pill";
 import { COMP_ACCENT, competitorColorVars } from "@/lib/competitor-color";
 import { SeverityGauge } from "@/components/outrival/severity-scale";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { api, type CompareColumn } from "@/lib/api";
 import { formatMonth } from "@/lib/format-date";
 import { formatMoney } from "@/lib/format-money";
@@ -221,6 +228,41 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
       title="Price"
       sub="Entry to top published plan, one scale"
       meta={`${to} / mo`}
+      // The volume metered competitors are read at. It BELONGS in the header, not
+      // in the footer legend it used to sit in: everything else down there is a
+      // note about how a number was derived, while this one changes the numbers.
+      // Rendered only when at least one row's reading moves with it — see
+      // availableMeters. `action` REPLACES `meta`, so the unit the lens reads in
+      // is carried along here rather than dropped off the header.
+      action={
+        meters.length > 0 && meter ? (
+          <label className="flex items-center gap-2">
+            <span className="text-muted-foreground text-meta">
+              {to} / mo · usage read at
+            </span>
+            <Select value={`${meter.unit}|${meter.qty}`} onValueChange={setMeterKey}>
+              <SelectTrigger
+                size="sm"
+                className="tabular-nums"
+                aria-label="Volume to read usage-based pricing at"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {meters.map((m) => (
+                  <SelectItem
+                    key={`${m.unit}|${m.qty}`}
+                    value={`${m.unit}|${m.qty}`}
+                    className="tabular-nums"
+                  >
+                    {meterLabel(m)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+        ) : undefined
+      }
       footer={
         scale.hasData ? (
           <LensFooter
@@ -245,25 +287,6 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
                     onToggle={() => setFull((f) => !f)}
                     fullLabel={money(scale.fullMax, scale.currency)}
                   />
-                )}
-                {/* The volume metered competitors are read at. Changing it re-reads
-                    the captured ladder; nothing is re-scanned. */}
-                {meters.length > 0 && meter && (
-                  <label className="flex items-center gap-1.5">
-                    <span>usage read at</span>
-                    <select
-                      value={`${meter.unit}|${meter.qty}`}
-                      onChange={(ev) => setMeterKey(ev.target.value)}
-                      className="border-border bg-background text-foreground rounded-sm border px-1.5 py-0.5 tabular-nums"
-                      aria-label="Volume to read usage-based pricing at"
-                    >
-                      {meters.map((m) => (
-                        <option key={`${m.unit}|${m.qty}`} value={`${m.unit}|${m.qty}`}>
-                          {meterLabel(m)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
                 )}
                 {/* What the "≈" rows were derived from, so a converted number is never
                     passed off as one the competitor published. */}

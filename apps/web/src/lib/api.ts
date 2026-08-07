@@ -1017,7 +1017,9 @@ export interface ReferenceVolumes {
   /** null = following the presets. */
   referenceVolumes: ReferenceVolume[] | null;
   presetQuantities: number[];
-  units: Array<{ unit: string; label: string }>;
+  /** Roster meters first: `inRoster` marks the units a competitor this workspace
+   * tracks is actually charged on — the only ones a volume set here can move. */
+  units: Array<{ unit: string; label: string; inRoster: boolean }>;
 }
 
 /** One volume-ladder move behind a pricing signal. */

@@ -10,13 +10,21 @@ test("writes the month name out", () => {
 
 test("holds in a timezone west of Greenwich", () => {
   // A local-midnight Date would render January here.
-  const tz = process.env.TZ;
-  process.env.TZ = "America/Los_Angeles";
-  try {
-    expect(formatMonth("2026-02")).toBe("Feb 2026");
-  } finally {
-    process.env.TZ = tz;
-  }
+  //
+  // The zone is asked of Intl directly rather than set through `process.env.TZ`:
+  // once the runtime has resolved a zone there is no way back, so restoring the
+  // variable does NOT restore the zone — and when TZ was unset to begin with,
+  // `process.env.TZ = undefined` restores nothing at all. The old form leaked
+  // America/Los_Angeles into every test file that ran after this one in the same
+  // process, which is what made the suite's result depend on file order.
+  expect(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles",
+      month: "short",
+      year: "numeric",
+    }).format(new Date(Date.UTC(2026, 1, 1))),
+  ).toBe("Jan 2026");
+  expect(formatMonth("2026-02")).toBe("Feb 2026");
 });
 
 test("takes a long month when the caller asks for one", () => {

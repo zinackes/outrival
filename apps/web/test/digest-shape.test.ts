@@ -105,6 +105,21 @@ test("digestLabel reads a weekly brief as a range and a daily one as a day", () 
   expect(digestLabel({ ...DIGEST, period: "daily" })).toBe("Mon, Jul 6, 2026");
 });
 
+test("digestLabel names the stored dates, not the reader's timezone", () => {
+  // weekStart is a bare "YYYY-MM-DD", which parses as UTC midnight. Reading it in
+  // a zone west of Greenwich used to print the previous day, so a brief covering
+  // Jul 6 to Jul 13 read as Jul 5 to Jul 12 — and differed between the server
+  // render and the client's. The label is the stored week, wherever it is read.
+  const inLA = (iso: string) =>
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles",
+      month: "short",
+      day: "numeric",
+    }).format(new Date(iso));
+  expect(inLA(DIGEST.weekStart)).toBe("Jul 5");
+  expect(digestLabel(DIGEST)).toBe("Jul 6 to Jul 13, 2026");
+});
+
 test("markdown export keeps the verdict first and the groups in decision order", () => {
   const md = digestToMarkdown(DIGEST);
   expect(md).toContain("# Competitive brief, Jul 6 to Jul 13, 2026");

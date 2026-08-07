@@ -1,4 +1,3 @@
-import { format } from "date-fns";
 import type { Digest, DigestContent, DigestSection } from "./api";
 
 export type DigestUrgency = DigestSection["urgency"];
@@ -26,19 +25,33 @@ export const URGENCY_META: Record<
  * The period a brief covers, as a reader reads it: a weekly brief is a range, a
  * daily one is a single day. Falls back to the raw stored dates rather than
  * throwing on a malformed value.
+ *
+ * Read in UTC, for the same reason `digestRunLabel` below is: `weekStart` is a
+ * bare "YYYY-MM-DD", which `new Date()` parses as UTC midnight. Formatting that
+ * in the machine's zone printed the PREVIOUS day anywhere west of Greenwich —
+ * a brief covering Jul 6 to Jul 13 read as Jul 5 to Jul 12 for a US viewer, and
+ * differed between the server render and the client's.
  */
+const utcDate = (iso: string, opts: Intl.DateTimeFormatOptions): string =>
+  new Intl.DateTimeFormat("en-US", { timeZone: "UTC", ...opts }).format(new Date(iso));
+
 export function digestLabel(d: Pick<Digest, "period" | "weekStart" | "weekEnd">): string {
   if (d.period === "daily") {
     try {
-      return format(new Date(d.weekStart), "EEE, MMM d, yyyy");
+      return utcDate(d.weekStart, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
     } catch {
       return d.weekStart;
     }
   }
   try {
-    return `${format(new Date(d.weekStart), "MMM d")} to ${format(
-      new Date(d.weekEnd),
-      "MMM d, yyyy",
+    return `${utcDate(d.weekStart, { month: "short", day: "numeric" })} to ${utcDate(
+      d.weekEnd,
+      { month: "short", day: "numeric", year: "numeric" },
     )}`;
   } catch {
     return `${d.weekStart} to ${d.weekEnd}`;

@@ -5,6 +5,7 @@ import { BillingDashboardSkeleton } from "./billing-skeleton";
 import { getBillingData } from "@/lib/api-server";
 import { makeServerQueryClient } from "@/lib/server-query";
 import { billingQuery } from "@/lib/queries";
+import { SettingsPageHead } from "@/components/dashboard/settings-page";
 
 export default async function BillingPage() {
   // Best-effort server seed; null → BillingDashboard's useQuery fetches client-side.
@@ -12,18 +13,16 @@ export default async function BillingPage() {
   const initial = await getBillingData();
   if (initial) queryClient.setQueryData(billingQuery().queryKey, initial);
   return (
-    <section className="flex flex-col gap-5" data-ph-mask>
-      <header>
-        <h2 className="font-semibold text-base tracking-tight">Subscription</h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          Manage your plan, usage and payment method.
-        </p>
-      </header>
+    <div className="flex flex-col gap-8" data-ph-mask>
+      <SettingsPageHead
+        title="Subscription"
+        description="Your plan, what it covers, and the card it bills."
+      />
       <Suspense fallback={<BillingDashboardSkeleton />}>
         <HydrationBoundary state={dehydrate(queryClient)}>
           <BillingDashboard />
         </HydrationBoundary>
       </Suspense>
-    </section>
+    </div>
   );
 }

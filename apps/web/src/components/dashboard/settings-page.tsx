@@ -60,12 +60,15 @@ export function SettingsPageHead({
  * is itself a bordered box, or the box's top edge doubles it.
  */
 export function SettingsSection({
+  id,
   title,
   description,
   action,
   divider = true,
   children,
 }: {
+  /** Scroll target — the plan selector is linked to from the usage meter. */
+  id?: string;
   title: string;
   description?: ReactNode;
   action?: ReactNode;
@@ -75,7 +78,7 @@ export function SettingsSection({
   return (
     // gap-3, not per-caller margins: the spacing between a section's rule and its
     // content was the thing every page had picked differently.
-    <section className="flex flex-col gap-3">
+    <section id={id} className="flex flex-col gap-3">
       <div
         className={`flex flex-wrap items-start justify-between gap-x-4 gap-y-2 ${
           divider ? "border-b border-border pb-2.5" : ""

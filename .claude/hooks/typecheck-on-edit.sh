@@ -21,10 +21,16 @@ esac
 ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 REL="${FILE_PATH#"$ROOT"/}"
 
+# Seuls les packages FEUILLES sont typecheckés à l'édition. Mesuré sur cache
+# froid (2026-08-07) : shared 2,7s · queue 5,1s · ai 6,3s · scrapers 6,8s ·
+# db 7,2s, contre api 12,3s · workers 23,9s · web 24,1s.
+#
+# L'écart n'est pas une question de taille de package : `--filter` sur une app
+# fait retypechecker toute sa chaîne de deps par turbo. Éditer un fichier de
+# `apps/web` payait donc 24s À CHAQUE ÉDIT, soit ~8 min sur une session de 20
+# éditions, pour ce que `pnpm typecheck` (gate 1 de CLAUDE.md) fait en une passe
+# avant commit. Les apps sortent du hook ; le filet reste là où il est gratuit.
 case "$REL" in
-apps/web/*) PACKAGE="@outrival/web" ;;
-apps/api/*) PACKAGE="@outrival/api" ;;
-apps/workers/*) PACKAGE="@outrival/workers" ;;
 packages/db/*) PACKAGE="@outrival/db" ;;
 packages/ai/*) PACKAGE="@outrival/ai" ;;
 packages/queue/*) PACKAGE="@outrival/queue" ;;

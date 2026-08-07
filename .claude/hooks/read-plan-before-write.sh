@@ -1,4 +1,11 @@
 #!/bin/bash
+# DÉSENREGISTRÉ le 2026-08-07 — ce script n'est plus câblé dans settings.json.
+# Il reste sur disque pour pouvoir être remis si `task_plan.md` redevient un plan
+# vivant. En l'état il ne l'est plus : les 26 étapes `- [ ]` qu'il remontait sont
+# des reliquats de patch-13/17/22 livrés depuis des mois, donc il injectait
+# ~700 tokens de bruit par session pour zéro signal. Le remettre suppose d'abord
+# de purger l'historique de task_plan.md (1924 lignes).
+#
 # PreToolUse hook — rappelle le plan courant avant une écriture, pour ne pas
 # dériver de l'objectif de session.
 #

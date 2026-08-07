@@ -55,12 +55,6 @@ un chantier à part, pas un prérequis pour passer le gate.
 - Commit hors Conventional Commits (`feat|fix|refactor|docs|test|chore`, sujet ≤ 50
   car., description qui dit le *pourquoi*, pas le *quoi*).
 
-## Roadmap Notion
-
-Database « 🎯 Roadmap », tenue à la main. Une phase / patch / feature **développée**
-(code + typecheck OK, sans attendre le merge) passe en `Status = Done`. Une feature
-ad-hoc notable : proposer l'item en 1 ligne, l'utilisateur valide, jamais d'auto-création.
-
 ## Skills tierces (`.claude/skills/`, MIT, pas Anthropic)
 
 Les invoquer **explicitement**, jamais en auto-déclenchement malgré leurs mentions

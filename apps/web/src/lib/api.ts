@@ -2288,6 +2288,10 @@ export interface SelfProfile {
   category?: SelfProfileField<string>;
   audience?: SelfProfileField<string>;
   valueProp?: SelfProfileField<string>;
+  // Seeded per-product by the add-product wizard, which reviews the same fields
+  // onboarding does. Absent on selves created before that.
+  whatItDoes?: SelfProfileField<string>;
+  pricingModel?: SelfProfileField<string>;
   features?: SelfProfileField<string[]>;
   techStack?: SelfProfileField<string[]>;
 }
@@ -2369,6 +2373,8 @@ export interface MyProductPatch {
   category?: string;
   audience?: string;
   valueProp?: string;
+  whatItDoes?: string;
+  pricingModel?: string;
   features?: string[];
   techStack?: string[];
   pricing?: {

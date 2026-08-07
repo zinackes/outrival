@@ -26,10 +26,18 @@ export type SelfPricingTier = {
 // category/audience/valueProp/features/techStack are refreshed from the homepage by
 // extract-self-profile (sticky vs user edits); pricingTiers are user-entered (no auto
 // source outside the scraped pricing history) and have no other home.
+//
+// whatItDoes/pricingModel mirror the two ProductProfile fields onboarding derives and
+// lets the user edit. They used to have no per-product home at all: only the org-wide
+// `organizations.product_profile` carried them, which the primary SKU falls back to and
+// every other SKU cannot reach. A profile derived for a 2nd+ product was therefore
+// dropping them on the floor. Column-free (jsonb), so no migration.
 export type SelfProfile = {
   category?: SelfProfileField<string>;
   audience?: SelfProfileField<string>;
   valueProp?: SelfProfileField<string>;
+  whatItDoes?: SelfProfileField<string>;
+  pricingModel?: SelfProfileField<string>;
   features?: SelfProfileField<string[]>;
   techStack?: SelfProfileField<string[]>;
   pricingTiers?: SelfProfileField<SelfPricingTier[]>;

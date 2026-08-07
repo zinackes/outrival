@@ -628,10 +628,21 @@ export function MyProductView({
               onSave={(v) => patch({ audience: v })}
             />
             <EditableText
+              label="What it does"
+              field={profile.whatItDoes}
+              multiline
+              onSave={(v) => patch({ whatItDoes: v })}
+            />
+            <EditableText
               label="Value prop"
               field={profile.valueProp}
               multiline
               onSave={(v) => patch({ valueProp: v })}
+            />
+            <EditableText
+              label="Pricing model"
+              field={profile.pricingModel}
+              onSave={(v) => patch({ pricingModel: v })}
             />
           </Card>
 

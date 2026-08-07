@@ -21,11 +21,17 @@ export const organizations = pgTable("organizations", {
   // GitHub repo of the user's product (developing stage) — monitored via the
   // github_repo source when there's no live site yet (patch-15).
   productRepoUrl: text("product_repo_url"),
+  // Mirrors ProductProfileSchema (@outrival/ai). whatItDoes/keywords are optional:
+  // the AI has derived them since patch-25, but rows written before that don't carry
+  // them — and the column type omitted them entirely, so anything reading this profile
+  // back could not see the two fields that sharpen the discovery query.
   productProfile: jsonb("product_profile").$type<{
     category: string;
     audience: string;
     valueProp: string;
     pricingModel: string;
+    whatItDoes?: string;
+    keywords?: string[];
   }>(),
   detectionConfig: jsonb("detection_config")
     .$type<{

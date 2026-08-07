@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
-import { SpinnerIcon, XIcon } from "@/components/icons";
+import { SpinnerIcon, WarningIcon, XIcon } from "@/components/icons";
 import { api, type ReferenceVolume } from "@/lib/api";
 import { referenceVolumesQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SettingRowsSkeleton } from "@/components/dashboard/skeletons";
 import {
   Select,
   SelectContent,
@@ -35,19 +35,16 @@ export function ReferenceVolumesCard() {
   const [unit, setUnit] = useState("");
   const [qty, setQty] = useState("");
 
-  if (q.isLoading) {
-    return (
-      <div className="flex flex-col gap-3">
-        <Skeleton className="h-4 w-40" />
-        <Skeleton className="h-20 w-full" />
-      </div>
-    );
-  }
+  if (q.isLoading) return <SettingRowsSkeleton rows={3} />;
   if (!q.data) return null;
 
   const { referenceVolumes, presetQuantities, units } = q.data;
   const rows = referenceVolumes ?? [];
   const labelOf = (u: string) => units.find((x) => x.unit === u)?.label ?? u;
+  // #459 grouped the PICKER by whether the roster is charged on a meter, which
+  // fixed what goes in. A volume ALREADY saved on a meter nobody bills for still
+  // listed identically to a live one, so the list says it too.
+  const inRosterOf = (u: string) => units.find((x) => x.unit === u)?.inRoster ?? false;
   // The meters a competitor in this workspace is actually charged on. A volume set
   // on any other unit is stored and then read by nothing, which is what made this
   // setting feel dead — so the ones that can move a comparison come first, and the
@@ -74,42 +71,48 @@ export function ReferenceVolumesCard() {
     setQty("");
   }
 
+  // OUT-38 — the heading moved to the page's SettingsSection. Every control here
+  // is unchanged; the list gained the dead-meter note.
   return (
-    <section className="flex flex-col gap-4">
-      <div>
-        <h3 className="text-sm font-medium tracking-tight">Reference volumes</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          What a usage-based competitor costs is only a number once you name a
-          volume. Set the ones you actually buy at, and the price comparison reads
-          every metered plan there. Nothing is re-scanned when you change these.
-        </p>
-      </div>
-
+    <div className="flex flex-col gap-4">
       {rows.length > 0 ? (
         <ul className="flex flex-col">
-          {rows.map((row, i) => (
-            <li
-              key={`${row.unit}-${row.qty}`}
-              className="flex items-center gap-3 border-b border-border py-2.5 last:border-b-0"
-            >
-              <span className="text-sm text-foreground tabular-nums">
-                {row.qty.toLocaleString("en-US")} {labelOf(row.unit)}
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="ml-auto"
-                disabled={saving}
-                onClick={() => save(rows.filter((_, j) => j !== i))}
-                aria-label={`Remove ${row.qty.toLocaleString("en-US")} ${labelOf(row.unit)}`}
+          {rows.map((row, i) => {
+            const live = inRosterOf(row.unit);
+            const label = `${row.qty.toLocaleString("en-US")} ${labelOf(row.unit)}`;
+            return (
+              <li
+                key={`${row.unit}-${row.qty}`}
+                className="flex items-center gap-3 border-b border-border py-2.5 last:border-b-0"
               >
-                <XIcon className="size-4" />
-              </Button>
-            </li>
-          ))}
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={`text-dense tabular-nums ${live ? "text-foreground" : "text-muted-foreground"}`}
+                  >
+                    {label}
+                  </div>
+                  {!live && (
+                    <div className="mt-0.5 flex items-center gap-1.5 text-meta text-muted-foreground">
+                      <WarningIcon size={12} className="shrink-0" aria-hidden />
+                      Nobody you track bills on this meter, so nothing reads this volume.
+                    </div>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={saving}
+                  onClick={() => save(rows.filter((_, j) => j !== i))}
+                  aria-label={`Remove ${label}`}
+                >
+                  <XIcon className="size-4" />
+                </Button>
+              </li>
+            );
+          })}
         </ul>
       ) : (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-dense text-muted-foreground">
           Following the defaults: {presetQuantities.map((n) => n.toLocaleString("en-US")).join(", ")}{" "}
           units of whichever meter you pick on the price lens.
         </p>
@@ -162,6 +165,6 @@ export function ReferenceVolumesCard() {
           </Button>
         )}
       </div>
-    </section>
+    </div>
   );
 }

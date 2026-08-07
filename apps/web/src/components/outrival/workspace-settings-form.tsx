@@ -3,15 +3,20 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { CheckIcon, SpinnerIcon, ArrowsClockwiseIcon, PencilIcon } from "@/components/icons";
+import { ArrowsClockwiseIcon, CopyIcon, PencilIcon } from "@/components/icons";
+import { toast } from "@/lib/toast";
 import { api, type ProjectStage, type WorkspaceSettings } from "@/lib/api";
 import { productsListQuery, workspaceSettingsQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
-import { FormSkeleton } from "@/components/dashboard/skeletons";
+import { SettingRow } from "@/components/dashboard/settings-page";
+import {
+  SettingCardRowsSkeleton,
+  SettingRowsSkeleton,
+} from "@/components/dashboard/skeletons";
+import { useSettingsSaveBar } from "@/components/dashboard/settings-save-bar";
+import { SettingsError } from "@/components/outrival/list-error";
 import { ProductTile } from "@/components/dashboard/product-tile";
 import { ChangeProductUrlDialog } from "@/components/outrival/change-product-url-dialog";
 import { UpdateProfileDialog } from "@/components/outrival/update-profile-dialog";
@@ -53,10 +58,9 @@ export function WorkspaceSettingsForm() {
     settingsQ.data?.projectStage ?? null,
   );
   const initializedRef = useRef(settingsQ.data != null);
-  const [saving, setSaving] = useState(false);
   const [changeUrlOpen, setChangeUrlOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
-  const [saved, setSaved] = useState(false);
+  // No saving/saved state here any more: the page's save bar owns both.
   const [error, setError] = useState<string | null>(null);
 
   // Build the form once the settings are available (covers the non-seeded path);
@@ -87,25 +91,21 @@ export function WorkspaceSettingsForm() {
     setDraft((d) => (d ? { ...d, [key]: value } : d));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSave() {
     if (!draft) return;
     if (!draft.name.trim()) {
       setError("Workspace name is required");
-      return;
+      throw new Error("Workspace name is required");
     }
-    setSaving(true);
-    setSaved(false);
     setError(null);
     try {
       await api.updateWorkspaceSettings({ name: draft.name.trim() });
       setPristine(draft);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
     } catch (e) {
       setError(errorMessage(e));
-    } finally {
-      setSaving(false);
+      // Rethrow so the page's save bar stops before claiming "Saved"; the inline
+      // message below the field is the user-facing surface.
+      throw e;
     }
   }
 
@@ -114,122 +114,127 @@ export function WorkspaceSettingsForm() {
     setError(null);
   }
 
+  // The page owns the save bar (settings layout); this section reports to it.
+  const dirty = draft != null && pristine != null && !isEqual(draft, pristine);
+  useSettingsSaveBar({
+    id: "workspace",
+    label: "Workspace",
+    dirty,
+    save: handleSave,
+    reset: handleCancel,
+  });
+
   if ((error || settingsQ.error) && !draft)
     return (
-      <p className="text-sm text-muted-foreground">
-        {error ?? errorMessage(settingsQ.error)}
-      </p>
+      <SettingsError
+        title="Workspace settings didn't load"
+        error={settingsQ.error ?? new Error(error ?? "")}
+        onRetry={() => void settingsQ.refetch()}
+      />
     );
-  if (!draft || !pristine) return <FormSkeleton fields={3} />;
-
-  const dirty = !isEqual(draft, pristine);
+  if (!draft || !pristine) return <SettingRowsSkeleton rows={3} />;
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="ws-name">Workspace name</Label>
-        <Input
-          id="ws-name"
-          value={draft.name}
-          onChange={(e) => set("name", e.target.value)}
-          placeholder="Acme Inc."
-        />
-        {slug && (
-          <p className="text-xs text-muted-foreground">
-            Slug: <span className="font-mono">{slug}</span>
-          </p>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="ws-url">Product URL</Label>
-        <div className="flex gap-2">
+    // No <form> and no sticky bar of its own: the page owns both. Enter in a field
+    // no longer submits, which is why the save bar is always reachable instead.
+    <div className="flex flex-col">
+      <SettingRow
+        htmlFor="ws-name"
+        label="Workspace name"
+        control={
           <Input
-            id="ws-url"
-            type="url"
-            value={draft.productUrl}
-            placeholder="No product URL set"
-            readOnly
-            className="bg-muted/40"
+            id="ws-name"
+            value={draft.name}
+            onChange={(e) => set("name", e.target.value)}
+            placeholder="Acme Inc."
+            className="h-9 w-64 text-dense"
           />
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setChangeUrlOpen(true)}
-            title="Change the monitored product URL"
-          >
-            <PencilIcon size={16} />
-            Change URL
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          The site we monitor for your product, and the reference for competitor
-          discovery. Changing it re-scans the site and refreshes the profile.
-        </p>
-      </div>
+        }
+      />
 
-      <div className="flex flex-col gap-3 pt-1">
-        <div>
-          <h3 className="text-sm font-medium tracking-tight">Product profiles</h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Each product carries its own: what it is, who it is for, what it
-            promises. Open one to edit it.
-          </p>
-        </div>
-        <ProductProfileList />
-      </div>
-
-      <div className="flex flex-col gap-3 pt-4 border-t border-border">
-        <h3 className="text-sm font-medium tracking-tight">Project stage</h3>
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-sm text-muted-foreground">
-            {stage ? STAGE_LABELS[stage] : "Not set"}
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setUpdateOpen(true)}
-            title="Re-analyze your source or change the stage. Your competitors stay"
-          >
-            <ArrowsClockwiseIcon size={16} />
-            Re-analyze my product
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Where your primary product stands, and the source we read to profile it.
-          Re-analyzing keeps your tracked competitors.
-        </p>
-      </div>
-
-      {saved && !dirty && (
-        <p className="flex items-center gap-1.5 text-sm text-positive">
-          <CheckIcon className="size-3.5" /> Saved
-        </p>
+      {/* The slug used to be a hint line under the name. It is an identifier you
+          paste into links and exports, so it is a field. */}
+      {slug && (
+        <SettingRow
+          label="Workspace address"
+          hint="Used in links and exports. Fixed once set."
+          control={
+            <>
+              <Input
+                readOnly
+                value={slug}
+                aria-label="Workspace address"
+                className="h-9 w-48 bg-surface-2 font-mono text-xs"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(slug);
+                  toast.success("Address copied");
+                }}
+              >
+                <CopyIcon size={16} />
+                Copy
+              </Button>
+            </>
+          }
+        />
       )}
-      {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {dirty && (
-        <div className="sticky bottom-4 z-10 flex items-center justify-between gap-3 px-4 py-2.5 rounded-md border border-border-strong bg-surface/95 backdrop-blur-sm shadow-lg">
-          <span className="text-xs text-muted-foreground">
-            You have unsaved changes.
-          </span>
-          <div className="flex items-center gap-2">
+      <SettingRow
+        htmlFor="ws-url"
+        label="Product URL"
+        hint="The site we scan for your product, and the reference for competitor discovery. Changing it re-scans the site and refreshes the profile."
+        control={
+          <>
+            <Input
+              id="ws-url"
+              type="url"
+              value={draft.productUrl}
+              placeholder="No product URL set"
+              readOnly
+              className="h-9 w-56 bg-surface-2 font-mono text-xs"
+            />
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
-              onClick={handleCancel}
-              disabled={saving}
+              onClick={() => setChangeUrlOpen(true)}
             >
-              Cancel
+              <PencilIcon size={16} />
+              Change
             </Button>
-            <Button type="submit" size="sm" disabled={saving}>
-              {saving && <SpinnerIcon size={16} className="animate-spin" />}
-              {saving ? "Saving…" : "Save changes"}
+          </>
+        }
+      />
+
+      <SettingRow
+        label="Project stage"
+        hint="Where your primary product stands, and the source we read to profile it. Re-analyzing keeps your tracked competitors."
+        control={
+          <>
+            <span className="text-dense text-muted-foreground">
+              {stage ? STAGE_LABELS[stage] : "Not set"}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setUpdateOpen(true)}
+            >
+              <ArrowsClockwiseIcon size={16} />
+              Re-analyze
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      />
+
+      {error && (
+        <p role="alert" className="pt-3 text-dense text-destructive">
+          {error}
+        </p>
       )}
 
       <ChangeProductUrlDialog
@@ -243,7 +248,7 @@ export function WorkspaceSettingsForm() {
       />
 
       <UpdateProfileDialog open={updateOpen} onOpenChange={setUpdateOpen} onSaved={load} />
-    </form>
+    </div>
   );
 }
 
@@ -257,23 +262,16 @@ export function WorkspaceSettingsForm() {
  * (stickiness against re-scans, features, tech stack, pricing tiers), so this names
  * the products and sends the user there instead of keeping a second, thinner one.
  */
-function ProductProfileList() {
+export function ProductProfileList() {
   // Warm: the shell fetches this roster for the product switcher on every navigation.
   const productsQ = useQuery(productsListQuery());
   const products = (productsQ.data ?? []).filter((p) => p.status !== "archived");
 
-  if (productsQ.isLoading) {
-    return (
-      <div className="flex flex-col gap-2">
-        <Skeleton className="h-14 w-full" />
-        <Skeleton className="h-14 w-full" />
-      </div>
-    );
-  }
+  if (productsQ.isLoading) return <SettingCardRowsSkeleton rows={2} />;
 
   if (products.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className="text-dense text-muted-foreground">
         No product yet.{" "}
         <Link
           href="/dashboard/settings/products"

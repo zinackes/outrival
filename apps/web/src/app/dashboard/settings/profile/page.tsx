@@ -1,17 +1,16 @@
 import { ProfileSettingsForm } from "@/components/outrival/profile-settings-form";
+import { SettingsPageHead } from "@/components/dashboard/settings-page";
 
 export default function ProfileSettingsPage() {
   return (
-    <section className="flex flex-col gap-5">
-      <header>
-        <h2 className="font-semibold text-base tracking-tight">Profile</h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          Your name, email, and how you sign in.
-        </p>
-      </header>
+    <div className="flex flex-col gap-8">
+      <SettingsPageHead
+        title="Profile"
+        description="Your name, your email, and how you sign in."
+      />
       <div data-ph-mask>
         <ProfileSettingsForm />
       </div>
-    </section>
+    </div>
   );
 }

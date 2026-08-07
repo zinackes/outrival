@@ -15,6 +15,18 @@ import { api, ApiError, type CrmDestination } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { SettingsSection } from "@/components/dashboard/settings-page";
+import { EmptyState } from "@/components/dashboard/empty-state";
+import { SettingCardRowsSkeleton } from "@/components/dashboard/skeletons";
+import { SettingsError } from "@/components/outrival/list-error";
 
 export function CrmDestinations() {
   const queryClient = useQueryClient();
@@ -48,6 +60,9 @@ export function CrmDestinations() {
   // toast that fades away from the field the user needs to fix.
   const [addError, setAddError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  // Deleting a destination silently stops every future push to it, and the secret
+  // is not recoverable — an optimistic one-click delete gave no way back.
+  const [removeTarget, setRemoveTarget] = useState<CrmDestination | null>(null);
 
   function refresh() {
     return queryClient.invalidateQueries({ queryKey: ["crmDestinations"] });
@@ -77,9 +92,20 @@ export function CrmDestinations() {
     }
   }
 
-  async function remove(id: string) {
-    setList((p) => (p ? p.filter((d) => d.id !== id) : p));
-    await api.deleteCrmDestination(id).catch(() => {});
+  async function remove() {
+    const target = removeTarget;
+    if (!target) return;
+    setRemoveTarget(null);
+    setList((p) => (p ? p.filter((d) => d.id !== target.id) : p));
+    try {
+      await api.deleteCrmDestination(target.id);
+      toast.success(`${target.name} removed. Nothing is pushed there anymore.`);
+    } catch {
+      // The row is already gone from the list, so put it back rather than leave
+      // the user believing a destination that still receives pushes is deleted.
+      await refresh();
+      toast.error("Couldn't remove the destination. Try again.");
+    }
   }
 
   function startEdit(d: CrmDestination) {
@@ -129,15 +155,15 @@ export function CrmDestinations() {
   }
 
   return (
-    <section className="flex flex-col gap-3">
-      <div>
-        <h3 className="text-dense font-semibold tracking-tight">CRM &amp; webhooks</h3>
-        <p className="text-muted-foreground mt-0.5 text-xs">
-          Push every alerted signal to a URL: Zapier, Make, n8n or your CRM. Signed with
-          <span className="font-mono"> X-Outrival-Signature</span> when a secret is set.
-        </p>
-      </div>
-
+    <SettingsSection
+      title="CRM & webhooks"
+      description={
+        <>
+          Push every alerted signal to a URL: Zapier, Make, n8n or your CRM. Signed with{" "}
+          <span className="font-mono">X-Outrival-Signature</span> when a secret is set.
+        </>
+      }
+    >
       {locked && (
         <div className="text-muted-foreground rounded-md border border-dashed border-border px-3 py-2 text-xs">
           Outbound webhooks are available on the{" "}
@@ -145,7 +171,15 @@ export function CrmDestinations() {
         </div>
       )}
 
-      {list && list.length > 0 && (
+      {listQ.isError ? (
+        <SettingsError
+          title="Destinations didn't load"
+          error={listQ.error}
+          onRetry={() => void listQ.refetch()}
+        />
+      ) : listQ.isPending ? (
+        <SettingCardRowsSkeleton rows={1} />
+      ) : list && list.length > 0 ? (
         <Card className="divide-y divide-border overflow-hidden">
           {list.map((d) =>
             editingId === d.id ? (
@@ -222,8 +256,8 @@ export function CrmDestinations() {
                   variant="ghost"
                   size="icon-xs"
                   aria-label="Delete destination"
-                  onClick={() => remove(d.id)}
-                  className="text-muted-foreground"
+                  onClick={() => setRemoveTarget(d)}
+                  className="text-muted-foreground hover:text-critical"
                 >
                   <TrashIcon size={16} />
                 </Button>
@@ -231,6 +265,14 @@ export function CrmDestinations() {
             ),
           )}
         </Card>
+      ) : (
+        // The list used to render nothing at all when empty, so the section opened
+        // on a bare form with no statement of what it was for.
+        <EmptyState
+          icon={WebhooksLogoIcon}
+          title="No destinations yet"
+          description="Add a URL below and every alerted signal is pushed to it as JSON, within seconds of being detected."
+        />
       )}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -263,6 +305,31 @@ export function CrmDestinations() {
         </Button>
       </div>
       {addError && <p className="text-xs text-critical">{addError}</p>}
-    </section>
+
+      <Dialog
+        open={removeTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setRemoveTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove {removeTarget?.name}?</DialogTitle>
+            <DialogDescription>
+              Signals stop being pushed to this URL immediately. The secret isn't
+              recoverable, so re-adding it means setting a new one.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRemoveTarget(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={remove}>
+              Remove destination
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </SettingsSection>
   );
 }

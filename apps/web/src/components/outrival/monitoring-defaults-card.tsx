@@ -15,7 +15,7 @@ import { sourceDefaultsQuery } from "@/lib/queries";
 import { SOURCE_SHORT_LABELS } from "@/lib/source-labels";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SettingRowsSkeleton } from "@/components/dashboard/skeletons";
 
 /**
  * What a new competitor starts monitoring — and the one control that fixes the
@@ -39,14 +39,7 @@ export function MonitoringDefaultsCard() {
   const [saving, setSaving] = useState<SourceType | null>(null);
   const [applying, setApplying] = useState(false);
 
-  if (q.isLoading) {
-    return (
-      <div className="flex flex-col gap-3">
-        <Skeleton className="h-4 w-40" />
-        <Skeleton className="h-24 w-full" />
-      </div>
-    );
-  }
+  if (q.isLoading) return <SettingRowsSkeleton rows={4} />;
   if (!q.data) return null;
 
   const { intendedSources, availableSources, selectableSources, gaps, competitorCount, plan } =
@@ -89,16 +82,13 @@ export function MonitoringDefaultsCard() {
     }
   }
 
+  // OUT-38 — the heading moved to the page's SettingsSection: this rendered its
+  // own `h3` at a rank nothing else on General used, under a page that had no
+  // `h1` at all. Every control here is unchanged.
   return (
-    <section className="flex flex-col gap-4">
-      <div>
-        <h3 className="text-sm font-medium tracking-tight">Monitoring defaults</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          What every competitor you add starts watching. Status pages, changelogs and
-          App Store reviews are added on their own whenever we detect one.
-        </p>
-      </div>
-
+    <div className="flex flex-col gap-4">
+      {/* Checkbox, not Switch: these ARE a set — which sources a new competitor
+          starts with — so the multi-select affordance is the right one. */}
       <ul className="flex flex-col">
         {selectableSources.map((source) => {
           const locked = !availableSources.includes(source);
@@ -119,15 +109,17 @@ export function MonitoringDefaultsCard() {
               <div className="min-w-0 flex-1">
                 <label
                   htmlFor={`default-source-${source}`}
-                  className="flex items-center gap-2 text-sm font-medium"
+                  className="flex flex-wrap items-center gap-2 text-dense font-medium"
                 >
                   {SOURCE_SHORT_LABELS[source]}
                   {required && (
-                    <span className="text-xs font-normal text-muted-foreground">Required</span>
+                    <span className="rounded-sm border border-border bg-surface-2 px-1.5 py-0.5 text-meta font-medium text-muted-foreground">
+                      Required
+                    </span>
                   )}
                   {locked && (
-                    <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
-                      <LockIcon className="size-3.5" />
+                    <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-surface-2 px-1.5 py-0.5 text-meta font-medium text-muted-foreground">
+                      <LockIcon size={12} />
                       {PLAN_LABELS[minPlanForSource(source)]}
                     </span>
                   )}
@@ -136,7 +128,9 @@ export function MonitoringDefaultsCard() {
                   )}
                 </label>
                 {SOURCE_HINTS[source] && (
-                  <p className="mt-0.5 text-xs text-muted-foreground">{SOURCE_HINTS[source]}</p>
+                  <p className="mt-1 max-w-[52ch] text-xs text-muted-foreground">
+                    {SOURCE_HINTS[source]}
+                  </p>
                 )}
               </div>
             </li>
@@ -167,6 +161,6 @@ export function MonitoringDefaultsCard() {
           {selectableSources.length} of these sources.
         </p>
       )}
-    </section>
+    </div>
   );
 }

@@ -3,6 +3,10 @@ import { ArrowRightIcon } from "@/components/icons";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { NotificationSettingsForm } from "@/components/outrival/notification-settings-form";
 import { NotificationModerationForm } from "@/components/outrival/notification-moderation-form";
+import {
+  SettingsPageHead,
+  SettingsSection,
+} from "@/components/dashboard/settings-page";
 import { getNotificationsPageData } from "@/lib/api-server";
 import { makeServerQueryClient } from "@/lib/server-query";
 import {
@@ -12,10 +16,13 @@ import {
   planQuery,
 } from "@/lib/queries";
 
-// One home for everything notification-related, in two stacked sections:
-// Channels (the endpoints alerts + the digest are delivered to) and Alert
-// routing (patch-26 moderation: severity → channel, quiet hours, cap, batching,
-// threshold). The outbound CRM/webhook destinations live in Integrations.
+// One home for everything notification-related, in four sections: Delivery (the
+// endpoints), Routing by severity, Quiet hours, and Volume. The outbound
+// CRM/webhook destinations live in Integrations.
+//
+// OUT-38 — the two forms each rendered their own sticky save bar, which stacked
+// at the bottom of the viewport when both were dirty, each saving half the page.
+// They now register with the page-level bar in the settings layout.
 export default async function NotificationSettingsPage() {
   // Seed both forms' queries. Best-effort: null → the forms' useQueries fetch.
   const queryClient = makeServerQueryClient();
@@ -35,44 +42,31 @@ export default async function NotificationSettingsPage() {
     queryClient.setQueryData(planQuery().queryKey, initial.digest.plan);
   }
   return (
-    <section className="flex flex-col gap-6">
-      <header>
-        <h2 className="font-semibold text-base tracking-tight">Notifications</h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          Where alerts and briefings are delivered, and how each severity reaches you.
-        </p>
-      </header>
+    <div className="flex flex-col gap-8" data-ph-mask>
+      <SettingsPageHead
+        title="Notifications"
+        description="Where alerts and briefings reach you, and which ones get through."
+      />
 
       <HydrationBoundary state={dehydrate(queryClient)}>
-        {/* Channels & delivery — the endpoints alerts and the digest are sent to */}
-        <div className="flex flex-col gap-4" data-ph-mask>
-          <div>
-            <h3 className="text-sm font-semibold tracking-tight">Channels</h3>
-            <p className="text-muted-foreground text-xs mt-0.5">
-              Where alerts and your briefings are delivered.
-            </p>
-          </div>
+        <SettingsSection
+          title="Delivery"
+          description="The endpoints alerts and your briefings are sent to."
+        >
           <NotificationSettingsForm />
           <Link
             href="/dashboard/digests"
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="mt-1 inline-flex items-center gap-1.5 self-start rounded-sm text-dense text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           >
             View past digests
             <ArrowRightIcon size={14} />
           </Link>
-        </div>
+        </SettingsSection>
 
-        {/* Alert routing — patch-26 moderation */}
-        <div className="flex flex-col gap-4 pt-6 border-t border-border">
-          <div>
-            <h3 className="text-sm font-semibold tracking-tight">Alert routing</h3>
-            <p className="text-muted-foreground text-xs mt-0.5">
-              Which severity reaches you, when, and how often.
-            </p>
-          </div>
-          <NotificationModerationForm />
-        </div>
+        {/* Renders its own three sections (routing, quiet hours, volume) so each
+            carries the page's heading rank rather than a nested legend. */}
+        <NotificationModerationForm />
       </HydrationBoundary>
-    </section>
+    </div>
   );
 }

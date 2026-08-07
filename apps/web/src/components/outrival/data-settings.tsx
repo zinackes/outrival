@@ -8,8 +8,11 @@ import { toast } from "@/lib/toast";
 import { PLAN_LIMITS } from "@outrival/shared";
 import { api } from "@/lib/api";
 import { planQuery } from "@/lib/queries";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  SettingRow,
+  SettingsSection,
+} from "@/components/dashboard/settings-page";
 
 function retentionLabel(days: number): string {
   if (days >= 365) {
@@ -50,62 +53,61 @@ export function DataSettings() {
     }
   }
 
+  // Rows, not one Card per line: export and import are two decisions in the same
+  // list, and a card each made the shorter one (Import, disabled) look like its
+  // own feature area rather than the second half of a pair.
   return (
-    <section className="flex flex-col gap-5">
-      <header>
-        <h2 className="font-semibold text-base tracking-tight">Data</h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          Export or import your workspace data.
-        </p>
-      </header>
-
-      <Card className="flex items-start gap-4 px-5 py-4">
-        <div className="flex-1">
-          <div className="text-dense font-medium">Export</div>
-          <div className="text-dense text-muted-foreground mt-1">
-            Download everything in your workspace (competitors, signals, digests,
-            products, battle cards and more) as JSON.
-          </div>
+    <>
+      <SettingsSection title="Export & import">
+        <div className="flex flex-col">
+          <SettingRow
+            label="Export"
+            hint="Download everything in your workspace (competitors, signals, digests, products, battle cards and more) as JSON."
+            control={
+              <Button variant="outline" size="sm" onClick={exportData} disabled={busy}>
+                {busy ? (
+                  <SpinnerIcon size={16} className="animate-spin" />
+                ) : (
+                  <DownloadSimpleIcon size={16} />
+                )}
+                Export
+              </Button>
+            }
+          />
+          <SettingRow
+            label="Import"
+            hint="Import a list of competitors from CSV."
+            control={
+              <Button variant="outline" size="sm" disabled>
+                Coming soon
+              </Button>
+            }
+          />
         </div>
-        <Button variant="outline" size="sm" onClick={exportData} disabled={busy}>
-          {busy ? <SpinnerIcon size={16} className="animate-spin" /> : <DownloadSimpleIcon size={16} />}
-          Export
-        </Button>
-      </Card>
+      </SettingsSection>
 
-      <Card className="flex items-start gap-4 px-5 py-4 opacity-70">
-        <div className="flex-1">
-          <div className="text-dense font-medium">Import</div>
-          <div className="text-dense text-muted-foreground mt-1">
-            Import a list of competitors from CSV.
-          </div>
+      <SettingsSection title="Retention & privacy">
+        <div className="flex flex-col gap-2">
+          <p className="max-w-[64ch] text-dense text-muted-foreground">
+            {plan
+              ? `On the ${plan} plan, competitor history and signals are kept for ${retentionLabel(
+                  PLAN_LIMITS[plan].historyRetentionDays,
+                )}; older records are purged automatically.`
+              : "Competitor history and signals are retained for a window that depends on your plan; older records are purged automatically."}
+          </p>
+          <p className="max-w-[64ch] text-dense text-muted-foreground">
+            See how we handle your data in our{" "}
+            <Link href="/privacy" target="_blank" className="text-link underline underline-offset-2">
+              privacy policy
+            </Link>{" "}
+            and{" "}
+            <Link href="/terms" target="_blank" className="text-link underline underline-offset-2">
+              terms
+            </Link>
+            .
+          </p>
         </div>
-        <Button variant="outline" size="sm" disabled>
-          Coming soon
-        </Button>
-      </Card>
-
-      <Card className="flex flex-col gap-2 px-5 py-4">
-        <div className="text-dense font-medium">Retention &amp; privacy</div>
-        <p className="text-dense text-muted-foreground">
-          {plan
-            ? `On the ${plan} plan, competitor history and signals are kept for ${retentionLabel(
-                PLAN_LIMITS[plan].historyRetentionDays,
-              )}; older records are purged automatically.`
-            : "Competitor history and signals are retained for a window that depends on your plan; older records are purged automatically."}
-        </p>
-        <p className="text-dense text-muted-foreground">
-          See how we handle your data in our{" "}
-          <Link href="/privacy" target="_blank" className="text-link underline underline-offset-2">
-            privacy policy
-          </Link>{" "}
-          and{" "}
-          <Link href="/terms" target="_blank" className="text-link underline underline-offset-2">
-            terms
-          </Link>
-          .
-        </p>
-      </Card>
-    </section>
+      </SettingsSection>
+    </>
   );
 }

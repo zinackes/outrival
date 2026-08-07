@@ -32,6 +32,8 @@ import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/error-helpers";
 import { PaymentMethodDialog } from "@/components/outrival/payment-method-dialog";
 import { BillingDashboardSkeleton } from "@/app/dashboard/settings/billing/billing-skeleton";
+import { SettingsSection } from "@/components/dashboard/settings-page";
+import { SettingsError } from "@/components/outrival/list-error";
 
 type PaidPlan = Exclude<Plan, "free">;
 type Invoice = Awaited<ReturnType<typeof api.getInvoices>>["invoices"][number];
@@ -251,10 +253,15 @@ export function BillingDashboard() {
   }
 
   if ((error || billingQ.error) && !billing)
+    // A failed billing load used to be a grey paragraph indistinguishable from a
+    // hint: no announcement, no retry, and no statement that the subscription
+    // itself is untouched.
     return (
-      <p className="text-sm text-muted-foreground">
-        {error ?? errorMessage(billingQ.error)}
-      </p>
+      <SettingsError
+        title="Your subscription didn't load"
+        error={billingQ.error ?? error}
+        onRetry={() => void billingQ.refetch()}
+      />
     );
   if (!billing) return <BillingDashboardSkeleton />;
 
@@ -442,25 +449,16 @@ export function BillingDashboard() {
 
       {/* ── Billing history ────────────────────────────────────────────── */}
       {invoicesQ.isError && (
-        <section className="flex flex-col gap-4">
-          <h3 className="font-semibold text-base tracking-tight">Billing history</h3>
-          <Card className="p-5">
-            <p className="text-sm text-muted-foreground">
-              Couldn&apos;t load your billing history.{" "}
-              <button
-                type="button"
-                onClick={() => void invoicesQ.refetch()}
-                className="text-link underline underline-offset-2"
-              >
-                Retry
-              </button>
-            </p>
-          </Card>
-        </section>
+        <SettingsSection title="Billing history">
+          <SettingsError
+            title="Billing history didn't load"
+            error={invoicesQ.error}
+            onRetry={() => void invoicesQ.refetch()}
+          />
+        </SettingsSection>
       )}
       {invoices.length > 0 && (
-        <section className="flex flex-col gap-4">
-          <h3 className="font-semibold text-base tracking-tight">Billing history</h3>
+        <SettingsSection title="Billing history">
           <Card className="divide-y divide-border overflow-hidden p-0">
             {visibleInvoices.map((inv) => (
               <div key={inv.id ?? inv.date} className="flex items-center gap-3 px-5 py-3">
@@ -503,20 +501,15 @@ export function BillingDashboard() {
               </Button>
             )}
           </Card>
-        </section>
+        </SettingsSection>
       )}
 
       {/* ── Plan selector ──────────────────────────────────────────────── */}
-      <section id="plan-selector" className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h3 className="font-semibold text-base tracking-tight">
-              Compare plans
-            </h3>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              AI cost included, no usage-based billing. Yearly billing saves 17%.
-            </p>
-          </div>
+      <SettingsSection
+        id="plan-selector"
+        title="Compare plans"
+        description="AI cost included, no usage-based billing. Yearly billing saves 17%."
+        action={
           <ToggleGroup
             type="single"
             value={period}
@@ -529,8 +522,8 @@ export function BillingDashboard() {
               Yearly <span className="ml-1 opacity-70">−17%</span>
             </ToggleGroupItem>
           </ToggleGroup>
-        </div>
-
+        }
+      >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {PLANS.map((plan) => {
             const card = PLAN_CARDS[plan];
@@ -674,7 +667,7 @@ export function BillingDashboard() {
             );
           })}
         </div>
-      </section>
+      </SettingsSection>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 

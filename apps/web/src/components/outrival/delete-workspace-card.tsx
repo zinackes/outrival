@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -18,6 +17,7 @@ import { api } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
 import { workspaceSettingsQuery } from "@/lib/queries";
 import { ReauthCodeField } from "@/components/outrival/reauth-code-field";
+import { SettingsSection } from "@/components/dashboard/settings-page";
 
 export function DeleteWorkspaceCard() {
   const [open, setOpen] = useState(false);
@@ -46,22 +46,25 @@ export function DeleteWorkspaceCard() {
   const canDelete = confirmMatches && code.length === 6;
 
   return (
-    <Card className="border-critical/20 px-5 py-5">
-      <div className="flex items-center gap-3">
-        <div className="flex-1">
-          <div className="font-semibold text-sm">Delete workspace</div>
-          <div className="text-muted-foreground text-dense mt-1">
-            Permanently erases all signals, digests and battle cards. This
-            action cannot be undone.
-          </div>
-        </div>
+    // A section, not a card with a bold div for a title: the two danger actions
+    // are the page's two sections, and the h2 rank is what heading navigation
+    // and the rest of the redesign already use.
+    <SettingsSection
+      title="Delete workspace"
+      description="Permanently erases every competitor, signal, digest, battle card and snapshot in this workspace, and cancels any active subscription."
+      divider={false}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-critical/25 bg-critical/[0.06] px-4 py-3.5">
+        <p className="text-dense text-muted-foreground">
+          Your login survives — you land in a fresh, empty workspace.
+        </p>
         <Button
           variant="outline"
           size="sm"
-          className="text-destructive border-destructive/25"
+          className="border-critical/30 text-critical hover:text-critical"
           onClick={() => setOpen(true)}
         >
-          Delete
+          Delete workspace
         </Button>
       </div>
 
@@ -117,6 +120,6 @@ export function DeleteWorkspaceCard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </SettingsSection>
   );
 }

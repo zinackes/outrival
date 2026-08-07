@@ -3,7 +3,16 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckIcon, SpinnerIcon, PlusIcon, StarIcon, TrashIcon, XIcon } from "@/components/icons";
+import {
+  CheckIcon,
+  DotsThreeIcon,
+  PencilIcon,
+  PlusIcon,
+  SpinnerIcon,
+  StarIcon,
+  TrashIcon,
+  XIcon,
+} from "@/components/icons";
 import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,8 +25,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  SettingsPageHead,
+  SettingsSection,
+} from "@/components/dashboard/settings-page";
+import { SettingCardRowsSkeleton } from "@/components/dashboard/skeletons";
+import { SettingsError } from "@/components/outrival/list-error";
 import { api, type ProductSummary } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
 import { productsSettingsQuery } from "@/lib/queries";
@@ -89,11 +111,13 @@ export function ProductsSettings() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-base font-medium">Products</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+    <div className="flex flex-col gap-8">
+      {/* The quota is page metadata, so it rides beside the title instead of
+          floating between the heading and the list it describes. */}
+      <SettingsPageHead
+        title="Products"
+        description={
+          <>
             Rename, choose the primary, or stop tracking one. To read a product,{" "}
             <Link
               href="/dashboard/products?product=all"
@@ -102,49 +126,47 @@ export function ProductsSettings() {
               open it in Products
             </Link>
             .
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setAddOpen(true)} disabled={atLimit}>
-          <PlusIcon size={16} />
-          Add product
-        </Button>
-      </div>
+          </>
+        }
+        action={
+          products ? (
+            <div className="flex flex-col items-end gap-1.5">
+              <span className="text-dense text-muted-foreground">
+                <span className="tabular-nums text-foreground">{active.length}</span> of{" "}
+                <span className="tabular-nums text-foreground">{limit}</span> product
+                {limit > 1 ? "s" : ""} on {PLAN_LABELS[plan]}
+              </span>
+              <Progress
+                value={Math.round((used / Math.max(1, limit)) * 100)}
+                className="h-1.5 w-24"
+              />
+              {atLimit && (
+                <Link
+                  href="/dashboard/settings/billing"
+                  className="text-meta text-link underline-offset-2 hover:underline"
+                >
+                  Upgrade to track more
+                </Link>
+              )}
+            </div>
+          ) : null
+        }
+      />
 
-      {products && (
-        <div className="flex flex-wrap items-center gap-3 text-dense text-muted-foreground">
-          <span
-            aria-hidden
-            className="h-[5px] w-28 overflow-hidden rounded-sm bg-surface-3"
-          >
-            <span
-              className="block h-full rounded-sm bg-primary"
-              style={{ width: `${Math.round((used / Math.max(1, limit)) * 100)}%` }}
-            />
-          </span>
-          <span>
-            <span className="tabular-nums text-foreground">{active.length}</span> of{" "}
-            <span className="tabular-nums text-foreground">{limit}</span> product
-            {limit > 1 ? "s" : ""} on {PLAN_LABELS[plan]}
-          </span>
-          {atLimit && (
-            <Link
-              href="/dashboard/settings/billing"
-              className="text-link underline-offset-2 hover:underline"
-            >
-              Upgrade to track more
-            </Link>
-          )}
-        </div>
+      <SettingsSection
+        title="Tracked products"
+        action={
+          <Button size="sm" onClick={() => setAddOpen(true)} disabled={atLimit}>
+            <PlusIcon size={16} />
+            Add product
+          </Button>
+        }
+      >
+      {err != null && (
+        <SettingsError title="Products didn't load" error={err} onRetry={() => void load()} />
       )}
 
-      {err != null && <p className="text-sm text-destructive">Couldn&apos;t load products.</p>}
-
-      {!products && !err && (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-        </div>
-      )}
+      {!products && !err && <SettingCardRowsSkeleton rows={2} />}
 
       {active.length > 0 && (
         <Card className="divide-y divide-border p-0">
@@ -160,10 +182,11 @@ export function ProductsSettings() {
         </Card>
       )}
 
-      <p className="text-dense text-muted-foreground">
+      <p className="mt-3 text-xs text-muted-foreground">
         Removing a product stops its scans and hides it everywhere. Its competitors stay
         tracked at the workspace level, and its history is kept.
       </p>
+      </SettingsSection>
 
       <AddProductWizard open={addOpen} onOpenChange={setAddOpen} onCreated={load} />
 
@@ -294,37 +317,72 @@ function ProductRow({
         </span>
       </div>
 
+      {/* One overflow menu instead of three buttons. Rename was a permanent
+          control competing with Remove while being the safer action, and below
+          `sm` the cluster wrapped under the product name onto its own line. */}
       {!editing && (
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => setDraft(p.name)}>
-            Rename
-          </Button>
-          {p.isPrimary ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <Button variant="ghost" size="sm" disabled aria-label="Remove product">
-                    <TrashIcon size={16} />
-                    Remove
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                Make another product primary first, so the workspace keeps one.
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <>
-              <Button variant="ghost" size="sm" onClick={onSetPrimary}>
-                <StarIcon size={16} />
-                Make primary
-              </Button>
-              <Button variant="danger" size="sm" onClick={onRemove}>
-                <TrashIcon size={16} />
-                Remove
-              </Button>
-            </>
+          {!p.isPrimary && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onSetPrimary}
+              className="hidden sm:inline-flex"
+            >
+              <StarIcon size={16} />
+              Make primary
+            </Button>
           )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`More actions for ${p.name}`}
+              >
+                <DotsThreeIcon size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setDraft(p.name)}>
+                <PencilIcon size={16} />
+                Rename
+              </DropdownMenuItem>
+              {!p.isPrimary && (
+                <DropdownMenuItem onSelect={onSetPrimary} className="sm:hidden">
+                  <StarIcon size={16} />
+                  Make primary
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              {p.isPrimary ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    {/* Disabled rather than absent: a row whose control set
+                        changes by state makes the column jump, and "why can I
+                        not remove this one" is better answered than guessed. */}
+                    <span>
+                      <DropdownMenuItem disabled>
+                        <TrashIcon size={16} />
+                        Remove
+                      </DropdownMenuItem>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">
+                    Make another product primary first, so the workspace keeps one.
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <DropdownMenuItem
+                  onSelect={onRemove}
+                  className="text-critical focus:text-critical"
+                >
+                  <TrashIcon size={16} />
+                  Remove
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
     </div>

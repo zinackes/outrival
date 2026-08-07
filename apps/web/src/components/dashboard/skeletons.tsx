@@ -131,6 +131,73 @@ export function FormSkeleton({ fields = 4 }: { fields?: number } = {}) {
   );
 }
 
+/**
+ * The three shapes a settings section loads in (OUT-38).
+ *
+ * Settings used to ship seven different skeletons — `FormSkeleton(2)`,
+ * `FormSkeleton(3)`, five `h-12` bars, two `h-16` bars, an `h-4` over an `h-24`,
+ * a bespoke billing one — none of which matched the section it stood in for, so
+ * the page reflowed on every load. Sections come in three shapes; so do these.
+ */
+
+/** A list of label + control rows: notification routing, quiet hours, sources. */
+export function SettingRowsSkeleton({ rows = 4 }: { rows?: number } = {}) {
+  return (
+    <div className="flex flex-col">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-start justify-between gap-5 border-b border-border py-3.5 last:border-b-0"
+        >
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Skeleton className="h-3 w-32" />
+            <Skeleton className="h-2.5 w-[70%]" />
+          </div>
+          <Skeleton className="h-8 w-40 shrink-0 rounded-md" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A bordered card of icon + two-line rows: sessions, products, profiles. */
+export function SettingCardRowsSkeleton({ rows = 3 }: { rows?: number } = {}) {
+  return (
+    <Card className="overflow-hidden p-0">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-3 border-b border-border px-4 py-3.5 last:border-b-0"
+        >
+          <Skeleton className="size-8 shrink-0 rounded-md" />
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Skeleton className="h-3 w-36" />
+            <Skeleton className="h-2.5 w-52" />
+          </div>
+          <Skeleton className="h-8 w-20 shrink-0 rounded-md" />
+        </div>
+      ))}
+    </Card>
+  );
+}
+
+/** A list of metered rows: usage limits, anything with a Progress under it. */
+export function SettingMetersSkeleton({ rows = 4 }: { rows?: number } = {}) {
+  return (
+    <div className="flex flex-col">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="border-b border-border py-3.5 last:border-b-0">
+          <div className="flex items-baseline justify-between gap-3">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-2.5 w-24" />
+          </div>
+          <Skeleton className="mt-2.5 h-1.5 w-full rounded-sm" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ChartSkeleton({ height = 260 }: { height?: number } = {}) {
   return (
     <Card className="p-4">

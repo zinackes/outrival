@@ -7,9 +7,11 @@ import { toast } from "@/lib/toast";
 import { emailSchema } from "@outrival/shared";
 import { useSession, authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FormSkeleton } from "@/components/dashboard/skeletons";
+import { SettingRow } from "@/components/dashboard/settings-page";
+import { SettingRowsSkeleton } from "@/components/dashboard/skeletons";
 import { UserAvatar } from "@/components/dashboard/user-avatar";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -185,7 +187,7 @@ export function ProfileSettingsForm() {
   }, [currentName]);
 
   if (isPending && !session) {
-    return <FormSkeleton />;
+    return <SettingRowsSkeleton rows={2} />;
   }
 
   const dirty = name.trim() !== currentName && name.trim().length > 0;
@@ -207,21 +209,38 @@ export function ProfileSettingsForm() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-3">
-        <UserAvatar seed={email || currentName || "user"} size={48} />
-      </div>
+      {/* Identity block: who you are signed in as, answered in one glance. The
+          avatar used to float alone above two unrelated fields. */}
+      <Card className="flex flex-wrap items-center gap-4 px-5 py-4">
+        <UserAvatar seed={email || currentName || "user"} size={44} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-content font-medium">
+            {currentName || "No name set"}
+          </div>
+          <div className="truncate text-dense text-muted-foreground" data-ph-mask>
+            {email}
+          </div>
+        </div>
+      </Card>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="profile-name">Name</Label>
-        <Input
-          id="profile-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Your name"
+      <div className="flex flex-col">
+        <SettingRow
+          htmlFor="profile-name"
+          label="Name"
+          hint="Shown on shared reports and in the briefings you send."
+          control={
+            <Input
+              id="profile-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+              className="h-9 w-64 text-dense"
+            />
+          }
         />
-      </div>
 
-      <EmailField currentEmail={email} />
+        <EmailField currentEmail={email} />
+      </div>
 
       <div className="flex items-center gap-3">
         <Button size="sm" onClick={save} disabled={!dirty || saving}>
@@ -229,7 +248,7 @@ export function ProfileSettingsForm() {
           Save changes
         </Button>
         {saved && (
-          <span className="flex items-center gap-1.5 text-sm text-positive">
+          <span className="flex items-center gap-1.5 text-dense text-positive">
             <CheckIcon className="size-4" /> Saved
           </span>
         )}

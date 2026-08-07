@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,6 +16,7 @@ import {
 import { api } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
 import { ReauthCodeField } from "@/components/outrival/reauth-code-field";
+import { SettingsSection } from "@/components/dashboard/settings-page";
 
 // Permanent account erasure (GDPR). Distinct from "delete workspace": this also
 // removes your login, so you're signed out for good rather than dropped into a
@@ -46,19 +46,19 @@ export function DeleteAccountCard() {
   const canDelete = confirmMatches && code.length === 6;
 
   return (
-    <Card className="border-critical/20 px-5 py-5">
-      <div className="flex items-center gap-3">
-        <div className="flex-1">
-          <div className="font-semibold text-sm">Delete account</div>
-          <div className="text-muted-foreground text-dense mt-1">
-            Erases your workspace and removes your login entirely. You'll be signed
-            out and can't sign back in. This cannot be undone.
-          </div>
-        </div>
+    <SettingsSection
+      title="Delete account"
+      description="Everything the workspace deletion removes, plus your login itself. You're signed out and can't sign back in."
+      divider={false}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-critical/25 bg-critical/[0.06] px-4 py-3.5">
+        <p className="text-dense text-muted-foreground">
+          This is the GDPR erasure — nothing about you is kept.
+        </p>
         <Button
           variant="outline"
           size="sm"
-          className="text-destructive border-destructive/25"
+          className="border-critical/30 text-critical hover:text-critical"
           onClick={() => setOpen(true)}
         >
           Delete account
@@ -118,6 +118,6 @@ export function DeleteAccountCard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </SettingsSection>
   );
 }

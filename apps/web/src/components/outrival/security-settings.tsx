@@ -32,7 +32,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FormSkeleton } from "@/components/dashboard/skeletons";
+import {
+  FormSkeleton,
+  SettingCardRowsSkeleton,
+} from "@/components/dashboard/skeletons";
+import {
+  SettingsPageHead,
+  SettingsSection,
+} from "@/components/dashboard/settings-page";
+import { SettingsError } from "@/components/outrival/list-error";
 import { ReauthCodeField } from "@/components/outrival/reauth-code-field";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -960,19 +968,18 @@ function ConnectedAccountRows() {
 
 function SignInMethods({ twoFactorEnabled }: { twoFactorEnabled: boolean }) {
   return (
-    <section className="flex flex-col gap-5">
-      <header>
-        <h2 className="font-semibold text-base tracking-tight">Sign-in &amp; security</h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          How you sign in, and the extra checks that protect your account.
-        </p>
-      </header>
-      <Card className="divide-y divide-border overflow-hidden">
+    <SettingsSection
+      title="Sign-in methods"
+      description="Every way into your account, and the checks that guard it."
+      divider={false}
+    >
+      <Card className="divide-y divide-border overflow-hidden p-0">
         <TwoFactorRow initialEnabled={twoFactorEnabled} />
+        <PasswordRow />
         {PASSKEYS_ENABLED && <PasskeysRow />}
         <ConnectedAccountRows />
       </Card>
-    </section>
+    </SettingsSection>
   );
 }
 
@@ -1193,7 +1200,15 @@ function PasswordDialog({
   );
 }
 
-function PasswordSection() {
+/**
+ * Password as one more row in the sign-in methods list.
+ *
+ * It used to be a third top-level section BELOW Active sessions, which put a
+ * sign-in method under the list of devices already signed in — and gave the page
+ * three sibling `h2`s with no title above them. It is a way into the account,
+ * exactly like 2FA, Google and passkeys, so it lives with them.
+ */
+function PasswordRow() {
   const accountsQ = useQuery({
     queryKey: ["authAccounts"],
     queryFn: () => authClient.listAccounts().then((res) => res.data ?? []),
@@ -1207,42 +1222,37 @@ function PasswordSection() {
   const [open, setOpen] = useState(false);
 
   return (
-    <section className="flex flex-col gap-5">
-      <header>
-        <h2 className="font-semibold text-base tracking-tight">Password</h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          Another way to sign in, alongside email codes and Google.
-        </p>
-      </header>
-      <Card className="px-5 py-4">
-        <div className="flex items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
-            <KeyIcon size={16} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-foreground">
-              {hasPassword === null ? "Checking…" : hasPassword ? "Password set" : "No password"}
-            </div>
-            <div className="text-dense text-muted-foreground">
-              {hasPassword
-                ? "You can sign in with your password."
-                : "Set one to sign in without an email code."}
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setOpen(true)}
-            disabled={hasPassword === null}
-          >
-            {hasPassword ? "Change" : "Set password"}
-          </Button>
-        </div>
-      </Card>
+    <>
+      <MethodRow
+        icon={<KeyIcon size={16} />}
+        title="Password"
+        description={
+          hasPassword === null
+            ? "Checking…"
+            : hasPassword
+              ? "You can sign in with your password."
+              : "Set one to sign in without an email code."
+        }
+      >
+        {hasPassword !== null &&
+          (hasPassword ? (
+            <Badge variant="tracked">Set</Badge>
+          ) : (
+            <Badge variant="paused">Not set</Badge>
+          ))}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setOpen(true)}
+          disabled={hasPassword === null}
+        >
+          {hasPassword ? "Change" : "Set password"}
+        </Button>
+      </MethodRow>
       {hasPassword !== null && (
         <PasswordDialog open={open} onOpenChange={setOpen} hasPassword={hasPassword} />
       )}
-    </section>
+    </>
   );
 }
 
@@ -1270,6 +1280,11 @@ function ActiveSessions() {
   const { data: session } = useSession();
   const currentToken = session?.session?.token;
   const [busy, setBusy] = useState<string | null>(null);
+  // Signing out a session is destructive and has no undo: whoever holds that
+  // device is logged out and has to re-authenticate. It used to fire on one
+  // click, so a mis-aimed click on the wrong row was unrecoverable.
+  const [confirmOthers, setConfirmOthers] = useState(false);
+  const [confirmOne, setConfirmOne] = useState<SessionRow | null>(null);
 
   const sessionsQ = useQuery({
     queryKey: ["authSessions"],
@@ -1286,7 +1301,9 @@ function ActiveSessions() {
         ),
       ),
   });
-  const sessions: SessionRow[] | null = sessionsQ.isError ? [] : (sessionsQ.data ?? null);
+  // A failed fetch used to fall through to the empty list, so "we couldn't reach
+  // the server" and "nothing is signed in" rendered the same reassuring sentence.
+  const sessions: SessionRow[] | null = sessionsQ.data ?? null;
 
   function reload() {
     return queryClient.invalidateQueries({ queryKey: ["authSessions"] });
@@ -1297,8 +1314,11 @@ function ActiveSessions() {
     try {
       await authClient.revokeSession({ token });
       toast.success("Session signed out");
+      setConfirmOne(null);
       reload();
     } catch {
+      // The dialog stays open on failure: closing it would look like the sign-out
+      // went through, and the toast is gone in seconds.
       toast.error("Could not sign out that session");
     } finally {
       setBusy(null);
@@ -1310,6 +1330,7 @@ function ActiveSessions() {
     try {
       await authClient.revokeOtherSessions();
       toast.success("Other sessions signed out");
+      setConfirmOthers(false);
       reload();
     } catch {
       toast.error("Could not sign out other sessions");
@@ -1321,29 +1342,32 @@ function ActiveSessions() {
   const hasOthers = !!sessions && sessions.some((s) => s.token !== currentToken);
 
   return (
-    <section className="flex flex-col gap-5">
-      <header className="flex items-end justify-between gap-3">
-        <div>
-          <h2 className="font-semibold text-base tracking-tight">Active sessions</h2>
-          <p className="text-muted-foreground text-sm mt-1">
-            Devices currently signed in to your account.
-          </p>
-        </div>
-        {hasOthers && (
+    <SettingsSection
+      title="Active sessions"
+      description="Devices signed in to your account."
+      divider={false}
+      action={
+        hasOthers ? (
           <Button
             variant="outline"
             size="sm"
-            onClick={revokeOthers}
+            onClick={() => setConfirmOthers(true)}
             disabled={busy === "others"}
           >
             {busy === "others" && <SpinnerIcon size={16} className="animate-spin" />}
-            Sign out other sessions
+            Sign out others
           </Button>
-        )}
-      </header>
-
-      {sessions === null ? (
-        <FormSkeleton />
+        ) : null
+      }
+    >
+      {sessionsQ.isError ? (
+        <SettingsError
+          title="Sessions didn't load"
+          error={sessionsQ.error}
+          onRetry={() => void sessionsQ.refetch()}
+        />
+      ) : sessions === null ? (
+        <SettingCardRowsSkeleton rows={2} />
       ) : sessions.length === 0 ? (
         <Card className="px-5 py-6 text-dense text-muted-foreground">
           No active sessions found.
@@ -1377,7 +1401,7 @@ function ActiveSessions() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => revokeOne(s.token)}
+                    onClick={() => setConfirmOne(s)}
                     disabled={busy === s.token}
                   >
                     {busy === s.token && <SpinnerIcon size={16} className="animate-spin" />}
@@ -1389,7 +1413,77 @@ function ActiveSessions() {
           })}
         </Card>
       )}
-    </section>
+
+      <Dialog
+        open={confirmOthers}
+        onOpenChange={(open) => {
+          if (!open && busy !== "others") setConfirmOthers(false);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sign out every other device?</DialogTitle>
+            <DialogDescription>
+              This device stays signed in. Every other one has to sign in again.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmOthers(false)}
+              disabled={busy === "others"}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void revokeOthers()}
+              disabled={busy === "others"}
+            >
+              {busy === "others" && <SpinnerIcon size={16} className="animate-spin" />}
+              Sign out others
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={confirmOne != null}
+        onOpenChange={(open) => {
+          if (!open && busy == null) setConfirmOne(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Sign out {confirmOne ? deviceLabel(confirmOne.userAgent) : "this device"}?
+            </DialogTitle>
+            <DialogDescription>
+              That device has to sign in again. This one is unaffected.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmOne(null)}
+              disabled={busy != null}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => confirmOne && void revokeOne(confirmOne.token)}
+              disabled={busy != null}
+            >
+              {busy != null && busy !== "others" && (
+                <SpinnerIcon size={16} className="animate-spin" />
+              )}
+              Sign out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </SettingsSection>
   );
 }
 
@@ -1401,11 +1495,17 @@ export function SecuritySettings() {
     (session?.user as { twoFactorEnabled?: boolean } | undefined)?.twoFactorEnabled,
   );
 
+  // Two sections under one page title, where this was three sibling `h2`s and no
+  // `h1` at all — so heading navigation landed in the middle of the page and
+  // nothing said which page it was.
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-8">
+      <SettingsPageHead
+        title="Security"
+        description="How you sign in, and the devices signed in right now."
+      />
       <SignInMethods key={String(twoFactorEnabled)} twoFactorEnabled={twoFactorEnabled} />
       <ActiveSessions />
-      <PasswordSection />
     </div>
   );
 }

@@ -125,16 +125,27 @@ export async function deriveProfileFromDocument(
  * Map a ProductProfile to the editable SelfProfile seeded on a self-competitor — the
  * single source of truth so onboarding's self and a wizard-added product's self are
  * seeded identically (auto-detected, not user-edited). null/blank fields are omitted.
+ *
+ * `keywords` seeds `features`: it is the one derived field that discovery reads
+ * directly (`buildDiscoveryQuery` appends it to the Exa query), and until now the AI
+ * produced it on every analyze and nothing ever stored it, so a 2nd+ SKU searched on a
+ * strictly poorer query than onboarding did. `features` is the slot
+ * `selfProfileToDiscoveryProfile` already reads keywords back out of, so seeding it
+ * closes the loop without a new field.
  */
 export function productProfileToSelfProfile(pp: ProductProfile | null | undefined): SelfProfile {
   const seed = <T,>(value: T | null | undefined): SelfProfileField<T> | undefined =>
     value == null || (typeof value === "string" && value.trim() === "")
       ? undefined
       : { value, isFromAutoDetect: true, lastEditedByUserAt: null };
+  const keywords = pp?.keywords?.map((k) => k.trim()).filter(Boolean);
   return {
     category: seed(pp?.category),
     audience: seed(pp?.audience),
     valueProp: seed(pp?.valueProp),
+    whatItDoes: seed(pp?.whatItDoes),
+    pricingModel: seed(pp?.pricingModel),
+    features: seed(keywords?.length ? keywords : undefined),
   };
 }
 

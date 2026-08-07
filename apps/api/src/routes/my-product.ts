@@ -165,6 +165,11 @@ const PatchSchema = z.object({
   category: z.string().max(200).optional(),
   audience: z.string().max(500).optional(),
   valueProp: z.string().max(1000).optional(),
+  // Seeded per-product by the add-product wizard. Editable here so a value the wizard
+  // wrote isn't frozen for the life of the SKU: only the primary's copy is reachable
+  // through the org-wide profile dialog.
+  whatItDoes: z.string().max(1000).optional(),
+  pricingModel: z.string().max(500).optional(),
   features: z.array(z.string().max(200)).max(40).optional(),
   techStack: z.array(z.string().max(100)).max(40).optional(),
   pricing: z
@@ -328,10 +333,13 @@ myProductRouter.patch("/", async (c) => {
   if (!self) return c.json({ error: "no_self_product" }, 404);
 
   const profile: SelfProfile = { ...((self.selfProfile ?? {}) as SelfProfile) };
-  const { category, audience, valueProp, features, techStack, pricing } = parsed.data;
+  const { category, audience, valueProp, whatItDoes, pricingModel, features, techStack, pricing } =
+    parsed.data;
   if (category !== undefined) profile.category = editedField(category);
   if (audience !== undefined) profile.audience = editedField(audience);
   if (valueProp !== undefined) profile.valueProp = editedField(valueProp);
+  if (whatItDoes !== undefined) profile.whatItDoes = editedField(whatItDoes);
+  if (pricingModel !== undefined) profile.pricingModel = editedField(pricingModel);
   if (features !== undefined) profile.features = editedField(features);
   if (techStack !== undefined) profile.techStack = editedField(techStack);
   if (pricing?.tiers !== undefined) profile.pricingTiers = editedField(pricing.tiers);
@@ -376,13 +384,13 @@ async function mirrorPrimaryProfileToOrg(orgId: string, selfId: string, profile:
     where: eq(organizations.id, orgId),
     columns: { productProfile: true },
   });
-  // Spread rather than rebuild: pricingModel (and any field the org profile carries
-  // that the self profile has no counterpart for) must survive the mirror.
+  // Spread rather than rebuild: any field the org profile carries that the self profile
+  // has no counterpart for (e.g. keywords) must survive the mirror.
   const next = {
     ...(org?.productProfile ?? { category: "", audience: "", valueProp: "", pricingModel: "" }),
   };
   let changed = false;
-  for (const key of ["category", "audience", "valueProp"] as const) {
+  for (const key of ["category", "audience", "valueProp", "whatItDoes", "pricingModel"] as const) {
     const value = profile[key]?.value?.trim();
     if (!value || value === next[key]) continue;
     next[key] = value;

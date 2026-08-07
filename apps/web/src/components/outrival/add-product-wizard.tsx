@@ -1,10 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeftIcon,
+  CheckIcon,
+  CircleIcon,
   FileTextIcon,
   GitBranchIcon,
   GlobeIcon,
@@ -26,11 +28,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { api, ApiError, type ProductProfile, type ProjectStage } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  type CompetitorCandidate,
+  type ProductProfile,
+  type ProjectStage,
+} from "@/lib/api";
 import { PLAN_LABELS, type Plan } from "@outrival/shared";
 import { useSetProductScope } from "@/components/dashboard/product-scope-provider";
 import { toastApiError } from "@/lib/error-helpers";
-import { isValidHttpUrl } from "@/lib/utils";
+import { cn, isValidHttpUrl } from "@/lib/utils";
 
 // "Add product" as a mini-onboarding (patch-28 multi-SKU). Adding a 2nd+ product used
 // to be a bare name+URL insert, so the SKU landed unanalysed and Discovery was blocked
@@ -56,6 +64,93 @@ function blankProfile(seedCategory = ""): ProductProfile {
   return { category: seedCategory, audience: "", valueProp: "", pricingModel: "" };
 }
 
+// The editable text fields, same set and same wording as onboarding's profile step
+// (apps/web/src/app/(onboarding)/onboarding/onboarding-form.tsx). This screen used to
+// show three of them, so a SKU added from Settings was reviewed on strictly less than
+// what onboarding asks for. `keywords` stays read-only chips here as it does there.
+type ProfileTextKey = "category" | "audience" | "whatItDoes" | "valueProp" | "pricingModel";
+
+const PROFILE_FIELDS: Array<{
+  key: ProfileTextKey;
+  label: string;
+  placeholder: string;
+  multiline?: boolean;
+}> = [
+  { key: "category", label: "Category", placeholder: "e.g. Appointment-scheduling software" },
+  { key: "audience", label: "Target audience", placeholder: "e.g. Independent clinics of 5–50 staff" },
+  {
+    key: "whatItDoes",
+    label: "What it does",
+    placeholder: "Concretely, what the product does and its real capabilities",
+    multiline: true,
+  },
+  {
+    key: "valueProp",
+    label: "Value proposition",
+    placeholder: "The concrete job it does and the outcome, no filler",
+    multiline: true,
+  },
+  { key: "pricingModel", label: "Pricing model", placeholder: "e.g. Freemium + Pro at $20/mo" },
+];
+
+// What discovery is actually doing, in order (apps/api/src/lib/detect-candidates.ts):
+// name the competitors we can already reason about, run the Exa search, then score
+// each hit's overlap. The API is one blocking POST with no progress channel, so this
+// advances on a timer rather than on server events — the STEPS are real, the timings
+// are the observed shape of a run. It never claims a step finished that the run has
+// not reached: the last one stays active until the request itself resolves.
+const DISCOVER_STEPS = [
+  { label: "Reading your product profile", after: 0 },
+  { label: "Searching the market for similar companies", after: 4000 },
+  { label: "Scoring how much each one overlaps with you", after: 14000 },
+] as const;
+
+function DiscoverProgress() {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const id = setInterval(() => setElapsed(Date.now() - started), 500);
+    return () => clearInterval(id);
+  }, []);
+
+  const activeIndex = DISCOVER_STEPS.reduce(
+    (acc, s, i) => (elapsed >= s.after ? i : acc),
+    0,
+  );
+
+  return (
+    <div className="flex flex-col gap-3 py-2">
+      {DISCOVER_STEPS.map((s, i) => {
+        const done = i < activeIndex;
+        const active = i === activeIndex;
+        return (
+          <div key={s.label} className="flex items-center gap-2.5">
+            {done ? (
+              <CheckIcon size={16} className="shrink-0 text-positive" />
+            ) : active ? (
+              <SpinnerIcon size={16} className="shrink-0 animate-spin text-primary" />
+            ) : (
+              <CircleIcon size={16} className="shrink-0 text-muted-foreground/40" />
+            )}
+            <span
+              className={cn(
+                "text-sm",
+                done || active ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {s.label}
+            </span>
+          </div>
+        );
+      })}
+      <p className="mt-1 text-xs text-muted-foreground">
+        Usually 15 to 45 seconds. You can leave this open, or close it and pick the
+        results up on the Discovery page.
+      </p>
+    </div>
+  );
+}
+
 export function AddProductWizard({
   open,
   onOpenChange,
@@ -72,7 +167,7 @@ export function AddProductWizard({
 
   const [screen, setScreen] = useState<Screen>("stage");
   const [stage, setStage] = useState<ProjectStage | null>(null);
-  const [busy, setBusy] = useState<null | "analyze" | "create" | "discover">(null);
+  const [busy, setBusy] = useState<null | "analyze" | "create">(null);
 
   // inputs
   const [name, setName] = useState("");
@@ -87,6 +182,15 @@ export function AddProductWizard({
   const [productId, setProductId] = useState<string | null>(null);
   const [detected, setDetected] = useState<number | null>(null);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
+  // The discovery step's own lifecycle, kept OUT of `busy`. `busy` is cleared by every
+  // action's `finally`, and createAndDiscover's finally ran after runDiscover had set
+  // busy="discover" — so the screen rendered its terminal branch ("No new competitors
+  // found yet") while the search was still in flight. That is the "it says there are
+  // none before it even looked" report.
+  const [discoverPhase, setDiscoverPhase] = useState<"idle" | "searching" | "done">("idle");
+  // What discovery actually put in the review queue, so the modal shows the companies
+  // instead of only counting them (onboarding lists them).
+  const [preview, setPreview] = useState<CompetitorCandidate[]>([]);
 
   function reset() {
     setScreen("stage");
@@ -102,6 +206,8 @@ export function AddProductWizard({
     setProductId(null);
     setDetected(null);
     setDiscoverError(null);
+    setDiscoverPhase("idle");
+    setPreview([]);
   }
 
   function close() {
@@ -202,11 +308,20 @@ export function AddProductWizard({
   }
 
   async function runDiscover(pid: string) {
-    setBusy("discover");
+    setDiscoverPhase("searching");
     setDiscoverError(null);
     try {
       const { detected } = await api.detectCandidates(pid);
       setDetected(detected);
+      if (detected > 0) {
+        // Read back what landed in the review queue so the modal can name the
+        // companies rather than only count them. Purely cosmetic: a failure here
+        // leaves the count, which is still true.
+        const { candidates } = await api
+          .listCandidates("new", pid)
+          .catch(() => ({ candidates: [] as CompetitorCandidate[] }));
+        setPreview(candidates.slice(0, 5));
+      }
     } catch (e) {
       // A client timeout doesn't cancel the server: discovery keeps running and
       // its results (candidates + a notification) land moments later. Don't claim
@@ -221,7 +336,7 @@ export function AddProductWizard({
         setDiscoverError("Couldn't run discovery now. You can run it later from the Discovery page.");
       }
     } finally {
-      setBusy(null);
+      setDiscoverPhase("done");
     }
   }
 
@@ -417,35 +532,50 @@ export function AddProductWizard({
                 This drives competitor discovery. Edit anything that&apos;s off.
               </DialogDescription>
             </DialogHeader>
-            <div className="flex flex-col gap-3 py-2">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="wiz-p-cat">Category</Label>
-                <Input
-                  id="wiz-p-cat"
-                  placeholder="Marketing automation"
-                  value={profile.category}
-                  onChange={(e) => setProfile((p) => ({ ...p, category: e.target.value }))}
-                />
+            {/* Onboarding's full field set, so the modal can outgrow the viewport. */}
+            <div className="flex max-h-[55vh] flex-col gap-3 overflow-y-auto py-2 pr-1">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <SparkleIcon size={14} className="text-primary" /> Extracted by AI
               </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="wiz-p-aud">Audience</Label>
-                <Input
-                  id="wiz-p-aud"
-                  placeholder="Mid-market marketing teams"
-                  value={profile.audience}
-                  onChange={(e) => setProfile((p) => ({ ...p, audience: e.target.value }))}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="wiz-p-vp">Value proposition</Label>
-                <Textarea
-                  id="wiz-p-vp"
-                  placeholder="Plan, schedule and measure campaigns across every channel from one place."
-                  value={profile.valueProp}
-                  onChange={(e) => setProfile((p) => ({ ...p, valueProp: e.target.value }))}
-                  rows={3}
-                />
-              </div>
+              {PROFILE_FIELDS.map((f) => (
+                <div key={f.key} className="flex flex-col gap-1.5">
+                  <Label htmlFor={`wiz-p-${f.key}`}>{f.label}</Label>
+                  {f.multiline ? (
+                    <Textarea
+                      id={`wiz-p-${f.key}`}
+                      placeholder={f.placeholder}
+                      value={profile[f.key] ?? ""}
+                      onChange={(e) => setProfile((p) => ({ ...p, [f.key]: e.target.value }))}
+                      rows={3}
+                    />
+                  ) : (
+                    <Input
+                      id={`wiz-p-${f.key}`}
+                      placeholder={f.placeholder}
+                      value={profile[f.key] ?? ""}
+                      onChange={(e) => setProfile((p) => ({ ...p, [f.key]: e.target.value }))}
+                    />
+                  )}
+                </div>
+              ))}
+              {(profile.keywords?.length ?? 0) > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <Label>Search keywords</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {profile.keywords!.map((k) => (
+                      <span
+                        key={k}
+                        className="rounded-full border border-border bg-surface-2/60 px-2 py-0.5 text-xs text-muted-foreground"
+                      >
+                        {k}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    We use these to find competitors that do the same thing.
+                  </p>
+                </div>
+              )}
               {!profileReady && (
                 <p className="text-xs text-muted-foreground">
                   Add at least a category or a value proposition to enable discovery.
@@ -470,39 +600,74 @@ export function AddProductWizard({
             <DialogHeader>
               <DialogTitle>{name.trim() || "Product"} is set up</DialogTitle>
               <DialogDescription>
-                We&apos;re monitoring it and looking for competitors.
+                {discoverPhase !== "done"
+                  ? "It's being monitored. We're looking for its competitors now."
+                  : "It's being monitored. Here's what discovery came back with."}
               </DialogDescription>
             </DialogHeader>
-            <div className="flex flex-col items-center gap-3 py-6 text-center">
-              {busy === "discover" ? (
-                <>
-                  <SpinnerIcon size={24} className="animate-spin text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Finding competitors…</p>
-                </>
+            <div className="py-4">
+              {discoverPhase !== "done" ? (
+                <DiscoverProgress />
               ) : discoverError ? (
-                <p className="text-sm text-muted-foreground">{discoverError}</p>
-              ) : (
-                <>
-                  <SparkleIcon size={24} className="text-primary" />
+                <p className="py-6 text-center text-sm text-muted-foreground">{discoverError}</p>
+              ) : detected && detected > 0 ? (
+                <div className="flex flex-col gap-3">
                   <p className="text-content font-medium">
-                    {detected && detected > 0
-                      ? `Found ${detected} competitor${detected > 1 ? "s" : ""} to review`
-                      : "No new competitors found yet"}
+                    Found {detected} competitor{detected > 1 ? "s" : ""} to review
                   </p>
+                  {preview.length > 0 && (
+                    <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+                      {preview.map((c) => (
+                        <li key={c.id} className="flex items-start gap-3 px-3 py-2.5">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="truncate text-sm font-medium">
+                                {c.title ?? c.url.replace(/^https?:\/\//, "")}
+                              </span>
+                              {c.overlapScore != null && c.overlapScore > 0 && (
+                                <span className="text-meta rounded border border-border px-1.5 py-0.5 text-muted-foreground tabular-nums">
+                                  {Math.round(c.overlapScore)}%
+                                </span>
+                              )}
+                            </div>
+                            {c.snippet && (
+                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                                {c.snippet}
+                              </p>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   <p className="text-sm text-muted-foreground">
-                    {detected && detected > 0
-                      ? "Review and add the ones that matter to this product."
-                      : "We'll keep looking. You can run discovery again anytime."}
+                    {detected > preview.length
+                      ? `Review all ${detected} and add the ones that matter to this product.`
+                      : "Review and add the ones that matter to this product."}
                   </p>
-                </>
+                </div>
+              ) : (
+                // Only reachable once the search actually resolved with zero rows. A
+                // zero here can also mean "everything we found, you already track" —
+                // detection dedupes against the org's existing competitors — so don't
+                // assert the market is empty.
+                <div className="flex flex-col items-center gap-3 py-6 text-center">
+                  <SparkleIcon size={24} className="text-primary" />
+                  <p className="text-content font-medium">Nothing new to review yet</p>
+                  <p className="text-sm text-muted-foreground">
+                    We found no competitor for this product that you aren&apos;t already
+                    tracking. We keep looking every week, and you can search again from the
+                    Discovery page.
+                  </p>
+                </div>
               )}
             </div>
             <DialogFooter className="sm:justify-between">
-              <Button variant="ghost" onClick={() => finish("dashboard")} disabled={!!busy}>
+              <Button variant="ghost" onClick={() => finish("dashboard")}>
                 Go to dashboard
               </Button>
-              <Button onClick={() => finish("discovery")} disabled={!!busy}>
-                Review competitors
+              <Button onClick={() => finish("discovery")}>
+                {detected && detected > 0 ? "Review competitors" : "Open Discovery"}
               </Button>
             </DialogFooter>
           </>

@@ -73,7 +73,9 @@ export function SettingsSection({
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col">
+    // gap-3, not per-caller margins: the spacing between a section's rule and its
+    // content was the thing every page had picked differently.
+    <section className="flex flex-col gap-3">
       <div
         className={`flex flex-wrap items-start justify-between gap-x-4 gap-y-2 ${
           divider ? "border-b border-border pb-2.5" : ""

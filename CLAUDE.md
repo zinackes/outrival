@@ -7,6 +7,11 @@ la demande. Ne pas l'importer avec `@`, ça le remettrait dans chaque session.
 @.claude/rules/karpathy.md
 @.claude/rules/production.md
 
+Session ouverte depuis un ticket Linear (worktree `OUT-NN` ou branche
+`*/out-NN-*`) : lire `.claude/rules/linear-workflow.md` **avant** de choisir plan
+mode ou exécution directe. Ce fichier prime sur la préférence par défaut de
+Claude Code pour `EnterPlanMode`.
+
 ## Carte du monorepo (lire le `CLAUDE.md` du package avant d'y toucher)
 
 | Package | Tu y vas quand… |

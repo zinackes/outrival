@@ -1,5 +1,4 @@
 {
-  "autoCompact": false,
   "permissions": {
     "allow": [
       "Bash(pnpm *)",

@@ -31,7 +31,6 @@ and the exact list of files modified in this session
 
 Claude Code re-lit automatiquement :
 - CLAUDE.md racine
-- task_plan.md (via hook read-plan-before-write)
 - Les skills invoqués récemment
 
 Pour aider la récupération, commencer la session suivante par :

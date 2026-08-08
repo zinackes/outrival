@@ -12,6 +12,7 @@ import {
   type IntegrationNameHit,
 } from "@outrival/scrapers/content";
 import { fetchPostHtml } from "@outrival/scrapers/content-fetch";
+import { readIngestFirstRun, stampIngestFirstRun } from "../lib/ingest-first-run";
 
 /**
  * Read what a competitor plugs into (Content Intelligence v2 P5).
@@ -102,6 +103,16 @@ export async function runIngestIntegrations(payload: z.input<typeof InputSchema>
   }
 
   const written = await recordIntegrations(competitor.id, hits, indexUrl);
+
+  // Stamped AFTER the write and on every run, so a competitor whose catalog is empty
+  // — or who has none at all — still records that this ingest HAS read them. The
+  // baseline above is a row count and cannot say that: zero rows is the permanent
+  // state of a competitor with no catalog, so the sitemap's no-change catch-up would
+  // re-enqueue this run every week forever without a marker of its own.
+  if (!readIngestFirstRun(competitor.metadata, "integrationsFirstRunAt")) {
+    await stampIngestFirstRun(competitor.id, "integrationsFirstRunAt");
+  }
+
   logger.log("Integrations recorded", {
     competitorId: competitor.id,
     seen: hits.length,

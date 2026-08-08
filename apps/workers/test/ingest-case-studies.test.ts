@@ -380,3 +380,35 @@ describe("case_study_published severity", () => {
     expect(enqueued).toHaveLength(0);
   });
 });
+
+describe("the first-run marker", () => {
+  /** What the sitemap's no-change catch-up reads to decide this ingest is owed a run. */
+  const firstRunAt = async (competitorId: string) => {
+    const [row] = await testDb
+      .select({ metadata: schema.competitors.metadata })
+      .from(schema.competitors)
+      .where(eq(schema.competitors.id, competitorId));
+    return (row?.metadata as { caseStudiesFirstRunAt?: string } | null)?.caseStudiesFirstRunAt;
+  };
+
+  test("a competitor with NO customers page at all is still marked as read", async () => {
+    const seeded = await seed();
+    // Every probe 404s: both tables stay empty, which is this competitor's permanent
+    // state — the row count the baseline uses can never say the ingest has run.
+    await runIngest({ snapshotId: seeded.snapshotId, competitorId: seeded.competitorId });
+
+    expect(await firstRunAt(seeded.competitorId)).toBeString();
+  });
+
+  test("the marker is stamped once and never moves again", async () => {
+    const seeded = await seed();
+    pages.set(`${HOST}/customers`, logoWall(["Seed One", "Seed Two"]));
+    await runIngest({ snapshotId: seeded.snapshotId, competitorId: seeded.competitorId });
+    const first = await firstRunAt(seeded.competitorId);
+
+    pages.set(`${HOST}/customers`, logoWall(["Seed One", "Seed Two", "Seed Three"]));
+    await runIngest({ snapshotId: seeded.snapshotId, competitorId: seeded.competitorId });
+
+    expect(await firstRunAt(seeded.competitorId)).toBe(first!);
+  });
+});

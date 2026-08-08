@@ -257,6 +257,39 @@ describe("the sitemap route", () => {
   });
 });
 
+describe("the first-run marker", () => {
+  /** What the sitemap's no-change catch-up reads to decide this ingest is owed a run. */
+  const firstRunAt = async (competitorId: string) => {
+    const [row] = await testDb
+      .select({ metadata: schema.competitors.metadata })
+      .from(schema.competitors)
+      .where(eq(schema.competitors.id, competitorId));
+    return (row?.metadata as { integrationsFirstRunAt?: string } | null)?.integrationsFirstRunAt;
+  };
+
+  test("a competitor with NO catalog at all is still marked as read", async () => {
+    const { competitorId, snapshotId } = await seed();
+    // Every probe 404s: the registry stays empty, which is this competitor's
+    // permanent state — the row count can never say the ingest has run.
+    await runIngest({ snapshotId, competitorId });
+
+    expect((await registry(competitorId)).length).toBe(0);
+    expect(await firstRunAt(competitorId)).toBeString();
+  });
+
+  test("the marker is stamped once and never moves again", async () => {
+    const { competitorId, snapshotId } = await seed();
+    pages.set(`${HOST}/integrations`, catalog(["Slack", "Notion"]));
+    await runIngest({ snapshotId, competitorId });
+    const first = await firstRunAt(competitorId);
+
+    pages.set(`${HOST}/integrations`, catalog(["Slack", "Notion", "Linear"]));
+    await runIngest({ snapshotId, competitorId });
+
+    expect(await firstRunAt(competitorId)).toBe(first!);
+  });
+});
+
 describe("our own product", () => {
   test("rows are written and nothing is announced", async () => {
     const { competitorId, snapshotId } = await seed({ type: "self" });

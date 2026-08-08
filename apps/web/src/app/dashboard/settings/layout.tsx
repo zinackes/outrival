@@ -3,10 +3,13 @@
 // patch-29 — settings nav moved into the contextual sub-sidebar (Variante 1,
 // rendered by DashboardShell on /dashboard/settings/*).
 //
-// OUT-38 — the column is left-aligned rather than centred. `mx-auto max-w-2xl`
-// put the page title on a different vertical line from the shell around it, so
-// the page had two leading edges and ~700px of dead space at 1440. Billing keeps
-// its wider bound so the 4-up plan comparison doesn't cramp.
+// The column is centred and bounded. OUT-38 had left-aligned it against
+// `mx-auto max-w-2xl`, because a 672px column pinned left left ~700px of dead
+// space at 1440 and gave the page a second leading edge. The dead space was the
+// width, not the centring: at max-w-4xl the gutters are even and small enough
+// that the offset from the shell's leading edge reads as a margin rather than as
+// a second column. Billing keeps one step wider so the 4-up plan comparison
+// doesn't cramp.
 //
 // The save bar lives here, not in each page: several forms on one page used to
 // render several sticky bars, which stacked. One per page, fed by all of them.
@@ -22,7 +25,7 @@ export default function SettingsLayout({
   const pathname = usePathname();
   const wide = pathname?.startsWith("/dashboard/settings/billing");
   return (
-    <div className={cn("w-full", wide ? "max-w-4xl" : "max-w-3xl")}>
+    <div className={cn("mx-auto w-full", wide ? "max-w-5xl" : "max-w-4xl")}>
       <SettingsSaveBarProvider>{children}</SettingsSaveBarProvider>
     </div>
   );

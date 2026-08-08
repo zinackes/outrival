@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db, audiencePages, caseStudies } from "@outrival/db";
 import { industryLabel } from "@outrival/shared";
 
@@ -82,7 +82,12 @@ export async function audienceProfile(competitorId: string): Promise<AudiencePro
         isCanonical: audiencePages.isCanonical,
         evidenceUrl: audiencePages.evidenceUrl,
         firstSeenAt: sql<string | null>`to_char(${audiencePages.firstSeenAt}, 'YYYY-MM-DD')`,
-        isNew: sql<boolean>`${audiencePages.firstSeenAt} >= ${cutoff}`,
+        // A typed comparison, not `sql`${col} >= ${cutoff}``: a Date interpolated into a
+        // raw template carries no encoder and postgres-js rejects the whole query, so the
+        // endpoint answered 500 on every competitor. PGlite accepts the bind, which is why
+        // the suite below stayed green through it. Same trap `attributionWindow`
+        // documents in signal-facts.ts.
+        isNew: sql<boolean>`${gte(audiencePages.firstSeenAt, cutoff)}`,
       })
       .from(audiencePages)
       .where(eq(audiencePages.competitorId, competitorId))

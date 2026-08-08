@@ -21,7 +21,6 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { CompAvatar } from "./comp-avatar";
-import { ProductChips } from "./product-chip";
 
 const CAP = 8;
 const POLL_MS = 60_000;
@@ -67,8 +66,6 @@ export function SidebarCompetitors() {
   // Competitors list page; polls in the background. Mutations elsewhere invalidate the
   // matching key → this refreshes via the shared cache (no manual event subscription).
   const productId = useProductScope() ?? undefined;
-  // Product mark only in all-products scope (redundant once scoped to one product).
-  const allProducts = !productId;
   const [open, setOpen] = React.useState(true);
   // Only poll while the roster is expanded — a collapsed section can't show the
   // refreshed data, so the 60s background query is pure waste when folded.
@@ -170,13 +167,6 @@ export function SidebarCompetitors() {
                     <Link href={`/dashboard/competitors/${c.id}`}>
                       <CompAvatar name={c.name} url={c.url} size={22} />
                       <span className="truncate">{c.name}</span>
-                      {allProducts && (
-                        <ProductChips
-                          productIds={c.productIds}
-                          dense
-                          className="shrink-0"
-                        />
-                      )}
                       {n > 0 && (
                         <span className="ml-auto shrink-0 text-meta tabular-nums text-muted-foreground transition-colors duration-150 group-hover/comp:text-foreground group-data-[active=true]/comp:text-foreground motion-reduce:transition-none">
                           {n}

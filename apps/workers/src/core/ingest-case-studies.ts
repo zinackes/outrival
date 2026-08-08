@@ -28,6 +28,7 @@ import {
 } from "@outrival/scrapers/content";
 import { fetchPostHtml } from "@outrival/scrapers/content-fetch";
 import { loggedAi } from "../lib/analytics";
+import { readIngestFirstRun, stampIngestFirstRun } from "../lib/ingest-first-run";
 
 /**
  * Read who a competitor is winning (Content Intelligence v2 P3).
@@ -150,6 +151,19 @@ export async function runIngestCaseStudies(payload: z.input<typeof InputSchema>)
         });
       }
     }
+  }
+
+  // Stamped once the INDEX pass is behind us, and only then: the logo wall is the
+  // back catalogue this marker is about, and a blog-triggered run that skipped the
+  // index has not read it. Recorded even when the probe found no index at all — the
+  // marker says this ingest HAS looked, which the baseline above cannot, being a row
+  // count that stays at zero for life on a competitor with no customers surface.
+  // Without it the sitemap's no-change catch-up would re-enqueue this run weekly.
+  //
+  // The catch-up itself always takes the index pass (`triggerSource === "sitemap"`),
+  // so it always stamps and can never repeat.
+  if (indexPass && !readIngestFirstRun(competitor.metadata, "caseStudiesFirstRunAt")) {
+    await stampIngestFirstRun(competitor.id, "caseStudiesFirstRunAt");
   }
 
   // ── The stories ─────────────────────────────────────────────────────────────

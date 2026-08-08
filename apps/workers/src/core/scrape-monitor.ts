@@ -39,6 +39,8 @@ import { recordShopifyApp } from "../lib/shopify-app";
 import { recordMessagingVersion } from "../lib/messaging-versions";
 import { crossesRoundMilestone } from "../lib/claim-milestone";
 import { readAudienceMeta } from "../lib/audience-pages";
+import { readMarketMapMeta } from "../lib/named-competitors";
+import { readIngestFirstRun } from "../lib/ingest-first-run";
 import {
   clampFrequencyToPlan,
   computeHash,
@@ -203,6 +205,55 @@ const SITEMAP_AUDIENCE_URL_CAP = 200;
 /** Every audience URL a sitemap capture names, capped — the ICP run's free reading. */
 function audienceUrlsOf(sitemapHtml: string): string[] {
   return parseSitemapDoc(sitemapHtml).filter(isAudienceUrl).slice(0, SITEMAP_AUDIENCE_URL_CAP);
+}
+/** Every comparison URL a sitemap capture names, capped — the market map's free reading. */
+function comparisonUrlsOf(sitemapHtml: string): string[] {
+  return parseSitemapDoc(sitemapHtml).filter(isComparisonUrl).slice(0, SITEMAP_COMPARISON_URL_CAP);
+}
+/** The customer-story URLs a sitemap capture names, capped — the customer-proof run's
+ *  free reading. The index it also fetches is where the back catalogue actually is. */
+function customerUrlsOf(sitemapHtml: string): string[] {
+  return parseSitemapDoc(sitemapHtml)
+    .filter((u) => !isComparisonUrl(u) && isCustomerPageUrl(u))
+    .slice(0, SITEMAP_CUSTOMER_URL_CAP);
+}
+/** The integration URLs a sitemap capture names, capped — the catalog run's free reading. */
+function integrationUrlsOf(sitemapHtml: string): string[] {
+  return parseSitemapDoc(sitemapHtml)
+    .filter((u) => !isComparisonUrl(u) && integrationFromUrl(u) !== null)
+    .slice(0, SITEMAP_CUSTOMER_URL_CAP);
+}
+
+/**
+ * The sitemap ingests this capture owes a run, and why they are enqueued together.
+ *
+ * All four read a competitor's WHOLE catalogue, not a delta — that is the shape of
+ * the feature: a company's `/vs/`, `/industries/`, `/customers/` and `/integrations/`
+ * pages were published before we ever watched them, and each registry's first pass is
+ * a silent baseline by design. Yet they were enqueued from the sitemap DIFF branch
+ * alone, which needs both a prior snapshot and a URL delta. Two captures therefore
+ * never reached them: scrape #1, the one capture that actually holds the back
+ * catalogue, and every capture of a sitemap that has not moved since the feature
+ * shipped — which is most of them, since a marketing sitemap is stable for months.
+ *
+ * Each ingest carries its own marker rather than sharing one: they went live in
+ * different phases, so a competitor can legitimately be baselined for the market map
+ * and never read for integrations, and one shared clock would strand whichever
+ * shipped last. The marker is written by the JOB, after its write, so a run that
+ * throws simply happens again on the next capture instead of latching.
+ */
+function pendingSitemapIngests(metadata: unknown): {
+  namedCompetitors: boolean;
+  audiencePages: boolean;
+  caseStudies: boolean;
+  integrations: boolean;
+} {
+  return {
+    namedCompetitors: !readMarketMapMeta(metadata).baselinedAt,
+    audiencePages: !readAudienceMeta(metadata).baselinedAt,
+    caseStudies: !readIngestFirstRun(metadata, "caseStudiesFirstRunAt"),
+    integrations: !readIngestFirstRun(metadata, "integrationsFirstRunAt"),
+  };
 }
 // Sources whose capture is ALWAYS a scraper-synthesized document (built from parsed
 // structured data — no HTML fetch path at all), so the deny-page copy heuristic is
@@ -967,23 +1018,48 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
     // downstream extractions, so e.g. "Re-scan profile" actually re-derives the profile.
     if (!input.force && lastSnapshot && lastSnapshot.contentHash === newHash) {
       logger.log("Hash identical, no change", { lastSnapshotId: lastSnapshot.id });
-      // Positioning Intelligence v2 P3 — the ICP registry is established here for a
-      // competitor whose sitemap has not moved since the feature shipped. Their back
-      // catalogue of `/industries/` pages was already in the sitemap the day the
-      // monitor was created, so no URL delta will ever carry it: the diff branch is
-      // the only thing that enqueues the ICP run, and an unchanged sitemap returns
-      // above it, forever. That is what left "Who they sell to" empty on every
-      // competitor. Gated on the baseline marker, so it fires ONCE and then goes
-      // quiet — a real new segment page IS a sitemap change and takes the diff path.
-      if (
-        monitor.sourceType === "sitemap" &&
-        !readAudienceMeta(competitor.metadata).baselinedAt
-      ) {
-        await ingestAudiencePages.enqueue({
-          snapshotId: lastSnapshot.id,
-          competitorId: competitor.id,
-          urls: audienceUrlsOf(result.html),
-        });
+      // The four sitemap registries are established here for a competitor whose
+      // sitemap has not moved since their feature shipped. Their back catalogue of
+      // `/industries/`, `/vs/`, `/customers/` and `/integrations/` pages was already
+      // in the sitemap the day the monitor was created, so no URL delta will ever
+      // carry it: the diff branch is the only thing that enqueues these runs, and an
+      // unchanged sitemap returns above it, forever. That is what left "Who they sell
+      // to" empty on every competitor, and the same hole holds the other three.
+      //
+      // Each is gated on its OWN marker, so it fires once and then goes quiet — a
+      // real new page IS a sitemap change and still takes the diff path below.
+      if (monitor.sourceType === "sitemap") {
+        const pending = pendingSitemapIngests(competitor.metadata);
+        if (pending.audiencePages) {
+          await ingestAudiencePages.enqueue({
+            snapshotId: lastSnapshot.id,
+            competitorId: competitor.id,
+            urls: audienceUrlsOf(result.html),
+          });
+        }
+        if (pending.namedCompetitors) {
+          await ingestNamedCompetitors.enqueue({
+            snapshotId: lastSnapshot.id,
+            competitorId: competitor.id,
+            urls: comparisonUrlsOf(result.html),
+          });
+        }
+        // The self product is excluded from the customer reader on the diff path too:
+        // our own wins are not news we read off a competitor's site.
+        if (pending.caseStudies && competitor.type !== "self") {
+          await ingestCaseStudies.enqueue({
+            snapshotId: lastSnapshot.id,
+            competitorId: competitor.id,
+            urls: customerUrlsOf(result.html),
+          });
+        }
+        if (pending.integrations) {
+          await ingestIntegrations.enqueue({
+            snapshotId: lastSnapshot.id,
+            competitorId: competitor.id,
+            urls: integrationUrlsOf(result.html),
+          });
+        }
       }
       const nextRunAt = computeNextRun(
         effectiveFrequency,
@@ -2276,18 +2352,40 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       await refreshCompetitorSummary.enqueue({ competitorId: competitor.id });
     }
 
-    // Same hole, same shape, for the ICP registry: the first-ever sitemap capture has
-    // nothing to diff against either, and the diff branch is where the ICP run was
-    // enqueued from — so the capture that actually holds a competitor's whole back
-    // catalogue of `/for/`, `/industries/` and `/use-cases/` pages was the one capture
-    // that never read them. The job's first pass is a BASELINE by design (it records
-    // the catalogue and emits no signal), which is exactly what a scrape #1 owes the
-    // tab: "Who they sell to" is populated from the first run, as its phase promised.
+    // Same hole, same shape, for the four sitemap registries: the first-ever sitemap
+    // capture has nothing to diff against either, and the diff branch is where these
+    // runs were enqueued from — so the capture that actually holds a competitor's
+    // whole back catalogue of `/for/`, `/vs/`, `/customers/` and `/integrations/`
+    // pages was the one capture that never read them. Each job's first pass is a
+    // BASELINE by design (it records the catalogue and emits no signal), which is
+    // exactly what a scrape #1 owes those tabs: they are populated from the first run,
+    // as each phase promised.
+    //
+    // Unconditional on the markers, unlike the no-change catch-up above: there is no
+    // prior capture, so nothing can have run yet, and re-reading the marker here would
+    // only skip the run a crashed earlier attempt already stamped.
     if (monitor.sourceType === "sitemap" && !lastSnapshot) {
       await ingestAudiencePages.enqueue({
         snapshotId: newSnapshot.id,
         competitorId: competitor.id,
         urls: audienceUrlsOf(result.html),
+      });
+      await ingestNamedCompetitors.enqueue({
+        snapshotId: newSnapshot.id,
+        competitorId: competitor.id,
+        urls: comparisonUrlsOf(result.html),
+      });
+      if (competitor.type !== "self") {
+        await ingestCaseStudies.enqueue({
+          snapshotId: newSnapshot.id,
+          competitorId: competitor.id,
+          urls: customerUrlsOf(result.html),
+        });
+      }
+      await ingestIntegrations.enqueue({
+        snapshotId: newSnapshot.id,
+        competitorId: competitor.id,
+        urls: integrationUrlsOf(result.html),
       });
     }
 

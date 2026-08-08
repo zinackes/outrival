@@ -238,7 +238,7 @@ export function SignalCard({
         <span className="w-px h-3 bg-border" />
         <Link
           href={`/dashboard/competitors/${signal.competitorId}`}
-          className="group inline-flex items-center gap-2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="group inline-flex items-center gap-2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <CompAvatar
             name={signal.competitorName}
@@ -276,7 +276,7 @@ export function SignalCard({
                   type="button"
                   onClick={() => onMarkRead(signal.id)}
                   aria-label="Mark as read"
-                  className="-m-1 rounded-full p-1 text-primary transition-colors hover:text-primary/60 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="-m-1 rounded-full p-1 text-primary transition-colors hover:text-primary/60 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="block size-2 rounded-full bg-current" />
                 </button>
@@ -300,7 +300,7 @@ export function SignalCard({
                 type="button"
                 onClick={() => onMarkUnread?.(signal.id)}
                 aria-label="Mark as unread"
-                className="-m-1 rounded-full p-1 text-muted-foreground transition-colors hover:text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="-m-1 rounded-full p-1 text-muted-foreground transition-colors hover:text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span className="block size-2 rounded-full border border-current" />
               </button>

@@ -122,7 +122,7 @@ export function BattleCardProgress({
                 "h-1.5 flex-1 rounded-full transition-colors duration-300",
                 i < active && "bg-positive",
                 i === active && "progress-active",
-                i > active && "bg-border",
+                i > active && "bg-track",
               )}
             />
           ))}

@@ -10,10 +10,13 @@ import { cn } from "@/lib/utils"
 // :active — visible on touch, where :hover never fires (Tailwind v4 gates hover:
 // behind @media(hover:hover)); every variant ALSO darkens/tints on :active so a tap
 // changes the fill, not just the size. touch-manipulation kills the 300ms tap delay.
-// focus ring 3px at Iris/70 — /35 fell under the 3:1 non-text contrast floor (WCAG
-// 1.4.11) for keyboard focus. Disabled drops to .4 opacity.
+// focus ring 3px at FULL Iris — the two earlier steps up (/35, then /70) both still
+// fell under the 3:1 non-text floor (WCAG 2.4.11): /70 measured 2.74 light, 2.66
+// dark. An alpha buys nothing on a ring anyway (it is 3px of pure state, not a
+// surface), and only full opacity clears every surface, surface-3 included (3.42
+// dark / 3.75 light). Enforced by `pnpm check:contrast`. Disabled drops to .4.
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap outline-none transition-all duration-[150ms] ease-out touch-manipulation focus-visible:ring-[3px] focus-visible:ring-ring/70 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40 aria-invalid:border-destructive aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap outline-none transition-all duration-[150ms] ease-out touch-manipulation focus-visible:ring-[3px] focus-visible:ring-ring active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40 aria-invalid:border-destructive aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {

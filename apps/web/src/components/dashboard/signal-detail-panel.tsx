@@ -300,7 +300,7 @@ export function SignalDetailPanel({
         )}
         <Link
           href={`/dashboard/competitors/${signal.competitorId}`}
-          className="group inline-flex min-w-0 items-center gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="group inline-flex min-w-0 items-center gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <CompAvatar
             name={signal.competitorName}
@@ -496,7 +496,7 @@ export function SignalDetailPanel({
                             rel="noopener noreferrer"
                             className={cn(
                               archiveChipClass,
-                              "outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+                              "outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
                             )}
                           >
                             {archiveChip}
@@ -567,7 +567,7 @@ export function SignalDetailPanel({
                   <TooltipTrigger asChild>
                     <span
                       tabIndex={0}
-                      className="cursor-default rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                      className="cursor-default rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {threatLabel(signal.threatScore)} threat
                     </span>
@@ -581,7 +581,7 @@ export function SignalDetailPanel({
                 <button
                   type="button"
                   onClick={() => setShowWhy(true)}
-                  className="rounded-sm underline underline-offset-2 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="rounded-sm underline underline-offset-2 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Why this insight?
                 </button>
@@ -643,7 +643,7 @@ export function SignalDetailPanel({
                     type="button"
                     onClick={() => setShowContext((v) => !v)}
                     aria-expanded={showContext}
-                    className="flex items-center gap-1.5 rounded-sm text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                    className="flex items-center gap-1.5 rounded-sm text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <SparkleIcon size={14} className="shrink-0" aria-hidden />
                     Full context
@@ -698,7 +698,7 @@ export function SignalDetailPanel({
                       href={engagement.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                      className="inline-flex items-center gap-1 rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       Read the thread
                       <ArrowSquareOutIcon size={14} aria-hidden />
@@ -721,7 +721,7 @@ export function SignalDetailPanel({
                       type="button"
                       onClick={() => setShowAllChanges((v) => !v)}
                       aria-expanded={showAllChanges}
-                      className="flex items-center gap-1.5 rounded-sm text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                      className="flex items-center gap-1.5 rounded-sm text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {showAllChanges ? "Hide" : "Show all"} {changes.length} change
                       {changes.length === 1 ? "" : "s"}
@@ -755,7 +755,7 @@ export function SignalDetailPanel({
                       type="button"
                       onClick={() => setShowAllLines((v) => !v)}
                       aria-expanded={showAllLines}
-                      className="mt-2 flex items-center gap-1.5 rounded-sm text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                      className="mt-2 flex items-center gap-1.5 rounded-sm text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {showAllLines ? "Show fewer lines" : `Show all ${diffLineCount} lines`}
                       <CaretDownIcon
@@ -780,7 +780,7 @@ export function SignalDetailPanel({
                     <button
                       type="button"
                       onClick={() => onSelectRelated(s.id)}
-                      className="group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left outline-none transition-colors hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring/50"
+                      className="group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left outline-none transition-colors hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <span
                         className={cn(
@@ -819,7 +819,7 @@ export function SignalDetailPanel({
             )}
             <Link
               href={`/dashboard/competitors/${signal.competitorId}`}
-              className="mt-3 inline-flex items-center gap-1 rounded-sm text-dense text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="mt-3 inline-flex items-center gap-1 rounded-sm text-dense text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >
               View {signal.competitorName} profile
               <ArrowUpRightIcon size={14} />

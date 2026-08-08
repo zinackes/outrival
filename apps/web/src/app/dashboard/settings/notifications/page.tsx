@@ -56,7 +56,7 @@ export default async function NotificationSettingsPage() {
           <NotificationSettingsForm />
           <Link
             href="/dashboard/digests"
-            className="mt-1 inline-flex items-center gap-1.5 self-start rounded-sm text-dense text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="mt-1 inline-flex items-center gap-1.5 self-start rounded-sm text-dense text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             View past digests
             <ArrowRightIcon size={14} />

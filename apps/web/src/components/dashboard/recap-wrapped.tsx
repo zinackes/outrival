@@ -173,7 +173,7 @@ function buildSlides(r: MonthlyRecap, publicMode: boolean): React.ReactNode[] {
                   <span className="capitalize">{c.category}</span>
                   <span className="tabular-nums text-muted-foreground">{c.pct}%</span>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div className="h-2 overflow-hidden rounded-full bg-track">
                   <motion.div
                     className="h-full rounded-full bg-link"
                     initial={{ width: 0 }}

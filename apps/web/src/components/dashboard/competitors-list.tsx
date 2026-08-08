@@ -154,7 +154,7 @@ function ColorSwatchButton({ color }: { color: string | null | undefined }) {
   return (
     <span
       aria-hidden
-      className="block h-3.5 w-3.5 rounded-[4px] border border-border-strong"
+      className="block h-3.5 w-3.5 rounded-[4px] border border-stroke"
       style={vars ? { ...vars, background: COMP_ACCENT, borderColor: "transparent" } : undefined}
     />
   );
@@ -753,7 +753,7 @@ function CompetitorRow({
               href={href}
               // Stretched link: the pseudo-element covers the row, so the whole
               // row navigates without nesting interactive elements inside an <a>.
-              className="min-w-0 truncate rounded-sm text-dense font-semibold outline-none after:absolute after:inset-0 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="min-w-0 truncate rounded-sm text-dense font-semibold outline-none after:absolute after:inset-0 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring"
               style={competitorNameColor(row.color)}
             >
               {row.name}
@@ -965,7 +965,7 @@ function BucketChip({
       onClick={onClick}
       className={cn(
         "inline-flex h-8 items-center gap-1.5 rounded-md border border-transparent px-2.5 text-xs outline-none transition-colors",
-        "hover:bg-surface-2 focus-visible:ring-[3px] focus-visible:ring-ring/70",
+        "hover:bg-surface-2 focus-visible:ring-[3px] focus-visible:ring-ring",
         active ? "border-border bg-surface-2 font-medium text-foreground" : "text-muted-foreground",
       )}
     >

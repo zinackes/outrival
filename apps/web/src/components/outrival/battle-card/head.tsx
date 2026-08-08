@@ -35,7 +35,7 @@ export function BattleCardHead({
         <Link
           href={`/dashboard/competitors/${competitorId}`}
           aria-label="Back to competitor"
-          className="mt-1.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/70"
+          className="mt-1.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
         >
           <ArrowLeftIcon size={16} />
         </Link>

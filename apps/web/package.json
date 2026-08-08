@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test test/",
     "start": "next start",
+    "check:contrast": "node scripts/check-contrast.mjs",
     "capture:shots": "node scripts/capture-product-shots.mjs",
     "indexnow": "node scripts/indexnow.mjs"
   },

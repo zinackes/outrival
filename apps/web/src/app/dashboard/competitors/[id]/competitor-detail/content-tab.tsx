@@ -623,15 +623,20 @@ function Themes({
             >
               <span className="min-w-0 truncate text-sm">{t.topic}</span>
               <span className="relative flex h-3.5 items-center" title={`was ${t.then}`}>
-                <span aria-hidden className="absolute inset-x-0 h-1.5 rounded-full bg-surface-2" />
+                <span aria-hidden className="absolute inset-x-0 h-1.5 rounded-full bg-track" />
                 <span
                   aria-hidden
                   className="absolute left-0 h-1.5 rounded-full bg-link"
                   style={{ width: `${t.now > 0 ? Math.max((t.now / max) * 100, 3) : 0}%` }}
                 />
+                {/* "Where it was" — the whole point of the row, so it takes the 3:1
+                    floor. At muted-foreground/65 it measured 2.6:1 on the gutter and
+                    1.4:1 where it crossed the fill, i.e. it disappeared exactly when
+                    the bar had grown past it. Full foreground + a track ring reads on
+                    both. */}
                 <span
                   aria-hidden
-                  className="absolute top-px h-3 w-0.5 rounded-[1px] bg-muted-foreground/65"
+                  className="absolute top-px h-3 w-0.5 rounded-[1px] bg-foreground ring-1 ring-track"
                   style={{ left: `calc(${(t.then / max) * 100}% - 1px)` }}
                 />
               </span>
@@ -722,7 +727,7 @@ function QuietSources({
                       setEnabling(null);
                     }
                   }}
-                  className="rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-60"
+                  className="rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
                 >
                   {enabling === s.key ? "Turning on…" : "Turn on"}
                 </button>
@@ -876,7 +881,7 @@ function ItemLink({ item }: { item: ContentItemRow }) {
       href={item.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-baseline gap-1 rounded-sm text-sm font-medium text-foreground underline-offset-2 outline-none hover:text-link hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+      className="inline-flex items-baseline gap-1 rounded-sm text-sm font-medium text-foreground underline-offset-2 outline-none hover:text-link hover:underline focus-visible:ring-2 focus-visible:ring-ring"
     >
       {item.title}
       <ArrowSquareOutIcon size={14} className="shrink-0 self-center text-muted-foreground" aria-hidden />
@@ -918,7 +923,7 @@ function RoadmapBoard({ items }: { items: ContentItemRow[] }) {
         role="region"
         aria-label="Roadmap board"
         tabIndex={0}
-        className="overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
+        className="overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <div className="flex min-w-max items-stretch divide-x divide-border">
           {columns.map((column) => (
@@ -1077,7 +1082,7 @@ function DocsRow({ item }: { item: ContentItemRow }) {
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="min-w-0 truncate rounded-sm font-mono text-dense text-foreground underline-offset-2 outline-none hover:text-link hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="min-w-0 truncate rounded-sm font-mono text-dense text-foreground underline-offset-2 outline-none hover:text-link hover:underline focus-visible:ring-2 focus-visible:ring-ring"
             >
               {rest.join(" ")}
             </a>
@@ -1250,7 +1255,7 @@ function NothingPublished({
                             setEnabling(null);
                           }
                         }}
-                        className="rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-60"
+                        className="rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
                       >
                         {enabling === s.key ? "Turning on…" : `Turn on ${s.label.toLowerCase()} monitoring`}
                       </button>
@@ -1299,7 +1304,7 @@ function RescanLink({ activity, onRun }: { activity: ScrapeActivity; onRun: () =
       type="button"
       onClick={onRun}
       disabled={activity !== null}
-      className="ml-auto rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-60"
+      className="ml-auto rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
     >
       {activity === "scraping" ? "Scanning…" : activity === "queued" ? "Queued" : "Re-scan now"}
     </button>

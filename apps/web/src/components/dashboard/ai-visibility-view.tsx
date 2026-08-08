@@ -857,14 +857,16 @@ function BoardRow({
           </span>
         )}
       </span>
-      <span className="hidden h-1.5 overflow-hidden rounded-full bg-muted sm:block">
+      <span className="hidden h-1.5 overflow-hidden rounded-full bg-track sm:block">
         <span
           className="block h-full rounded-full"
           // 0% stays empty; a non-zero share floors at 2% so the bar is still visible.
+          // No opacity dim on rivals: at .55 a competitor's bar measured 1.8:1 on the
+          // gutter, so the board's whole ranking was the thing you could not read.
+          // "Mine" is already carried by the row tint, the You pill and the bold name.
           style={{
             width: `${s.sov <= 0 ? 0 : Math.max(2, Math.round((s.sov / max) * 100))}%`,
             background: color,
-            opacity: s.isSelf ? 1 : 0.55,
           }}
         />
       </span>
@@ -942,7 +944,7 @@ const oneLine = (v: string) => v.replace(/\s*[\r\n]+\s*/g, " ");
 // the base Textarea is a paler, taller thing that would read as a different control.
 // The base `text-base md:text-sm` is left alone: 16px on mobile is what stops iOS
 // zooming the page in on focus.
-const fieldSurface = "resize-none bg-field shadow-none focus-visible:ring-ring/20 dark:bg-field";
+const fieldSurface = "resize-none bg-field shadow-none focus-visible:ring-ring dark:bg-field";
 
 function QuestionList({
   rows,
@@ -987,7 +989,7 @@ function QuestionList({
     });
 
   const iconBtn =
-    "shrink-0 rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-surface-3 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40";
+    "shrink-0 rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-surface-3 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
 
   return (
     <section className="flex flex-col">
@@ -1089,7 +1091,7 @@ function QuestionList({
                           onClick={() => toggleOpen(p.id)}
                           aria-expanded={expanded}
                           disabled={!cell}
-                          className="flex min-w-0 flex-1 items-start gap-3 pb-2 pl-5 pt-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset disabled:cursor-default @2xl:py-3"
+                          className="flex min-w-0 flex-1 items-start gap-3 pb-2 pl-5 pt-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:cursor-default @2xl:py-3"
                         >
                           <CaretRightIcon
                             className={cn(
@@ -1473,7 +1475,7 @@ function Notice({
           type="button"
           onClick={onDismiss}
           aria-label="Dismiss"
-          className="shrink-0 rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-surface-3 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="shrink-0 rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-surface-3 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <XIcon className="size-4" />
         </button>

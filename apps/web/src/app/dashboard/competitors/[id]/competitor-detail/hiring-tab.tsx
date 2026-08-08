@@ -554,7 +554,7 @@ function WhereTheyHire({ geo }: { geo: HiringGeoData | null }) {
                 </span>
               )}
             </span>
-            <span className="h-1.5 rounded-full bg-surface-2" aria-hidden>
+            <span className="h-1.5 rounded-full bg-track" aria-hidden>
               <span
                 className={cn(
                   "block h-full rounded-full",
@@ -665,14 +665,18 @@ function Salaries({ salary }: { salary: HiringSalaryData | null }) {
                   )}
                 </span>
                 <span className="relative flex h-4 items-center" title={`p25–p75, n=${b.n}`}>
-                  <span className="h-1.5 w-full rounded-full bg-surface-2" aria-hidden />
+                  <span className="h-1.5 w-full rounded-full bg-track" aria-hidden />
                   <span
                     className="absolute h-1.5 rounded-full bg-link"
                     style={{ left: `${left}%`, width: `${width}%` }}
                     aria-hidden
                   />
+                  {/* The median tick lands ON the p25-p75 band, so it needs to read
+                      against the band as well as the gutter. bg-foreground clears the
+                      gutter (12:1) but only 2.5:1 on the band in dark; the track-coloured
+                      ring gives it an edge that separates from any fill by construction. */}
                   <span
-                    className="absolute h-3 w-0.5 rounded-full bg-foreground"
+                    className="absolute h-3 w-0.5 rounded-full bg-foreground ring-1 ring-track"
                     style={{ left: `calc(${marker}% - 1px)` }}
                     aria-hidden
                   />

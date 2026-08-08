@@ -52,7 +52,7 @@ export function ConfidenceBadge({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface-2 px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/70"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface-2 px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
         >
           <ShieldCheckIcon size={14} className={cn("shrink-0", color)} />
           {label}
@@ -72,7 +72,9 @@ export function ConfidenceBadge({
               <span
                 className={cn(
                   "size-1.5 shrink-0 rounded-full",
-                  s.present ? "bg-positive" : "bg-border-strong",
+                  // An absent source is the finding, so its dot carries information
+                  // just as much as a present one.
+                  s.present ? "bg-positive" : "bg-stroke",
                 )}
                 aria-hidden
               />
@@ -139,7 +141,7 @@ export function EvidenceLine({
           <span
             className={cn(
               "size-1.5 shrink-0 rounded-full",
-              s.present ? "bg-positive" : "bg-border-strong",
+              s.present ? "bg-positive" : "bg-stroke",
             )}
             aria-hidden
           />

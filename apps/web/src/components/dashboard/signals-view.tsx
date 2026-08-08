@@ -1458,7 +1458,7 @@ function SelectCheckbox({
       // happen, and padding is the only way to widen a target without moving the
       // mark it replaces. The hover that darkens the border follows the target
       // (group/box), not the box, so the affordance matches what is clickable.
-      className="group/box -m-2 flex shrink-0 rounded-md p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+      className="group/box -m-2 flex shrink-0 rounded-md p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span
         className={cn(

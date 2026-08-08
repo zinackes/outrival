@@ -23,7 +23,9 @@ export function ThreatMeter({ score }: { score: number }) {
               className={cn(
                 "w-[3px] rounded-sm",
                 i === 0 ? "h-1.5" : i === 1 ? "h-2" : "h-2.5",
-                i < threatBars(score) ? "bg-muted-foreground" : "bg-border",
+                // An unlit bar is the denominator — 1 of 3 only means something if
+                // you can see the other two. bg-border put them at 1.3:1.
+                i < threatBars(score) ? "bg-foreground" : "bg-stroke",
               )}
             />
           ))}

@@ -192,7 +192,7 @@ export function VisualDiff({
               else return;
               e.preventDefault();
             }}
-            className="pointer-events-auto absolute left-1/2 top-1/2 flex size-7 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-full border border-[var(--link)] bg-background text-[var(--link)] shadow-sm outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-95"
+            className="pointer-events-auto absolute left-1/2 top-1/2 flex size-7 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-full border border-[var(--link)] bg-background text-[var(--link)] shadow-sm outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring active:scale-95"
           >
             <CaretLeftIcon className="size-3.5 -mr-1" aria-hidden />
             <CaretRightIcon className="size-3.5 -ml-1" aria-hidden />

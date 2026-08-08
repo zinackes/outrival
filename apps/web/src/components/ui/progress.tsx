@@ -14,7 +14,9 @@ function Progress({
     <ProgressPrimitive.Root
       data-slot="progress"
       className={cn(
-        "relative h-2 w-full overflow-hidden rounded-full bg-primary/20",
+        // bg-track, not primary/20: a 20% accent gutter measured 1.3:1 against the
+        // card, so an empty bar was invisible and a 5% bar unreadable.
+        "relative h-2 w-full overflow-hidden rounded-full bg-track",
         className
       )}
       {...props}

@@ -48,7 +48,7 @@ export function TopRequestedSection({ competitorId }: { competitorId: string }) 
                     href={r.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-baseline gap-1 rounded-sm text-content leading-relaxed underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                    className="inline-flex items-baseline gap-1 rounded-sm text-content leading-relaxed underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {r.title}
                     <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />

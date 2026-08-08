@@ -247,7 +247,7 @@ export function AnalysisProgress({
                       aria-hidden
                       className={cn(
                         "mx-2 h-px w-6 sm:w-10",
-                        st === "done" ? "bg-link/50" : "bg-border",
+                        st === "done" ? "bg-link" : "bg-stroke",
                       )}
                     />
                   )}

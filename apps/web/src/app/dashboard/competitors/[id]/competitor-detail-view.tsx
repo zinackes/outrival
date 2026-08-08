@@ -1247,7 +1247,7 @@ function Header({
                 aria-label="About overlap"
                 className="inline-flex cursor-help items-center gap-2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="h-1.5 w-10 overflow-hidden rounded-full bg-surface-3">
+                <span className="h-1.5 w-10 overflow-hidden rounded-full bg-track">
                   <span
                     className="block h-full rounded-full bg-primary"
                     style={{

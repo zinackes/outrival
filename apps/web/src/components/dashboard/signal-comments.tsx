@@ -384,14 +384,14 @@ function Comment({
             <button
               type="button"
               onClick={() => onRetry(unsent)}
-              className="inline-flex items-center gap-1 rounded-sm text-foreground underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="inline-flex items-center gap-1 rounded-sm text-foreground underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <ArrowClockwiseIcon size={16} aria-hidden /> Retry
             </button>
             <button
               type="button"
               onClick={() => onDiscard(unsent.localId)}
-              className="rounded-sm text-muted-foreground underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="rounded-sm text-muted-foreground underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >
               Discard
             </button>
@@ -402,7 +402,7 @@ function Comment({
           <button
             type="button"
             onClick={onReply}
-            className="mt-1 rounded-sm text-meta text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="mt-1 rounded-sm text-meta text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
             Reply
           </button>
@@ -527,7 +527,7 @@ function Composer({
   }
 
   return (
-    <div className="rounded-md border border-border bg-surface-2 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+    <div className="rounded-md border border-border bg-surface-2 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring">
       <Textarea
         ref={ref}
         value={text}

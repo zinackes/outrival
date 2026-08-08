@@ -62,9 +62,18 @@ export function SeverityScale({
             className={cn(
               "rounded-sm",
               compact ? "h-2.5 w-[3px]" : "h-3.5 w-1",
-              // border-strong, not border: an unlit tick still has to read as a
-              // step on the scale, otherwise "high" loses its "out of what".
-              i <= active ? FILL[severity] : "bg-border-strong",
+              // stroke, not border-strong: an unlit tick still has to read as a
+              // step on the scale, otherwise "high" loses its "out of what" — and
+              // border-strong only ever reached 2:1, which is not a step you can see.
+              //
+              // Light mode cannot have both edges at once: clearing 3:1 on a
+              // near-white surface caps the unlit tick at L .66, and --medium (gold)
+              // sits at L .60, so lit-vs-unlit lands at 1.3:1 for that one severity
+              // (chroma still separates them). The denominator wins the tie —
+              // severity is never carried by hue alone anyway (Three-Systems Rule:
+              // there is always a label beside this scale), whereas an invisible
+              // unlit tick removes the scale itself.
+              i <= active ? FILL[severity] : "bg-stroke",
             )}
           />
         ))}
@@ -124,7 +133,7 @@ export function SeverityGauge({
             // Same unlit treatment as the scale: an unlit band still has to read
             // as a step, otherwise "high" loses its "out of what".
             "h-[3px] rounded-[1px]",
-            severity && i <= active ? FILL[severity] : "bg-border-strong",
+            severity && i <= active ? FILL[severity] : "bg-stroke",
           )}
         />
       ))}

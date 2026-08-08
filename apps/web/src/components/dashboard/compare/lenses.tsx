@@ -1103,7 +1103,7 @@ export function MovesLens({ entities }: Omit<LensProps, "expanded" | "onToggle">
                 <Link
                   href={`/dashboard/signals?focus=${move.id}`}
                   className={cn(
-                    "focus-visible:ring-ring/50 block rounded-sm text-dense leading-snug hover:underline focus-visible:ring-2",
+                    "focus-visible:ring-ring block rounded-sm text-dense leading-snug hover:underline focus-visible:ring-2",
                     stale ? "text-muted-foreground" : "font-medium",
                   )}
                 >

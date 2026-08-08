@@ -203,7 +203,7 @@ export function GroupedChanges({ changes }: { changes: SignalChange[] }) {
                     onClick={() => toggle(family)}
                     aria-expanded={open}
                     aria-controls={panelId}
-                    className="flex w-full items-center gap-2 rounded-md py-1.5 pr-1.5 text-left text-sm text-foreground outline-none transition-colors hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring/50"
+                    className="flex w-full items-center gap-2 rounded-md py-1.5 pr-1.5 text-left text-sm text-foreground outline-none transition-colors hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <CaretRightIcon
                       className={cn(

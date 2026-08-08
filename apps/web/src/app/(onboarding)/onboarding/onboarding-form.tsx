@@ -926,7 +926,8 @@ function ProgressBar({ step }: { step: number }) {
             key={n}
             className={cn(
               "h-1 flex-1 rounded-full transition-colors duration-300",
-              n <= step ? "bg-primary" : "bg-border-strong",
+              // "2 of 3" needs the unfilled steps to be countable, not implied.
+              n <= step ? "bg-primary" : "bg-stroke",
             )}
           />
         ))}
@@ -1797,7 +1798,7 @@ function DoneStep({
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="group mt-6 inline-flex items-center gap-2 rounded-md border border-border bg-surface-2/60 px-4 py-2 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-[3px] focus-visible:ring-ring/35"
+            className="group mt-6 inline-flex items-center gap-2 rounded-md border border-border bg-surface-2/60 px-4 py-2 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-[3px] focus-visible:ring-ring"
           >
             {!allDone && (
               <SpinnerIcon size={16} className="animate-spin text-muted-foreground" />

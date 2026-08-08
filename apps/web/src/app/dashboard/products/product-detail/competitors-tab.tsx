@@ -274,7 +274,7 @@ function CompetitorRow({
               href={href}
               // Stretched link: the row navigates without nesting anything
               // interactive inside an <a>.
-              className="min-w-0 truncate rounded-sm text-dense font-semibold outline-none after:absolute after:inset-0 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="min-w-0 truncate rounded-sm text-dense font-semibold outline-none after:absolute after:inset-0 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring"
               style={competitorNameColor(c.color)}
             >
               {c.name}

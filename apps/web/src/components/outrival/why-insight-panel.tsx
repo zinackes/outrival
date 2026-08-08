@@ -104,7 +104,7 @@ function MaterialityReadout({
                   key={i}
                   className={cn(
                     "h-3.5 w-1 rounded-sm",
-                    i <= value ? "bg-foreground" : "bg-border-strong",
+                    i <= value ? "bg-foreground" : "bg-stroke",
                   )}
                   aria-hidden
                 />
@@ -187,7 +187,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                       href={detail.sourceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                      className="inline-flex items-center gap-1 rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {host ?? "Open the live page"}
                       <ArrowSquareOutIcon size={16} aria-hidden />
@@ -206,7 +206,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                       href={detail.archive.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                      className="inline-flex items-center gap-1 rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {detail.archive.capturedAt
                         ? `archived ${format(new Date(detail.archive.capturedAt), "MMM d")}`

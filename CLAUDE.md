@@ -2,7 +2,7 @@
 
 SaaS de veille concurrentielle : monitore des concurrents, génère des insights IA.
 
-@docs/architecture.md : index. Le détail vit dans `docs/architecture/*` et se lit à
+`docs/architecture.md` : index. Le détail vit dans `docs/architecture/*` et se lit à
 la demande. Ne pas l'importer avec `@`, ça le remettrait dans chaque session.
 @.claude/rules/karpathy.md
 @.claude/rules/production.md

@@ -470,7 +470,7 @@ export function ReviewsTab({
                         {/* A horizontal track on purpose: severity already owns the
                             vertical tick scale and the threat meter owns ascending
                             bars, so a third ordinal encoding needs its own shape. */}
-                        <span className="h-1 overflow-hidden rounded-full bg-surface-3">
+                        <span className="h-1 overflow-hidden rounded-full bg-track">
                           <span
                             className={cn(
                               "block h-full rounded-full",

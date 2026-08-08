@@ -170,9 +170,12 @@ export function PriceLadder({
                 {r.name}
               </span>
             </span>
-            <span className="h-2 overflow-hidden rounded-sm bg-surface-3">
+            <span className="h-2 overflow-hidden rounded-sm bg-track">
+              {/* A rival's bar was muted-foreground/35 — 1.6:1 on the gutter, i.e. a
+                  price you could not compare. Full muted-foreground (5.1:1) keeps the
+                  "mine vs theirs" distinction on hue, where it belongs. */}
               <span
-                className={cn("block h-full rounded-sm", r.self ? "bg-primary" : "bg-muted-foreground/35")}
+                className={cn("block h-full rounded-sm", r.self ? "bg-primary" : "bg-muted-foreground")}
                 style={{ width: `${Math.max(4, (r.monthly / max) * 100)}%` }}
               />
             </span>

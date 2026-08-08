@@ -87,7 +87,7 @@ function CalendarDayButton({ className, day, modifiers, ...props }: DayButtonPro
       className={cn(
         "relative flex size-9 items-center justify-center rounded-md text-sm font-normal text-foreground",
         "outline-none transition-colors hover:bg-surface-3",
-        "focus-visible:z-10 focus-visible:ring-[3px] focus-visible:ring-ring/70",
+        "focus-visible:z-10 focus-visible:ring-[3px] focus-visible:ring-ring",
         "disabled:pointer-events-none disabled:opacity-40",
         // Leading/trailing days of the neighbouring months recede, but stay
         // above the AA floor — they are still clickable targets.

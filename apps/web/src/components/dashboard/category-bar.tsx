@@ -37,7 +37,7 @@ export function CategoryBar({
       <div
         role="img"
         aria-label="Signal mix, no signals"
-        className="h-1.5 rounded bg-background border border-border"
+        className="h-1.5 rounded bg-track"
         style={{ width: w }}
       />
     );
@@ -51,7 +51,7 @@ export function CategoryBar({
     <div
       role="img"
       aria-label={`Signal mix: ${summary}`}
-      className="h-1.5 rounded overflow-hidden flex bg-background border border-border"
+      className="h-1.5 rounded overflow-hidden flex bg-track"
       style={{ width: w }}
       title={summary}
     >

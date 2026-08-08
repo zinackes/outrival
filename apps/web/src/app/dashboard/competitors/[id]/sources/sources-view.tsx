@@ -65,7 +65,9 @@ const ATTENTION_META: Record<
   // The two groups that need no heading: their rows sit under the catalog groups
   // the user already thinks in (Web & content, Pricing, …).
   collecting: { chip: "collecting", swatch: "bg-positive" },
-  idle: { chip: "not set up", swatch: "bg-border-strong" },
+  // "not set up" is a state the user acts on, so its swatch sits on the same
+  // visibility floor as collecting/fixable rather than fading into the row.
+  idle: { chip: "not set up", swatch: "bg-stroke" },
 
   fixable: {
     chip: "needs a new URL",

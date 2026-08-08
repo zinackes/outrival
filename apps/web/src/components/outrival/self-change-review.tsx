@@ -198,7 +198,7 @@ export function SelfChangesPanel({
                 type="button"
                 onClick={() => setOpenId(ch.id)}
                 disabled={acting}
-                className="flex min-w-0 flex-1 items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 disabled:opacity-50"
+                className="flex min-w-0 flex-1 items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:opacity-50"
               >
                 <span
                   aria-hidden
@@ -233,7 +233,7 @@ export function SelfChangesPanel({
                 disabled={acting}
                 aria-label={`Ignore ${label} change`}
                 title="Ignore"
-                className="flex shrink-0 items-center px-3 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
+                className="flex shrink-0 items-center px-3 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
               >
                 <XIcon className="size-4" />
               </button>
@@ -280,12 +280,12 @@ function ToggleItem({
       role="checkbox"
       aria-checked={checked}
       onClick={() => onToggle(!checked)}
-      className="flex w-full items-start gap-2.5 rounded-md px-1 py-1 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+      className="flex w-full items-start gap-2.5 rounded-md px-1 py-1 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span
         aria-hidden
         className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
-          checked ? "border-primary bg-primary text-primary-foreground" : "border-input"
+          checked ? "border-primary bg-primary text-primary-foreground" : "border-stroke"
         }`}
       >
         {checked && <CheckIcon className="size-4" />}

@@ -519,7 +519,7 @@ export function AskPanel({
           void ask(question);
         }}
       >
-        <div className="rounded-lg border border-border bg-surface shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+        <div className="rounded-lg border border-border bg-surface shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring">
           <Textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
@@ -566,7 +566,7 @@ export function AskPanel({
                   setQuestion(q);
                   void ask(q);
                 }}
-                className="group flex items-center gap-2.5 rounded-md border border-border bg-surface px-3 py-2.5 text-left transition-colors hover:border-border-strong hover:bg-surface-3 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                className="group flex items-center gap-2.5 rounded-md border border-border bg-surface px-3 py-2.5 text-left transition-colors hover:border-border-strong hover:bg-surface-3 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
               >
                 <Icon className="size-4 shrink-0" style={{ color: tint }} aria-hidden />
                 <span className="flex-1 text-sm text-foreground">{q}</span>
@@ -588,7 +588,7 @@ export function AskPanel({
                     key={item.id}
                     type="button"
                     onClick={() => openHistory(item)}
-                    className="flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-surface-3 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                    className="flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-surface-3 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
                   >
                     <ChatIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                     <span className="min-w-0 flex-1 truncate text-sm text-foreground">
@@ -754,7 +754,7 @@ export function AskPanel({
           <button
             type="button"
             onClick={resetPanel}
-            className="mt-3 inline-flex items-center gap-1.5 rounded-sm text-meta text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-sm text-meta text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
           >
             <PlusIcon className="size-3.5" aria-hidden />
             Ask something else

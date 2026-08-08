@@ -188,7 +188,7 @@ export function LegendMedian({ children }: { children: ReactNode }) {
     <span className="inline-flex items-center gap-2">
       <span
         aria-hidden
-        className="border-border-strong inline-block h-3 border-l border-dashed"
+        className="border-stroke inline-block h-3 border-l border-dashed"
       />
       {children}
     </span>
@@ -295,7 +295,7 @@ export function MeasureRow({
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          className="focus-visible:ring-ring/50 flex min-w-0 items-center gap-2 rounded-sm text-left focus-visible:ring-2"
+          className="focus-visible:ring-ring flex min-w-0 items-center gap-2 rounded-sm text-left focus-visible:ring-2"
         >
           {identity}
         </button>
@@ -356,7 +356,7 @@ export function EntityIdentity({ entity }: { entity: CompareEntity }) {
       ) : (
         <Link
           href={`/dashboard/competitors/${entity.id}`}
-          className="focus-visible:ring-ring/50 group/name flex min-w-0 items-center gap-2 rounded-sm underline-offset-2 focus-visible:ring-2"
+          className="focus-visible:ring-ring group/name flex min-w-0 items-center gap-2 rounded-sm underline-offset-2 focus-visible:ring-2"
         >
           {inner}
         </Link>
@@ -550,7 +550,12 @@ export function MedianMark({ left }: { left: number }) {
   return (
     <span
       aria-hidden
-      className="border-border-strong absolute -inset-y-1 border-l border-dashed"
+      // border-stroke: this line IS the reading — "above or below the median" is
+      // the whole point of the lens — so it takes the 3:1 information floor, not
+      // border-strong's decorative ~2:1. It is read on the -inset-y-1 overhang,
+      // against the row surface (3.1-3.8:1), not through the bar: the mark paints
+      // UNDER <Bar>, so where they meet the bar wins by design.
+      className="border-stroke absolute -inset-y-1 border-l border-dashed"
       style={{ left: `${left}%` }}
     />
   );

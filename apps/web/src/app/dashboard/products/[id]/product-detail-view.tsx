@@ -89,7 +89,7 @@ function ProductCrumbs({ productId, name }: { productId: string; name: string })
       <button
         type="button"
         onClick={goAll}
-        className="rounded-sm outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="rounded-sm outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
       >
         Products
       </button>

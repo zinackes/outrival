@@ -39,10 +39,10 @@ export function SelectBox({
         onToggle(e);
       }}
       className={cn(
-        "relative z-10 flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+        "relative z-10 flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
         on
           ? "border-primary bg-primary text-primary-foreground"
-          : "border-border-strong text-transparent hover:border-foreground/50",
+          : "border-stroke text-transparent hover:border-foreground/50",
       )}
     >
       {mixed ? <MinusIcon size={16} /> : <CheckIcon size={16} />}

@@ -49,7 +49,7 @@ function FactChip({ fact, index }: { fact: Fact; index: number }) {
       animate={{ opacity: 1, y: 0 }}
       // A short stagger so the four facts land as one reading rather than four blinks.
       transition={{ duration: 0.2, delay: 0.04 * index, ease: "easeOut" }}
-      className="bg-surface-2 hover:bg-surface-3 focus-visible:ring-ring/50 inline-flex max-w-full items-center gap-2 rounded-lg py-1.5 pr-3 pl-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
+      className="bg-surface-2 hover:bg-surface-3 focus-visible:ring-ring inline-flex max-w-full items-center gap-2 rounded-lg py-1.5 pr-3 pl-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
     >
       <CompAvatar name={fact.subject.name} url={fact.subject.url} size={18} />
       <span className="min-w-0 truncate text-sm">

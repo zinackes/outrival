@@ -68,7 +68,7 @@ function Chip({
         type="button"
         onClick={onRemove}
         aria-label={`Remove ${entity.name} from the comparison`}
-        className="text-muted-foreground hover:bg-surface-3 hover:text-foreground focus-visible:ring-ring/50 grid size-4 place-items-center rounded-sm focus-visible:ring-2 focus-visible:outline-none"
+        className="text-muted-foreground hover:bg-surface-3 hover:text-foreground focus-visible:ring-ring grid size-4 place-items-center rounded-sm focus-visible:ring-2 focus-visible:outline-none"
       >
         <XIcon size={16} />
       </button>

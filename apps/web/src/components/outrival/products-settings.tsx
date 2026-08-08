@@ -292,7 +292,7 @@ function ProductRow({
           <div className="flex min-w-0 items-center gap-2">
             <Link
               href={`/dashboard/products/${p.id}`}
-              className="truncate rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="truncate rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
             >
               {p.name}
             </Link>

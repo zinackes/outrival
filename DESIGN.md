@@ -179,8 +179,19 @@ values as canonical.
 - **Muted** (`oklch(0.46 …)` / `oklch(0.72 …)`): secondary text. Held at full
   strength on its surface — **do not dim it further with `/70`–`/80` alpha**, which
   drops it under 4.5:1. Need more contrast? Step toward Foreground, never lighter.
-- **Border** (`oklch(0.9 …)` / `oklch(0.31 …)`): hairline dividers and control
-  strokes; `border-strong` for emphasis.
+- **Border** (`oklch(0.9 …)` / white 10%): hairline dividers, card edges, grid
+  gaps — **decorative only**, ~1.3:1 by design; `border-strong` (`oklch(0.78 …)` /
+  white 22%) for emphasis. Neither draws a control: see Stroke.
+
+### Non-text (the 3:1 pair)
+- **Stroke** (`oklch(0.61 0.012 260)` / white 36%): the edge or mark of anything
+  that carries information — checkbox and field borders, the unchecked switch
+  track, the compare median line, unlit meter ticks, "not set up" swatches.
+  Clears 3:1 on *every* surface, including surface-3 hover (3.08 light / 3.27 dark).
+- **Track** (`oklch(0.89 0.008 260)` / `#262626`): the empty part of a bar. Its
+  constraint runs the other way — the fill sits on it — so it is set by the
+  tightest fill (`--link` 3.10 light, `--accent` 3.33 dark). One token for every
+  gutter; do not reach for a surface step.
 
 ### Severity (the semantic scale; not decorative, never the brand accent)
 - **Critical** (`#b91c1c` / `#ff4d4d`), **High** (`#c2410c` / `#ff9f43`),
@@ -207,6 +218,23 @@ or for large fills.
 category (cool→rose wayfinding) are three independent color systems. Never borrow a
 severity or category hue for the brand accent, or vice versa. Severity and category
 are always reinforced with label and icon, never hue alone.
+
+**The 3:1 Rule (non-text).** If a mark carries information — you act on it, or you
+read a value off it — it clears **3:1 against whatever it sits on** (WCAG 1.4.11,
+and 2.4.11 for focus). That covers control borders, bar fills and their gutters,
+meter ticks, status swatches and focus rings. Decorative hairlines are exempt by
+the norm and stay at `--border`; this is exactly why `--border` and `--stroke` are
+two tokens rather than one dial. Two corollaries that were regressions before:
+
+- An alpha step (`/50`, `/35`, `opacity: .55`) is how a mark quietly drops under
+  the floor. To make something quieter, move it down the token ramp instead —
+  `text-subtle` over `muted-foreground` — where the floor still applies.
+- The unlit half of a meter is information: "1 of 3" means nothing without the
+  other two.
+
+`pnpm --filter @outrival/web check:contrast` asserts all of it (62 pairs, both
+themes) by reading the tokens out of `globals.css`. Run it after any palette
+change; every ratio quoted in this file comes from it.
 
 ## 3. Typography
 
@@ -306,7 +334,9 @@ and (where relevant) loading and error. Radius scale: `sm` 4px (badges/pills), `
   sizes xs/sm/lg and icon variants share the radius.
 - **Primary:** Signal Cyan fill, Accent Ink text, `text-sm` weight 500.
   Hover → Cyan Bright, active → Cyan Dim.
-- **Focus:** 3px cyan ring at 50% (`ring-ring/50`) plus border shift. Always visible
+- **Focus:** 3px cyan ring at **full opacity** (`ring-ring`) plus border shift. Not
+  an alpha step: `/35` and then `/70` both stayed under the 3:1 focus floor (2.74
+  light / 2.66 dark), and an alpha buys nothing on 3px of pure state. Always visible
   — including on raw `<button>` elements, which must carry `focus-visible` rings too
   (don't `outline-none` without a replacement).
 - **Outline / Secondary / Ghost / Link:** outline carries a border on canvas with a
@@ -326,9 +356,10 @@ and (where relevant) loading and error. Radius scale: `sm` 4px (badges/pills), `
   bounded by one hairline) over per-section card chrome. Depth from rhythm, not boxes.
 
 ### Inputs / Fields
-- **Style:** 36px tall, `rounded-md`, 1px Border stroke, transparent fill
+- **Style:** 36px tall, `rounded-md`, 1px **Stroke** border (`border-stroke`, not
+  `border-input` — a field's edge is the field), transparent fill
   (`bg-input/30` in dark), `text-sm`. Hairline `shadow-xs`.
-- **Focus:** border shifts to ring color, 3px cyan ring at 50%.
+- **Focus:** border shifts to ring color, 3px cyan ring at full opacity.
 - **Error / Disabled:** `aria-invalid` shows a destructive border + ring; disabled is
   50% opacity, not-allowed cursor.
 

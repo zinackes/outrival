@@ -239,7 +239,7 @@ function MoverRows({
             )}
             <span
               aria-hidden
-              className="flex h-1 w-9 shrink-0 overflow-hidden rounded-[2px] bg-surface-3"
+              className="flex h-1 w-9 shrink-0 overflow-hidden rounded-[2px] bg-track"
             >
               <span
                 className="h-full rounded-[2px]"

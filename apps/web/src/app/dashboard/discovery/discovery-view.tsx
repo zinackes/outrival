@@ -269,11 +269,16 @@ function ScoreMeter({ score }: { score: number | null }) {
       >
         {value ?? "--"}
       </span>
-      <span className="block h-0.5 w-full overflow-hidden rounded-full bg-border">
+      <span className="block h-0.5 w-full overflow-hidden rounded-full bg-track">
+        {/* A below-threshold score used border-strong as its fill — 1.3:1 on the old
+            gutter, so the one case the triage desk exists to show ("not worth it")
+            was the one you could not see. text-subtle stays the quieter of the two
+            tiers (3.7:1 vs 5.1:1) without dropping under the floor; --stroke would
+            not do, it is calibrated against surfaces, not against the gutter. */}
         <span
           className={cn(
             "block h-full",
-            value != null && value < WORTH_MIN ? "bg-border-strong" : "bg-muted-foreground",
+            value != null && value < WORTH_MIN ? "bg-text-subtle" : "bg-muted-foreground",
           )}
           style={{ width: `${value ?? 0}%` }}
         />

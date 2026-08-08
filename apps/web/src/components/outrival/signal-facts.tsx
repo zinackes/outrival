@@ -417,7 +417,7 @@ function ContentFacts({ facts }: { facts: Extract<Facts, { kind: "content" }> })
                   href={e.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {e.title}
                   <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
@@ -457,7 +457,7 @@ function ContentFacts({ facts }: { facts: Extract<Facts, { kind: "content" }> })
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
         >
           <CaretDownIcon size={14} aria-hidden />
           <span className="tabular-nums">{hidden}</span> more
@@ -496,7 +496,7 @@ function CaseStudyFacts({ facts }: { facts: Extract<Facts, { kind: "case_study" 
           href={facts.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
         >
           {facts.title ?? facts.url}
           <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
@@ -556,7 +556,7 @@ function CustomerWinFacts({ facts }: { facts: Extract<Facts, { kind: "customer_w
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
         >
           <CaretDownIcon size={14} aria-hidden />
           <span className="tabular-nums">{hidden}</span> more
@@ -568,7 +568,7 @@ function CustomerWinFacts({ facts }: { facts: Extract<Facts, { kind: "customer_w
           href={facts.evidenceUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-2 inline-flex items-baseline gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="mt-2 inline-flex items-baseline gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
         >
           Their customers page
           <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
@@ -597,7 +597,7 @@ function RoadmapRequestFacts({ facts }: { facts: Extract<Facts, { kind: "roadmap
             target="_blank"
             rel="noopener noreferrer"
             className={cn(
-              "inline-flex items-baseline gap-1 rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50",
+              "inline-flex items-baseline gap-1 rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
               lead ? "text-sm text-foreground" : "text-sm text-muted-foreground",
             )}
           >
@@ -667,7 +667,7 @@ function ComparisonTargetFacts({
                 href={t.evidenceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {t.name}
                 <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
@@ -688,7 +688,7 @@ function ComparisonTargetFacts({
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
         >
           <CaretDownIcon size={14} aria-hidden />
           <span className="tabular-nums">{hidden}</span> more
@@ -732,7 +732,7 @@ function AudiencePageFacts({ facts }: { facts: Extract<Facts, { kind: "audience_
                 href={p.evidenceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {p.displayName}
                 <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
@@ -756,7 +756,7 @@ function AudiencePageFacts({ facts }: { facts: Extract<Facts, { kind: "audience_
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
         >
           <CaretDownIcon size={14} aria-hidden />
           <span className="tabular-nums">{hidden}</span> more
@@ -881,7 +881,7 @@ function IntegrationFacts({ facts }: { facts: Extract<Facts, { kind: "integratio
                 href={i.evidenceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {i.name}
                 <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
@@ -902,7 +902,7 @@ function IntegrationFacts({ facts }: { facts: Extract<Facts, { kind: "integratio
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
         >
           <CaretDownIcon size={14} aria-hidden />
           <span className="tabular-nums">{hidden}</span> more
@@ -914,7 +914,7 @@ function IntegrationFacts({ facts }: { facts: Extract<Facts, { kind: "integratio
           href={facts.evidenceUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-2 inline-flex items-baseline gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="mt-2 inline-flex items-baseline gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
         >
           Their integrations catalog
           <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
@@ -966,7 +966,7 @@ function SalaryFacts({ facts }: { facts: Extract<Facts, { kind: "salary" }> }) {
                 href={r.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-baseline gap-1 rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="inline-flex items-baseline gap-1 rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {r.title}
                 <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
@@ -986,7 +986,7 @@ function SalaryFacts({ facts }: { facts: Extract<Facts, { kind: "salary" }> }) {
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
         >
           <CaretDownIcon size={14} aria-hidden />
           <span className="tabular-nums">{hidden}</span> more
@@ -1068,7 +1068,7 @@ function JobFacts({ facts }: { facts: Extract<Facts, { kind: "job_facts" }> }) {
                   href={g.items[0]!.postingUrl!}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-baseline gap-1 rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="inline-flex items-baseline gap-1 rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {g.items[0]!.postingTitle}
                   <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
@@ -1163,7 +1163,7 @@ function Role({ role, struck }: { role: RoleFact; struck: boolean }) {
           href={role.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="inline-flex items-baseline gap-1 rounded-sm text-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
         >
           {role.title}
           <ArrowSquareOutIcon size={14} className="shrink-0 self-center" aria-hidden />
@@ -1410,7 +1410,7 @@ function Toggle({
       type="button"
       onClick={onClick}
       aria-expanded={open}
-      className="mt-2 flex items-center gap-1.5 rounded-sm text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+      className="mt-2 flex items-center gap-1.5 rounded-sm text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
     >
       {open ? openLabel : closedLabel}
       <CaretDownIcon

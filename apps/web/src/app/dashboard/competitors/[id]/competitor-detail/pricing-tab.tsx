@@ -29,6 +29,7 @@ import { CompetitorPricingCard } from "@/components/outrival/competitor-pricing-
 import { myProductQuery } from "@/lib/queries";
 import { buildPricingSeries, ARCHIVED_KEY, CAPTURE_DAY_KEY } from "./charts";
 import { PackagingMatrix } from "./packaging-matrix";
+import { ValueComparison } from "./value-comparison";
 import { RateStructures } from "./rate-structures";
 import { PricingPlansEditor } from "./pricing-plans-editor";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -311,6 +312,20 @@ export function PricingTab({
             usageTiers={allTheirTiers.filter((t) => t.billing_period === "usage")}
           />
         </TabSection>
+      )}
+
+      {/* The other half of that comparison (OUT-68): what each price buys, read
+          feature by feature. The ladder above ranks by price and says in its own
+          footnote that the rungs do not line up on features; this answers the
+          part it declines to. Renders nothing until both sides have a captured
+          matrix. */}
+      {myProduct && (
+        <ValueComparison
+          competitorId={competitorId}
+          competitorName={competitor.name}
+          ours={myProduct.pricing.tiers}
+          theirs={allTheirTiers.filter((t) => t.billing_period !== "usage")}
+        />
       )}
       {/* Analysis and editing are different modes and no longer share a row: the
           chart takes the full width it needs, the form follows it. */}

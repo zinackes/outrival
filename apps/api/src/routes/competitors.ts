@@ -1354,6 +1354,7 @@ competitorsRouter.get("/", async (c) => {
   // the wall-clock cost collapses to the slowest one instead of their sum.
   const [
     aggregates,
+    unreadRows,
     latestRows,
     dailyRows,
     monitorRows,
@@ -1382,6 +1383,27 @@ competitorsRouter.get("/", async (c) => {
           gte(signals.createdAt, fourteenDaysAgo),
           // When scoped to a product, only aggregate that product's competitors
           // instead of scanning the whole org's 14-day signals.
+          restrictIds ? inArray(signals.competitorId, restrictIds) : undefined,
+        ),
+      )
+      .groupBy(signals.competitorId),
+
+    // How many signals nobody has opened. The only count on this row that asks for
+    // an action, so it is deliberately NOT bounded by the 14 day window above: a
+    // signal left unread three weeks ago is still unread. Same definition as the
+    // Signals feed facets (hidden signals excluded), so the sidebar number and the
+    // Unread tab can never disagree.
+    db
+      .select({
+        competitorId: signals.competitorId,
+        unread: sql<number>`count(*)::int`,
+      })
+      .from(signals)
+      .where(
+        and(
+          eq(signals.orgId, orgId),
+          eq(signals.isRead, false),
+          isNull(signals.hiddenForUserAt),
           restrictIds ? inArray(signals.competitorId, restrictIds) : undefined,
         ),
       )
@@ -1522,6 +1544,7 @@ competitorsRouter.get("/", async (c) => {
   ]);
 
   const byCompetitor = new Map(aggregates.map((a) => [a.competitorId, a]));
+  const unreadByCompetitor = new Map(unreadRows.map((r) => [r.competitorId, r.unread]));
   const latestByCompetitor = new Map(latestRows.map((r) => [r.competitorId, r]));
   const homepageByCompetitor = new Map(homepageRows.map((m) => [m.competitorId, m]));
 
@@ -1643,6 +1666,7 @@ competitorsRouter.get("/", async (c) => {
       stats: {
         signals7d: a?.signals7d ?? 0,
         signalsPrev: a?.signalsPrev ?? 0,
+        unread: unreadByCompetitor.get(c.id) ?? 0,
         lastSignalAt: a?.lastSignalAt ?? null,
         categoryCounts: {
           pricing: a?.catPricing ?? 0,

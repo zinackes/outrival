@@ -289,6 +289,7 @@ export function getSampleData(): { signals: Signal[]; competitors: Competitor[] 
       stats: {
         signals7d: 4,
         signalsPrev: 1,
+        unread: 3,
         lastSignalAt: at(2 * HOUR),
         categoryCounts: { pricing: 1, hiring: 1, product: 1, content: 1 },
       },
@@ -304,6 +305,7 @@ export function getSampleData(): { signals: Signal[]; competitors: Competitor[] 
       stats: {
         signals7d: 3,
         signalsPrev: 1,
+        unread: 2,
         lastSignalAt: at(5 * HOUR),
         categoryCounts: { product: 1, content: 1, hiring: 1 },
       },
@@ -319,6 +321,7 @@ export function getSampleData(): { signals: Signal[]; competitors: Competitor[] 
       stats: {
         signals7d: 2,
         signalsPrev: 1,
+        unread: 1,
         lastSignalAt: at(DAY),
         categoryCounts: { funding: 1, pricing: 1 },
       },
@@ -334,6 +337,7 @@ export function getSampleData(): { signals: Signal[]; competitors: Competitor[] 
       stats: {
         signals7d: 2,
         signalsPrev: 0,
+        unread: 2,
         lastSignalAt: at(9 * HOUR),
         categoryCounts: { product: 1, reviews: 1 },
       },
@@ -349,6 +353,7 @@ export function getSampleData(): { signals: Signal[]; competitors: Competitor[] 
       stats: {
         signals7d: 2,
         signalsPrev: 0,
+        unread: 0,
         lastSignalAt: at(2 * DAY + 6 * HOUR),
         categoryCounts: { reviews: 1, product: 1 },
       },

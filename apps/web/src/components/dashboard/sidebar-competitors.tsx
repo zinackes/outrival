@@ -152,7 +152,7 @@ export function SidebarCompetitors() {
         <SidebarMenuSub className="mr-0 gap-0 px-1.5">
           <AnimatePresence initial={false}>
             {shown.map((c) => {
-              const n = activity(c);
+              const unread = c.stats?.unread ?? 0;
               return (
                 <MotionSubItem
                   key={c.id}
@@ -167,9 +167,12 @@ export function SidebarCompetitors() {
                     <Link href={`/dashboard/competitors/${c.id}`}>
                       <CompAvatar name={c.name} url={c.url} size={22} />
                       <span className="truncate">{c.name}</span>
-                      {n > 0 && (
-                        <span className="ml-auto shrink-0 text-meta tabular-nums text-muted-foreground transition-colors duration-150 group-hover/comp:text-foreground group-data-[active=true]/comp:text-foreground motion-reduce:transition-none">
-                          {n}
+                      {unread > 0 && (
+                        <span className="ml-auto shrink-0 text-meta font-medium tabular-nums text-primary">
+                          {unread}
+                          <span className="sr-only">
+                            {unread === 1 ? " unread signal" : " unread signals"}
+                          </span>
                         </span>
                       )}
                     </Link>

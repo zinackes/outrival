@@ -133,6 +133,9 @@ async function postForm<T>(
 export interface CompetitorStats {
   signals7d: number;
   signalsPrev: number;
+  // Signals nobody has opened yet — all-time, not windowed like the counts above,
+  // and hidden signals excluded. Same definition as the Signals feed's Unread tab.
+  unread: number;
   lastSignalAt: string | null;
   categoryCounts: Record<string, number>;
 }

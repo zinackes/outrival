@@ -738,7 +738,7 @@ function MarketMapSection({
       ) : (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-7">
           {targets.length > 0 && (
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-2.5 sm:only:col-span-2">
               <div className="flex flex-col gap-0.5">
                 <h4 className="m-0 text-sm font-semibold tracking-tight">They compare against</h4>
                 <span className="text-xs text-muted-foreground tabular-nums">
@@ -746,11 +746,11 @@ function MarketMapSection({
                   {(map?.targetsTotal ?? targets.length) === 1 ? "rival" : "rivals"} named
                 </span>
               </div>
-              <ul className="m-0 flex list-none flex-col p-0">
+              <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(15rem,100%),1fr))] gap-x-6 p-0">
                 {shown.map((t) => (
                   <li
                     key={t.name}
-                    className="flex flex-col gap-0.5 border-t border-border py-2 first:border-t-0 first:pt-0"
+                    className="flex flex-col gap-0.5 border-t border-border py-2"
                   >
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium">{t.name}</span>
@@ -803,18 +803,18 @@ function MarketMapSection({
           )}
 
           {(map?.namedBy.length ?? 0) > 0 && (
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-2.5 sm:only:col-span-2">
               <div className="flex flex-col gap-0.5">
                 <h4 className="m-0 text-sm font-semibold tracking-tight">Named by</h4>
                 <span className="text-xs text-muted-foreground">
                   competitors you track that name them in public
                 </span>
               </div>
-              <ul className="m-0 flex list-none flex-col p-0">
+              <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(15rem,100%),1fr))] gap-x-6 p-0">
                 {(map?.namedBy ?? []).map((n) => (
                   <li
                     key={n.competitorId}
-                    className="flex flex-col gap-0.5 border-t border-border py-2 first:border-t-0 first:pt-0"
+                    className="flex flex-col gap-0.5 border-t border-border py-2"
                   >
                     <span className="text-sm font-medium">{n.competitorName}</span>
                     <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-muted-foreground">

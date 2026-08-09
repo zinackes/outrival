@@ -63,6 +63,7 @@ import { RescanMenu } from "./product-detail/rescan-menu";
 import { useScanPoll } from "./product-detail/use-scan-poll";
 import { ProductLead } from "./product-detail/product-lead";
 import { PriceLadder } from "./product-detail/price-ladder";
+import { ValueComparisonPanel } from "./product-detail/value-comparison-panel";
 import { ProductCompetitors } from "./product-detail/competitors-tab";
 
 // The reading tabs. Positioning leads because it is what the rest is measured
@@ -691,6 +692,10 @@ export function MyProductView({
               />
             </Card>
           )}
+          {/* Then what those prices buy (OUT-68): the ladder ranks entry prices,
+              this reads every rival's plan features against ours. Renders nothing
+              until both sides have a captured matrix. */}
+          {productId && <ValueComparisonPanel productId={productId} />}
           <PricingCard pricing={p.pricing} onSave={(pr) => patch({ pricing: pr })} />
         </TabsContent>
 

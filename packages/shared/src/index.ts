@@ -35,6 +35,7 @@ export * from "./positioning";
 export * from "./visibility-metrics";
 export * from "./editorial-metrics";
 export * from "./entitlement-diff";
+export * from "./entitlement-compare";
 export * from "./price-tier-diff";
 export * from "./credit-burn-diff";
 export * from "./regression-guard";

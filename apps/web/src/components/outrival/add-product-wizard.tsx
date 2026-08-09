@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeftIcon,
+  ArrowSquareOutIcon,
   CheckIcon,
   CircleIcon,
   FileTextIcon,
@@ -25,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -44,7 +46,8 @@ import { cn, isValidHttpUrl } from "@/lib/utils";
 // to be a bare name+URL insert, so the SKU landed unanalysed and Discovery was blocked
 // ("missing profile"). This wizard mirrors onboarding: pick a stage → derive a profile
 // (URL / description / repo / document) → edit it → create the product with the profile
-// seeded synchronously → kick off discovery for it → switch scope to it.
+// seeded synchronously → kick off discovery for it → pick the competitors to track →
+// switch scope to it.
 
 type Screen = "stage" | "input" | "profile" | "discover";
 
@@ -151,6 +154,72 @@ function DiscoverProgress() {
   );
 }
 
+// One selectable discovery result. Same anatomy as onboarding's competitor row
+// (checkbox, name + overlap, linked host, snippet) minus its per-row remove: nothing
+// is persisted here until "Track", so there is nothing to remove yet.
+function CandidateRow({
+  candidate,
+  checked,
+  disabled,
+  onToggle,
+}: {
+  candidate: CompetitorCandidate;
+  checked: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  const host = candidate.url.replace(/^https?:\/\//, "");
+  return (
+    <li
+      className={cn(
+        "flex items-start gap-3 px-3 py-2.5 transition-colors",
+        disabled ? "opacity-50" : "cursor-pointer hover:bg-surface-2",
+        checked && "bg-primary/5",
+      )}
+      onClick={() => {
+        if (!disabled) onToggle();
+      }}
+      title={
+        disabled
+          ? "No competitor seat left on your plan"
+          : (candidate.reason ?? undefined)
+      }
+    >
+      <Checkbox
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onToggle}
+        onClick={(e) => e.stopPropagation()}
+        className="mt-0.5"
+        aria-label={`Track ${candidate.title ?? host}`}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="truncate text-sm font-medium">{candidate.title ?? host}</span>
+          {candidate.overlapScore != null && candidate.overlapScore > 0 && (
+            <span className="text-meta rounded border border-border px-1.5 py-0.5 text-muted-foreground tabular-nums">
+              {Math.round(candidate.overlapScore)}%
+            </span>
+          )}
+        </div>
+        <a
+          href={candidate.url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="text-meta mt-0.5 inline-flex max-w-full items-center gap-1 font-mono text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <span className="truncate">{host}</span>
+          <ArrowSquareOutIcon size={14} className="shrink-0" />
+        </a>
+        {candidate.snippet && (
+          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{candidate.snippet}</p>
+        )}
+      </div>
+    </li>
+  );
+}
+
 export function AddProductWizard({
   open,
   onOpenChange,
@@ -188,9 +257,15 @@ export function AddProductWizard({
   // found yet") while the search was still in flight. That is the "it says there are
   // none before it even looked" report.
   const [discoverPhase, setDiscoverPhase] = useState<"idle" | "searching" | "done">("idle");
-  // What discovery actually put in the review queue, so the modal shows the companies
-  // instead of only counting them (onboarding lists them).
-  const [preview, setPreview] = useState<CompetitorCandidate[]>([]);
+  // Everything discovery put in the review queue — the whole list, not a preview slice:
+  // this step selects competitors like onboarding's does, so truncating it would hide
+  // choices the user is being asked to make.
+  const [candidates, setCandidates] = useState<CompetitorCandidate[]>([]);
+  // Competitor seats left on the plan, straight from the queue endpoint. Caps how many
+  // rows can be checked here, so the selection can't promise more than the plan allows.
+  const [seats, setSeats] = useState<{ used: number; limit: number } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [tracking, setTracking] = useState(false);
 
   function reset() {
     setScreen("stage");
@@ -207,11 +282,14 @@ export function AddProductWizard({
     setDetected(null);
     setDiscoverError(null);
     setDiscoverPhase("idle");
-    setPreview([]);
+    setCandidates([]);
+    setSeats(null);
+    setSelected(new Set());
+    setTracking(false);
   }
 
   function close() {
-    if (busy) return;
+    if (busy || tracking) return;
     onOpenChange(false);
     // Defer reset so the closing animation doesn't flash the first screen.
     setTimeout(reset, 150);
@@ -314,13 +392,26 @@ export function AddProductWizard({
       const { detected } = await api.detectCandidates(pid);
       setDetected(detected);
       if (detected > 0) {
-        // Read back what landed in the review queue so the modal can name the
-        // companies rather than only count them. Purely cosmetic: a failure here
-        // leaves the count, which is still true.
-        const { candidates } = await api
-          .listCandidates("new", pid)
-          .catch(() => ({ candidates: [] as CompetitorCandidate[] }));
-        setPreview(candidates.slice(0, 5));
+        // Read back the review queue so this step can list AND select the companies,
+        // like onboarding's discover step. A failure here degrades to the count alone,
+        // which is still true — the Discovery page then does the selecting.
+        const res = await api.listCandidates("new", pid).catch(() => null);
+        if (res) {
+          const ranked = [...res.candidates].sort(
+            (a, b) => (b.overlapScore ?? 0) - (a.overlapScore ?? 0),
+          );
+          setCandidates(ranked);
+          setSeats(res.seats);
+          // Pre-check the strong matches up to the free seats — same rule as
+          // onboarding, so the common case is one click.
+          const free = Math.max(0, res.seats.limit - res.seats.used);
+          const picks = new Set<string>();
+          for (const c of ranked) {
+            if (picks.size >= free) break;
+            if ((c.overlapScore ?? 0) > 60) picks.add(c.id);
+          }
+          setSelected(picks);
+        }
       }
     } catch (e) {
       // A client timeout doesn't cancel the server: discovery keeps running and
@@ -338,6 +429,66 @@ export function AddProductWizard({
     } finally {
       setDiscoverPhase("done");
     }
+  }
+
+  const seatsFree = seats ? Math.max(0, seats.limit - seats.used) : null;
+  const atSeatLimit = seatsFree !== null && selected.size >= seatsFree;
+
+  function toggleCandidate(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Track the checked candidates for this product. Sequential on purpose: the seat
+  // quota is re-checked server-side on every add, so a parallel burst would race it
+  // and overshoot the plan cap. A refusal stops the loop and keeps the modal open on
+  // what is left, rather than silently dropping the rest.
+  async function trackSelected() {
+    const ids = candidates.filter((c) => selected.has(c.id)).map((c) => c.id);
+    if (ids.length === 0) return;
+    setTracking(true);
+    let added = 0;
+    let stopped = false;
+    try {
+      for (const id of ids) {
+        try {
+          await api.addCandidate(id);
+        } catch (e) {
+          if (e instanceof ApiError && e.code === "plan_limit_competitors") {
+            toast.error(`You've reached your plan's competitor limit (${e.data.limit}).`, {
+              description: "The others stay in Discovery, ready when you upgrade.",
+            });
+          } else {
+            toastApiError(e, { title: "Couldn't track every competitor" });
+          }
+          stopped = true;
+          break;
+        }
+        added += 1;
+        setCandidates((prev) => prev.filter((c) => c.id !== id));
+        setSelected((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        setSeats((prev) => (prev ? { ...prev, used: prev.used + 1 } : prev));
+      }
+    } finally {
+      setTracking(false);
+    }
+    if (added > 0) {
+      void queryClient.invalidateQueries({ queryKey: ["competitors"] });
+      void queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      toast.success(
+        `${added} competitor${added > 1 ? "s" : ""} now tracked for ${name.trim() || "this product"}`,
+        { description: "Their homepage, pricing and blog are being captured now." },
+      );
+    }
+    if (!stopped) finish("dashboard");
   }
 
   // Finish: switch the active scope to the new product and navigate.
@@ -612,39 +763,50 @@ export function AddProductWizard({
                 <p className="py-6 text-center text-sm text-muted-foreground">{discoverError}</p>
               ) : detected && detected > 0 ? (
                 <div className="flex flex-col gap-3">
-                  <p className="text-content font-medium">
-                    Found {detected} competitor{detected > 1 ? "s" : ""} to review
-                  </p>
-                  {preview.length > 0 && (
-                    <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
-                      {preview.map((c) => (
-                        <li key={c.id} className="flex items-start gap-3 px-3 py-2.5">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="truncate text-sm font-medium">
-                                {c.title ?? c.url.replace(/^https?:\/\//, "")}
-                              </span>
-                              {c.overlapScore != null && c.overlapScore > 0 && (
-                                <span className="text-meta rounded border border-border px-1.5 py-0.5 text-muted-foreground tabular-nums">
-                                  {Math.round(c.overlapScore)}%
-                                </span>
-                              )}
-                            </div>
-                            {c.snippet && (
-                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                                {c.snippet}
-                              </p>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className="text-content font-medium">
+                      Found {detected} competitor{detected > 1 ? "s" : ""}
+                    </p>
+                    {candidates.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        <span className="tabular-nums text-foreground">{selected.size}</span>
+                        {seatsFree !== null && (
+                          <>
+                            {" / "}
+                            <span className="tabular-nums text-foreground">{seatsFree}</span>
+                          </>
+                        )}{" "}
+                        selected
+                      </p>
+                    )}
+                  </div>
+                  {candidates.length > 0 ? (
+                    <>
+                      <ul className="flex max-h-[42vh] flex-col divide-y divide-border overflow-y-auto rounded-lg border border-border">
+                        {candidates.map((c) => (
+                          <CandidateRow
+                            key={c.id}
+                            candidate={c}
+                            checked={selected.has(c.id)}
+                            disabled={tracking || (atSeatLimit && !selected.has(c.id))}
+                            onToggle={() => toggleCandidate(c.id)}
+                          />
+                        ))}
+                      </ul>
+                      <p className="text-sm text-muted-foreground">
+                        {seatsFree === 0
+                          ? `Your plan's ${seats!.limit} competitor seats are all in use. These stay in Discovery until you upgrade.`
+                          : atSeatLimit
+                            ? `That's every free seat of your plan's ${seats!.limit}. The rest stay in Discovery.`
+                            : "Checked ones start being monitored for this product. The rest stay in Discovery."}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Review them on the Discovery page and add the ones that matter to this
+                      product.
+                    </p>
                   )}
-                  <p className="text-sm text-muted-foreground">
-                    {detected > preview.length
-                      ? `Review all ${detected} and add the ones that matter to this product.`
-                      : "Review and add the ones that matter to this product."}
-                  </p>
                 </div>
               ) : (
                 // Only reachable once the search actually resolved with zero rows. A
@@ -663,12 +825,26 @@ export function AddProductWizard({
               )}
             </div>
             <DialogFooter className="sm:justify-between">
-              <Button variant="ghost" onClick={() => finish("dashboard")}>
+              <Button variant="ghost" onClick={() => finish("dashboard")} disabled={tracking}>
                 Go to dashboard
               </Button>
-              <Button onClick={() => finish("discovery")}>
-                {detected && detected > 0 ? "Review competitors" : "Open Discovery"}
-              </Button>
+              {candidates.length > 0 ? (
+                <div className="flex gap-2">
+                  <Button variant="ghost" onClick={() => finish("discovery")} disabled={tracking}>
+                    Review in Discovery
+                  </Button>
+                  <Button onClick={trackSelected} disabled={tracking || selected.size === 0}>
+                    {tracking && <SpinnerIcon size={16} className="mr-1 animate-spin" />}
+                    {selected.size > 0
+                      ? `Track ${selected.size} competitor${selected.size > 1 ? "s" : ""}`
+                      : "Track competitors"}
+                  </Button>
+                </div>
+              ) : (
+                <Button onClick={() => finish("discovery")}>
+                  {detected && detected > 0 ? "Review competitors" : "Open Discovery"}
+                </Button>
+              )}
             </DialogFooter>
           </>
         )}

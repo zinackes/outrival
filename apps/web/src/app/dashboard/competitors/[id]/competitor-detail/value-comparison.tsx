@@ -7,14 +7,13 @@ import {
   compareEntitlements,
   compareSummaryLines,
   formatPrice,
-  monthlyEquivalent,
-  normalizePlanKey,
   type EntitlementRow,
   type FeatureComparisonRow,
   type FeatureSide,
 } from "@outrival/shared";
 import { api, type MyProductPricingTier, type PricingHistoryPoint } from "@/lib/api";
-import { convertCurrency, useFx } from "@/lib/fx";
+import { useFx } from "@/lib/fx";
+import { planMonthlyMap } from "@/lib/plan-monthly";
 import { productsListQuery } from "@/lib/queries";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { TabSection } from "@/components/outrival/tab-shell";
@@ -207,45 +206,4 @@ function limitPhrase(side: FeatureSide): string | null {
     return `${side.valueNum.toLocaleString("en-US")}${side.unit ? ` ${side.unit}` : ""}`;
   }
   return side.valueText ?? null;
-}
-
-type PriceRow = { plan_name: string; price: number | null; currency: string; billing_period: string };
-
-/**
- * plan key → monthly price in the display currency. A plan we cannot express as
- * a monthly number (one-off, usage rate, unconvertible currency) maps to null,
- * which the comparison reads as quote-based: it shows the plan and declines the
- * delta rather than comparing a yearly total against a monthly one.
- */
-function planMonthlyMap(
-  tiers: readonly PriceRow[],
-  displayCurrency: string,
-  rates: Record<string, number> | null,
-): Map<string, number | null> {
-  const out = new Map<string, number | null>();
-  for (const tier of tiers) {
-    const key = normalizePlanKey(tier.plan_name);
-    const monthly =
-      tier.price == null
-        ? null
-        : monthlyEquivalent({
-            planName: tier.plan_name,
-            price: tier.price,
-            currency: tier.currency,
-            billingPeriod: tier.billing_period,
-          });
-    const converted =
-      monthly == null
-        ? null
-        : tier.currency === displayCurrency
-          ? monthly
-          : convertCurrency(monthly, tier.currency, displayCurrency, rates);
-    const previous = out.get(key);
-    if (converted == null) {
-      if (!out.has(key)) out.set(key, null);
-      continue;
-    }
-    out.set(key, previous == null ? converted : Math.min(previous, converted));
-  }
-  return out;
 }

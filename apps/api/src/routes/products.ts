@@ -674,6 +674,121 @@ productsRouter.get("/:id/pricing-position", async (c) => {
   });
 });
 
+// Latest entitlement batch per competitor, same `distinct on the newest batch`
+// read as the pricing one. Latest only: the product view compares companies, not
+// captures, so it has no "what changed" job to do.
+interface EntitlementCellRow {
+  competitor_id: string;
+  plan_name: string;
+  feature_slug: string;
+  feature_label: string;
+  kind: string;
+  value_num: number | null;
+  value_text: string | null;
+  unit: string | null;
+  reset_period: string | null;
+  is_canonical: boolean;
+}
+
+async function latestEntitlementsByCompetitor(
+  ids: string[],
+): Promise<Map<string, EntitlementCellRow[]>> {
+  const byCompetitor = new Map<string, EntitlementCellRow[]>();
+  if (ids.length === 0) return byCompetitor;
+  const idList = analyticsSql.join(
+    ids.map((id) => analyticsSql`${id}`),
+    analyticsSql`, `,
+  );
+  // Best-effort like the pricing read: entitlements are analytics, so a failure
+  // degrades the panel to "no matrix captured" instead of failing the page.
+  const rows = await analyticsQuery<EntitlementCellRow>(analyticsSql`
+    WITH latest AS (
+      SELECT competitor_id, max(recorded_at) AS rid
+      FROM plan_entitlements
+      WHERE competitor_id IN (${idList})
+      GROUP BY competitor_id
+    )
+    SELECT pe.competitor_id, pe.plan_name, pe.feature_slug, pe.feature_label, pe.kind,
+           pe.value_num, pe.value_text, pe.unit, pe.reset_period,
+           (pe.is_canonical = 1) AS is_canonical
+    FROM plan_entitlements pe
+    JOIN latest l ON l.competitor_id = pe.competitor_id AND pe.recorded_at = l.rid
+    ORDER BY pe.plan_name, pe.feature_label
+  `);
+  for (const r of rows) {
+    const arr = byCompetitor.get(r.competitor_id) ?? [];
+    arr.push(r);
+    byCompetitor.set(r.competitor_id, arr);
+  }
+  return byCompetitor;
+}
+
+/**
+ * GET /api/products/:id/value-comparison — what each price buys, ours and every
+ * tracked rival's, feature by feature (OUT-68).
+ *
+ * Both halves of a comparison travel together: the captured feature matrix AND
+ * the plan prices the matrix hangs off, both read the same way on both sides
+ * (latest batch → the user's overrides). Sending the matrix alone would leave the
+ * client to pair a feature with a price from a different resolution path, which
+ * is exactly how a cell ends up naming a plan at a price that plan never had.
+ *
+ * The derivation itself is client-side and pure (`compareEntitlements`), so this
+ * route stays a read: no AI, no verdicts, nothing this endpoint decides.
+ */
+productsRouter.get("/:id/value-comparison", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const product = await liveOwnedProduct(c.req.param("id"), orgId);
+  if (!product) return c.json({ error: "Not found" }, 404);
+
+  const linked = await db
+    .select({
+      competitorId: competitors.id,
+      name: competitors.name,
+      overrides: competitors.overrides,
+    })
+    .from(productCompetitors)
+    .innerJoin(competitors, eq(competitors.id, productCompetitors.competitorId))
+    .where(and(eq(productCompetitors.productId, product.id), isNull(competitors.deletedAt)));
+
+  const self = await db.query.competitors.findFirst({
+    where: eq(competitors.id, product.selfCompetitorId),
+    columns: { id: true, name: true, overrides: true },
+  });
+
+  const ids = [...linked.map((l) => l.competitorId), ...(self ? [self.id] : [])];
+  const [pricingByCompetitor, entitlementsByCompetitor] = await Promise.all([
+    latestPricingByCompetitor(ids),
+    latestEntitlementsByCompetitor(ids),
+  ]);
+
+  // snake_case on the way out, the shape the web's pricing rows already carry, so
+  // the panel builds its plan → monthly map with one function for both sides.
+  const plansOf = (id: string, overrides: unknown) =>
+    resolveCurrentPricing(
+      pricingByCompetitor.get(id) ?? [],
+      (overrides as Parameters<typeof resolveCurrentPricing>[1]) ?? null,
+    ).map((t) => ({
+      plan_name: t.planName,
+      price: t.price,
+      currency: t.currency,
+      billing_period: t.billingPeriod,
+    }));
+
+  return c.json({
+    self: self
+      ? { id: self.id, name: self.name, plans: plansOf(self.id, self.overrides), cells: entitlementsByCompetitor.get(self.id) ?? [] }
+      : null,
+    competitors: linked.map((l) => ({
+      id: l.competitorId,
+      name: l.name,
+      plans: plansOf(l.competitorId, l.overrides),
+      cells: entitlementsByCompetitor.get(l.competitorId) ?? [],
+    })),
+  });
+});
+
 const publicUrl = () =>
   z
     .string()

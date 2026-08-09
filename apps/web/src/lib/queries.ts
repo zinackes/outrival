@@ -319,6 +319,14 @@ export function productDetailQuery(id: string) {
   });
 }
 
+// What each price buys: our captured feature matrix and every rival's (Pricing tab).
+export function productValueComparisonQuery(id: string) {
+  return queryOptions({
+    queryKey: ["products", "value-comparison", id] as const,
+    queryFn: () => api.getProductValueComparison(id),
+  });
+}
+
 // Where a product's entry price sits against its tracked competitors (Pricing tab).
 export function productPricingPositionQuery(id: string) {
   return queryOptions({

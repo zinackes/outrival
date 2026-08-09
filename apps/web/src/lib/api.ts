@@ -1052,6 +1052,15 @@ export interface EntitlementCell {
   recorded_at: string;
 }
 
+/** One side of the product-level value comparison: a captured matrix and the
+ * plan prices it hangs off, resolved the same way for us and for every rival. */
+export interface ValueComparisonSide {
+  id: string;
+  name: string;
+  plans: MyProductPricingTier[];
+  cells: Omit<EntitlementCell, "recorded_at">[];
+}
+
 export interface SignalDetail {
   id: string;
   insight: string;
@@ -3544,6 +3553,11 @@ export const api = {
       previous: EntitlementCell[];
       recordedAt: string | null;
     }>(`/api/competitors/${id}/entitlements`),
+  // What each price buys, ours against every rival tracked on this product.
+  getProductValueComparison: (id: string) =>
+    request<{ self: ValueComparisonSide | null; competitors: ValueComparisonSide[] }>(
+      `/api/products/${id}/value-comparison`,
+    ),
   // Per-plan pricing overlay: the latest detected batch, the user's overrides, and
   // the resolved current plans (detected + overlay merged) with provenance/drift.
   getCompetitorPricingPlans: (id: string) =>

@@ -209,6 +209,7 @@ function enrich(competitors: Competitor[]) {
     const stats = c.stats ?? {
       signals7d: 0,
       signalsPrev: 0,
+      unread: 0,
       lastSignalAt: null,
       categoryCounts: {},
     };

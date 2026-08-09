@@ -369,6 +369,10 @@ export function SignalsView() {
       const res = await api.markAllSignalsRead(feedParams);
       queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
       queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
+      // The sidebar roster carries a per-competitor unread count off the same rows.
+      // It polls at 60s, which is fine for a signal read one at a time — but "mark
+      // all read" is a deliberate zeroing, so it must not keep a stale count.
+      queryClient.invalidateQueries({ queryKey: ["competitors"] });
       if (res.count === 0) return;
       const flipped = res.ids;
       toast.success(
@@ -383,6 +387,7 @@ export function SignalsView() {
                     .then(() => {
                       queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
                       queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
+                      queryClient.invalidateQueries({ queryKey: ["competitors"] });
                     })
                     .catch(() => toast.error("Couldn't undo. Some signals stay read."));
                 },
@@ -586,6 +591,7 @@ export function SignalsView() {
     try {
       await api.setSignalsRead(ids, read);
       queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
+      queryClient.invalidateQueries({ queryKey: ["competitors"] });
     } catch {
       toast.error("Couldn't update those signals. Try again.");
       queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });

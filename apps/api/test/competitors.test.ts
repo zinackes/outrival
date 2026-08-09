@@ -226,6 +226,9 @@ describe("GET /competitors roster projection", () => {
 
     expect(item?.latestMove?.insight).toBe("an old move");
     expect(item?.stats.signals7d).toBe(0);
+    // Unread is all-time, not windowed like signals7d: a 30 day old signal nobody
+    // opened is still waiting to be read, and the sidebar count must say so.
+    expect(item?.stats.unread).toBe(1);
     expect((item?.activity as number[]).every((n) => n === 0)).toBe(true);
     expect(item?.coverage).toEqual({
       sources: 1,

@@ -13,7 +13,9 @@ import { OnboardingForm } from "./onboarding-form";
 
 export const metadata: Metadata = {
   title: "Onboarding",
-  description: "Set up your competitive intelligence in 5 steps.",
+  // No step count here: the wizard owns it, and a hardcoded number in metadata is
+  // how "5 steps" ended up describing a flow the progress bar called "1 of 3".
+  description: "Set up your competitive intelligence.",
   robots: { index: false, follow: false },
 };
 

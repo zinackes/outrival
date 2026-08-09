@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "@/lib/toast";
@@ -9,12 +9,14 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   CheckIcon,
-  CaretDownIcon,
+  DotsThreeIcon,
   ArrowSquareOutIcon,
+  EyeIcon,
   FileTextIcon,
   GitBranchIcon,
   GlobeIcon,
   LightbulbIcon,
+  PencilSimpleLineIcon,
   SpinnerIcon,
   LockIcon,
   SignOutIcon,
@@ -30,7 +32,6 @@ import {
   detectTemporaryUrl,
   DISCOVERY_REGIONS,
   inferRegionFromUrl,
-  type AnalysisStage,
   type Plan,
 } from "@outrival/shared";
 import {
@@ -71,14 +72,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { analysisStageMeta } from "@/components/outrival/analysis-status";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
-type Screen = "stage" | "input" | "profile" | "discover" | "done";
+type Screen = "stage" | "input" | "profile" | "discover";
 type SourceType = "homepage" | "pricing" | "blog";
 type Frequency = "daily" | "weekly";
 
@@ -86,12 +96,22 @@ interface Selection extends DiscoveredCompetitor {
   selected: boolean;
 }
 
+// One screen, one step. The previous map counted "stage" and "input" as the same
+// step — so the very first choice moved nothing — and gave the finished flow a
+// step number of its own. Naming the four steps replaces the bare "Step 1 of 3":
+// position was the only thing the old bar could answer, never "of what".
+const SETUP_STEPS = [
+  "Where you are",
+  "Your product",
+  "What we read",
+  "Competitors",
+] as const;
+
 const SCREEN_TO_STEP: Record<Screen, number> = {
   stage: 1,
-  input: 1,
-  profile: 2,
-  discover: 3,
-  done: 3,
+  input: 2,
+  profile: 3,
+  discover: 4,
 };
 
 const STAGE_META: Record<
@@ -126,6 +146,23 @@ const LOADING_MESSAGE: Record<ProjectStage, string> = {
   developing: "Reading your repo…",
   live: "Analyzing your site…",
 };
+
+// The two long waits (3 to 15s, then 15 to 30s) used to be a spinner inside the
+// primary button plus a duration hint. Naming the work says what is happening
+// rather than only that something is. The last step holds until the real answer
+// lands, so the list never claims to be finished before the work is.
+const ANALYZE_STEPS: Record<ProjectStage, readonly string[]> = {
+  idea: ["Reading your description", "Placing it in a category", "Writing your product profile"],
+  document: ["Extracting the text", "Reading your document", "Writing your product profile"],
+  developing: ["Opening the repo", "Reading the code and the README", "Writing your product profile"],
+  live: ["Fetching your site", "Reading the page", "Writing your product profile"],
+};
+
+const DISCOVERY_STEPS = [
+  "Searching your market",
+  "Scoring how much each one overlaps",
+  "Checking every site is reachable",
+] as const;
 
 // Functional categories (what a product does), not business-model labels. The old
 // list ("B2B SaaS", "DevTools"…) nudged every idea toward the same generic bucket,
@@ -255,7 +292,11 @@ export function OnboardingForm({
   const [stage, setStage] = useState<ProjectStage | null>(initialStage);
   const [busy, setBusy] = useState<null | "analyze" | "discover" | "complete">(null);
   const [error, setError] = useState<string | null>(null);
-  const [fallbackOffer, setFallbackOffer] = useState<{ prefill: string } | null>(null);
+  // The fallback offer carries its own sentence: it used to arrive as a toast on
+  // top of a card, which put the reason and the way out in two places at once.
+  const [fallbackOffer, setFallbackOffer] = useState<{ prefill: string; message: string } | null>(
+    null,
+  );
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
 
   // Mode inputs (1-bis) — kept across back navigation within the same session.
@@ -323,7 +364,8 @@ export function OnboardingForm({
 
   // Persist progress on each screen transition (fire-and-forget). Mirrors the
   // step onto both the org (routing gate) and the onboarding session (resume +
-  // metrics). "done" isn't a session stage — /complete flips it to analysis.
+  // metrics). Every Screen is a real session stage now that "done" is gone, so
+  // the transition no longer needs a guard for the one that wasn't.
   const goTo = useCallback(
     (next: Screen) => {
       setError(null);
@@ -334,10 +376,7 @@ export function OnboardingForm({
       void api.patchOnboardingProgress(next as OnboardingStep).catch(() => {});
       // The wizard's first screen ("stage", project-stage pick) is the session's
       // "started" stage; the other screens share their literal name with the stage.
-      // "done" isn't a session stage — /complete flips it to analysis.
-      if (next !== "done") {
-        void updateSession({ stage: next === "stage" ? "started" : next });
-      }
+      void updateSession({ stage: next === "stage" ? "started" : next });
     },
     [updateSession],
   );
@@ -402,8 +441,10 @@ export function OnboardingForm({
 
   function handleAnalyzeError(e: unknown, prefill: string) {
     if (fallbackFromError(e)) {
-      toast.error(unreadableDocumentMessage(e) ?? "Automatic analysis didn't work out.");
-      setFallbackOffer({ prefill });
+      setFallbackOffer({
+        prefill,
+        message: unreadableDocumentMessage(e) ?? "Automatic analysis didn't work out.",
+      });
       return;
     }
     setError(extractMessage(e));
@@ -623,11 +664,14 @@ export function OnboardingForm({
     }
   }, [screen, competitors.length, profile, busy, discoveryDisabled, committedUrl, region, runDiscovery]);
 
-  // Change the market from the discover step → freeze the auto-default and re-run.
+  // The market is asked for on the profile screen, before the first search. It used
+  // to sit on the competitor screen, where changing it re-ran discovery and replaced
+  // the list wholesale: manual additions and every checkbox went with it, silently.
+  // Asked here there is nothing curated to lose — the background prefetch re-keys on
+  // the new market and confirming picks that result up.
   function changeRegion(next: string | null) {
     regionTouched.current = true;
     setRegion(next);
-    if (profile) void runDiscovery(profile, committedUrl, next);
   }
 
   // ── Step 3 helpers ─────────────────────────────────────────────────────
@@ -746,7 +790,19 @@ export function OnboardingForm({
       void updateSession({
         timings: { [milestoneKey(ONBOARDING_EVENTS.COMPETITORS_FINALIZED)]: Date.now() },
       });
-      setScreen("done");
+      // No completion screen. /complete already flipped the org to
+      // onboardingCompleted + step "done", so the page gate sends any return visit
+      // straight to the dashboard — where OnboardingAnalysisPanel renders the very
+      // progress this wizard used to poll for on a screen with nothing else on it.
+      // `busy` deliberately stays set: the button holds its pending state until the
+      // route actually changes.
+      trackOnboarding(ONBOARDING_EVENTS.REDIRECT_TO_DASHBOARD, sessionId);
+      toast.success(
+        selected.length === 1
+          ? "Setup complete. We're reading your competitor now."
+          : `Setup complete. We're reading your ${selected.length} competitors now.`,
+      );
+      router.push("/dashboard");
     } catch (e) {
       const reason = paywallFromError(e);
       if (reason) setPaywall(reason);
@@ -757,45 +813,66 @@ export function OnboardingForm({
 
   const currentStep = SCREEN_TO_STEP[screen];
 
-  return (
-    <div className="relative min-h-screen flex flex-col bg-background">
-      {/* Ambient accent glow, matching the /auth surface — the welcome moment a
-          first-run flow is licensed to have. Rationed, aria-hidden, behind content. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 overflow-hidden"
-      >
-        <div className="absolute left-1/2 top-[-40%] size-[640px] -translate-x-1/2 rounded-full bg-primary/[0.07] blur-[140px]" />
-      </div>
+  // One slot for recoverable problems, rendered by each screen under its own
+  // heading. Five containers could say something went wrong, in three visual
+  // languages, and two of them stacked above the title and pushed the content
+  // down. The paywall keeps its dialog: it is the one that can't be resolved here.
+  const notice = error ? (
+    <Notice tone="critical" onDismiss={() => setError(null)}>
+      {error}
+    </Notice>
+  ) : fallbackOffer ? (
+    <Notice
+      icon={SparkleIcon}
+      onDismiss={() => setFallbackOffer(null)}
+      action={
+        <Button size="sm" onClick={acceptDescriptionFallback}>
+          Describe it instead
+        </Button>
+      }
+    >
+      {fallbackOffer.message}
+    </Notice>
+  ) : null;
 
+  // Continuity between screens: each one opens by echoing the answer it was built
+  // from, so a step reads as the next move rather than a new page.
+  const sourceEcho = !stage
+    ? null
+    : stage === "live" && committedUrl
+      ? committedUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")
+      : stage === "developing"
+        ? repoUrl.replace(/^https?:\/\/(www\.)?github\.com\//, "").replace(/\/$/, "")
+        : stage === "document"
+          ? (file?.name ?? "your document")
+          : "your description";
+
+  const regionLabel =
+    DISCOVERY_REGIONS.find((r) => r.code === region)?.label ?? "Global (no preference)";
+
+  return (
+    // Flat canvas. The ambient glow that used to sit here was clipped to h-72 by an
+    // overflow-hidden wrapper, which cuts a 140px blur mid-gradient and leaves a
+    // straight seam across the page — it read as a rendering fault, not atmosphere.
+    <div className="min-h-screen flex flex-col bg-background">
       <Header
+        step={currentStep}
         onSignOut={handleSignOut}
         onRestart={restart}
         onSkip={handleSkip}
-        showControls={screen !== "done"}
       />
 
-      <main className="relative z-10 flex-1 mx-auto w-full max-w-3xl px-4 sm:px-8 py-8 sm:py-12">
-        {screen !== "done" && <ProgressBar step={currentStep} />}
-
-        {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
-
-        {fallbackOffer && (
-          <FallbackOffer
-            onAccept={acceptDescriptionFallback}
-            onDismiss={() => setFallbackOffer(null)}
-          />
-        )}
-
+      <main className="flex-1 mx-auto w-full max-w-3xl px-4 sm:px-8 py-8 sm:py-12">
         <div
           key={screen}
-          className="mt-8 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200 motion-safe:ease-out"
+          className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200 motion-safe:ease-out"
         >
-          {screen === "stage" && <StageChooser onChoose={chooseStage} current={stage} />}
+          {screen === "stage" && <StageChooser onChoose={chooseStage} notice={notice} />}
 
           {screen === "input" && stage && (
             <ModeForm
               stage={stage}
+              notice={notice}
               busy={busy === "analyze"}
               onAnalyze={analyze}
               onBack={() => goTo("stage")}
@@ -819,6 +896,8 @@ export function OnboardingForm({
             <ProfileForm
               profile={profile}
               setProfile={setProfile}
+              notice={notice}
+              sourceEcho={sourceEcho}
               onConfirm={handleProfileConfirm}
               onBack={() => goTo("input")}
               busy={busy === "discover"}
@@ -827,18 +906,23 @@ export function OnboardingForm({
               productName={productName}
               setProductName={setProductName}
               askName={committedUrl === null}
+              region={region}
+              onRegionChange={changeRegion}
             />
           )}
 
           {screen === "discover" && (
             <DiscoverStep
               competitors={competitors}
+              notice={notice}
+              categoryEcho={profile?.category ?? null}
+              regionLabel={regionLabel}
               busy={busy === "discover"}
               completing={busy === "complete"}
               selectedCount={selectedCount}
               maxCompetitors={maxCompetitors}
-              region={region}
-              onRegionChange={changeRegion}
+              frequency={frequency}
+              sources={sources}
               toggleCompetitor={toggleCompetitor}
               removeCompetitor={removeCompetitor}
               manualUrl={manualUrl}
@@ -850,16 +934,6 @@ export function OnboardingForm({
             />
           )}
 
-          {screen === "done" && (
-            <DoneStep
-              totalCompetitors={selectedCount}
-              plan={plan}
-              onDashboard={() => {
-                trackOnboarding(ONBOARDING_EVENTS.REDIRECT_TO_DASHBOARD, sessionId);
-                router.push("/dashboard");
-              }}
-            />
-          )}
         </div>
       </main>
 
@@ -870,111 +944,265 @@ export function OnboardingForm({
 
 // ── Shell ──────────────────────────────────────────────────────────────────
 
+// The header used to carry three ghost buttons on every screen, one of them a
+// destructive Restart four pixels from the button that saves progress. Brand,
+// progress and a single overflow menu now: the flow's own controls are the only
+// thing competing for a click.
 function Header({
+  step,
   onSignOut,
   onRestart,
   onSkip,
-  showControls,
 }: {
+  step: number;
   onSignOut: () => void | Promise<void>;
   onRestart: () => void;
   onSkip: () => void | Promise<void>;
-  showControls: boolean;
 }) {
+  const [confirmRestart, setConfirmRestart] = useState(false);
+
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/65">
-      <div className="mx-auto max-w-3xl px-4 sm:px-8 h-14 flex items-center justify-between">
-        <Link href="/" className="text-base font-semibold font-[var(--font-display)] tracking-tight">
+      <div className="mx-auto flex h-14 max-w-3xl items-center gap-4 px-4 sm:px-8">
+        <Link
+          href="/"
+          className="shrink-0 text-base font-semibold font-[var(--font-display)] tracking-tight"
+        >
           <span className="text-foreground">out</span>
           <span className="text-primary">rival</span>
         </Link>
-        <div className="flex items-center gap-1">
-          {showControls && (
-            <>
-              <Button variant="ghost" size="sm" onClick={onRestart}>
-                <ArrowCounterClockwiseIcon size={16} /> <span className="hidden sm:inline">Restart</span>
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => void onSkip()}>
-                <SignOutIcon size={16} /> <span className="hidden sm:inline">Leave for now</span>
-              </Button>
-            </>
-          )}
-          <Button variant="ghost" size="sm" onClick={() => void onSignOut()}>
-            Sign out
-          </Button>
-        </div>
+
+        <HeaderSteps step={step} />
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0"
+              aria-label="Setup options"
+            >
+              <DotsThreeIcon size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem onSelect={() => setConfirmRestart(true)}>
+              <ArrowCounterClockwiseIcon size={16} /> Start over
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void onSkip()}>
+              <SignOutIcon size={16} /> Leave for now
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => void onSignOut()}>Sign out</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
+
+      {/* Restart discards every answer given so far, so it asks first. */}
+      <Dialog open={confirmRestart} onOpenChange={setConfirmRestart}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Start over?</DialogTitle>
+            <DialogDescription>
+              This clears the starting point you picked, the profile we extracted from your
+              product and the competitors on screen. Your account and your plan are untouched.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmRestart(false)}>
+              Keep going
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setConfirmRestart(false);
+                onRestart();
+              }}
+            >
+              Start over
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </header>
   );
 }
 
-function ProgressBar({ step }: { step: number }) {
+// Progress lives in the header rather than at the top of the content column, so
+// it stays on screen while a step scrolls. Below md the four labels don't fit,
+// and a truncated name is worse than a number: the bar keeps position there and
+// the count keeps the total.
+function HeaderSteps({ step }: { step: number }) {
+  const total = SETUP_STEPS.length;
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-muted-foreground">
-          Set up in under 3 minutes
-        </span>
-        <span className="text-xs text-muted-foreground">
-          Step <span className="text-foreground tabular-nums">{step}</span> of{" "}
-          <span className="tabular-nums">3</span>
+    <div className="min-w-0 flex-1">
+      <div className="flex items-center gap-2 md:hidden">
+        <div className="flex flex-1 gap-1" aria-hidden>
+          {SETUP_STEPS.map((label, i) => (
+            <span
+              key={label}
+              className={cn(
+                "h-0.5 flex-1 rounded-full transition-colors duration-300",
+                i < step ? "bg-primary" : "bg-stroke",
+              )}
+            />
+          ))}
+        </div>
+        <span className="shrink-0 text-meta text-muted-foreground tabular-nums">
+          {step}/{total}
         </span>
       </div>
-      <div className="flex gap-1.5">
-        {[1, 2, 3].map((n) => (
-          <div
-            key={n}
-            className={cn(
-              "h-1 flex-1 rounded-full transition-colors duration-300",
-              // "2 of 3" needs the unfilled steps to be countable, not implied.
-              n <= step ? "bg-primary" : "bg-stroke",
-            )}
-          />
-        ))}
-      </div>
+
+      <ol className="hidden items-center md:flex">
+        {SETUP_STEPS.map((label, i) => {
+          const n = i + 1;
+          const done = n < step;
+          const current = n === step;
+          return (
+            <li
+              key={label}
+              aria-current={current ? "step" : undefined}
+              className="flex min-w-0 items-center"
+            >
+              {i > 0 && <span aria-hidden className="mx-2 h-px w-4 shrink-0 bg-border" />}
+              <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+                {done ? (
+                  <CheckIcon size={14} className="text-primary" />
+                ) : (
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full transition-colors duration-300",
+                      current ? "bg-primary" : "bg-stroke",
+                    )}
+                  />
+                )}
+              </span>
+              <span
+                className={cn(
+                  "ml-2 truncate text-meta transition-colors",
+                  current ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
 
-function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+// One container for every recoverable problem, in one visual language, rendered
+// by each screen under its own heading. It replaces the error banner, the
+// fallback-offer card and the "no obvious competitors" card, which said the same
+// kind of thing in three different shapes. `critical` is a failure the user has
+// to read; the neutral tone carries an offer, which is information, not an error.
+function Notice({
+  children,
+  tone = "neutral",
+  icon: Icon = WarningCircleIcon,
+  action,
+  onDismiss,
+}: {
+  children: ReactNode;
+  tone?: "neutral" | "critical";
+  icon?: typeof WarningCircleIcon;
+  action?: ReactNode;
+  onDismiss?: () => void;
+}) {
+  const critical = tone === "critical";
   return (
     <div
-      role="alert"
-      className="mt-6 flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3"
+      role={critical ? "alert" : "status"}
+      className={cn(
+        "mt-5 flex items-start gap-3 rounded-md border px-4 py-3",
+        critical ? "border-destructive/40 bg-destructive/10" : "border-border-strong bg-surface-2/60",
+      )}
     >
-      <WarningCircleIcon size={16} className="mt-0.5 text-destructive shrink-0" />
-      <p className="flex-1 text-sm text-foreground">{message}</p>
-      <button
-        type="button"
-        onClick={onDismiss}
-        aria-label="Close"
-        className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <XIcon size={16} />
-      </button>
-    </div>
-  );
-}
-
-function FallbackOffer({ onAccept, onDismiss }: { onAccept: () => void; onDismiss: () => void }) {
-  return (
-    <div className="mt-6 flex items-start gap-3 rounded-md border border-border-strong bg-surface-2/60 px-4 py-3">
-      <SparkleIcon size={16} className="mt-0.5 text-foreground shrink-0" />
-      <div className="flex-1">
-        <p className="text-sm text-foreground">Describe your product in a few words instead.</p>
-        <div className="mt-2 flex gap-2">
-          <Button size="sm" onClick={onAccept}>
-            Continue in description mode
-          </Button>
-          <Button size="sm" variant="ghost" onClick={onDismiss}>
-            Try again
-          </Button>
-        </div>
+      <Icon
+        size={16}
+        className={cn("mt-0.5 shrink-0", critical ? "text-destructive" : "text-foreground")}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-foreground">{children}</p>
+        {action && <div className="mt-2 flex flex-wrap gap-2">{action}</div>}
       </div>
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <XIcon size={16} />
+        </button>
+      )}
     </div>
   );
 }
 
+// The answer the current screen was built from, above its heading. Every screen
+// used to open cold, which made each one read as a new page rather than the next
+// move of the same one.
+function StepEcho({ children }: { children: ReactNode }) {
+  return <p className="truncate text-meta text-muted-foreground">{children}</p>;
+}
+
+// The two AI waits used to be a spinner inside the primary button plus an 11px
+// duration hint. Here the wait takes the content area and names what is being
+// done. The last step never ticks off on its own: the work ends when the request
+// lands, so the list can't claim to be finished before it is.
+function WaitChecklist({
+  title,
+  steps,
+  stepMs,
+}: {
+  title: string;
+  steps: readonly string[];
+  stepMs: number;
+}) {
+  const [active, setActive] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setActive((i) => Math.min(i + 1, steps.length - 1)), stepMs);
+    return () => clearInterval(id);
+  }, [steps.length, stepMs]);
+
+  return (
+    <Card className="mt-6 p-5 sm:p-6">
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      <ol className="mt-4 flex flex-col gap-3">
+        {steps.map((label, i) => {
+          const done = i < active;
+          const current = i === active;
+          return (
+            <li key={label} className="flex items-center gap-2.5">
+              <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+                {done ? (
+                  <CheckIcon size={14} className="text-primary" />
+                ) : current ? (
+                  <SpinnerIcon size={14} className="animate-spin text-foreground" />
+                ) : (
+                  <span className="size-1.5 rounded-full bg-stroke" />
+                )}
+              </span>
+              <span
+                className={cn("text-sm", done || current ? "text-foreground" : "text-muted-foreground")}
+              >
+                {label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </Card>
+  );
+}
+
+// The duration hint under the button is gone with it: WaitChecklist now shows the
+// wait itself, so a "~ 15 to 30 seconds" caption would only re-state it.
 function FooterNav({
   primaryLabel,
   busy,
@@ -982,7 +1210,6 @@ function FooterNav({
   onBack,
   onSubmit,
   primaryDisabled,
-  hint,
 }: {
   primaryLabel: string;
   busy?: boolean;
@@ -990,47 +1217,45 @@ function FooterNav({
   onBack?: () => void;
   onSubmit: () => void | Promise<void>;
   primaryDisabled?: boolean;
-  hint?: string;
 }) {
   return (
-    <>
-      <div className="mt-10 pt-6 border-t border-border flex items-center justify-between gap-3">
-        <div>
-          {onBack && (
-            <Button type="button" variant="ghost" onClick={onBack} disabled={busy}>
-              <ArrowLeftIcon size={16} /> Edit
-            </Button>
-          )}
-        </div>
-        <Button type="button" onClick={() => void onSubmit()} disabled={busy || primaryDisabled}>
-          {busy ? (
-            <>
-              <SpinnerIcon size={16} className="animate-spin" />
-              {busyLabel ?? "Loading…"}
-            </>
-          ) : (
-            <>
-              {primaryLabel}
-              <ArrowRightIcon size={16} />
-            </>
-          )}
-        </Button>
+    <div className="mt-10 pt-6 border-t border-border flex items-center justify-between gap-3">
+      <div>
+        {onBack && (
+          <Button type="button" variant="ghost" onClick={onBack} disabled={busy}>
+            <ArrowLeftIcon size={16} /> Edit
+          </Button>
+        )}
       </div>
-      {hint && (
-        <p className="text-xs text-muted-foreground mt-3 text-right">{hint}</p>
-      )}
-    </>
+      <Button type="button" onClick={() => void onSubmit()} disabled={busy || primaryDisabled}>
+        {busy ? (
+          <>
+            <SpinnerIcon size={16} className="animate-spin" />
+            {busyLabel ?? "Loading…"}
+          </>
+        ) : (
+          <>
+            {primaryLabel}
+            <ArrowRightIcon size={16} />
+          </>
+        )}
+      </Button>
+    </div>
   );
 }
 
 // ── Screen: stage chooser ────────────────────────────────────────────────
 
+// The cards navigate on click, so the accent ring and aria-pressed state they used
+// to carry only ever rendered after back navigation: styling paid for and never
+// seen, on cards that looked like a choice to hold rather than the four routes
+// they are. The pick is echoed on the next screen instead, where it is still true.
 function StageChooser({
   onChoose,
-  current,
+  notice,
 }: {
   onChoose: (s: ProjectStage) => void;
-  current: ProjectStage | null;
+  notice: ReactNode;
 }) {
   return (
     <div>
@@ -1038,8 +1263,12 @@ function StageChooser({
         Where are you with your project?
       </h1>
       <p className="text-sm text-muted-foreground mt-3">
-        Each starting point opens a way to describe your product that fits.
+        Outrival watches your competitors and tells you what changed on their pages,
+        their pricing and their content. First it needs to know what you're building.
       </p>
+
+      {notice}
+
       <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
         {(Object.keys(STAGE_META) as ProjectStage[]).map((s) => {
           const meta = STAGE_META[s];
@@ -1049,23 +1278,11 @@ function StageChooser({
               key={s}
               type="button"
               onClick={() => onChoose(s)}
-              aria-pressed={current === s}
-              className={cn(
-                "text-left p-5 rounded-md border transition-all",
-                current === s
-                  ? "border-primary bg-primary/10 ring-1 ring-primary/40"
-                  : "border-border hover:border-border-strong hover:bg-surface-2",
-              )}
+              className="text-left p-5 rounded-md border border-border transition-colors hover:border-border-strong hover:bg-surface-2"
             >
-              <Icon
-                size={20}
-                className={cn(
-                  "transition-colors",
-                  current === s ? "text-primary" : "text-foreground",
-                )}
-              />
+              <Icon size={20} className="text-foreground" />
               <p className="text-sm font-medium mt-3">{meta.title}</p>
-              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              <p className="text-dense text-muted-foreground mt-1 leading-relaxed">
                 {meta.description}
               </p>
             </button>
@@ -1080,6 +1297,7 @@ function StageChooser({
 
 function ModeForm({
   stage,
+  notice,
   busy,
   onAnalyze,
   onBack,
@@ -1098,6 +1316,7 @@ function ModeForm({
   onSwitchToRepo,
 }: {
   stage: ProjectStage;
+  notice: ReactNode;
   busy: boolean;
   onAnalyze: () => void | Promise<void>;
   onBack: () => void;
@@ -1126,11 +1345,31 @@ function ModeForm({
           ? isGitHubRepoUrl(repoUrl.trim())
           : isValidUrl(productUrl.trim());
 
+  // The wait takes over the content area instead of hiding inside the button: the
+  // form has nothing left to say while it runs, and 15 seconds of unnamed spinner
+  // is the longest silence in the flow.
+  if (busy) {
+    return (
+      <div>
+        <h1 className="text-title md:text-title-lg font-semibold">
+          {STAGE_META[stage].title}
+        </h1>
+        <WaitChecklist
+          title={LOADING_MESSAGE[stage]}
+          steps={ANALYZE_STEPS[stage]}
+          stepMs={3500}
+        />
+      </div>
+    );
+  }
+
   return (
     <div>
       <h1 className="text-title md:text-title-lg font-semibold">
         {STAGE_META[stage].title}
       </h1>
+
+      {notice}
 
       <Card className="mt-6 p-5 sm:p-6 flex flex-col gap-5">
         {stage === "idea" && (
@@ -1149,7 +1388,7 @@ function ModeForm({
                 disabled={busy}
                 autoFocus
               />
-              <p className="text-xs text-muted-foreground">~ 300 characters is enough.</p>
+              <p className="text-dense text-muted-foreground">~ 300 characters is enough.</p>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="category" className="text-sm">
@@ -1203,7 +1442,7 @@ function ModeForm({
               <span className="text-sm text-foreground">
                 {file ? file.name : "Drop or select a file"}
               </span>
-              <span className="text-xs text-muted-foreground">PDF, DOCX, MD, TXT (max 10MB)</span>
+              <span className="text-dense text-muted-foreground">PDF, DOCX, MD, TXT (max 10MB)</span>
               <input
                 id="doc-file"
                 type="file"
@@ -1215,7 +1454,7 @@ function ModeForm({
             </label>
             <div className="flex items-start gap-2 rounded-md border border-positive/30 bg-positive/10 px-4 py-3">
               <LockIcon size={14} className="mt-0.5 text-positive shrink-0" />
-              <p className="text-xs text-foreground leading-relaxed">
+              <p className="text-dense text-foreground leading-relaxed">
                 Your document is analyzed in memory and will <strong>never be stored</strong>.
                 Only the extracted product profile is saved.
               </p>
@@ -1237,7 +1476,7 @@ function ModeForm({
               disabled={busy}
               autoFocus
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-dense text-muted-foreground">
               The repo must be public. You'll be able to connect private repos later.
             </p>
           </div>
@@ -1261,7 +1500,7 @@ function ModeForm({
               <div className="mt-2 flex items-start gap-2 rounded-md border border-border-strong bg-surface-2/60 px-3 py-2">
                 <WarningCircleIcon size={16} className="mt-0.5 text-foreground shrink-0" />
                 <div className="flex-1">
-                  <p className="text-xs text-foreground">
+                  <p className="text-dense text-foreground">
                     This looks like a temporary URL. Would you rather use the “In
                     development” mode with your repo?
                   </p>
@@ -1278,11 +1517,8 @@ function ModeForm({
       <FooterNav
         onBack={onBack}
         onSubmit={onAnalyze}
-        busy={busy}
-        busyLabel={LOADING_MESSAGE[stage]}
         primaryLabel="Analyze"
         primaryDisabled={!canSubmit}
-        hint={busy ? "~ 3 to 15 seconds" : undefined}
       />
     </div>
   );
@@ -1313,9 +1549,91 @@ const PROFILE_FIELDS: Array<{
   { key: "pricingModel", label: "Pricing model", placeholder: "e.g. Freemium + Pro at $20/mo" },
 ];
 
+// One line of the profile: a summary to read, editable where it's wrong. The screen
+// used to open on five fields, two of them three-row textareas, right after an
+// automated extraction — shaped for correction, so it read as work even when
+// nothing was off. Same data, same edits, a fraction of the perceived effort.
+function EditableRow({
+  id,
+  label,
+  value,
+  placeholder,
+  multiline,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  placeholder: string;
+  multiline?: boolean;
+  disabled?: boolean;
+  onChange: (v: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-1.5 py-1.5">
+        <Label htmlFor={id} className="text-meta text-muted-foreground">
+          {label}
+        </Label>
+        {multiline ? (
+          <Textarea
+            id={id}
+            autoFocus
+            rows={3}
+            value={value}
+            placeholder={placeholder}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={() => setEditing(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") e.currentTarget.blur();
+            }}
+          />
+        ) : (
+          <Input
+            id={id}
+            autoFocus
+            value={value}
+            placeholder={placeholder}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={() => setEditing(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => setEditing(true)}
+      className="group -mx-2 flex flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-2 focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
+    >
+      <span className="flex items-center gap-1.5 text-meta text-muted-foreground">
+        {label}
+        <PencilSimpleLineIcon
+          size={14}
+          className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+        />
+      </span>
+      <span className={cn("text-sm", value ? "text-foreground" : "text-muted-foreground")}>
+        {value || placeholder}
+      </span>
+    </button>
+  );
+}
+
 function ProfileForm({
   profile,
   setProfile,
+  notice,
+  sourceEcho,
   onConfirm,
   onBack,
   busy,
@@ -1324,9 +1642,13 @@ function ProfileForm({
   productName,
   setProductName,
   askName,
+  region,
+  onRegionChange,
 }: {
   profile: ProductProfile;
   setProfile: (p: ProductProfile) => void;
+  notice: ReactNode;
+  sourceEcho: string | null;
   onConfirm: () => void | Promise<void>;
   onBack: () => void;
   busy: boolean;
@@ -1336,18 +1658,23 @@ function ProfileForm({
   setProductName: (v: string) => void;
   // A description / document / repo run has no hostname to name the product after.
   askName: boolean;
+  region: string | null;
+  onRegionChange: (region: string | null) => void;
 }) {
   return (
     <div>
-      <h1 className="text-title md:text-title-lg font-semibold">
+      {sourceEcho && <StepEcho>Read from {sourceEcho}</StepEcho>}
+      <h1 className="text-title md:text-title-lg font-semibold mt-1">
         Did we get your product right?
       </h1>
       <p className="text-sm text-muted-foreground mt-3">
-        Fix anything that's off. It directly improves competitor relevance.
+        Click any line to change it. What's here decides which competitors we look for.
       </p>
 
-      {/* Above the "Extracted by AI" marker on purpose: the name is the one thing on
-          this screen we did not read anywhere, so it must not sit under that claim. */}
+      {notice}
+
+      {/* The name is the one thing on this screen we did not read anywhere, so it
+          stays a real field and stays out of the card that claims to be extracted. */}
       {askName && (
         <Card className="p-5 sm:p-6 mt-6 flex flex-col gap-1.5">
           <Label htmlFor="product-name" className="text-sm">
@@ -1361,138 +1688,55 @@ function ProfileForm({
             maxLength={80}
             disabled={busy}
           />
-          <p className="text-xs text-muted-foreground">
+          <p className="text-dense text-muted-foreground">
             We have no site to take a name from. You can change it later.
           </p>
         </Card>
       )}
 
-      <div className="flex items-center gap-1.5 mt-6 mb-3 text-xs text-muted-foreground">
-        <SparkleIcon size={14} className="text-primary" /> Extracted by AI
-      </div>
-
-      <Card className="p-5 sm:p-6 flex flex-col gap-5">
-        {PROFILE_FIELDS.map((f) => (
-          <div key={f.key} className="flex flex-col gap-1.5">
-            <Label htmlFor={`field-${f.key}`} className="text-sm">
-              {f.label}
-            </Label>
-            {f.multiline ? (
-              <Textarea
-                id={`field-${f.key}`}
-                value={profile[f.key] ?? ""}
-                onChange={(e) => setProfile({ ...profile, [f.key]: e.target.value })}
-                placeholder={f.placeholder}
-                disabled={busy}
-                rows={3}
-              />
-            ) : (
-              <Input
-                id={`field-${f.key}`}
-                value={profile[f.key] ?? ""}
-                onChange={(e) => setProfile({ ...profile, [f.key]: e.target.value })}
-                placeholder={f.placeholder}
-                disabled={busy}
-              />
-            )}
-          </div>
-        ))}
+      <Card className="p-5 sm:p-6 mt-6">
+        <div className="flex flex-col">
+          {PROFILE_FIELDS.map((f) => (
+            <EditableRow
+              key={f.key}
+              id={`field-${f.key}`}
+              label={f.label}
+              value={profile[f.key] ?? ""}
+              placeholder={f.placeholder}
+              multiline={f.multiline}
+              disabled={busy}
+              onChange={(v) => setProfile({ ...profile, [f.key]: v })}
+            />
+          ))}
+        </div>
 
         {(profile.keywords?.length ?? 0) > 0 && (
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-sm">Search keywords</Label>
-            <div className="flex flex-wrap gap-1.5">
+          <div className="mt-4 border-t border-border pt-4">
+            <p className="text-meta text-muted-foreground">Search keywords</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
               {profile.keywords!.map((k) => (
                 <span
                   key={k}
-                  className="rounded-full border border-border bg-surface-2/60 px-2 py-0.5 text-xs text-muted-foreground"
+                  className="rounded-full border border-border bg-surface-2/60 px-2 py-0.5 text-meta text-muted-foreground"
                 >
                   {k}
                 </span>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">
-              We use these to find competitors that do the same thing.
-            </p>
           </div>
         )}
+
+        {/* The marker used to float between two cards at 12px, attached to neither.
+            It describes this card, so it is a caption inside it. */}
+        <p className="mt-4 flex items-center gap-1.5 border-t border-border pt-3 text-dense text-muted-foreground">
+          <SparkleIcon size={14} className="text-primary shrink-0" /> Extracted by AI from what
+          you gave us
+        </p>
       </Card>
 
-      {prefetchStatus === "running" && (
-        <p className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <SpinnerIcon size={14} className="animate-spin" /> Searching competitors…
-        </p>
-      )}
-      {prefetchStatus === "completed" && (
-        <p className="mt-4 flex items-center gap-1.5 text-xs text-positive">
-          <CheckIcon size={14} /> Competitors found
-        </p>
-      )}
-
-      <FooterNav
-        onBack={onBack}
-        onSubmit={onConfirm}
-        busy={busy}
-        busyLabel="Finding competitors…"
-        primaryLabel={mode === "quick_start" ? "Looks right, find competitors" : "Looks right"}
-        hint={busy ? "~ 15 to 30 seconds" : undefined}
-      />
-    </div>
-  );
-}
-
-// ── Screen: discover (step 3) ────────────────────────────────────────────
-
-function DiscoverStep({
-  competitors,
-  busy,
-  completing,
-  selectedCount,
-  maxCompetitors,
-  region,
-  onRegionChange,
-  toggleCompetitor,
-  removeCompetitor,
-  manualUrl,
-  setManualUrl,
-  addManualCompetitor,
-  onConfirm,
-  onBack,
-  onRefine,
-}: {
-  competitors: Selection[];
-  busy: boolean;
-  completing: boolean;
-  selectedCount: number;
-  maxCompetitors: number;
-  region: string | null;
-  onRegionChange: (region: string | null) => void;
-  toggleCompetitor: (url: string) => void;
-  removeCompetitor: (url: string) => void;
-  manualUrl: string;
-  setManualUrl: (v: string) => void;
-  addManualCompetitor: () => void;
-  onConfirm: () => void;
-  onBack: () => void;
-  onRefine: () => void;
-}) {
-  const atLimit = selectedCount >= maxCompetitors;
-  const limitLabel = Number.isFinite(maxCompetitors)
-    ? `${selectedCount} / ${maxCompetitors}`
-    : `${selectedCount}`;
-  const noStrongMatch =
-    !busy && competitors.length > 0 && competitors.every((c) => c.overlapScore < 30);
-
-  return (
-    <div>
-      <h1 className="text-title md:text-title-lg font-semibold">
-        Your competitors
-      </h1>
-      <p className="text-sm text-muted-foreground mt-3">
-        Check the ones that really matter. You can add or remove more later.
-      </p>
-
-      <div className="mt-5 flex flex-wrap items-center gap-2">
+      {/* Asked here, before the first search, rather than on the competitor screen
+          where changing it threw the curated list away. */}
+      <div className="mt-6 flex flex-wrap items-center gap-2">
         <Label htmlFor="discover-market" className="text-sm text-muted-foreground">
           Find competitors in
         </Label>
@@ -1513,95 +1757,169 @@ function DiscoverStep({
             ))}
           </SelectContent>
         </Select>
-        <span className="text-meta text-muted-foreground w-full sm:w-auto">
+        <span className="w-full text-dense text-muted-foreground sm:w-auto">
           Biases results toward a market. Global players still show up.
         </span>
       </div>
 
-      {noStrongMatch && (
-        <div className="mt-6 flex items-start gap-3 rounded-md border border-border-strong bg-surface-2/60 px-4 py-3">
-          <WarningCircleIcon size={14} className="mt-0.5 text-foreground shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm text-foreground">We didn't find any obvious competitors.</p>
-            <div className="mt-2 flex gap-2">
+      {prefetchStatus === "running" && (
+        <p className="mt-4 flex items-center gap-1.5 text-dense text-muted-foreground">
+          <SpinnerIcon size={14} className="animate-spin" /> Searching competitors…
+        </p>
+      )}
+      {prefetchStatus === "completed" && (
+        <p className="mt-4 flex items-center gap-1.5 text-dense text-positive">
+          <CheckIcon size={14} /> Competitors found
+        </p>
+      )}
+
+      <FooterNav
+        onBack={onBack}
+        onSubmit={onConfirm}
+        busy={busy}
+        busyLabel="Finding competitors…"
+        primaryLabel={mode === "quick_start" ? "Looks right, find competitors" : "Looks right"}
+      />
+    </div>
+  );
+}
+
+// ── Screen: discover (step 3) ────────────────────────────────────────────
+
+function DiscoverStep({
+  competitors,
+  notice,
+  categoryEcho,
+  regionLabel,
+  busy,
+  completing,
+  selectedCount,
+  maxCompetitors,
+  frequency,
+  sources,
+  toggleCompetitor,
+  removeCompetitor,
+  manualUrl,
+  setManualUrl,
+  addManualCompetitor,
+  onConfirm,
+  onBack,
+  onRefine,
+}: {
+  competitors: Selection[];
+  notice: ReactNode;
+  categoryEcho: string | null;
+  regionLabel: string;
+  busy: boolean;
+  completing: boolean;
+  selectedCount: number;
+  maxCompetitors: number;
+  frequency: Frequency;
+  sources: SourceType[];
+  toggleCompetitor: (url: string) => void;
+  removeCompetitor: (url: string) => void;
+  manualUrl: string;
+  setManualUrl: (v: string) => void;
+  addManualCompetitor: () => void;
+  onConfirm: () => void;
+  onBack: () => void;
+  onRefine: () => void;
+}) {
+  const atLimit = selectedCount >= maxCompetitors;
+  const noStrongMatch =
+    !busy && competitors.length > 0 && competitors.every((c) => c.overlapScore < 30);
+  const watched =
+    sources.length > 1
+      ? `${sources.slice(0, -1).join(", ")} and ${sources[sources.length - 1]}`
+      : sources.join("");
+
+  return (
+    <div>
+      {categoryEcho && (
+        <StepEcho>
+          {categoryEcho} · {regionLabel}
+        </StepEcho>
+      )}
+      <h1 className="text-title md:text-title-lg font-semibold mt-1">Your competitors</h1>
+      <p className="text-sm text-muted-foreground mt-3">
+        Check the ones that really matter. You can add or remove more later.
+      </p>
+
+      {notice ??
+        (noStrongMatch ? (
+          <Notice
+            action={
               <Button size="sm" variant="outline" onClick={onRefine}>
                 Refine my profile
               </Button>
+            }
+          >
+            We didn't find any obvious competitors for this profile.
+          </Notice>
+        ) : null)}
+
+      {busy ? (
+        <WaitChecklist title="Searching your market…" steps={DISCOVERY_STEPS} stepMs={6000} />
+      ) : (
+        <>
+          <BudgetMeter selected={selectedCount} max={maxCompetitors} found={competitors.length} />
+
+          <Card className="mt-3 p-2 sm:p-3 max-h-[420px] overflow-auto">
+            {competitors.length === 0 ? (
+              <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+                No competitors suggested. Add some manually below.
+              </div>
+            ) : (
+              <ul className="flex flex-col">
+                {competitors.map((c) => (
+                  <CompetitorRow
+                    key={c.url}
+                    competitor={c}
+                    overBudget={atLimit && !c.selected}
+                    onToggle={() => toggleCompetitor(c.url)}
+                    onRemove={() => removeCompetitor(c.url)}
+                  />
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <div className="mt-6">
+            <Label htmlFor="manual-url" className="text-sm mb-2 block">
+              Add a competitor manually
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                id="manual-url"
+                type="url"
+                value={manualUrl}
+                onChange={(e) => setManualUrl(e.target.value)}
+                placeholder="https://another-competitor.com"
+                className="flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addManualCompetitor();
+                  }
+                }}
+              />
+              <Button type="button" variant="outline" onClick={addManualCompetitor}>
+                <PlusIcon size={16} /> Add
+              </Button>
             </div>
           </div>
-        </div>
+        </>
       )}
 
-      <div className="flex items-center justify-between mt-6 mb-3 gap-3 flex-wrap">
-        <p className="text-xs text-muted-foreground">
-          {busy ? (
-            "Searching…"
-          ) : (
-            <>
-              <span className="text-foreground tabular-nums">{competitors.length}</span> found
-              {" · "}
-              <span className="text-foreground tabular-nums">{limitLabel}</span> selected
-            </>
-          )}
-        </p>
-      </div>
-
-      <Card className="p-2 sm:p-3 max-h-[420px] overflow-auto">
-        {busy ? (
-          <div className="px-4 py-12 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <SpinnerIcon size={14} className="animate-spin" /> Analyzing your market…
-          </div>
-        ) : competitors.length === 0 ? (
-          <div className="px-4 py-12 text-center text-sm text-muted-foreground">
-            No competitors suggested. Add some manually below.
-          </div>
-        ) : (
-          <ul className="flex flex-col">
-            {competitors.map((c) => (
-              <CompetitorRow
-                key={c.url}
-                competitor={c}
-                disabled={atLimit && !c.selected}
-                onToggle={() => toggleCompetitor(c.url)}
-                onRemove={() => removeCompetitor(c.url)}
-              />
-            ))}
-          </ul>
-        )}
-      </Card>
-
-      <div className="mt-6">
-        <Label htmlFor="manual-url" className="text-sm mb-2 block">
-          Add a competitor manually
-        </Label>
-        <div className="flex gap-2">
-          <Input
-            id="manual-url"
-            type="url"
-            value={manualUrl}
-            onChange={(e) => setManualUrl(e.target.value)}
-            placeholder="https://another-competitor.com"
-            className="flex-1"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addManualCompetitor();
-              }
-            }}
-          />
-          <Button type="button" variant="outline" onClick={addManualCompetitor}>
-            <PlusIcon size={16} /> Add
-          </Button>
-        </div>
-      </div>
-
-      {competitors.length > 0 && (
-        <p className="mt-4 text-xs text-muted-foreground leading-relaxed">
-          Competitors we found but you didn't select stay available in{" "}
-          <span className="text-foreground">Detections</span>, and you can track them later
-          (for example after a plan change).
-        </p>
-      )}
+      {/* What gets monitored is decided by the plan, not by a step, and it used to
+          be asserted for the first time after the flow was over. One line, above
+          the button that acts on it. */}
+      <p className="mt-8 flex items-start gap-2 text-dense text-muted-foreground">
+        <EyeIcon size={16} className="mt-px shrink-0" />
+        <span>
+          We'll read each one's {watched}, {frequency}. Change that any time in Settings.
+        </span>
+      </p>
 
       <FooterNav
         onBack={onBack}
@@ -1615,53 +1933,116 @@ function DiscoverStep({
   );
 }
 
+// The plan's competitor budget, stated before it is enforced. Free tracks 2:
+// discovery returns ten or more, pre-selects the two strongest, and the third
+// click opened a paywall — the most commercially important moment of the flow
+// arriving as an error. Over budget is not blocked here, it is kept for later.
+function BudgetMeter({
+  selected,
+  max,
+  found,
+}: {
+  selected: number;
+  max: number;
+  found: number;
+}) {
+  const capped = Number.isFinite(max);
+  const atLimit = capped && selected >= max;
+
+  return (
+    <div className="mt-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-sm text-foreground">
+          {capped ? (
+            <>
+              Tracking <span className="tabular-nums">{selected}</span> of{" "}
+              <span className="tabular-nums">{max}</span>
+            </>
+          ) : (
+            <>
+              <span className="tabular-nums">{selected}</span> selected
+            </>
+          )}
+        </p>
+        <p className="text-dense text-muted-foreground">
+          <span className="tabular-nums text-foreground">{found}</span> found
+        </p>
+      </div>
+
+      {capped && max <= 10 && (
+        <div className="mt-2 flex gap-1" aria-hidden>
+          {Array.from({ length: max }, (_, i) => (
+            <span
+              key={i}
+              className={cn(
+                "h-1 flex-1 rounded-full transition-colors duration-200",
+                i < selected ? "bg-primary" : "bg-stroke",
+              )}
+            />
+          ))}
+        </div>
+      )}
+
+      <p className="mt-2 text-dense text-muted-foreground">
+        {atLimit
+          ? "That's every slot your plan tracks. The rest stay in Detections, ready to track later."
+          : "Whatever you leave unchecked stays in Detections, ready to track later."}
+      </p>
+    </div>
+  );
+}
+
+// One company per row, not four fragments in forty pixels: name and overlap on the
+// first line, host on the second in sans, one line of snippet. Over budget the row
+// keeps its full contrast — it is a competitor kept for later, not a disabled
+// control, and clicking it still explains the limit.
 function CompetitorRow({
   competitor,
-  disabled,
+  overBudget,
   onToggle,
   onRemove,
 }: {
   competitor: Selection;
-  disabled: boolean;
+  overBudget: boolean;
   onToggle: () => void;
   onRemove: () => void;
 }) {
   return (
     <li
       className={cn(
-        "flex items-start gap-3 px-3 py-3 rounded-md cursor-pointer transition-colors hover:bg-surface-2",
+        "flex items-start gap-3 px-3 py-2.5 rounded-md cursor-pointer transition-colors hover:bg-surface-2",
         competitor.selected && "bg-primary/5",
-        disabled && "opacity-50",
       )}
       onClick={onToggle}
-      title={disabled ? "Limit reached, upgrade to add more" : competitor.reason}
+      title={competitor.reason}
     >
       <Checkbox
         checked={competitor.selected}
         onCheckedChange={onToggle}
         onClick={(e) => e.stopPropagation()}
-        className="mt-1"
-        aria-label={`Select ${competitor.title}`}
+        className="mt-0.5"
+        aria-label={`Track ${competitor.title}`}
       />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
           <span className="text-sm font-medium truncate">{competitor.title}</span>
           {competitor.overlapScore > 0 && <OverlapBadge score={competitor.overlapScore} />}
+          {overBudget && (
+            <span className="shrink-0 text-meta text-muted-foreground">Kept for later</span>
+          )}
         </div>
         <a
           href={competitor.url}
           target="_blank"
           rel="noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="text-meta font-mono text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mt-0.5 max-w-full transition-colors"
+          className="text-meta text-muted-foreground hover:text-foreground inline-flex items-center gap-1 max-w-full transition-colors"
         >
           <span className="truncate">{competitor.url.replace(/^https?:\/\//, "")}</span>
           <ArrowSquareOutIcon size={14} className="shrink-0" />
         </a>
         {competitor.snippet && (
-          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
-            {competitor.snippet}
-          </p>
+          <p className="text-dense text-muted-foreground mt-0.5 truncate">{competitor.snippet}</p>
         )}
       </div>
       <Button
@@ -1697,187 +2078,5 @@ function OverlapBadge({ score }: { score: number }) {
     >
       {Math.round(score)}%
     </span>
-  );
-}
-
-// ── Screen: done (step 4, first session) ─────────────────────────────────
-
-function DoneStep({
-  totalCompetitors,
-  plan,
-  onDashboard,
-}: {
-  totalCompetitors: number;
-  plan: Plan;
-  onDashboard: () => void;
-}) {
-  // Per-competitor analysis progress (drives the "Analyzing X/Y" badge and the
-  // breakdown popover). A competitor counts as analyzed once it has an AI summary.
-  const [progress, setProgress] = useState<
-    { id: string; name: string; analyzed: boolean; stage: AnalysisStage }[]
-  >([]);
-  const analyzed = progress.filter((c) => c.analyzed).length;
-
-  // Only recommend steps the current plan can actually act on — recommending
-  // gated features right after sign-up is frustrating, not helpful.
-  const limits = PLAN_LIMITS[plan];
-  const nextSteps: string[] = [];
-  if (limits.allowedChannels.includes("slack")) {
-    nextSteps.push(
-      limits.features.realtimeAlerts
-        ? "Set up your Slack webhook for real-time alerts"
-        : "Set up your Slack webhook for alerts",
-    );
-  }
-  if (limits.features.multiUser) {
-    nextSteps.push("Invite a teammate");
-  }
-  if (limits.allowedFrequencies.length > 1) {
-    nextSteps.push("Customize your monitoring frequency");
-  }
-  nextSteps.push("Review your weekly digest settings");
-  if (nextSteps.length < 2) {
-    nextSteps.push("Explore your competitor profiles");
-  }
-
-  useEffect(() => {
-    let active = true;
-    let tries = 0;
-    async function poll() {
-      try {
-        const { competitors } = await api.listCompetitors();
-        if (!active) return;
-        // Best-effort progress proxy: a competitor counts as analyzed once it has
-        // an AI summary (first scrape → classify → summary pipeline produced output).
-        // The stage says WHERE the unfinished ones are — right after onboarding the
-        // queue is at its deepest (every seeded source lands at once), so "Analyzing"
-        // on all of them would describe work that has not begun.
-        setProgress(
-          competitors.map((c) => ({
-            id: c.id,
-            name: c.name,
-            analyzed: c.aiSummary != null,
-            stage: c.analysis?.stage ?? "queued",
-          })),
-        );
-      } catch {
-        // ignore — indicator is informational
-      }
-    }
-    void poll();
-    const id = setInterval(() => {
-      tries += 1;
-      if (!active || tries > 40) {
-        clearInterval(id);
-        return;
-      }
-      void poll();
-    }, 5000);
-    return () => {
-      active = false;
-      clearInterval(id);
-    };
-  }, []);
-
-  const allDone = totalCompetitors > 0 && analyzed >= totalCompetitors;
-
-  return (
-    <div className="flex flex-col items-center text-center">
-      <div className="w-12 h-12 rounded-full bg-positive/15 border border-positive/30 flex items-center justify-center">
-        <CheckIcon size={20} className="text-positive" />
-      </div>
-      <h1 className="text-title md:text-title-lg font-semibold mt-5">
-        Setup complete
-      </h1>
-      <p className="text-sm text-muted-foreground mt-3 max-w-md">
-        Your competitors are being analyzed in the background. You can head to your dashboard
-        now. We'll send you a notification the moment the first analysis is ready.
-      </p>
-
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className="group mt-6 inline-flex items-center gap-2 rounded-md border border-border bg-surface-2/60 px-4 py-2 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-[3px] focus-visible:ring-ring"
-          >
-            {!allDone && (
-              <SpinnerIcon size={16} className="animate-spin text-muted-foreground" />
-            )}
-            {allDone && <CheckIcon size={16} className="text-positive" />}
-            <span className="text-sm text-foreground">
-              {allDone
-                ? `${totalCompetitors} competitors analyzed`
-                : `Analyzing ${analyzed}/${totalCompetitors} competitors…`}
-            </span>
-            <CaretDownIcon
-              size={16}
-              className="text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
-            />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="center" className="w-72 p-2">
-          <p className="px-2 pb-2 pt-1 text-meta text-muted-foreground">
-            Analysis progress
-          </p>
-          <ul className="flex max-h-64 flex-col overflow-y-auto">
-            {progress.length === 0 ? (
-              <li className="px-2 py-2 text-sm text-muted-foreground">
-                Loading…
-              </li>
-            ) : (
-              progress.map((c) => {
-                const meta = c.analyzed ? null : analysisStageMeta(c.stage);
-                const StageIcon = meta?.Icon ?? SpinnerIcon;
-                return (
-                  <li
-                    key={c.id}
-                    className="flex items-center gap-2 rounded-sm px-2 py-1.5"
-                  >
-                    {c.analyzed ? (
-                      <CheckIcon size={14} className="shrink-0 text-positive" />
-                    ) : (
-                      <StageIcon
-                        size={14}
-                        className={cn(
-                          "shrink-0 text-muted-foreground",
-                          (meta?.spin ?? true) && "animate-spin",
-                        )}
-                      />
-                    )}
-                    <span className="truncate text-sm text-foreground">
-                      {c.name}
-                    </span>
-                    <span className="ml-auto shrink-0 text-meta text-muted-foreground">
-                      {c.analyzed ? "Ready" : (meta?.short ?? "Analyzing")}
-                    </span>
-                  </li>
-                );
-              })
-            )}
-          </ul>
-        </PopoverContent>
-      </Popover>
-
-      <p className="text-xs text-muted-foreground mt-6">
-        Your first weekly digest will be sent next Monday.
-      </p>
-
-      <Card className="mt-8 w-full max-w-md p-5 text-left">
-        <p className="text-xs font-medium text-muted-foreground mb-3">
-          Recommended next steps
-        </p>
-        <ul className="flex flex-col gap-2 text-sm text-foreground">
-          {nextSteps.map((step) => (
-            <li key={step} className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded-sm border border-border-strong" /> {step}
-            </li>
-          ))}
-        </ul>
-      </Card>
-
-      <Button className="mt-8" onClick={onDashboard}>
-        Go to dashboard <ArrowRightIcon size={16} />
-      </Button>
-    </div>
   );
 }

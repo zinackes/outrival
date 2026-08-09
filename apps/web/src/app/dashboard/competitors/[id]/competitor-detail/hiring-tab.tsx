@@ -579,38 +579,35 @@ function WhereTheyHire({ geo }: { geo: HiringGeoData | null }) {
   );
 }
 
-/** How the disclosure badge reads. Verdict computed server-side from the same numbers. */
-const DISCLOSURE_LABEL: Record<"yes" | "partial" | "no", string> = {
-  yes: "Publishes salaries",
-  partial: "Publishes some salaries",
-  no: "No salaries published",
-};
+/** Column header, every row, and the axis ride the same track so they line up. */
+const SALARY_GRID = "grid grid-cols-[minmax(6rem,1fr)_minmax(0,2fr)_auto] gap-x-3";
 
 /**
  * What a competitor pays, per department and per currency.
  *
  * Two rules give this card its shape, and both are visible in it. Bands are drawn
- * PER CURRENCY, so a competitor hiring in Paris and New York gets two rows for
- * engineering and no bar spans both — nothing here converts, because an FX rate is
- * a number we do not capture and a "median" that moves with the euro would read as
- * a pay change. And `n` is on every row, because a p50 over three roles and a p50
- * over thirty are different kinds of claim.
+ * PER CURRENCY — one group, one scale, one axis — so a competitor hiring in Paris
+ * and New York gets two blocks and no bar spans both, because an FX rate is a
+ * number we do not capture and a "median" that moves with the euro would read as a
+ * pay change. And the role count is on every row, because a median over three
+ * roles and a median over thirty are different kinds of claim.
  *
- * The p25–p75 bar is drawn on a scale shared by every row IN THAT CURRENCY, which
- * is the only comparison the data supports: within one currency the rows can be
- * read against each other, across currencies they can only be read.
+ * Every quantity the bar encodes is also written next to it: a band drawn on a
+ * shared scale says which department pays more, but only the figures say how much,
+ * and the bar is unreadable without the axis that anchors it at zero.
  */
 function Salaries({ salary }: { salary: HiringSalaryData | null }) {
   if (!salary) return null;
   const { bands, disclosure } = salary;
   if (bands.length === 0 && disclosure.total === 0) return null;
 
-  // One scale per currency: the widest p75 in that currency anchors the axis.
-  const maxByCurrency = new Map<string, number>();
+  const byCurrency = new Map<string, HiringSalaryData["bands"]>();
   for (const b of bands) {
-    maxByCurrency.set(b.currency, Math.max(maxByCurrency.get(b.currency) ?? 0, b.p75));
+    const rows = byCurrency.get(b.currency);
+    if (rows) rows.push(b);
+    else byCurrency.set(b.currency, [b]);
   }
-  const currencies = new Set(bands.map((b) => b.currency));
+  const groups = [...byCurrency.entries()];
 
   return (
     <TabSection
@@ -618,7 +615,7 @@ function Salaries({ salary }: { salary: HiringSalaryData | null }) {
       action={
         <span
           className={cn(
-            "shrink-0 rounded-sm px-1.5 py-0.5 text-meta font-medium",
+            "shrink-0 rounded-sm px-1.5 py-0.5 text-meta font-medium tabular-nums",
             disclosure.verdict === "yes"
               ? "bg-positive/10 text-positive"
               : disclosure.verdict === "partial"
@@ -626,15 +623,13 @@ function Salaries({ salary }: { salary: HiringSalaryData | null }) {
                 : "bg-surface-2 text-muted-foreground",
           )}
         >
-          {DISCLOSURE_LABEL[disclosure.verdict]}
-          {disclosure.disclosed > 0 && (
-            <>
-              {" "}
-              <span className="tabular-nums">
-                {disclosure.disclosed}/{disclosure.total}
-              </span>
-            </>
-          )}
+          {/* The fraction alone was the whole badge and carried no unit: "12/40" next
+              to a pay card reads as an amount before it reads as a count. */}
+          {disclosure.total === 0
+            ? "No roles show pay"
+            : `${disclosure.disclosed} of ${disclosure.total} ${
+                disclosure.total === 1 ? "role shows" : "roles show"
+              } pay`}
         </span>
       }
     >
@@ -645,67 +640,91 @@ function Salaries({ salary }: { salary: HiringSalaryData | null }) {
             : "Not one of their open roles states a salary."}
         </p>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {bands.map((b) => {
-            const max = maxByCurrency.get(b.currency) ?? b.p75;
-            const left = (b.p25 / max) * 100;
-            const width = Math.max(((b.p75 - b.p25) / max) * 100, 1.5);
-            const marker = (b.p50 / max) * 100;
+        <div className="flex flex-col gap-5">
+          {groups.map(([currency, rows]) => {
+            // One scale per group: the widest p75 in that currency anchors the axis.
+            const max = Math.max(...rows.map((r) => r.p75));
             return (
-              <li
-                key={`${b.bucket}-${b.currency}`}
-                className="grid grid-cols-[minmax(6rem,1fr)_minmax(0,2fr)_auto] items-center gap-3"
-              >
-                <span className="min-w-0 truncate text-sm">
-                  {b.label}
-                  {/* The currency is part of the row's identity when there is more
-                      than one — without it two engineering rows read as a mistake. */}
-                  {currencies.size > 1 && (
-                    <span className="ml-1.5 text-xs text-muted-foreground">{b.currency}</span>
-                  )}
-                </span>
-                <span className="relative flex h-4 items-center" title={`p25–p75, n=${b.n}`}>
-                  <span className="h-1.5 w-full rounded-full bg-track" aria-hidden />
-                  <span
-                    className="absolute h-1.5 rounded-full bg-link"
-                    style={{ left: `${left}%`, width: `${width}%` }}
-                    aria-hidden
-                  />
-                  {/* The median tick lands ON the p25-p75 band, so it needs to read
-                      against the band as well as the gutter. bg-foreground clears the
-                      gutter (12:1) but only 2.5:1 on the band in dark; the track-coloured
-                      ring gives it an edge that separates from any fill by construction. */}
-                  <span
-                    className="absolute h-3 w-0.5 rounded-full bg-foreground ring-1 ring-track"
-                    style={{ left: `calc(${marker}% - 1px)` }}
-                    aria-hidden
-                  />
-                </span>
-                <span className="flex items-center gap-2 justify-self-end">
-                  {b.series.length >= 2 && (
-                    <Sparkline
-                      data={b.series}
-                      w={56}
-                      h={18}
-                      color="var(--link)"
-                      valueLabel={b.currency}
-                    />
-                  )}
-                  <span className="text-dense tabular-nums">
-                    {formatMoney(b.p50, b.currency)}
+              <div key={currency} className="flex flex-col gap-2">
+                <div className={cn(SALARY_GRID, "text-meta text-muted-foreground")}>
+                  <span className="min-w-0 truncate">
+                    {/* The currency belongs to the whole group, not to a suffix on
+                        each label — without it two engineering rows read as a bug. */}
+                    {groups.length > 1 ? `Department · ${currency}` : "Department"}
                   </span>
-                  <span className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-meta font-medium tabular-nums text-muted-foreground">
-                    n={b.n}
+                  <span>Middle half of posted pay</span>
+                  <span className="justify-self-end">Median</span>
+                </div>
+                <ul className="flex flex-col gap-3">
+                  {rows.map((b) => {
+                    const left = (b.p25 / max) * 100;
+                    const width = Math.max(((b.p75 - b.p25) / max) * 100, 1.5);
+                    const marker = (b.p50 / max) * 100;
+                    return (
+                      <li
+                        key={`${b.bucket}-${b.currency}`}
+                        className={cn(SALARY_GRID, "items-center gap-y-0.5")}
+                      >
+                        <span className="row-span-2 min-w-0 truncate text-sm">{b.label}</span>
+                        <span className="relative flex h-4 items-center">
+                          <span className="h-1.5 w-full rounded-full bg-track" aria-hidden />
+                          <span
+                            className="absolute h-1.5 rounded-full bg-link"
+                            style={{ left: `${left}%`, width: `${width}%` }}
+                            aria-hidden
+                          />
+                          {/* The median tick lands ON the p25-p75 band, so it needs to read
+                              against the band as well as the gutter. bg-foreground clears the
+                              gutter (12:1) but only 2.5:1 on the band in dark; the track-coloured
+                              ring gives it an edge that separates from any fill by construction. */}
+                          <span
+                            className="absolute h-3 w-0.5 rounded-full bg-foreground ring-1 ring-track"
+                            style={{ left: `calc(${marker}% - 1px)` }}
+                            aria-hidden
+                          />
+                        </span>
+                        <span className="flex items-center gap-2 justify-self-end">
+                          {b.series.length >= 2 && (
+                            <Sparkline
+                              data={b.series}
+                              w={56}
+                              h={18}
+                              color="var(--link)"
+                              valueLabel={b.currency}
+                            />
+                          )}
+                          <span className="text-dense tabular-nums">
+                            {formatMoney(b.p50, b.currency)}
+                          </span>
+                        </span>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {formatMoney(b.p25, b.currency)}–{formatMoney(b.p75, b.currency)}
+                        </span>
+                        <span className="justify-self-end text-xs tabular-nums text-muted-foreground">
+                          {b.n} {b.n === 1 ? "role" : "roles"}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className={cn(SALARY_GRID, "text-meta text-muted-foreground")}>
+                  <span />
+                  <span className="flex justify-between border-t border-border pt-1 tabular-nums">
+                    <span>0</span>
+                    <span>{formatMoney(max, currency)}</span>
                   </span>
-                </span>
-              </li>
+                  <span />
+                </div>
+              </div>
             );
           })}
-        </ul>
+        </div>
       )}
       <p className="pt-2 text-xs text-muted-foreground">
-        Median of the annual midpoints of the ranges they publish, per currency.
-        Hourly roles are excluded and nothing is converted between currencies.
+        Each bar spans the middle half of the annual ranges they publish — a quarter of
+        the roles pay less, a quarter pay more — and the tick marks the median. Bars share
+        one scale within a currency and none across: hourly roles are excluded, and nothing
+        is converted between currencies.
       </p>
     </TabSection>
   );

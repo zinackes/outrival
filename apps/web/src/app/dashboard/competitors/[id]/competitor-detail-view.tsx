@@ -834,6 +834,10 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 onRun={requestRunMonitor}
                 onRunAll={runAllMonitors}
                 onEnable={enableMonitor}
+                plan={plan}
+                onLockedSource={(source) =>
+                  setPaywall({ code: "plan_locked_source", source, plan })
+                }
               />
             </TabsContent>
             <TabsContent value="product" className={TAB_PANEL_CLASS}>

@@ -1,5 +1,11 @@
-import { queryOptions, infiniteQueryOptions } from "@tanstack/react-query";
-import { api, ApiError, type ActivityStatusFilter, type SignalsFeedParams } from "./api";
+import { queryOptions, infiniteQueryOptions, type QueryClient } from "@tanstack/react-query";
+import {
+  api,
+  ApiError,
+  type ActivityStatusFilter,
+  type Competitor,
+  type SignalsFeedParams,
+} from "./api";
 
 /**
  * Shared query definitions — one source of truth for `queryKey` + `queryFn`,
@@ -78,6 +84,27 @@ export function competitorsQuery(productId?: string) {
     queryKey: key,
     queryFn: () => api.listCompetitors(productId).then((r) => r.competitors),
   });
+}
+
+// The sidebar roster shows a per-competitor unread count read off this cache. A
+// single read/unread flip moves exactly one signal, so patch the count in place
+// rather than refetch the whole roster on every row the user opens — a feed read
+// one row at a time would otherwise fire a listCompetitors per keystroke. Bulk
+// paths (mark all read, bulk read/unread) still invalidate: their delta isn't
+// arithmetic we can do client-side. Every ["competitors", productId?] variant is
+// patched, since which one the sidebar observes depends on the product scope.
+export function adjustCompetitorUnread(
+  queryClient: QueryClient,
+  competitorId: string,
+  delta: number,
+) {
+  queryClient.setQueriesData<Competitor[]>({ queryKey: ["competitors"] }, (comps) =>
+    comps?.map((c) =>
+      c.id === competitorId && c.stats
+        ? { ...c, stats: { ...c.stats, unread: Math.max(0, c.stats.unread + delta) } }
+        : c,
+    ),
+  );
 }
 
 // Compare picker ranking — per-competitor data-completeness score keyed by id.

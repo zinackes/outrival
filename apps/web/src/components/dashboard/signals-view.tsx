@@ -8,7 +8,12 @@ import {
   keepPreviousData,
   type InfiniteData,
 } from "@tanstack/react-query";
-import { signalsFeedQuery, signalsFacetsQuery, competitorsQuery } from "@/lib/queries";
+import {
+  signalsFeedQuery,
+  signalsFacetsQuery,
+  competitorsQuery,
+  adjustCompetitorUnread,
+} from "@/lib/queries";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
@@ -328,9 +333,20 @@ export function SignalsView() {
     );
   }
 
+  // The sidebar competitor counting this signal — null when the row isn't loaded
+  // or the flip is a no-op (re-reading a read row moves no count).
+  function unreadOwner(id: string, nextRead: boolean) {
+    const sig = (signals ?? []).find((s) => s.id === id);
+    return sig && sig.isRead !== nextRead ? sig.competitorId : null;
+  }
+
   async function markRead(id: string) {
+    const owner = unreadOwner(id, true);
     mutateSignals((prev) => prev.map((s) => (s.id === id ? { ...s, isRead: true } : s)));
     if (sample) return;
+    // Keep the sidebar roster in step with the row: it reads its unread badge off
+    // the ["competitors"] cache, which no poll refreshes for another 60s.
+    if (owner) adjustCompetitorUnread(queryClient, owner, -1);
     try {
       await api.markSignalRead(id);
     } catch {
@@ -338,16 +354,22 @@ export function SignalsView() {
       // selectRow fires this without awaiting, so an uncaught rejection would be
       // silent. Mark-unread below has always done this.
       mutateSignals((prev) => prev.map((s) => (s.id === id ? { ...s, isRead: false } : s)));
+      if (owner) adjustCompetitorUnread(queryClient, owner, 1);
       toast.error("Couldn't mark read. Try again.");
     }
   }
 
   async function markUnread(id: string) {
+    const owner = unreadOwner(id, false);
     mutateSignals((prev) => prev.map((s) => (s.id === id ? { ...s, isRead: false } : s)));
     if (sample) return;
+    if (owner) adjustCompetitorUnread(queryClient, owner, 1);
     try {
       await api.markSignalRead(id, false);
     } catch {
+      // The row itself stays optimistically unread here, so leave the count with
+      // it: both reconcile on the next poll, and a half-reverted pair would read
+      // as a sidebar that disagrees with the feed.
       toast.error("Couldn't mark unread. Try again.");
     }
   }

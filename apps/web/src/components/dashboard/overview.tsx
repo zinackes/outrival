@@ -12,6 +12,7 @@ import {
   OVERVIEW_SIGNALS_LIMIT,
   competitorsQuery,
   activityHealthQuery,
+  adjustCompetitorUnread,
 } from "@/lib/queries";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { formatDate } from "@/lib/format-date";
@@ -148,13 +149,19 @@ export function OverviewView() {
     async (id: string) => {
       const key = overviewSignalsQuery(productId).queryKey;
       const prev = queryClient.getQueryData<Signal[]>(key);
+      const row = prev?.find((s) => s.id === id);
+      // The sidebar roster badges this signal's competitor from its own cache;
+      // move that count with the row so it doesn't wait for the 60s poll.
+      const owner = row && !row.isRead ? row.competitorId : null;
       queryClient.setQueryData<Signal[]>(key, (rows) =>
         rows?.map((s) => (s.id === id ? { ...s, isRead: true } : s)),
       );
+      if (owner) adjustCompetitorUnread(queryClient, owner, -1);
       try {
         await api.markSignalRead(id);
       } catch (e) {
         queryClient.setQueryData(key, prev);
+        if (owner) adjustCompetitorUnread(queryClient, owner, 1);
         toastApiError(e);
       }
     },

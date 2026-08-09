@@ -4,9 +4,16 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useInfiniteQuery, useQuery, keepPreviousData } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowUpIcon, ArrowDownIcon, ArrowSquareOutIcon } from "@/components/icons";
+import { ArrowUpIcon, ArrowDownIcon, ArrowSquareOutIcon, LockIcon } from "@/components/icons";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
-import { hasNoTargetError, type SourceType } from "@outrival/shared";
+import {
+  hasNoTargetError,
+  minPlanForSource,
+  planAllowsMonitorSource,
+  PLAN_LABELS,
+  type Plan,
+  type SourceType,
+} from "@outrival/shared";
 import {
   api,
   type ContentItemRow,
@@ -157,18 +164,29 @@ export function ContentTab({
   onRun,
   onRunAll,
   onEnable,
+  plan,
+  onLockedSource,
 }: {
   competitorId: string;
   /** Already on the page; carries the editorial_shift signal the callout renders. */
   signals: CompetitorSignal[];
-  /** Runs the four content sources together — see {@link SOURCE_KEYS}. */
+  /** Runs the content sources this plan may actually run — see {@link runnableKeys}. */
   onRunAll: (only: readonly SourceType[]) => void;
+  plan: Plan;
+  /** Opens the paywall for a source above this plan (roadmap / docs). */
+  onLockedSource?: (source: SourceType) => void;
 } & MonitorSourceProps) {
   const [source, setSource] = useState<string>("all");
   const [type, setType] = useState<string>("all");
   const [period, setPeriod] = useState<number>(90);
 
   const pageSize = source === "roadmap" ? BOARD_PAGE : FEED_PAGE;
+
+  // A re-scan must not ask for a source the plan freezes: after a downgrade the
+  // roadmap/docs monitor rows are still there and the run route answers 403. Gated
+  // through planAllowsMonitorSource rather than planIncludesSource because
+  // `changelog` is in no plan's allowedSources at all — ungated, never locked.
+  const runnableKeys = SOURCE_KEYS.filter((key) => planAllowsMonitorSource(plan, key));
 
   const summaryQuery = useQuery({
     queryKey: ["competitor", competitorId, "contentSummary"],
@@ -225,6 +243,9 @@ export function ContentTab({
         scrapingIds={scrapingIds}
         onRunAll={onRunAll}
         onEnable={onEnable}
+        plan={plan}
+        onLockedSource={onLockedSource}
+        runnableKeys={runnableKeys}
       />
     );
   }
@@ -397,6 +418,8 @@ export function ContentTab({
             monitors={monitors}
             scrapingIds={scrapingIds}
             onEnable={onEnable}
+            plan={plan}
+            onLockedSource={onLockedSource}
           />
 
           {items.length === 0 ? (
@@ -462,7 +485,7 @@ export function ContentTab({
         {contentMonitors.length > 0 && (
           <RescanLink
             activity={groupActivity(contentMonitors, scrapingIds)}
-            onRun={() => onRunAll(SOURCE_KEYS)}
+            onRun={() => onRunAll(runnableKeys)}
           />
         )}
       </div>
@@ -688,6 +711,8 @@ function QuietSources({
   monitors,
   scrapingIds,
   onEnable,
+  plan,
+  onLockedSource,
 }: {
   /** Rows in the SELECTED PERIOD, per source. */
   counts: Record<string, number>;
@@ -696,6 +721,8 @@ function QuietSources({
   monitors: Monitor[];
   scrapingIds: Set<string>;
   onEnable?: MonitorSourceProps["onEnable"];
+  plan: Plan;
+  onLockedSource?: (source: SourceType) => void;
 }) {
   const [enabling, setEnabling] = useState<string | null>(null);
   const quiet = SOURCES.filter((s) => (counts[s.key] ?? 0) === 0);
@@ -712,6 +739,29 @@ function QuietSources({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         {quiet.map((s) => {
           const monitor = monitors.find((m) => m.sourceType === s.key);
+          // The padlock outranks every other reading, exactly as it does in
+          // `sourceState`: a plan-frozen source files nothing BECAUSE it is frozen,
+          // and "not monitored" next to a Turn on link offers an enable the API 403s.
+          const locked = !planAllowsMonitorSource(plan, s.key);
+          if (locked) {
+            return (
+              <span key={s.key} className="inline-flex items-center gap-1.5 text-xs">
+                <LockIcon size={14} className="shrink-0 text-muted-foreground" />
+                <span className="text-muted-foreground">
+                  {s.label}: included in {PLAN_LABELS[minPlanForSource(s.key)]}
+                </span>
+                {onLockedSource && (
+                  <button
+                    type="button"
+                    onClick={() => onLockedSource(s.key)}
+                    className="rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    Upgrade
+                  </button>
+                )}
+              </span>
+            );
+          }
           return (
             <span key={s.key} className="inline-flex items-center gap-1.5 text-xs">
               <span
@@ -1231,8 +1281,15 @@ function NothingPublished({
   scrapingIds,
   onRunAll,
   onEnable,
+  plan,
+  onLockedSource,
+  runnableKeys,
 }: Omit<MonitorSourceProps, "onRun"> & {
   onRunAll: (only: readonly SourceType[]) => void;
+  plan: Plan;
+  onLockedSource?: (source: SourceType) => void;
+  /** The sources this plan may re-scan — locked ones would only earn a 403. */
+  runnableKeys: readonly SourceType[];
 }) {
   const [enabling, setEnabling] = useState<string | null>(null);
 
@@ -1250,19 +1307,41 @@ function NothingPublished({
         <ul className="mt-1.5 flex w-full max-w-[34rem] flex-col">
           {SOURCES.map((s) => {
             const monitor = monitors.find((m) => m.sourceType === s.key);
+            // Same precedence as `QuietSources` and `sourceState`: above the plan
+            // beats every other state, so the row is an offer rather than a gap.
+            const locked = !planAllowsMonitorSource(plan, s.key);
             return (
               <li
                 key={s.key}
                 className="flex items-center gap-2.5 border-t border-border py-2.5 text-dense first:border-t-0"
               >
-                <span
-                  aria-hidden
-                  className="size-1.5 shrink-0 rounded-full"
-                  style={{ background: s.color }}
-                />
-                <span className="font-medium">{s.label}</span>
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {!monitor ? (
+                {locked ? (
+                  <LockIcon size={14} className="shrink-0 text-muted-foreground" />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="size-1.5 shrink-0 rounded-full"
+                    style={{ background: s.color }}
+                  />
+                )}
+                <span className={cn("font-medium", locked && "text-muted-foreground")}>
+                  {s.label}
+                </span>
+                <span className="ml-auto inline-flex items-center gap-2 text-xs text-muted-foreground">
+                  {locked ? (
+                    <>
+                      Included in {PLAN_LABELS[minPlanForSource(s.key)]}
+                      {onLockedSource && (
+                        <button
+                          type="button"
+                          onClick={() => onLockedSource(s.key)}
+                          className="rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          Upgrade
+                        </button>
+                      )}
+                    </>
+                  ) : !monitor ? (
                     onEnable ? (
                       <button
                         type="button"
@@ -1293,9 +1372,9 @@ function NothingPublished({
           })}
         </ul>
 
-        {monitors.some((m) => SOURCES.some((s) => s.key === m.sourceType)) && (
+        {monitors.some((m) => runnableKeys.includes(m.sourceType)) && (
           <div className="mt-2">
-            <Button size="sm" onClick={() => onRunAll(SOURCE_KEYS)}>
+            <Button size="sm" onClick={() => onRunAll(runnableKeys)}>
               Re-scan now
             </Button>
           </div>

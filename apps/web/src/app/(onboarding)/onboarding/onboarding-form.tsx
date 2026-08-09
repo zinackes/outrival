@@ -9,7 +9,7 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   CheckIcon,
-  CaretDownIcon,
+  DotsThreeIcon,
   ArrowSquareOutIcon,
   FileTextIcon,
   GitBranchIcon,
@@ -30,7 +30,6 @@ import {
   detectTemporaryUrl,
   DISCOVERY_REGIONS,
   inferRegionFromUrl,
-  type AnalysisStage,
   type Plan,
 } from "@outrival/shared";
 import {
@@ -71,14 +70,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { analysisStageMeta } from "@/components/outrival/analysis-status";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
-type Screen = "stage" | "input" | "profile" | "discover" | "done";
+type Screen = "stage" | "input" | "profile" | "discover";
 type SourceType = "homepage" | "pricing" | "blog";
 type Frequency = "daily" | "weekly";
 
@@ -86,12 +94,22 @@ interface Selection extends DiscoveredCompetitor {
   selected: boolean;
 }
 
+// One screen, one step. The previous map counted "stage" and "input" as the same
+// step — so the very first choice moved nothing — and gave the finished flow a
+// step number of its own. Naming the four steps replaces the bare "Step 1 of 3":
+// position was the only thing the old bar could answer, never "of what".
+const SETUP_STEPS = [
+  "Where you are",
+  "Your product",
+  "What we read",
+  "Competitors",
+] as const;
+
 const SCREEN_TO_STEP: Record<Screen, number> = {
   stage: 1,
-  input: 1,
-  profile: 2,
-  discover: 3,
-  done: 3,
+  input: 2,
+  profile: 3,
+  discover: 4,
 };
 
 const STAGE_META: Record<
@@ -323,7 +341,8 @@ export function OnboardingForm({
 
   // Persist progress on each screen transition (fire-and-forget). Mirrors the
   // step onto both the org (routing gate) and the onboarding session (resume +
-  // metrics). "done" isn't a session stage — /complete flips it to analysis.
+  // metrics). Every Screen is a real session stage now that "done" is gone, so
+  // the transition no longer needs a guard for the one that wasn't.
   const goTo = useCallback(
     (next: Screen) => {
       setError(null);
@@ -334,10 +353,7 @@ export function OnboardingForm({
       void api.patchOnboardingProgress(next as OnboardingStep).catch(() => {});
       // The wizard's first screen ("stage", project-stage pick) is the session's
       // "started" stage; the other screens share their literal name with the stage.
-      // "done" isn't a session stage — /complete flips it to analysis.
-      if (next !== "done") {
-        void updateSession({ stage: next === "stage" ? "started" : next });
-      }
+      void updateSession({ stage: next === "stage" ? "started" : next });
     },
     [updateSession],
   );
@@ -746,7 +762,19 @@ export function OnboardingForm({
       void updateSession({
         timings: { [milestoneKey(ONBOARDING_EVENTS.COMPETITORS_FINALIZED)]: Date.now() },
       });
-      setScreen("done");
+      // No completion screen. /complete already flipped the org to
+      // onboardingCompleted + step "done", so the page gate sends any return visit
+      // straight to the dashboard — where OnboardingAnalysisPanel renders the very
+      // progress this wizard used to poll for on a screen with nothing else on it.
+      // `busy` deliberately stays set: the button holds its pending state until the
+      // route actually changes.
+      trackOnboarding(ONBOARDING_EVENTS.REDIRECT_TO_DASHBOARD, sessionId);
+      toast.success(
+        selected.length === 1
+          ? "Setup complete. We're reading your competitor now."
+          : `Setup complete. We're reading your ${selected.length} competitors now.`,
+      );
+      router.push("/dashboard");
     } catch (e) {
       const reason = paywallFromError(e);
       if (reason) setPaywall(reason);
@@ -758,26 +786,18 @@ export function OnboardingForm({
   const currentStep = SCREEN_TO_STEP[screen];
 
   return (
-    <div className="relative min-h-screen flex flex-col bg-background">
-      {/* Ambient accent glow, matching the /auth surface — the welcome moment a
-          first-run flow is licensed to have. Rationed, aria-hidden, behind content. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 overflow-hidden"
-      >
-        <div className="absolute left-1/2 top-[-40%] size-[640px] -translate-x-1/2 rounded-full bg-primary/[0.07] blur-[140px]" />
-      </div>
-
+    // Flat canvas. The ambient glow that used to sit here was clipped to h-72 by an
+    // overflow-hidden wrapper, which cuts a 140px blur mid-gradient and leaves a
+    // straight seam across the page — it read as a rendering fault, not atmosphere.
+    <div className="min-h-screen flex flex-col bg-background">
       <Header
+        step={currentStep}
         onSignOut={handleSignOut}
         onRestart={restart}
         onSkip={handleSkip}
-        showControls={screen !== "done"}
       />
 
-      <main className="relative z-10 flex-1 mx-auto w-full max-w-3xl px-4 sm:px-8 py-8 sm:py-12">
-        {screen !== "done" && <ProgressBar step={currentStep} />}
-
+      <main className="flex-1 mx-auto w-full max-w-3xl px-4 sm:px-8 py-8 sm:py-12">
         {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
         {fallbackOffer && (
@@ -789,7 +809,7 @@ export function OnboardingForm({
 
         <div
           key={screen}
-          className="mt-8 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200 motion-safe:ease-out"
+          className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200 motion-safe:ease-out"
         >
           {screen === "stage" && <StageChooser onChoose={chooseStage} current={stage} />}
 
@@ -850,16 +870,6 @@ export function OnboardingForm({
             />
           )}
 
-          {screen === "done" && (
-            <DoneStep
-              totalCompetitors={selectedCount}
-              plan={plan}
-              onDashboard={() => {
-                trackOnboarding(ONBOARDING_EVENTS.REDIRECT_TO_DASHBOARD, sessionId);
-                router.push("/dashboard");
-              }}
-            />
-          )}
         </div>
       </main>
 
@@ -870,68 +880,152 @@ export function OnboardingForm({
 
 // ── Shell ──────────────────────────────────────────────────────────────────
 
+// The header used to carry three ghost buttons on every screen, one of them a
+// destructive Restart four pixels from the button that saves progress. Brand,
+// progress and a single overflow menu now: the flow's own controls are the only
+// thing competing for a click.
 function Header({
+  step,
   onSignOut,
   onRestart,
   onSkip,
-  showControls,
 }: {
+  step: number;
   onSignOut: () => void | Promise<void>;
   onRestart: () => void;
   onSkip: () => void | Promise<void>;
-  showControls: boolean;
 }) {
+  const [confirmRestart, setConfirmRestart] = useState(false);
+
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/65">
-      <div className="mx-auto max-w-3xl px-4 sm:px-8 h-14 flex items-center justify-between">
-        <Link href="/" className="text-base font-semibold font-[var(--font-display)] tracking-tight">
+      <div className="mx-auto flex h-14 max-w-3xl items-center gap-4 px-4 sm:px-8">
+        <Link
+          href="/"
+          className="shrink-0 text-base font-semibold font-[var(--font-display)] tracking-tight"
+        >
           <span className="text-foreground">out</span>
           <span className="text-primary">rival</span>
         </Link>
-        <div className="flex items-center gap-1">
-          {showControls && (
-            <>
-              <Button variant="ghost" size="sm" onClick={onRestart}>
-                <ArrowCounterClockwiseIcon size={16} /> <span className="hidden sm:inline">Restart</span>
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => void onSkip()}>
-                <SignOutIcon size={16} /> <span className="hidden sm:inline">Leave for now</span>
-              </Button>
-            </>
-          )}
-          <Button variant="ghost" size="sm" onClick={() => void onSignOut()}>
-            Sign out
-          </Button>
-        </div>
+
+        <HeaderSteps step={step} />
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0"
+              aria-label="Setup options"
+            >
+              <DotsThreeIcon size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem onSelect={() => setConfirmRestart(true)}>
+              <ArrowCounterClockwiseIcon size={16} /> Start over
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void onSkip()}>
+              <SignOutIcon size={16} /> Leave for now
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => void onSignOut()}>Sign out</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
+
+      {/* Restart discards every answer given so far, so it asks first. */}
+      <Dialog open={confirmRestart} onOpenChange={setConfirmRestart}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Start over?</DialogTitle>
+            <DialogDescription>
+              This clears the starting point you picked, the profile we extracted from your
+              product and the competitors on screen. Your account and your plan are untouched.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmRestart(false)}>
+              Keep going
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setConfirmRestart(false);
+                onRestart();
+              }}
+            >
+              Start over
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </header>
   );
 }
 
-function ProgressBar({ step }: { step: number }) {
+// Progress lives in the header rather than at the top of the content column, so
+// it stays on screen while a step scrolls. Below md the four labels don't fit,
+// and a truncated name is worse than a number: the bar keeps position there and
+// the count keeps the total.
+function HeaderSteps({ step }: { step: number }) {
+  const total = SETUP_STEPS.length;
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-muted-foreground">
-          Set up in under 3 minutes
-        </span>
-        <span className="text-xs text-muted-foreground">
-          Step <span className="text-foreground tabular-nums">{step}</span> of{" "}
-          <span className="tabular-nums">3</span>
+    <div className="min-w-0 flex-1">
+      <div className="flex items-center gap-2 md:hidden">
+        <div className="flex flex-1 gap-1" aria-hidden>
+          {SETUP_STEPS.map((label, i) => (
+            <span
+              key={label}
+              className={cn(
+                "h-0.5 flex-1 rounded-full transition-colors duration-300",
+                i < step ? "bg-primary" : "bg-stroke",
+              )}
+            />
+          ))}
+        </div>
+        <span className="shrink-0 text-meta text-muted-foreground tabular-nums">
+          {step}/{total}
         </span>
       </div>
-      <div className="flex gap-1.5">
-        {[1, 2, 3].map((n) => (
-          <div
-            key={n}
-            className={cn(
-              "h-1 flex-1 rounded-full transition-colors duration-300",
-              // "2 of 3" needs the unfilled steps to be countable, not implied.
-              n <= step ? "bg-primary" : "bg-stroke",
-            )}
-          />
-        ))}
-      </div>
+
+      <ol className="hidden items-center md:flex">
+        {SETUP_STEPS.map((label, i) => {
+          const n = i + 1;
+          const done = n < step;
+          const current = n === step;
+          return (
+            <li
+              key={label}
+              aria-current={current ? "step" : undefined}
+              className="flex min-w-0 items-center"
+            >
+              {i > 0 && <span aria-hidden className="mx-2 h-px w-4 shrink-0 bg-border" />}
+              <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+                {done ? (
+                  <CheckIcon size={14} className="text-primary" />
+                ) : (
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full transition-colors duration-300",
+                      current ? "bg-primary" : "bg-stroke",
+                    )}
+                  />
+                )}
+              </span>
+              <span
+                className={cn(
+                  "ml-2 truncate text-meta transition-colors",
+                  current ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
@@ -1697,187 +1791,5 @@ function OverlapBadge({ score }: { score: number }) {
     >
       {Math.round(score)}%
     </span>
-  );
-}
-
-// ── Screen: done (step 4, first session) ─────────────────────────────────
-
-function DoneStep({
-  totalCompetitors,
-  plan,
-  onDashboard,
-}: {
-  totalCompetitors: number;
-  plan: Plan;
-  onDashboard: () => void;
-}) {
-  // Per-competitor analysis progress (drives the "Analyzing X/Y" badge and the
-  // breakdown popover). A competitor counts as analyzed once it has an AI summary.
-  const [progress, setProgress] = useState<
-    { id: string; name: string; analyzed: boolean; stage: AnalysisStage }[]
-  >([]);
-  const analyzed = progress.filter((c) => c.analyzed).length;
-
-  // Only recommend steps the current plan can actually act on — recommending
-  // gated features right after sign-up is frustrating, not helpful.
-  const limits = PLAN_LIMITS[plan];
-  const nextSteps: string[] = [];
-  if (limits.allowedChannels.includes("slack")) {
-    nextSteps.push(
-      limits.features.realtimeAlerts
-        ? "Set up your Slack webhook for real-time alerts"
-        : "Set up your Slack webhook for alerts",
-    );
-  }
-  if (limits.features.multiUser) {
-    nextSteps.push("Invite a teammate");
-  }
-  if (limits.allowedFrequencies.length > 1) {
-    nextSteps.push("Customize your monitoring frequency");
-  }
-  nextSteps.push("Review your weekly digest settings");
-  if (nextSteps.length < 2) {
-    nextSteps.push("Explore your competitor profiles");
-  }
-
-  useEffect(() => {
-    let active = true;
-    let tries = 0;
-    async function poll() {
-      try {
-        const { competitors } = await api.listCompetitors();
-        if (!active) return;
-        // Best-effort progress proxy: a competitor counts as analyzed once it has
-        // an AI summary (first scrape → classify → summary pipeline produced output).
-        // The stage says WHERE the unfinished ones are — right after onboarding the
-        // queue is at its deepest (every seeded source lands at once), so "Analyzing"
-        // on all of them would describe work that has not begun.
-        setProgress(
-          competitors.map((c) => ({
-            id: c.id,
-            name: c.name,
-            analyzed: c.aiSummary != null,
-            stage: c.analysis?.stage ?? "queued",
-          })),
-        );
-      } catch {
-        // ignore — indicator is informational
-      }
-    }
-    void poll();
-    const id = setInterval(() => {
-      tries += 1;
-      if (!active || tries > 40) {
-        clearInterval(id);
-        return;
-      }
-      void poll();
-    }, 5000);
-    return () => {
-      active = false;
-      clearInterval(id);
-    };
-  }, []);
-
-  const allDone = totalCompetitors > 0 && analyzed >= totalCompetitors;
-
-  return (
-    <div className="flex flex-col items-center text-center">
-      <div className="w-12 h-12 rounded-full bg-positive/15 border border-positive/30 flex items-center justify-center">
-        <CheckIcon size={20} className="text-positive" />
-      </div>
-      <h1 className="text-title md:text-title-lg font-semibold mt-5">
-        Setup complete
-      </h1>
-      <p className="text-sm text-muted-foreground mt-3 max-w-md">
-        Your competitors are being analyzed in the background. You can head to your dashboard
-        now. We'll send you a notification the moment the first analysis is ready.
-      </p>
-
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className="group mt-6 inline-flex items-center gap-2 rounded-md border border-border bg-surface-2/60 px-4 py-2 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-[3px] focus-visible:ring-ring"
-          >
-            {!allDone && (
-              <SpinnerIcon size={16} className="animate-spin text-muted-foreground" />
-            )}
-            {allDone && <CheckIcon size={16} className="text-positive" />}
-            <span className="text-sm text-foreground">
-              {allDone
-                ? `${totalCompetitors} competitors analyzed`
-                : `Analyzing ${analyzed}/${totalCompetitors} competitors…`}
-            </span>
-            <CaretDownIcon
-              size={16}
-              className="text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
-            />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="center" className="w-72 p-2">
-          <p className="px-2 pb-2 pt-1 text-meta text-muted-foreground">
-            Analysis progress
-          </p>
-          <ul className="flex max-h-64 flex-col overflow-y-auto">
-            {progress.length === 0 ? (
-              <li className="px-2 py-2 text-sm text-muted-foreground">
-                Loading…
-              </li>
-            ) : (
-              progress.map((c) => {
-                const meta = c.analyzed ? null : analysisStageMeta(c.stage);
-                const StageIcon = meta?.Icon ?? SpinnerIcon;
-                return (
-                  <li
-                    key={c.id}
-                    className="flex items-center gap-2 rounded-sm px-2 py-1.5"
-                  >
-                    {c.analyzed ? (
-                      <CheckIcon size={14} className="shrink-0 text-positive" />
-                    ) : (
-                      <StageIcon
-                        size={14}
-                        className={cn(
-                          "shrink-0 text-muted-foreground",
-                          (meta?.spin ?? true) && "animate-spin",
-                        )}
-                      />
-                    )}
-                    <span className="truncate text-sm text-foreground">
-                      {c.name}
-                    </span>
-                    <span className="ml-auto shrink-0 text-meta text-muted-foreground">
-                      {c.analyzed ? "Ready" : (meta?.short ?? "Analyzing")}
-                    </span>
-                  </li>
-                );
-              })
-            )}
-          </ul>
-        </PopoverContent>
-      </Popover>
-
-      <p className="text-xs text-muted-foreground mt-6">
-        Your first weekly digest will be sent next Monday.
-      </p>
-
-      <Card className="mt-8 w-full max-w-md p-5 text-left">
-        <p className="text-xs font-medium text-muted-foreground mb-3">
-          Recommended next steps
-        </p>
-        <ul className="flex flex-col gap-2 text-sm text-foreground">
-          {nextSteps.map((step) => (
-            <li key={step} className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded-sm border border-border-strong" /> {step}
-            </li>
-          ))}
-        </ul>
-      </Card>
-
-      <Button className="mt-8" onClick={onDashboard}>
-        Go to dashboard <ArrowRightIcon size={16} />
-      </Button>
-    </div>
   );
 }

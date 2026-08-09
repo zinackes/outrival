@@ -41,6 +41,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Empty,
@@ -330,100 +331,107 @@ export function ContentTab({
 
       <Themes themes={summary.themes} postsRead={totals.postsRead} windowDays={windowDays} />
 
-      <div className="flex flex-wrap items-center gap-2 bg-surface-2/45 px-5 py-3">
-        <ToggleGroup
-          type="single"
-          value={source}
-          onValueChange={(v) => v && pickSource(v)}
-          variant="outline"
-          size="sm"
+      {/* The source strip is the page's OWN tab component, one level down, because
+          that is what it is: picking a source picks a reading, not a filter value.
+          As a row of outlined pills it read as a third filter next to Kind and
+          Period, and matched nothing else in the product. Kind and period stay
+          toggles — they narrow what is on screen, they do not change its shape. */}
+      <Tabs value={source} onValueChange={pickSource} className="gap-0 divide-y divide-border">
+        <TabsList
+          variant="line"
+          className="w-full justify-start border-b-0 px-2"
           aria-label="Where it was published"
         >
-          <ToggleGroupItem value="all" className="gap-1.5 text-xs">
-            All <span className="tabular-nums opacity-70">{sumCounts(timeline.sourceCounts)}</span>
-          </ToggleGroupItem>
+          <TabsTrigger value="all">
+            All
+            <span className="tabular-nums opacity-70">{sumCounts(timeline.sourceCounts)}</span>
+          </TabsTrigger>
           {SOURCES.filter((s) => (timeline.sourceCounts[s.key] ?? 0) > 0).map((s) => (
-            <ToggleGroupItem key={s.key} value={s.key} className="gap-1.5 text-xs">
+            <TabsTrigger key={s.key} value={s.key}>
               <span
                 aria-hidden
                 className="size-1.5 shrink-0 rounded-full"
                 style={{ background: s.color }}
               />
-              {s.label}{" "}
+              {s.label}
               <span className="tabular-nums opacity-70">{timeline.sourceCounts[s.key]}</span>
-            </ToggleGroupItem>
+            </TabsTrigger>
           ))}
-        </ToggleGroup>
+        </TabsList>
 
-        <KindFilter
-          counts={timeline.typeCounts}
-          source={source}
-          value={type}
-          onChange={setType}
-        />
+        <TabsContent value={source} className="flex flex-col divide-y divide-border">
+          <div className="flex flex-wrap items-center gap-2 bg-surface-2/45 px-5 py-3">
+            <KindFilter
+              counts={timeline.typeCounts}
+              source={source}
+              value={type}
+              onChange={setType}
+            />
 
-        <ToggleGroup
-          type="single"
-          value={String(period)}
-          onValueChange={(v) => v && setPeriod(Number(v))}
-          variant="outline"
-          size="sm"
-          aria-label="Period"
-        >
-          {PERIODS.map((p) => (
-            <ToggleGroupItem key={p.days} value={String(p.days)} className="text-xs">
-              {p.label}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+            <ToggleGroup
+              type="single"
+              value={String(period)}
+              onValueChange={(v) => v && setPeriod(Number(v))}
+              variant="outline"
+              size="sm"
+              aria-label="Period"
+            >
+              {PERIODS.map((p) => (
+                <ToggleGroupItem key={p.days} value={String(p.days)} className="text-xs">
+                  {p.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
 
-        <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-          {timeline.total} {timeline.total === 1 ? "item" : "items"} ·{" "}
-          {period === 0
-            ? "all time"
-            : `last ${PERIODS.find((p) => p.days === period)?.label.toLowerCase()}`}
-        </span>
-      </div>
+            <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+              {timeline.total} {timeline.total === 1 ? "item" : "items"} ·{" "}
+              {period === 0
+                ? "all time"
+                : `last ${PERIODS.find((p) => p.days === period)?.label.toLowerCase()}`}
+            </span>
+          </div>
 
-      <QuietSources
-        counts={timeline.sourceCounts}
-        cadence={summary.cadence}
-        monitors={monitors}
-        scrapingIds={scrapingIds}
-        onEnable={onEnable}
-      />
+          <QuietSources
+            counts={timeline.sourceCounts}
+            cadence={summary.cadence}
+            monitors={monitors}
+            scrapingIds={scrapingIds}
+            onEnable={onEnable}
+          />
 
-      {items.length === 0 ? (
-        <NoMatch />
-      ) : view === "board" ? (
-        <RoadmapBoard items={items} />
-      ) : view === "releases" ? (
-        <ReleaseNotes items={items} />
-      ) : view === "pages" ? (
-        <DocsAreas items={items} />
-      ) : (
-        <Timeline items={items} showSource={source === "all"} />
-      )}
+          {items.length === 0 ? (
+            <NoMatch />
+          ) : view === "board" ? (
+            <RoadmapBoard items={items} />
+          ) : view === "releases" ? (
+            <ReleaseNotes items={items} />
+          ) : view === "pages" ? (
+            <DocsAreas items={items} />
+          ) : (
+            <Timeline items={items} showSource={source === "all"} />
+          )}
 
-      {timelineQuery.hasNextPage && (
-        <div className="flex justify-center px-5 py-3.5">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={timelineQuery.isFetchingNextPage}
-            onClick={() => void timelineQuery.fetchNextPage()}
-          >
-            {timelineQuery.isFetchingNextPage ? (
-              "Loading…"
-            ) : (
-              <>
-                Show {Math.min(pageSize, timeline.total - items.length)} more ·{" "}
-                <span className="tabular-nums">{timeline.total - items.length}</span> left
-              </>
-            )}
-          </Button>
-        </div>
-      )}
+          {timelineQuery.hasNextPage && (
+            <div className="flex justify-center px-5 py-3.5">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={timelineQuery.isFetchingNextPage}
+                onClick={() => void timelineQuery.fetchNextPage()}
+              >
+                {timelineQuery.isFetchingNextPage ? (
+                  "Loading…"
+                ) : (
+                  <>
+                    Show {Math.min(pageSize, timeline.total - items.length)} more ·{" "}
+                    <span className="tabular-nums">{timeline.total - items.length}</span> left
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 text-xs text-muted-foreground">
         {readMonitors.length > 0 && (
@@ -923,12 +931,21 @@ function RoadmapBoard({ items }: { items: ContentItemRow[] }) {
         role="region"
         aria-label="Roadmap board"
         tabIndex={0}
-        className="overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="snap-x overflow-x-auto px-5 py-4 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        <div className="flex min-w-max items-stretch divide-x divide-border">
+        {/* Columns SHARE the width instead of being pinned at 16rem: `1fr` above a
+            15rem floor lets three states fill a wide reading column, and the same
+            floor is what makes the track overflow — and scroll, one column at a
+            time — once the states no longer fit. The old `min-w-max` did neither:
+            it left a hole to the right of a two-column roadmap and scrolled a
+            phone by half-columns. */}
+        <div className="grid auto-cols-[minmax(15rem,1fr)] grid-flow-col items-start gap-3">
           {columns.map((column) => (
-            <section key={column.status} className="flex w-64 shrink-0 flex-col">
-              <header className="flex flex-col gap-0.5 bg-surface-2/55 px-4 py-2.5">
+            <section
+              key={column.status}
+              className="flex snap-start flex-col gap-2 rounded-lg border border-border bg-surface-2/45 p-2"
+            >
+              <header className="flex flex-col gap-0.5 px-1.5 pt-1">
                 <div className="flex items-baseline gap-2">
                   <h4 className="text-xs font-semibold tracking-tight">{column.label}</h4>
                   <span className="text-xs tabular-nums text-muted-foreground">
@@ -944,7 +961,7 @@ function RoadmapBoard({ items }: { items: ContentItemRow[] }) {
                   </p>
                 )}
               </header>
-              <ul className="flex flex-1 flex-col divide-y divide-border">
+              <ul className="flex flex-col gap-2">
                 {column.items.map((item) => (
                   <RoadmapCard key={item.id} item={item} />
                 ))}
@@ -967,15 +984,18 @@ function RoadmapBoard({ items }: { items: ContentItemRow[] }) {
 function RoadmapCard({ item }: { item: ContentItemRow }) {
   const at = itemDate(item);
   return (
-    <li className="flex flex-col gap-1.5 px-4 py-3 transition-colors hover:bg-surface-3/55">
+    // A card on the column's tint rather than a row in a divided list: E1 depth is
+    // the hairline border alone, and it is what makes the entries read as movable
+    // things sitting IN a state rather than as a list that happens to be narrow.
+    <li className="flex flex-col gap-1.5 rounded-md border border-border bg-surface px-3 py-2.5 transition-colors hover:border-border-strong hover:bg-surface-3/55">
       <ItemLink item={item} />
       {item.summary && (
         <p className="line-clamp-3 text-dense text-muted-foreground">{item.summary}</p>
       )}
-      <div className="flex flex-wrap items-baseline gap-x-3 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
         {item.votes !== null && (
-          <span className="inline-flex items-baseline gap-1">
-            <ArrowUpIcon size={14} className="self-center" aria-hidden />
+          <span className="inline-flex items-center gap-1 rounded-sm bg-surface-2 px-1.5 py-0.5">
+            <ArrowUpIcon size={14} aria-hidden />
             <span className="font-semibold tabular-nums text-foreground">{item.votes}</span>
             {item.votes === 1 ? "vote" : "votes"}
           </span>

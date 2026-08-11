@@ -8,6 +8,7 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { enqueueJob } from "../lib/queue";
+import { getOrgPlan, competitorPlanCapState, competitorFrozenBody } from "../lib/plan";
 
 type Variables = { user: { id: string } };
 
@@ -29,6 +30,17 @@ async function resolveOwnedMonitor(monitorId: string, orgId: string) {
   });
   if (!competitor) return null;
   return { monitor, competitor };
+}
+
+// Every repair flow below ends in a scrape, so each one is a way to run a competitor
+// the plan cap has frozen (over-cap after a downgrade). Refuse before touching the
+// monitor: half-repairing a source that will never scrape leaves a worse state than
+// the paywall does. Read-only routes (list, dismiss, reject) skip this — they don't
+// scrape, and a frozen competitor's suggestions are still the user's to clear.
+async function refuseWhenPlanFrozen(orgId: string, competitorId: string) {
+  const plan = await getOrgPlan(orgId);
+  const state = await competitorPlanCapState(orgId, plan, competitorId);
+  return state.frozen ? competitorFrozenBody(plan, state) : null;
 }
 
 // List the proposed alternatives for one of the caller's monitors.
@@ -75,6 +87,10 @@ monitorAlternativesRouter.post("/:id/accept", async (c) => {
     if (!alternative.suggestedUrl) return c.json({ error: "Alternative has no URL" }, 400);
     const valid = validateMonitorUrl(monitor.sourceType, alternative.suggestedUrl, owned.competitor.url);
     if (!valid.ok) return c.json({ error: "invalid_monitor_url", reason: valid.error }, 400);
+    // Only this branch repoints + rescrapes; pausing a source or acknowledging a
+    // suggestion stays available on a frozen competitor.
+    const frozen = await refuseWhenPlanFrozen(orgId, owned.competitor.id);
+    if (frozen) return c.json(frozen, 403);
     // Repoint the existing monitor (keeps the 1-per-(competitor,source) invariant)
     // and clear the failure state so it scrapes the new URL cleanly.
     await db
@@ -122,6 +138,9 @@ monitorAlternativesRouter.post("/:monitorId/resume", async (c) => {
   const owned = await resolveOwnedMonitor(monitorId, orgId);
   if (!owned) return c.json({ error: "Forbidden" }, 403);
   const { monitor } = owned;
+
+  const frozen = await refuseWhenPlanFrozen(orgId, owned.competitor.id);
+  if (frozen) return c.json(frozen, 403);
 
   await db
     .update(monitors)
@@ -176,6 +195,9 @@ monitorAlternativesRouter.post("/:monitorId/set-url", async (c) => {
 
   const valid = validateMonitorUrl(monitor.sourceType, parsed.data.url, competitor.url);
   if (!valid.ok) return c.json({ error: "invalid_monitor_url", reason: valid.error }, 400);
+
+  const frozen = await refuseWhenPlanFrozen(orgId, competitor.id);
+  if (frozen) return c.json(frozen, 403);
 
   await db
     .update(monitors)

@@ -72,6 +72,7 @@ import {
   getOrgPlan,
   isFrequencyAllowed,
   pausedByPlanCap,
+  competitorPlanCapState,
 } from "../lib/plan";
 import {
   SOURCE_TYPES,
@@ -3383,12 +3384,18 @@ competitorsRouter.post("/:id/pricing/redetect", async (c) => {
   const pricingMonitor = await db.query.monitors.findFirst({
     where: and(eq(monitors.competitorId, id), eq(monitors.sourceType, "pricing")),
   });
-  if (pricingMonitor) {
+  // Handing pricing back to auto-detection is plain config and stays allowed, but the
+  // re-scrape that usually follows doesn't: a competitor frozen by the plan cap is
+  // skipped by the scheduler, so triggering it here would be the way around the freeze.
+  const plan = await getOrgPlan(orgId);
+  const { frozen } = await competitorPlanCapState(orgId, plan, id);
+  const rescraped = Boolean(pricingMonitor) && !frozen;
+  if (pricingMonitor && !frozen) {
     await enqueueJob(scrapeMonitor, { monitorId: pricingMonitor.id, force: true }, {
       priority: USER_SCRAPE_PRIORITY,
     });
   }
-  return c.json({ ok: true, rescraped: Boolean(pricingMonitor) });
+  return c.json({ ok: true, rescraped });
 });
 
 // ─── Per-plan pricing overlay (user content editing) ─────────────────────────

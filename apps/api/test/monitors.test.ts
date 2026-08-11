@@ -19,6 +19,7 @@ let A: { orgId: string; userId: string; email: string };
 let B: { orgId: string; userId: string; email: string };
 let C: { orgId: string; userId: string; email: string };
 let D: { orgId: string; userId: string; email: string };
+let E: { orgId: string; userId: string; email: string };
 let aiCharges = 0;
 let aiBudgetRefuses = false;
 
@@ -60,6 +61,10 @@ beforeEach(async () => {
   C = await seedOrg(testDb, { plan: "pro" });
   // Fresh free org for the plan-gating tests, so its 1/day free rescan cap is unspent.
   D = await seedOrg(testDb, { plan: "free" });
+  // Free org sitting OVER its competitor cap (2): the two oldest stay monitored, the
+  // third is frozen. createdAt is explicit — the cap ranks by it, and rows inserted in
+  // one statement share a timestamp.
+  E = await seedOrg(testDb, { plan: "free" });
   await testDb.insert(competitors).values([
     { id: "c-a", orgId: A.orgId, name: "Rival A" },
     { id: "c-b", orgId: B.orgId, name: "Rival B" },
@@ -68,6 +73,9 @@ beforeEach(async () => {
     // A competitor with a URL so a retargeted monitor URL passes the brand-lock guard.
     { id: "c-d", orgId: C.orgId, name: "Rival D", url: "https://rival-d.com" },
     { id: "c-e", orgId: D.orgId, name: "Rival E" },
+    { id: "c-f1", orgId: E.orgId, name: "Rival F1", createdAt: new Date(Date.now() - 3 * 86_400_000) },
+    { id: "c-f2", orgId: E.orgId, name: "Rival F2", createdAt: new Date(Date.now() - 2 * 86_400_000) },
+    { id: "c-f3", orgId: E.orgId, name: "Rival F3", createdAt: new Date(Date.now() - 86_400_000) },
   ]);
   await testDb.insert(monitors).values([
     // Already run → a force-rescan is a genuine (metered) re-scan.
@@ -149,6 +157,10 @@ beforeEach(async () => {
     // frozen by the free plan; m-e-ungated is a free-tier source that must stay refreshable.
     { id: "m-e-gated", competitorId: "c-e", sourceType: "jobs", lastRunAt: new Date(Date.now() - 60_000) },
     { id: "m-e-ungated", competitorId: "c-e", sourceType: "homepage", lastRunAt: new Date(Date.now() - 60_000) },
+    // Free-tier source on both sides of org E's competitor cap: m-f3 hangs off the
+    // frozen competitor, m-f1 off an in-cap one (the control that must stay runnable).
+    { id: "m-f3", competitorId: "c-f3", sourceType: "homepage", lastRunAt: new Date(Date.now() - 60_000) },
+    { id: "m-f1", competitorId: "c-f1", sourceType: "homepage", lastRunAt: new Date(Date.now() - 60_000) },
   ]);
 }, 30_000);
 
@@ -499,6 +511,40 @@ describe("on-demand re-scan plan gate (premium source frozen on a downgraded pla
 
   test("force-rescan of an ungated source (homepage) on the same free org → 200", async () => {
     const res = await rescan(D, "m-e-ungated");
+    expect(res.status).toBe(200);
+    expect((await res.json()).ok).toBe(true);
+  });
+});
+
+// OUT-151 — the freeze one level up: a whole competitor over the plan's competitor
+// cap. The scheduler skips every one of its sources, so a manual trigger must too,
+// even on a source the plan does entitle. Otherwise a downgraded org keeps its
+// over-cap competitors fresh by clicking, and the cap only bites the cron.
+describe("on-demand re-scan plan gate (competitor frozen by the competitor cap)", () => {
+  test("run on an over-cap competitor → 403 plan_limit_competitors", async () => {
+    const res = await run(E, "m-f3");
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("plan_limit_competitors");
+    expect(body.limit).toBe(2); // free tier
+    expect(body.used).toBe(3);
+    expect(body.plan).toBe("free");
+  });
+
+  test("force-rescan on an over-cap competitor → 403, before any metering", async () => {
+    const res = await rescan(E, "m-f3");
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("plan_limit_competitors");
+    const logs = await testDb
+      .select()
+      .from(forcedRescanLog)
+      .where(eq(forcedRescanLog.monitorId, "m-f3"));
+    expect(logs).toHaveLength(0);
+    expect(aiCharges).toBe(0);
+  });
+
+  test("the same source on an IN-CAP competitor of that org → 200", async () => {
+    const res = await rescan(E, "m-f1");
     expect(res.status).toBe(200);
     expect((await res.json()).ok).toBe(true);
   });

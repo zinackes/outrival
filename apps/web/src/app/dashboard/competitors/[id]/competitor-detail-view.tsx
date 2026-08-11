@@ -199,8 +199,10 @@ function tabLock(key: TabKey, plan: Plan): { reason: PaywallReason; minPlan: Pla
       // gate the tab on it rather than the retired g2_reviews (now ungated → its
       // planIncludesSource is false on every plan, which would lock the tab for all).
       if (planIncludesSource(plan, "appstore_reviews")) return null;
+      // The gate is appstore_reviews, but the paywall says "Reviews": the tab also
+      // covers Shopify and Trustpilot, so naming one store would misdescribe it.
       return {
-        reason: { code: "plan_locked_source", source: "appstore_reviews", plan },
+        reason: { code: "plan_locked_source", source: "reviews", plan },
         minPlan: minPlanForSource("appstore_reviews"),
       };
     default:

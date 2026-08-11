@@ -54,6 +54,19 @@ export interface PausedCompetitor {
   name: string;
 }
 
+/** The org's real competitors, oldest first — the order the plan cap is applied in. */
+async function rankedCompetitors(orgId: string): Promise<PausedCompetitor[]> {
+  return db.query.competitors.findMany({
+    where: and(
+      eq(competitors.orgId, orgId),
+      isNull(competitors.deletedAt),
+      ne(competitors.type, "self"),
+    ),
+    columns: { id: true, name: true },
+    orderBy: [asc(competitors.createdAt)],
+  });
+}
+
 /**
  * Real competitors frozen by the plan cap (over-cap, e.g. after a downgrade).
  * Mirrors the competitor cap in `schedule-scraping.job.ts`: the oldest
@@ -66,16 +79,49 @@ export async function pausedByPlanCap(
 ): Promise<PausedCompetitor[]> {
   const limit = PLAN_LIMITS[plan].maxCompetitors;
   if (!Number.isFinite(limit)) return [];
-  const ranked = await db.query.competitors.findMany({
-    where: and(
-      eq(competitors.orgId, orgId),
-      isNull(competitors.deletedAt),
-      ne(competitors.type, "self"),
-    ),
-    columns: { id: true, name: true },
-    orderBy: [asc(competitors.createdAt)],
-  });
-  return ranked.slice(limit);
+  return (await rankedCompetitors(orgId)).slice(limit);
+}
+
+export interface PlanCapState {
+  frozen: boolean;
+  used: number;
+  limit: number;
+}
+
+/**
+ * Whether ONE competitor sits beyond the plan's competitor cap — the same freeze
+ * `pausedByPlanCap` lists, asked about a single row. The scheduler already skips
+ * these (selectWithinPlanCap), so every user-triggered scrape has to refuse them
+ * too: without it a manual run buys back exactly the monitoring a downgrade
+ * removed, one click at a time.
+ */
+export async function competitorPlanCapState(
+  orgId: string,
+  plan: Plan,
+  competitorId: string,
+): Promise<PlanCapState> {
+  const limit = PLAN_LIMITS[plan].maxCompetitors;
+  const ranked = await rankedCompetitors(orgId);
+  return {
+    frozen:
+      Number.isFinite(limit) && ranked.slice(limit).some((c) => c.id === competitorId),
+    used: ranked.length,
+    limit,
+  };
+}
+
+/**
+ * Structured 403 body for an action refused on a plan-frozen competitor. Same code
+ * as the "you can't add another one" refusal: it is the same cap, and the web turns
+ * both into the same competitor-limit paywall.
+ */
+export function competitorFrozenBody(plan: Plan, state: PlanCapState) {
+  return {
+    error: "plan_limit_competitors",
+    used: state.used,
+    limit: state.limit,
+    plan,
+  };
 }
 
 export async function checkCompetitorQuota(

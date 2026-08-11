@@ -25,6 +25,8 @@ import {
   isFrequencyAllowed,
   countUserForcedRescansToday,
   rescanLimitBody,
+  competitorPlanCapState,
+  competitorFrozenBody,
 } from "../lib/plan";
 
 type Variables = { user: { id: string } };
@@ -316,6 +318,11 @@ monitorsRouter.post("/:id/run", async (c) => {
   if (!planAllowsMonitorSource(plan, monitor.sourceType)) {
     return c.json({ error: "plan_locked_source", source: monitor.sourceType, plan }, 403);
   }
+  // Same gate one level up: the whole COMPETITOR can be frozen by the plan cap
+  // (over-cap after a downgrade). The scheduler skips every one of its sources, so
+  // an on-demand run must not be the way back in.
+  const capState = await competitorPlanCapState(orgId, plan, competitor.id);
+  if (capState.frozen) return c.json(competitorFrozenBody(plan, capState), 403);
 
   // patch-27 — a genuine re-scan (the source has already run at least once) draws
   // from the per-tier forced-rescan daily cap, exactly like /force-rescan, and is
@@ -400,6 +407,10 @@ monitorsRouter.post("/:id/force-rescan", async (c) => {
   if (!planAllowsMonitorSource(plan, monitor.sourceType)) {
     return c.json({ error: "plan_locked_source", source: monitor.sourceType, plan }, 403);
   }
+  // ...and the same competitor-level freeze as /:id/run: a competitor the plan cap
+  // has paused stays paused, whichever re-scan affordance the user reaches for.
+  const capState = await competitorPlanCapState(orgId, plan, competitor.id);
+  if (capState.frozen) return c.json(competitorFrozenBody(plan, capState), 403);
   const limit = forcedRescansPerDay(plan);
   let usageToday = 0;
   let logId: string | null = null;

@@ -84,6 +84,9 @@ const SOURCE_LABEL: Record<string, string> = {
   capterra_reviews: "Capterra reviews",
   appstore_reviews: "App Store reviews",
   shopify_reviews: "Shopify App Store reviews",
+  // Not an API source value: the Reviews tab gates on appstore_reviews, but the
+  // surface also carries Shopify and Trustpilot, so its lock names the tab.
+  reviews: "Reviews",
 };
 
 const CHANNEL_LABEL: Record<string, string> = {

@@ -82,6 +82,37 @@ const LISTING_HREF_SIGNALS = [
   "offres-emploi",
 ];
 
+// A hub's own listing frequently sits at the SAME path plus one segment: an Oracle
+// CandidateExperience site serves culture copy at `<…>/sites/CX_1` and keeps the
+// roles on `<…>/sites/CX_1/jobs`. Neither the label ("Jobs") nor a bare `/jobs`
+// substring makes that link listing-grade on its own — both fire on any nav entry
+// anywhere on the site, so both stay generic careers signals. DRILLING DOWN from the
+// page we're standing on is the part that carries information: the target can only
+// be deeper inside the section we already accepted as careers, never a lateral
+// wander into "Life at Acme".
+const DEEPER_LISTING_SEGMENT =
+  /^(jobs|all-jobs|alljobs|job-search|jobsearch|jobs-search|openings|open-positions|open-roles|positions|roles|vacancies|requisitions|offres|offres-emploi|emplois|postes)$/i;
+
+/**
+ * `base` plus exactly ONE more path segment, same host, that segment naming a
+ * listing. One segment only: `/careers/job/12345-engineer` is a single posting, and
+ * reading one posting as the board is the exact failure LISTING_TEXT_SIGNALS already
+ * guards against.
+ */
+function isDeeperListingPath(link: URL, base: URL): boolean {
+  if (link.hostname.toLowerCase() !== base.hostname.toLowerCase()) return false;
+  const from = base.pathname.replace(/\/+$/, "").toLowerCase();
+  // From the site ROOT every first-level path is "deeper", which would promote links
+  // the scraper's own path discovery already covers (`/jobs`, `/careers`) and let a
+  // homepage nav entry outrank a real off-site board. This rule is for a hub that
+  // sits at a path of its own.
+  if (from === "") return false;
+  const to = link.pathname.replace(/\/+$/, "").toLowerCase();
+  if (!to.startsWith(`${from}/`)) return false;
+  const rest = to.slice(from.length + 1);
+  return !rest.includes("/") && DEEPER_LISTING_SEGMENT.test(rest);
+}
+
 // Weaker signal — matched against `host + path` (an icon/image link with no text
 // still counts). Kept separate so a text match always outranks an href match.
 const HREF_SIGNALS = [
@@ -203,7 +234,10 @@ function rankCareersLinks(html: string, baseUrl: string): Candidate[] {
     if (LISTING_TEXT_SIGNALS.some((re) => re.test(label))) {
       score = 3;
       listing = true;
-    } else if (LISTING_HREF_SIGNALS.some((h) => haystack.includes(h))) {
+    } else if (
+      LISTING_HREF_SIGNALS.some((h) => haystack.includes(h)) ||
+      isDeeperListingPath(abs, base)
+    ) {
       score = 2.5;
       listing = true;
     } else if (TEXT_SIGNALS.some((re) => re.test(label))) score = 2;

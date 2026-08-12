@@ -90,6 +90,35 @@ const vanityBoardShellHtml = `<html><head>
   <link rel="alternate" hreflang="en" href="https://apply.workable.com/acme/?lng=en">
   </head><body><div id="app"></div></body></html>`;
 
+// An Oracle CandidateExperience site. The hub reads like a careers page — enough
+// for a hop to commit to it — but holds no roles: those are one segment deeper, at
+// `<site>/jobs`, behind a nav link labelled just "Jobs".
+const ORACLE_SITE = "https://acme.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1";
+const ORACLE_PATH = "/hcmUI/CandidateExperience/en/sites/CX_1";
+
+const homepageToOracleHtml = `<html><body>
+  <h1>Acme — serverless Postgres</h1>
+  <footer><a href="${ORACLE_SITE}">Careers</a></footer>
+</body></html>`;
+
+const oracleHubHtml = `<html><body>
+  <h1>Careers at Acme</h1>
+  <p>Life at Acme: meet the teams building the future of serverless Postgres, hear
+     what our engineers work on day to day, and see how we hire. We review every
+     application ourselves and answer within two weeks, wherever you are based.</p>
+  <nav>
+    <a href="${ORACLE_PATH}">Home</a>
+    <a href="${ORACLE_PATH}/jobs">Jobs</a>
+    <a href="${ORACLE_PATH}/profile">My profile</a>
+  </nav>
+</body></html>`;
+
+// The same hub with nothing but marketing one level down — the run must end on it.
+const oracleHubNoListingHtml = oracleHubHtml.replace(
+  `${ORACLE_PATH}/jobs">Jobs`,
+  `${ORACLE_PATH}/culture">Our culture`,
+);
+
 // A careers page whose only route to the roles is a button to that vanity board.
 const careersToVanityHtml = `<html><body>
   <h1>Careers at Acme</h1>
@@ -252,6 +281,34 @@ describe("jobs scraper — careers discovery routing", () => {
         return outcome(homepageHtml, HOMEPAGE);
       });
     }
+  });
+
+  it("leaves a hub it HOPPED to for the listing one segment deeper", async () => {
+    // Regression (OUT-139): the careers link goes off-site to an Oracle
+    // CandidateExperience site. Its landing page carries hiring vocabulary, so the
+    // hop kept it and the run ended there — a snapshot of culture copy with zero
+    // openings, while `<site>/jobs` sat one nav link away. The hub hop only ever ran
+    // on the page path discovery committed to, never on the page a hop landed on.
+    scrapePage.mockImplementation(async (u: string) => {
+      if (u.includes(`${ORACLE_PATH}/jobs`)) return outcome(listingHtml, u);
+      if (u.includes(ORACLE_PATH)) return outcome(oracleHubHtml, u);
+      return outcome(homepageToOracleHtml, HOMEPAGE);
+    });
+    const res = await scrape("comp-8", HOMEPAGE);
+    expect(res.metadata.careersFollowed).toBe(`${ORACLE_SITE}/jobs`);
+    expect(res.text).toContain("Founding Engineer - Auth");
+  });
+
+  it("keeps the hub it hopped to when nothing deeper advertises a listing", async () => {
+    // The other side of that hop: "Our culture" is one segment deeper too, and is
+    // not a listing. Trading the page we hold for it would be a lateral wander.
+    scrapePage.mockImplementation(async (u: string) => {
+      if (u.includes(ORACLE_PATH)) return outcome(oracleHubNoListingHtml, u);
+      return outcome(homepageToOracleHtml, HOMEPAGE);
+    });
+    const res = await scrape("comp-9", HOMEPAGE);
+    expect(res.metadata.careersFollowed).toBe(ORACLE_SITE);
+    expect(scrapePage.mock.calls.some(([u]) => String(u).includes("/culture"))).toBe(false);
   });
 
   it("does NOT wander off an already-found careers page to another same-host link", async () => {

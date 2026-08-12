@@ -141,6 +141,48 @@ describe("findJobListingLink", () => {
     expect(findJobListingLink(html, "https://clickup.com/careers")).toBeNull();
   });
 
+  it("leaves a hub for the listing sitting at its own path plus /jobs", () => {
+    // Oracle CandidateExperience shape: `/sites/CX_1` is the hub (culture copy, a
+    // "Sign in" box), the roles are on `/sites/CX_1/jobs`. The link's label is a bare
+    // "Jobs" and its path only carries the generic `/jobs` signal, so before this it
+    // scored as a plain careers link and a hub we had already committed to never
+    // released us.
+    const html = `<nav>
+      <a href="/hcmUI/CandidateExperience/en/sites/CX_1">Home</a>
+      <a href="/hcmUI/CandidateExperience/en/sites/CX_1/jobs">Jobs</a>
+      <a href="/hcmUI/CandidateExperience/en/sites/CX_1/profile">My profile</a>
+    </nav>`;
+    const base = "https://acme.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1";
+    expect(findJobListingLink(html, base)).toBe(`${base}/jobs`);
+  });
+
+  it("does not read a single posting under the hub as the listing", () => {
+    // Same drill-down shape, one segment further: `/sites/CX_1/job/12345` is ONE
+    // role. Only a single extra segment, named like a board, qualifies.
+    const html = `<a href="/sites/CX_1/job/12345-staff-engineer">Staff Engineer</a>
+      <a href="/sites/CX_1/jobs/12345">Staff Engineer</a>`;
+    expect(findJobListingLink(html, "https://acme.com/sites/CX_1")).toBeNull();
+  });
+
+  it("does not promote a first-level /jobs link from the site root", () => {
+    // Every path is "deeper" than `/`, and the scraper's own path discovery already
+    // probes /jobs and /careers. Promoting them here would let a homepage nav entry
+    // outrank the off-site board a footer link points at.
+    const html = `<nav><a href="/jobs">Jobs</a></nav>`;
+    expect(findJobListingLink(html, "https://acme.com/")).toBeNull();
+    expect(findCareersLink(html, "https://acme.com/")).toBe("https://acme.com/jobs");
+  });
+
+  it("does not follow a lateral careers link that only drills into marketing", () => {
+    // The guard the drill-down rule must not weaken: these ARE one segment deeper
+    // than the hub, none of them names a listing.
+    const html = `<nav>
+      <a href="/sites/CX_1/culture">Our culture</a>
+      <a href="/sites/CX_1/students">Students and graduates</a>
+    </nav>`;
+    expect(findJobListingLink(html, "https://acme.com/sites/CX_1")).toBeNull();
+  });
+
   it("still follows a plural listing CTA next to single-role ones", () => {
     const html = `<article><a href="/careers/100x-cos">Explore the role</a></article>
       <a href="/careers/openings">Explore all roles</a>`;

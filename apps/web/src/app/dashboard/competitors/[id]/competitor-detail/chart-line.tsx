@@ -102,6 +102,12 @@ export function MultiLineChart({
         <ChartTooltip
           {...chartTooltipMotion}
           contentStyle={TOOLTIP_STYLE}
+          // Recharts lays the tooltip and the legend out as absolute siblings in
+          // the order their elements appear here, so on a multi-series plot the
+          // legend below paints over a tooltip that reaches down to it. Neither
+          // wrapper carries a z-index of its own; giving the tooltip one settles
+          // it for good, whatever the element order.
+          wrapperStyle={{ zIndex: 20, outline: "none" }}
           cursor={<ChartCursorLine />}
           // The axis label is a short "14 Apr"; on an archived point that is not
           // enough, because the whole question is WHEN the archive holds it and

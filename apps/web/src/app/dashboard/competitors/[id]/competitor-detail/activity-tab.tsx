@@ -54,7 +54,6 @@ export function ActivityTab({
   competitorId,
   signals,
   changes,
-  onRefresh,
   competitorUrl,
   lastRunMs,
   lastVisit,
@@ -62,7 +61,6 @@ export function ActivityTab({
   competitorId: string;
   signals: CompetitorSignal[];
   changes: ChangeRow[];
-  onRefresh?: () => void;
   competitorUrl: string;
   /** Newest run across this competitor's sources (0 = never scraped). */
   lastRunMs: number;
@@ -272,11 +270,7 @@ export function ActivityTab({
               </AnimatePresence>
 
               {day.changes.length > 0 && (
-                <OtherChanges
-                  changes={day.changes}
-                  onRefresh={onRefresh}
-                  competitorUrl={competitorUrl}
-                />
+                <OtherChanges changes={day.changes} competitorUrl={competitorUrl} />
               )}
             </motion.div>
           ))}
@@ -447,11 +441,9 @@ function SignalRow({
  */
 function OtherChanges({
   changes,
-  onRefresh,
   competitorUrl,
 }: {
   changes: ChangeRow[];
-  onRefresh?: () => void;
   competitorUrl: string;
 }) {
   const sources = [...new Set(changes.map((c) => sourceShortLabel(c.sourceType as SourceType)))];
@@ -478,7 +470,7 @@ function OtherChanges({
       <ul className="flex flex-col divide-y divide-border px-5 pb-3">
         {changes.map((c) => (
           <li key={c.id} className="py-3 first:pt-1 last:pb-0">
-            <ChangeCard change={c} onRefresh={onRefresh} fallbackUrl={competitorUrl} />
+            <ChangeCard change={c} fallbackUrl={competitorUrl} />
           </li>
         ))}
       </ul>

@@ -175,11 +175,15 @@ scrapingRouter.get("/scraping-health", async (c) => {
   // notice a suppressor has gone from "drops copy passes" to "eats real signal".
   // Counted per reason: `cosmetic` is the semantic gate's judgement call and can
   // be wrong; `rotating_list` is a review capture, where the whole list is
-  // rewritten every scrape and no lexical diff was ever meaningful.
+  // rewritten every scrape and no lexical diff was ever meaningful; `trivial_diff`
+  // is the lexical significance pass scoring the diff below the threshold, and it
+  // is the noisiest of the three, so a ratio that climbs is the first place a
+  // mis-tuned threshold shows up.
   const [gateRow] = await db
     .select({
       suppressed: sql<number>`count(*) filter (where ${changes.suppressionReason} = 'cosmetic')::int`,
       rotatingList: sql<number>`count(*) filter (where ${changes.suppressionReason} = 'rotating_list')::int`,
+      trivialDiff: sql<number>`count(*) filter (where ${changes.suppressionReason} = 'trivial_diff')::int`,
       total: sql<number>`count(*)::int`,
     })
     .from(changes)
@@ -187,6 +191,7 @@ scrapingRouter.get("/scraping-health", async (c) => {
   const cosmeticGate = {
     suppressed: gateRow?.suppressed ?? 0,
     rotatingList: gateRow?.rotatingList ?? 0,
+    trivialDiff: gateRow?.trivialDiff ?? 0,
     totalChanges: gateRow?.total ?? 0,
   };
 

@@ -189,16 +189,16 @@ export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {
       <Section
         title="Unclassified changes"
         note={data?.window ?? "24h"}
-        info="Changes recorded but never classified. Cosmetic: the semantic gate judged the underlying fact unchanged (a rewording or reordering) — a judgement call that can be wrong. Rotating list: a review capture, where the page publishes its most recent reviews and the whole list is rewritten every scrape. Suppression is invisible to the customer, so these shares are the only way to catch a suppressor drifting from dropping noise to eating real signal."
+        info="Changes recorded but never classified. Cosmetic: the semantic gate judged the underlying fact unchanged (a rewording or reordering) — a judgement call that can be wrong. Rotating list: a review capture, where the page publishes its most recent reviews and the whole list is rewritten every scrape. Trivial diff: the lexical significance pass scored the diff below the threshold (a timestamp, a counter, a hash), which is the noisiest of the three and the first place a mis-tuned threshold shows up. Suppression is invisible to the customer, so these shares are the only way to catch a suppressor drifting from dropping noise to eating real signal."
       >
         {(() => {
           const g = data?.cosmeticGate;
           if (!g || g.totalChanges === 0) {
             return <Empty>No changes in the window.</Empty>;
           }
-          const classified = g.totalChanges - g.suppressed - g.rotatingList;
+          const classified = g.totalChanges - g.suppressed - g.rotatingList - g.trivialDiff;
           return (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
               <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted-foreground">Cosmetic</span>
                 <span style={{ ...mono, color: "var(--accent)" }}>
@@ -213,6 +213,13 @@ export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {
                 <span style={mono}>{pctFmt(g.rotatingList / g.totalChanges)}</span>
                 <span className="text-xs text-muted-foreground" style={mono}>
                   {g.rotatingList}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">Trivial diff</span>
+                <span style={mono}>{pctFmt(g.trivialDiff / g.totalChanges)}</span>
+                <span className="text-xs text-muted-foreground" style={mono}>
+                  {g.trivialDiff}
                 </span>
               </div>
               <div className="flex flex-col gap-1">

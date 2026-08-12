@@ -2,50 +2,32 @@
 
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import {
-  ArrowSquareOutIcon,
-  SpinnerIcon,
-  SparkleIcon,
-  CaretDownIcon,
-  CaretRightIcon,
-} from "@/components/icons";
-import { api, type ChangeRow } from "@/lib/api";
-import { toastApiError } from "@/lib/error-helpers";
+import { ArrowSquareOutIcon, CaretDownIcon, CaretRightIcon } from "@/components/icons";
+import type { ChangeRow } from "@/lib/api";
+import { noSummaryReason, reviewCaptureLine } from "@/lib/change-fallback";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { DiffPreview } from "@/components/outrival/diff-preview";
 
 export function ChangeCard({
   change,
-  onRefresh,
   fallbackUrl,
   insight,
 }: {
   change: ChangeRow;
-  onRefresh?: () => void;
   fallbackUrl?: string;
   insight?: string | null;
 }) {
-  const [open, setOpen] = useState(false);
-  const [classifying, setClassifying] = useState(false);
   // Prefer the strategic signal insight (when this change became a signal) over
   // the change's own classification summary.
   const summary = insight && insight.trim().length > 0 ? insight : change.summary;
   const hasSummary = !!summary && summary.trim().length > 0;
-
-  async function classify() {
-    setClassifying(true);
-    try {
-      await api.classifyChange(change.id);
-      setTimeout(() => {
-        onRefresh?.();
-        setClassifying(false);
-      }, 4000);
-    } catch (e) {
-      toastApiError(e, { title: "Couldn't classify that change" });
-      setClassifying(false);
-    }
-  }
+  const capture = change.reviewCapture ?? null;
+  // A change with no summary still has its diff, and that is the content: it
+  // opens with the card rather than sitting behind a toggle the reader has no
+  // reason to press. Review captures are the exception — their "diff" is the
+  // whole rotated list, tens of thousands of characters of other people's
+  // reviews, which is exactly what the capture line replaces.
+  const [open, setOpen] = useState(!hasSummary && change.suppressionReason !== "rotating_list");
 
   const pageUrl = change.monitorUrl ?? fallbackUrl ?? null;
   return (
@@ -72,27 +54,15 @@ export function ChangeCard({
       {hasSummary ? (
         <p className="text-sm leading-relaxed text-foreground">{summary}</p>
       ) : (
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-dense text-muted-foreground italic">
-            No AI summary yet. Classification was never run for this change.
+        <div className="flex flex-col gap-1">
+          {capture && (
+            <p className="text-sm leading-relaxed tabular-nums text-foreground">
+              {reviewCaptureLine(capture)}
+            </p>
+          )}
+          <p className="text-dense text-muted-foreground">
+            {noSummaryReason(change.suppressionReason)}
           </p>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={classifying}
-            onClick={classify}
-            className="h-7 text-xs"
-          >
-            {classifying ? (
-              <>
-                <SpinnerIcon size={16} className="animate-spin" /> Classifying…
-              </>
-            ) : (
-              <>
-                <SparkleIcon size={16} /> Classify with AI
-              </>
-            )}
-          </Button>
         </div>
       )}
 
@@ -116,4 +86,3 @@ export function ChangeCard({
     </div>
   );
 }
-

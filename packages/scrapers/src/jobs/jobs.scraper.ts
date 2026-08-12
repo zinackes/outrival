@@ -298,6 +298,33 @@ export async function scrape(
     return probe ? keep(probe) : null;
   };
 
+  /**
+   * The page we hopped TO can be a hub as well. An off-site careers site routinely
+   * opens on a landing page — an Oracle CandidateExperience site serves culture copy
+   * at `<…>/sites/CX_1` and keeps the roles at `<…>/sites/CX_1/jobs` — and that
+   * landing page reads enough like a careers page for `followHop` to keep it, so the
+   * run ended on a snapshot with no openings in it while the listing sat one click
+   * away. The top-level hub hop cannot cover this: it only ever ran on the page path
+   * discovery committed to, never on the page a hop landed on.
+   *
+   * One extra hop, gated on a LISTING-grade link — the same guard that keeps the
+   * first hop from wandering sideways — and the page we already have is kept when it
+   * yields nothing. Depth stops at 2 by construction: this never calls itself.
+   */
+  const deeperListingHop = async (
+    page: ScrapeOutcome,
+    from: string,
+    via: "atsFollowed" | "careersFollowed",
+  ): Promise<ScrapeOutcome> => {
+    // The hop already resolved to real postings (board API on the landing page) —
+    // there is nothing deeper to look for.
+    if (page.metadata.atsJobs != null) return page;
+    const pageUrl = (typeof page.metadata.url === "string" && page.metadata.url) || from;
+    const deeper = findJobListingLink(page.html, pageUrl);
+    if (!deeper || isSameResource(deeper, from)) return page;
+    return (await followHop(deeper, via)) ?? page;
+  };
+
   // Postings we already hold, by canonical URL. A link in this map costs nothing
   // to re-affirm; one that isn't gets its page opened, within the budget below.
   const knownByUrl = new Map<string, KnownJob>();
@@ -510,7 +537,7 @@ export async function scrape(
 
   for (const target of targets) {
     const hop = await followHop(target.url, target.via);
-    if (hop) return finish(hop, detectedBoard);
+    if (hop) return finish(await deeperListingHop(hop, target.url, target.via), detectedBoard);
   }
   if (ats.kind !== "none") {
     result = { ...result, metadata: { ...result.metadata, atsDetected: ats.board.provider } };

@@ -457,6 +457,19 @@ export interface ChangeRow {
   engagementPoints?: number | null;
   engagementComments?: number | null;
   summary: string | null;
+  // Why this change carries no summary, when it carries none: "cosmetic",
+  // "rotating_list" or "trivial_diff". Null when it was classified normally (a
+  // classified-insignificant change keeps its summary), or when the classifier
+  // has not run yet.
+  suppressionReason?: string | null;
+  // What the review extraction recorded around this change, for the review
+  // sources whose diff is never classified. Null on every other source.
+  reviewCapture?: {
+    score: number;
+    reviewCount: number;
+    prevScore: number | null;
+    prevReviewCount: number | null;
+  } | null;
   detectedAt: string;
   monitorId: string;
   sourceType: string;
@@ -2447,7 +2460,12 @@ export type AdminScrapingHealth = {
   // because the gate judged them pure rewrites. Suppression is invisible to the
   // customer by construction, so this ratio is the only way to notice the gate has
   // drifted from "drops copy passes" to "eats real signal".
-  cosmeticGate: { suppressed: number; rotatingList: number; totalChanges: number };
+  cosmeticGate: {
+    suppressed: number;
+    rotatingList: number;
+    trivialDiff: number;
+    totalChanges: number;
+  };
   deadMonitors: AdminDeadMonitor[];
   // Collection doctrine: top competitors that refused us over 7 days, and why.
   refusedDomains: AdminRefusedDomain[];
@@ -3782,8 +3800,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
-  classifyChange: (id: string) =>
-    request<{ runId: string }>(`/api/changes/${id}/classify`, { method: "POST" }),
   listChanges: (params?: { limit?: number; competitorId?: string; monitorId?: string }) => {
     const q = new URLSearchParams();
     if (params?.limit) q.set("limit", String(params.limit));

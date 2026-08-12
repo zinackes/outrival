@@ -1787,6 +1787,11 @@ competitorsRouter.get("/:id", async (c) => {
           // Preview renders ≤18 lines — cap the payload (rows run up to 50KB).
           diffText: sql<string | null>`left(${changes.diffText}, 4000)`,
           summary: changes.summary,
+          // Why a change carries no summary: 'cosmetic', 'rotating_list' or
+          // 'trivial_diff' (see the column comment). The card names the reason
+          // deterministically instead of offering to run the classifier on a diff
+          // the pipeline already decided was not worth one.
+          suppressionReason: changes.suppressionReason,
           detectedAt: changes.detectedAt,
           monitorId: changes.monitorId,
           sourceType: monitors.sourceType,
@@ -1800,6 +1805,44 @@ competitorsRouter.get("/:id", async (c) => {
           // and on HN captures that predate them.
           engagementPoints: sql<number | null>`(${changes.rawDiff}->>'points')::int`,
           engagementComments: sql<number | null>`(${changes.rawDiff}->>'numComments')::int`,
+          // A review capture is never classified (rotating_list: the page rewrites
+          // its whole list on every scrape), so the numbers extract-reviews wrote
+          // are the only readable content this change has — without them the row
+          // renders as an empty card. The batch is written just after the scrape,
+          // hence the one-hour window, and the batch before it comes along so the
+          // card can say what moved rather than restate a level. Null on every
+          // other source: replace('homepage', '_reviews', '') matches no
+          // review_scores.source.
+          reviewCapture: sql<{
+            score: number;
+            reviewCount: number;
+            prevScore: number | null;
+            prevReviewCount: number | null;
+          } | null>`(
+            SELECT json_build_object(
+              'score', rs.score,
+              'reviewCount', rs.review_count,
+              'prevScore', (
+                SELECT rsp.score FROM review_scores rsp
+                WHERE rsp.competitor_id = ${competitor.id}
+                  AND rsp.source = replace(${monitors.sourceType}::text, '_reviews', '')
+                  AND rsp.recorded_at < rs.recorded_at
+                ORDER BY rsp.recorded_at DESC LIMIT 1
+              ),
+              'prevReviewCount', (
+                SELECT rsp.review_count FROM review_scores rsp
+                WHERE rsp.competitor_id = ${competitor.id}
+                  AND rsp.source = replace(${monitors.sourceType}::text, '_reviews', '')
+                  AND rsp.recorded_at < rs.recorded_at
+                ORDER BY rsp.recorded_at DESC LIMIT 1
+              )
+            )
+            FROM review_scores rs
+            WHERE rs.competitor_id = ${competitor.id}
+              AND rs.source = replace(${monitors.sourceType}::text, '_reviews', '')
+              AND rs.recorded_at <= ${changes.detectedAt} + interval '1 hour'
+            ORDER BY rs.recorded_at DESC LIMIT 1
+          )`,
         })
         .from(changes)
         .innerJoin(monitors, eq(monitors.id, changes.monitorId))

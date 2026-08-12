@@ -22,11 +22,14 @@ export const changes = pgTable("changes", {
   // on the structured homepage path; null for lexical/other-source changes.
   relevanceScore: real("relevance_score"),
   summary: text("summary"),
-  // Set when the change was recorded but deliberately NOT classified. Currently a
-  // single value, "cosmetic": the semantic gate judged the extracted fact
-  // unchanged (a rewording / reordering of the same substance), so no signal was
-  // generated. Kept on the row rather than dropped so the suppression is auditable
-  // (admin counter) instead of an invisible silence. Null = classified normally.
+  // Set when the change was recorded but deliberately NOT classified. Three
+  // values: "cosmetic" (the semantic gate judged the extracted fact unchanged, a
+  // rewording / reordering of the same substance), "rotating_list" (a review
+  // capture, whose whole list is rewritten on every scrape so no lexical diff was
+  // ever meaningful) and "trivial_diff" (the lexical significance pass scored the
+  // diff below the threshold: timestamps, hashes, nonces). Kept on the row rather
+  // than dropped so the suppression is auditable (admin counter) and so the UI can
+  // say WHY a change carries no summary. Null = classified normally.
   suppressionReason: text("suppression_reason"),
   detectedAt: timestamp("detected_at").notNull().defaultNow(),
 }, (t) => [

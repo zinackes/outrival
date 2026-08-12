@@ -2334,6 +2334,15 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
             } else if (significance.worth) {
               await classifyChange.enqueue({ changeId });
             } else {
+              // Recorded, deliberately not classified — same bookkeeping as the
+              // rotating-list branch above. Without the stamp the row is
+              // indistinguishable from one whose classification is still in
+              // flight, so the UI could only say "no summary" and offer to run
+              // the classifier on a diff we already judged not worth one.
+              await db
+                .update(changes)
+                .set({ suppressionReason: "trivial_diff" })
+                .where(eq(changes.id, changeId));
               logger.log("Skipping classification (trivial diff)", {
                 monitorId: monitor.id,
                 changeId,

@@ -786,7 +786,6 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 competitorId={competitor.id}
                 signals={recentSignals}
                 changes={recentChanges}
-                onRefresh={refresh}
                 competitorUrl={competitor.url}
                 lastRunMs={lastRunMs}
                 lastVisit={lastVisit}

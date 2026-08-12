@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
@@ -25,7 +25,6 @@ import {
   type MonitorFrequency,
   type Plan,
   type SourceAttention,
-  type SourceState,
   type SourceType,
 } from "@outrival/shared";
 import { api, type Monitor, type TechStackData } from "@/lib/api";
@@ -342,7 +341,14 @@ function AlwaysOnCadence({
  * The page is scanned to find what needs a decision, not read in catalog order, so
  * it is ONE sheet ranked by attention rather than eight cards ranked by taxonomy.
  */
-export function SourcesView({ id }: { id: string }) {
+export function SourcesView({
+  id,
+  targetSource = null,
+}: {
+  id: string;
+  /** Source a CTA sent the user here to act on (`?source=`), if any. */
+  targetSource?: SourceType | null;
+}) {
   const {
     data,
     error,
@@ -364,6 +370,13 @@ export function SourcesView({ id }: { id: string }) {
   // Switching the product scope to one that doesn't track this competitor leaves
   // here for that product's roster.
   useCompetitorScopeGuard(id, data?.competitor.name);
+  // The targeted row consumes this ONCE, on arrival. Dropping it as soon as the
+  // rows exist is what keeps a later chip click — which unmounts and remounts the
+  // rows it hides and shows — from re-opening and re-scrolling to the same source.
+  const [target, setTarget] = useState<SourceType | null>(targetSource);
+  useEffect(() => {
+    if (target && data) setTarget(null);
+  }, [target, data]);
 
   // Dev-only: force a tech-stack scan. The job updates techStackScrapedAt + entries,
   // so a timed refresh surfaces the result — no monitor-keyed polling like a source.
@@ -426,12 +439,13 @@ export function SourcesView({ id }: { id: string }) {
   const applicable = states.filter((s) => s.attention !== "unavailable").length;
   const visible = (attention: SourceAttention) => filter === null || filter === attention;
 
-  const renderRow = (sourceType: SourceType, state: SourceState) => {
+  const renderRow = (sourceType: SourceType) => {
     const monitor = bySource.get(sourceType) ?? null;
     return (
       <SourceRow
         key={sourceType}
         sourceType={sourceType}
+        autoOpen={target === sourceType}
         monitor={monitor}
         plan={plan}
         targets={targets}
@@ -453,7 +467,7 @@ export function SourcesView({ id }: { id: string }) {
 
   /** The rows of one attention group, in catalog order. */
   const groupRows = (attention: SourceAttention) =>
-    states.filter((s) => s.attention === attention).map((s) => renderRow(s.sourceType, s.state));
+    states.filter((s) => s.attention === attention).map((s) => renderRow(s.sourceType));
 
   const chips = CHIP_ORDER.map((key) => ({ key, count: countOf(key), ...ATTENTION_META[key] })).filter(
     (c) => c.count > 0,
@@ -584,7 +598,7 @@ export function SourcesView({ id }: { id: string }) {
               return (
                 <motion.div key={group} {...feedItemMotion} layout="position">
                   <GroupLabel>{SOURCE_GROUP_LABELS[group]}</GroupLabel>
-                  {rows.map((s) => renderRow(s.sourceType, s.state))}
+                  {rows.map((s) => renderRow(s.sourceType))}
                 </motion.div>
               );
             })}

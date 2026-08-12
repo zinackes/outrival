@@ -1,3 +1,4 @@
+import { ALL_CONFIGURABLE_SOURCES, type SourceType } from "@outrival/shared";
 import { SourcesView } from "./sources-view";
 
 /**
@@ -9,12 +10,25 @@ import { SourcesView } from "./sources-view";
  *
  * Landing here cold (direct URL) falls back to the view's own client fetch behind
  * its skeleton — one round-trip either way, just not a blocking one.
+ *
+ * `?source=<type>` is how a CTA that already knows which source it is about hands
+ * that over: read here rather than through `useSearchParams` so the value arrives
+ * as a plain prop, with no client hook forcing a Suspense boundary on the view. A
+ * value outside the configurable catalog (a custom monitor, a stale link) resolves
+ * to null and the page opens the way it always did.
  */
 export default async function CompetitorSourcesPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ source?: string }>;
 }) {
   const { id } = await params;
-  return <SourcesView id={id} />;
+  const { source } = await searchParams;
+  const targetSource =
+    source && (ALL_CONFIGURABLE_SOURCES as readonly string[]).includes(source)
+      ? (source as SourceType)
+      : null;
+  return <SourcesView id={id} targetSource={targetSource} />;
 }

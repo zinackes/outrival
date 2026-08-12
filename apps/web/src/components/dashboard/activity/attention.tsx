@@ -200,9 +200,12 @@ function AttentionRow({
     }
   };
 
+  // "Open source" means THIS source: name it in the URL so the sources page lands on
+  // that row, opened, instead of on a list the user has to search for the one they
+  // just clicked. A custom monitor has no configurable row, and the page ignores it.
   const sourcesHref = source.isSelf
     ? "/dashboard/products"
-    : `/dashboard/competitors/${source.competitorId}/sources`;
+    : `/dashboard/competitors/${source.competitorId}/sources?source=${source.sourceType}`;
 
   return (
     // The row IS the animated element (not a wrapper around it), or `last:` would

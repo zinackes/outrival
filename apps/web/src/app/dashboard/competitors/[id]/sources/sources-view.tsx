@@ -25,7 +25,6 @@ import {
   type MonitorFrequency,
   type Plan,
   type SourceAttention,
-  type SourceState,
   type SourceType,
 } from "@outrival/shared";
 import { api, type Monitor, type TechStackData } from "@/lib/api";
@@ -440,7 +439,7 @@ export function SourcesView({
   const applicable = states.filter((s) => s.attention !== "unavailable").length;
   const visible = (attention: SourceAttention) => filter === null || filter === attention;
 
-  const renderRow = (sourceType: SourceType, state: SourceState) => {
+  const renderRow = (sourceType: SourceType) => {
     const monitor = bySource.get(sourceType) ?? null;
     return (
       <SourceRow
@@ -468,7 +467,7 @@ export function SourcesView({
 
   /** The rows of one attention group, in catalog order. */
   const groupRows = (attention: SourceAttention) =>
-    states.filter((s) => s.attention === attention).map((s) => renderRow(s.sourceType, s.state));
+    states.filter((s) => s.attention === attention).map((s) => renderRow(s.sourceType));
 
   const chips = CHIP_ORDER.map((key) => ({ key, count: countOf(key), ...ATTENTION_META[key] })).filter(
     (c) => c.count > 0,
@@ -599,7 +598,7 @@ export function SourcesView({
               return (
                 <motion.div key={group} {...feedItemMotion} layout="position">
                   <GroupLabel>{SOURCE_GROUP_LABELS[group]}</GroupLabel>
-                  {rows.map((s) => renderRow(s.sourceType, s.state))}
+                  {rows.map((s) => renderRow(s.sourceType))}
                 </motion.div>
               );
             })}

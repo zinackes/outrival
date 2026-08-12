@@ -1,9 +1,9 @@
 # Queue box — `outrival-queue-01`
 
-Netcup RS 1000 G12 · `152.53.113.71` · Ubuntu 24.04 · user `deploy` (sudo NOPASSWD).
+Netcup RS 1000 G12 · · Ubuntu 24.04 · user `deploy` (sudo NOPASSWD).
 
 Runs the pg-boss queue Postgres and the two worker processes. The API and web
-live on a **separate** OVH VPS (`151.80.58.65`, Coolify) and reach this box only
+live on a **separate** OVH VPS (Coolify) and reach this box only
 through a WireGuard tunnel.
 
 These files mirror what is deployed under `/opt/outrival` and `/etc`. They are

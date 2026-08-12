@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   CaretRightIcon,
   ArrowSquareOutIcon,
@@ -190,6 +190,7 @@ export function SourceName({ label, url }: { label: string; url: string | null }
  */
 export function SourceRow({
   sourceType,
+  autoOpen = false,
   monitor,
   plan,
   targets,
@@ -205,6 +206,8 @@ export function SourceRow({
   onUpgrade,
 }: {
   sourceType: SourceType;
+  /** This is the source the user was sent here to act on: land on it, opened. */
+  autoOpen?: boolean;
   monitor: Monitor | null;
   plan: Plan;
   targets: DetectedTargets | null;
@@ -228,6 +231,11 @@ export function SourceRow({
   const [saving, setSaving] = useState(false);
   const [enabling, setEnabling] = useState(false);
   const urlRef = useRef<HTMLInputElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const disclosureRef = useRef<HTMLButtonElement>(null);
+  // Armed at mount only, so the arrival behaviour can never fire twice on the same
+  // row — not on a re-render, not when the parent drops the target.
+  const armed = useRef(autoOpen);
   const drawerId = useId();
 
   const state = sourceState({ sourceType, plan, monitor, targets });
@@ -304,6 +312,31 @@ export function SourceRow({
     setOpen((v) => !v);
   }
 
+  // Arrival from a source-targeted CTA. The row the user was sent to opens itself
+  // and comes into view, so the controls are where they landed instead of somewhere
+  // down a list of eight. A locked row has no drawer to open, so it only scrolls:
+  // the padlock action is the whole offer, and it is on the line itself.
+  useEffect(() => {
+    if (!armed.current) return;
+    armed.current = false;
+    if (expandable) {
+      setUrlValue(currentUrl);
+      setOpen(true);
+    }
+    // One frame later, so the drawer exists and the focus target is the row that is
+    // actually being scrolled to.
+    requestAnimationFrame(() => {
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      rowRef.current?.scrollIntoView({
+        behavior: reduced ? "auto" : "smooth",
+        block: "center",
+      });
+      // Keyboard and screen-reader users arrive on the row too, not at the top of
+      // the document. preventScroll: the line above already placed it.
+      disclosureRef.current?.focus({ preventScroll: true });
+    });
+  }, [expandable, currentUrl]);
+
   async function saveUrl() {
     const url = urlValue.trim();
     if (!url) return;
@@ -336,6 +369,7 @@ export function SourceRow({
 
   return (
     <div
+      ref={rowRef}
       data-open={open || undefined}
       className={cn(
         "group/row transition-colors",
@@ -353,6 +387,7 @@ export function SourceRow({
       >
         <button
           type="button"
+          ref={disclosureRef}
           onClick={(e) => {
             // Without this the parent handler fires too and toggles right back.
             e.stopPropagation();

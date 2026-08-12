@@ -222,7 +222,9 @@ export function MonitorEmptyState({
             here is naming the page instead. The URL lives on the Sources tab. */}
         {canRetarget && (
           <Button size="sm" asChild>
-            <Link href={`/dashboard/competitors/${monitor.competitorId}/sources`}>
+            <Link
+              href={`/dashboard/competitors/${monitor.competitorId}/sources?source=${monitor.sourceType}`}
+            >
               <LinkIcon size={16} /> Point us at the {page}
             </Link>
           </Button>

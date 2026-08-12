@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
@@ -342,7 +342,14 @@ function AlwaysOnCadence({
  * The page is scanned to find what needs a decision, not read in catalog order, so
  * it is ONE sheet ranked by attention rather than eight cards ranked by taxonomy.
  */
-export function SourcesView({ id }: { id: string }) {
+export function SourcesView({
+  id,
+  targetSource = null,
+}: {
+  id: string;
+  /** Source a CTA sent the user here to act on (`?source=`), if any. */
+  targetSource?: SourceType | null;
+}) {
   const {
     data,
     error,
@@ -364,6 +371,13 @@ export function SourcesView({ id }: { id: string }) {
   // Switching the product scope to one that doesn't track this competitor leaves
   // here for that product's roster.
   useCompetitorScopeGuard(id, data?.competitor.name);
+  // The targeted row consumes this ONCE, on arrival. Dropping it as soon as the
+  // rows exist is what keeps a later chip click — which unmounts and remounts the
+  // rows it hides and shows — from re-opening and re-scrolling to the same source.
+  const [target, setTarget] = useState<SourceType | null>(targetSource);
+  useEffect(() => {
+    if (target && data) setTarget(null);
+  }, [target, data]);
 
   // Dev-only: force a tech-stack scan. The job updates techStackScrapedAt + entries,
   // so a timed refresh surfaces the result — no monitor-keyed polling like a source.
@@ -432,6 +446,7 @@ export function SourcesView({ id }: { id: string }) {
       <SourceRow
         key={sourceType}
         sourceType={sourceType}
+        autoOpen={target === sourceType}
         monitor={monitor}
         plan={plan}
         targets={targets}

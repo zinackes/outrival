@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { normalizePlanKey } from "@outrival/shared";
 import { CheckIcon } from "@/components/icons";
 import { api, type EntitlementCell } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -16,8 +17,18 @@ import { TabSection } from "@/components/outrival/tab-shell";
  *
  * Renders nothing when no matrix was ever captured: an empty grid under a
  * heading would read as "they gate nothing", which is not what absence means.
+ *
+ * `planOrder` is the resolved current plans, in the order the plan list above
+ * shows them: the columns follow it so the same tier sits in the same place in
+ * both panels. Pass the array as it comes off the query (stable identity).
  */
-export function PackagingMatrix({ competitorId }: { competitorId: string }) {
+export function PackagingMatrix({
+  competitorId,
+  planOrder,
+}: {
+  competitorId: string;
+  planOrder?: readonly { planName: string }[] | null;
+}) {
   const q = useQuery({
     queryKey: ["competitor", competitorId, "entitlements"],
     queryFn: () => api.getCompetitorEntitlements(competitorId),
@@ -25,7 +36,10 @@ export function PackagingMatrix({ competitorId }: { competitorId: string }) {
   });
 
   const data = q.data ?? null;
-  const model = useMemo(() => (data ? buildMatrix(data.current, data.previous) : null), [data]);
+  const model = useMemo(
+    () => (data ? buildMatrix(data.current, data.previous, planOrder ?? []) : null),
+    [data, planOrder],
+  );
 
   if (!model || model.features.length === 0) return null;
 
@@ -117,11 +131,29 @@ interface FeatureRow {
   byPlan: Map<string, EntitlementCell>;
 }
 
-function buildMatrix(current: EntitlementCell[], previous: EntitlementCell[]) {
-  // Column order: as the batch lists plans (page order is lost to storage, but
-  // the stable plan/label sort the API applies keeps captures comparable).
+function buildMatrix(
+  current: EntitlementCell[],
+  previous: EntitlementCell[],
+  planOrder: readonly { planName: string }[],
+) {
+  // Column order: the same left→right order the resolved current plans use, so
+  // a reader compares the two panels tier by tier. Matching is by normalized
+  // plan name — the matrix and the price list are two readings of the same page,
+  // but nothing guarantees identical casing or spacing between them. A plan the
+  // price list doesn't carry (matrix-only column, hidden by an override) has no
+  // rank and trails, keeping the API's alphabetical order among its peers.
+  const rank = new Map<string, number>();
+  for (const p of planOrder) {
+    const key = normalizePlanKey(p.planName);
+    if (!rank.has(key)) rank.set(key, rank.size);
+  }
   const plans: string[] = [];
   for (const c of current) if (!plans.includes(c.plan_name)) plans.push(c.plan_name);
+  plans.sort(
+    (a, b) =>
+      (rank.get(normalizePlanKey(a)) ?? Number.MAX_SAFE_INTEGER) -
+      (rank.get(normalizePlanKey(b)) ?? Number.MAX_SAFE_INTEGER),
+  );
 
   const bySlug = new Map<string, FeatureRow>();
   for (const c of current) {

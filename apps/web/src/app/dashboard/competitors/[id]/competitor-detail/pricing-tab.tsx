@@ -372,8 +372,10 @@ export function PricingTab({
       )}
 
       {/* Packaging (P2): what each plan includes, and which cells moved since the
-          last capture. Renders nothing until a matrix has been captured. */}
-      <PackagingMatrix competitorId={competitorId} />
+          last capture. Renders nothing until a matrix has been captured. Its
+          columns follow the resolved plans so both panels read left→right in the
+          same tier order. */}
+      <PackagingMatrix competitorId={competitorId} planOrder={resolvedTiers} />
 
       {/* Rate structure (P3): the volume bands, the monthly minimum and the
           percentage rate — the part of a metered price the tier list can't show.

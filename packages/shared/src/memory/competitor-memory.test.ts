@@ -135,6 +135,23 @@ describe("buildCompetitorMemory", () => {
     expect(storySummary(stories[0]!)).toBe("Watched since Jun 14, 2026 · 2 changes");
   });
 
+  // The competitor page links each fact back to the signal it was replayed from, so
+  // the id has to survive the grouping. Absent (the email never needs it) it reads
+  // null rather than undefined, so a stored digest round-trips through JSON unchanged.
+  test("carries the source signal id when the caller selected one", () => {
+    const { stories } = buildCompetitorMemory(
+      [
+        row({ at: daysAgo(30), signalId: "sig-1" }),
+        row({ at: daysAgo(2), signalId: "sig-2" }),
+        row({ competitorId: "c2", competitor: "Beta", at: daysAgo(30) }),
+        row({ competitorId: "c2", competitor: "Beta", at: daysAgo(2) }),
+      ],
+      { now: NOW },
+    );
+    expect(stories[0]!.facts.map((f) => f.signalId)).toEqual(["sig-1", "sig-2"]);
+    expect(stories[1]!.facts.map((f) => f.signalId)).toEqual([null, null]);
+  });
+
   test("an invalid timestamp is skipped rather than poisoning the order", () => {
     const { stories } = buildCompetitorMemory(
       [row({ at: "not-a-date" }), row({ at: daysAgo(5) }), row({ at: daysAgo(9) })],

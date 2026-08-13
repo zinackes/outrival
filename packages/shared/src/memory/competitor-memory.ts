@@ -31,6 +31,8 @@ export interface MemorySignalRow {
   /** Plain-language state after it. Rows without one carry no fact and are dropped. */
   after: string | null;
   at: Date | string;
+  /** The signal this fact came from, so a surface can link back to the evidence. */
+  signalId?: string | null;
 }
 
 /** One dated fact in a competitor's story. */
@@ -42,6 +44,8 @@ export interface MemoryFact {
   at: string;
   /** "3 weeks ago", frozen when the story is built — a brief reads as of its date. */
   ago: string;
+  /** Set when the caller asked for it; the email ignores it, the page links on it. */
+  signalId?: string | null;
 }
 
 /** What we have accumulated on one competitor. */
@@ -164,6 +168,7 @@ export function buildCompetitorMemory(
       after,
       at: iso,
       ago: relativeAge(at, now),
+      signalId: row.signalId ?? null,
     });
     grouped.set(row.competitorId, entry);
   }

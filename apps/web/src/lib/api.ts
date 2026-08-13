@@ -3490,6 +3490,8 @@ export const api = {
       automaticMonitors: Monitor[];
       recentChanges: ChangeRow[];
       recentSignals: CompetitorSignal[];
+      /** What we have accumulated on this competitor, or null before any change. */
+      memory: CompetitorStory | null;
       techStack: TechStackData;
       overview: CompetitorOverview;
       plan: Plan;

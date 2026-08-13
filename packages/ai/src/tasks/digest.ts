@@ -48,6 +48,9 @@ export const DigestSchema = z.object({
             after: z.string(),
             at: z.string(),
             ago: z.string(),
+            // The signal this fact was replayed from, so the in-app reader can link
+            // back to the evidence. Declared here or a re-parse would strip it.
+            signalId: z.string().nullable().optional(),
           }),
         ),
       }),

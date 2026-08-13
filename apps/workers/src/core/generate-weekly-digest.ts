@@ -9,6 +9,7 @@ import {
   sectoralSignals,
   standingQueries,
   insertAiQualityCheck,
+  loadMemorySignals,
 } from "@outrival/db";
 import {
   generateDigest,
@@ -46,43 +47,13 @@ const MEMORY_HISTORY_CAP = 2000;
 /**
  * What the org knows about its competitors over the whole tracking period (OUT-172).
  *
- * Deterministic and free: no AI call, and nothing here is new prose — the human
- * before/after pair was written by the classifier at the time and is the one field
- * the grounding layer keeps even when it withholds a signal's generated text.
- *
- * Excluded on purpose: insights the faithfulness gate blocked (the digest must not
- * be the back door around it, exactly as the week's query already guards), signals
- * whose figures the post-hoc check could not verify, and signals the user hid as
- * not useful. A fact that was not good enough to show once does not improve by
- * being replayed three months later.
+ * Deterministic and free: no AI call, and nothing here is new prose — every line is
+ * the plain-language before/after the classifier recorded at the time, replayed.
+ * What counts as replayable is decided by `loadMemorySignals` (@outrival/db), which
+ * the competitor page reads through too so the two surfaces cannot drift.
  */
 async function loadCompetitorMemory(orgId: string, now: Date): Promise<CompetitorMemory> {
-  const rows = await db
-    .select({
-      competitorId: signals.competitorId,
-      competitor: competitors.name,
-      category: signals.category,
-      before: signals.humanChangeBefore,
-      after: signals.humanChangeAfter,
-      at: signals.createdAt,
-    })
-    .from(signals)
-    .innerJoin(competitors, eq(competitors.id, signals.competitorId))
-    .where(
-      and(
-        eq(signals.orgId, orgId),
-        isNotNull(signals.humanChangeAfter),
-        isNull(signals.hiddenForUserAt),
-        or(
-          isNull(signals.filteredReason),
-          ne(signals.filteredReason, "faithfulness_blocked"),
-        ),
-        or(isNull(signals.groundingStatus), ne(signals.groundingStatus, "unverified")),
-      ),
-    )
-    .orderBy(desc(signals.createdAt))
-    .limit(MEMORY_HISTORY_CAP);
-
+  const rows = await loadMemorySignals({ orgId, limit: MEMORY_HISTORY_CAP });
   return buildCompetitorMemory(rows, { now });
 }
 

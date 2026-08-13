@@ -178,37 +178,59 @@ export function MemoryBand({
  * One competitor's dated facts, oldest first. The rail on the left is what makes it
  * read as a trajectory rather than as three unrelated rows; the age leads each line
  * because "when" is the column a reader scans for.
+ *
+ * A fact that knows which signal it came from links back to it, so the story stays
+ * sourced: every line here is replayed evidence, and the reader can open the one it
+ * was drawn from. `className` lets a host page set its own spacing above the rail.
  */
-export function MemoryTimeline({ story }: { story: CompetitorStory }) {
+export function MemoryTimeline({
+  story,
+  className = "mt-3",
+}: {
+  story: CompetitorStory;
+  className?: string;
+}) {
   return (
-    <ol className="m-0 mt-3 flex list-none flex-col gap-3 border-l border-border p-0 pl-3.5">
-      {story.facts.map((fact, i) => (
-        <li key={`${fact.at}-${i}`} className="relative flex flex-col gap-1">
-          <span
-            aria-hidden
-            className="absolute -left-[18px] top-1.5 size-1.5 rounded-full bg-border-strong"
-          />
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-            <span className="tabular-nums">{fact.ago}</span>
-            <CatText category={fact.category} />
-          </span>
-          <span className="max-w-[68ch] text-content leading-relaxed">
-            {fact.before ? (
-              <>
-                <span className="text-muted-foreground">{fact.before}</span>
-                <ArrowRightIcon
-                  size={14}
-                  aria-hidden
-                  className="mx-1.5 inline align-[-2px] text-muted-foreground"
-                />
-                {fact.after}
-              </>
+    <ol
+      className={`m-0 flex list-none flex-col gap-3 border-l border-border p-0 pl-3.5 ${className}`}
+    >
+      {story.facts.map((fact, i) => {
+        const body = fact.before ? (
+          <>
+            <span className="text-muted-foreground">{fact.before}</span>
+            <ArrowRightIcon
+              size={14}
+              aria-hidden
+              className="mx-1.5 inline align-[-2px] text-muted-foreground"
+            />
+            {fact.after}
+          </>
+        ) : (
+          fact.after
+        );
+        return (
+          <li key={`${fact.at}-${i}`} className="relative flex flex-col gap-1">
+            <span
+              aria-hidden
+              className="absolute -left-[18px] top-1.5 size-1.5 rounded-full bg-border-strong"
+            />
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+              <span className="tabular-nums">{fact.ago}</span>
+              <CatText category={fact.category} />
+            </span>
+            {fact.signalId ? (
+              <Link
+                href={`/dashboard/signals?focus=${fact.signalId}`}
+                className="max-w-[68ch] text-content leading-relaxed hover:underline underline-offset-2"
+              >
+                {body}
+              </Link>
             ) : (
-              fact.after
+              <span className="max-w-[68ch] text-content leading-relaxed">{body}</span>
             )}
-          </span>
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ol>
   );
 }

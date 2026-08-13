@@ -41,6 +41,7 @@ import {
   contentItems,
   roadmapStatusEvents,
   messagingVersions,
+  loadMemorySignals,
 } from "@outrival/db";
 import { db } from "../lib/db";
 import { scoreCompetitorOverlap, scoreCompetitorsOverlap } from "../lib/overlap";
@@ -78,6 +79,7 @@ import {
   SOURCE_TYPES,
   MONITOR_FREQUENCIES,
   PRICING_STATUSES,
+  buildCompetitorMemory,
   isReviewSource,
   validateMonitorUrl,
   validateCustomMonitorUrl,
@@ -1684,6 +1686,11 @@ competitorsRouter.get("/", async (c) => {
   return c.json({ competitors: enriched });
 });
 
+/** Rows read for one competitor's memory, newest first. A year of weekly moves is ~50. */
+const MEMORY_PAGE_CAP = 400;
+/** Facts rendered. Enough to read a trajectory, short of turning the page into a log. */
+const MEMORY_PAGE_FACTS = 12;
+
 competitorsRouter.get("/:id", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
@@ -1696,7 +1703,7 @@ competitorsRouter.get("/:id", async (c) => {
   // and are independent of each other — run them concurrently. recentChanges depends
   // on the monitor ids derived below, so it stays a second step. Org plan ships with
   // the payload so the UI can gate per-source actions without a second roundtrip.
-  const [plan, allMonitors, recentSignals, techRows] = await Promise.all([
+  const [plan, allMonitors, recentSignals, techRows, memoryRows] = await Promise.all([
     getOrgPlan(orgId),
     db.query.monitors.findMany({ where: eq(monitors.competitorId, competitor.id) }),
     db
@@ -1726,6 +1733,9 @@ competitorsRouter.get("/:id", async (c) => {
         eq(techStackEntries.isActive, true),
       ),
     }),
+    // The whole watch, not the last 20 signals: this page's job is to say what we
+    // know about this competitor, and the same query feeds the weekly brief.
+    loadMemorySignals({ orgId, competitorId: competitor.id, limit: MEMORY_PAGE_CAP }),
   ]);
   // Split by what the user can act on, per the shared source catalog:
   //   monitorList       — configurable + custom: toggle, frequency, URL.
@@ -1888,8 +1898,19 @@ competitorsRouter.get("/:id", async (c) => {
   ]);
   const pausedByPlan = overCap.some((p) => p.id === competitor.id);
 
+  // "What we know" for this one competitor (OUT-172). Same narration function as the
+  // weekly brief, read deeper: one story, more facts, and a single recorded change is
+  // enough to show. Two is the digest's threshold because three competitors compete
+  // for two minutes of attention there; here the reader opened this page on purpose.
+  const [memory] = buildCompetitorMemory(memoryRows, {
+    maxCompetitors: 1,
+    minFacts: 1,
+    maxFacts: MEMORY_PAGE_FACTS,
+  }).stories;
+
   return c.json({
     competitor: { ...competitor, pausedByPlan },
+    memory: memory ?? null,
     monitors: monitorList,
     // Read-only on the Sources page: freshness only, no toggle / frequency / URL.
     automaticMonitors,

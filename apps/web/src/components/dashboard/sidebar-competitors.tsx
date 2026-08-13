@@ -5,7 +5,13 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { UsersIcon, CaretRightIcon, CaretUpIcon, DotsThreeIcon } from "@/components/icons";
+import {
+  UsersIcon,
+  CaretRightIcon,
+  CaretUpIcon,
+  DotsThreeIcon,
+  PauseCircleIcon,
+} from "@/components/icons";
 
 import { type Competitor } from "@/lib/api";
 import { competitorsQuery } from "@/lib/queries";
@@ -20,6 +26,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CompAvatar } from "./comp-avatar";
 
 const CAP = 8;
@@ -57,6 +64,28 @@ function activity(c: Competitor) {
 
 function lastSignalMs(c: Competitor) {
   return c.stats?.lastSignalAt ? new Date(c.stats.lastSignalAt).getTime() : 0;
+}
+
+// Same plan-cap freeze the main list marks with a "Plan limit" badge
+// (competitors-list.tsx), narrowed to what a sidebar row can hold: no room for a
+// worded badge next to a truncating name, so the icon carries the state and the
+// tooltip carries the main list's wording verbatim. Not a link to billing either
+// (the whole row already is one), so the row stays a single target.
+function PlanLimitMark() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="flex shrink-0 items-center text-medium">
+          <PauseCircleIcon size={14} />
+          <span className="sr-only">Monitoring paused, over plan limit</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        Over your plan&apos;s competitor limit, so monitoring is paused. Upgrade to
+        resume.
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function SidebarCompetitors() {
@@ -167,12 +196,17 @@ export function SidebarCompetitors() {
                     <Link href={`/dashboard/competitors/${c.id}`}>
                       <CompAvatar name={c.name} url={c.url} size={22} />
                       <span className="truncate">{c.name}</span>
-                      {unread > 0 && (
-                        <span className="ml-auto shrink-0 text-meta font-medium tabular-nums text-primary">
-                          {unread}
-                          <span className="sr-only">
-                            {unread === 1 ? " unread signal" : " unread signals"}
-                          </span>
+                      {(c.pausedByPlan === true || unread > 0) && (
+                        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                          {c.pausedByPlan === true && <PlanLimitMark />}
+                          {unread > 0 && (
+                            <span className="text-meta font-medium tabular-nums text-primary">
+                              {unread}
+                              <span className="sr-only">
+                                {unread === 1 ? " unread signal" : " unread signals"}
+                              </span>
+                            </span>
+                          )}
                         </span>
                       )}
                     </Link>

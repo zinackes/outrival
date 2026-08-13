@@ -47,6 +47,8 @@ import {
 import { SidebarCompetitors } from "@/components/dashboard/sidebar-competitors";
 import { ProductTile } from "@/components/dashboard/product-tile";
 import { LogoMark } from "@/components/outrival/logo";
+import { planIncludesFeature, type PlanFeature } from "@outrival/shared";
+import { resolvePlan } from "@/lib/plan";
 import { productsListQuery } from "@/lib/queries";
 import {
   ALL_PRODUCTS,
@@ -70,6 +72,8 @@ interface NavItem {
   label: string;
   icon: PhosphorIcon;
   exact?: boolean;
+  /** Plan feature gating the entry — the item leaves the rail when the plan lacks it. */
+  feature?: PlanFeature;
 }
 
 // Overview stays ungrouped at the top (the landing); the rest split into three
@@ -98,7 +102,12 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     // Compare stay — real cross-competitor destinations. AI Visibility (docs/ai-visibility.md).
     label: "Analyze",
     items: [
-      { href: "/dashboard/ai-visibility", label: "AI Visibility", icon: EyeIcon },
+      {
+        href: "/dashboard/ai-visibility",
+        label: "AI Visibility",
+        icon: EyeIcon,
+        feature: "aiVisibility",
+      },
       { href: "/dashboard/trends", label: "Trends", icon: ChartLineIcon },
       { href: "/dashboard/compare", label: "Compare", icon: ColumnsIcon },
     ],
@@ -348,6 +357,14 @@ export function AppSidebar({ org, user }: { org: Org; user: SwitcherUser }) {
   // The active product scope rides the cookie (read server-side) — plain hrefs keep it
   // across navigation, so the sidebar no longer threads ?product= or reconciles the URL.
 
+  // A plan-gated entry (AI Visibility, pro+) leaves the rail entirely instead of
+  // advertising a page the plan can only render as a paywall. Presentation only: the
+  // page keeps its own 403-backed lock, so a mid-session downgrade drops the link
+  // while whoever is already on the page falls back to the upsell as before.
+  const plan = resolvePlan(org.plan);
+  const allowed = (items: NavItem[]) =>
+    items.filter((it) => !it.feature || planIncludesFeature(plan, it.feature));
+
   function isActive(href: string, exact?: boolean) {
     if (exact) return pathname === href;
     return pathname === href || pathname.startsWith(href + "/");
@@ -379,7 +396,7 @@ export function AppSidebar({ org, user }: { org: Org; user: SwitcherUser }) {
               {group.label}
             </SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>{group.items.map(renderItem)}</SidebarMenu>
+              <SidebarMenu>{allowed(group.items).map(renderItem)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         ))}

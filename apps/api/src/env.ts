@@ -27,6 +27,15 @@ export const EnvSchema = z
     // public endpoint. Unset → the enable route refuses trustpilot_public (clean
     // degradation) and the scraper throws; never a scraping fallback.
     TRUSTPILOT_API_KEY: z.string().min(1).optional(),
+    // AES-256-GCM key (32 bytes, 64 hex chars) encrypting third-party OAuth tokens at
+    // rest in `oauth_connections`. Optional on purpose: no provider is wired yet, so a
+    // boot-blocking refine would break every deploy for a surface nobody can reach.
+    // Unset → the connect routes answer 500 `oauth_encryption_unconfigured` and no token
+    // is ever written in plaintext. Make it required here the day a provider ships.
+    OAUTH_TOKEN_ENCRYPTION_KEY: z
+      .string()
+      .regex(/^[0-9a-fA-F]{64}$/, "OAUTH_TOKEN_ENCRYPTION_KEY must be 64 hex chars (32 bytes)")
+      .optional(),
   })
   .superRefine((e, ctx) => {
     if (e.NODE_ENV === "production" && (!e.UPSTASH_REDIS_REST_URL || !e.UPSTASH_REDIS_REST_TOKEN)) {

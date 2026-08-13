@@ -14,9 +14,14 @@ import type {
   CostMethod,
   BlockedReach,
   FreshnessStatus,
+  CompetitorStory,
 } from "@outrival/shared";
 
 export type { DetectionConfig, AnalysisStatus, ScrapeActivity } from "@outrival/shared";
+// Accumulated competitor memory (OUT-172). The narration is built once in
+// @outrival/shared and consumed by both readings of it — the brief and the
+// competitor page — so the shape is re-exported rather than restated here.
+export type { CompetitorStory, MemoryFact } from "@outrival/shared";
 export type {
   PricingTier,
   PricingPlanOverride,
@@ -1825,6 +1830,11 @@ export interface DigestContent {
   sectoralTrends?: DigestSectoralTrend[];
   watchedQuestions?: DigestWatchedQuestion[];
   quiet?: DigestQuietCounts;
+  // What the reader knows about each competitor over the whole tracking period, not
+  // just this week (OUT-172). Written by the weekly job, frozen at send time: a
+  // brief reads as of its own date, so the relative ages stay the ones emailed.
+  competitorStories?: CompetitorStory[];
+  competitorStoriesOmitted?: number;
 }
 
 export type DigestRange = "this_week" | "last_7_days" | "last_30_days";

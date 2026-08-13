@@ -27,6 +27,34 @@ export const DigestSchema = z.object({
   watchedQuestions: z
     .array(z.object({ question: z.string(), changeSummary: z.string() }))
     .optional(),
+  // Accumulated memory (OUT-172): what the reader knows about a competitor over the
+  // WHOLE tracking period, not just this week. Built by buildCompetitorMemory
+  // (@outrival/shared) from the signal history and appended after generation — the
+  // model neither sees it nor writes it, so it costs no token and states no claim
+  // the classifier had not already restated. Shape mirrors CompetitorStory; the
+  // weekly job assigns the shared type straight in, so a drift fails to compile.
+  competitorStories: z
+    .array(
+      z.object({
+        competitorId: z.string(),
+        competitor: z.string(),
+        since: z.string(),
+        sinceLabel: z.string(),
+        total: z.number(),
+        facts: z.array(
+          z.object({
+            category: z.string(),
+            before: z.string().nullable(),
+            after: z.string(),
+            at: z.string(),
+            ago: z.string(),
+          }),
+        ),
+      }),
+    )
+    .optional(),
+  /** Competitors the cap left out of `competitorStories`, for a "+N more" line. */
+  competitorStoriesOmitted: z.number().optional(),
 });
 
 export type Digest = z.infer<typeof DigestSchema>;

@@ -19,7 +19,12 @@ import {
   type DigestInputSignal,
 } from "@outrival/ai";
 import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfulness-gate";
-import { signDigestFeedbackToken, signUnsubscribeToken } from "@outrival/shared";
+import {
+  buildCompetitorMemory,
+  signDigestFeedbackToken,
+  signUnsubscribeToken,
+  type CompetitorMemory,
+} from "@outrival/shared";
 import { renderDigestEmail, renderAllQuietDigest } from "../lib/digest-email";
 import { sendEmail, ALERT_FROM } from "../lib/resend";
 import { loggedAi } from "../lib/analytics";
@@ -27,6 +32,58 @@ import { getAllQuietCounts } from "../lib/digest-counts";
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Ceiling on the signal history one memory block is built from. An org watching
+ * twenty competitors for a year sits far under it; past it the OLDEST facts are the
+ * ones dropped, so the rendered trajectory stays correct and only `since` reads
+ * later than the true first capture. The reverse (capping the recent end) would
+ * silently narrate a stale story, which is worse than a shortened one.
+ */
+const MEMORY_HISTORY_CAP = 2000;
+
+/**
+ * What the org knows about its competitors over the whole tracking period (OUT-172).
+ *
+ * Deterministic and free: no AI call, and nothing here is new prose — the human
+ * before/after pair was written by the classifier at the time and is the one field
+ * the grounding layer keeps even when it withholds a signal's generated text.
+ *
+ * Excluded on purpose: insights the faithfulness gate blocked (the digest must not
+ * be the back door around it, exactly as the week's query already guards), signals
+ * whose figures the post-hoc check could not verify, and signals the user hid as
+ * not useful. A fact that was not good enough to show once does not improve by
+ * being replayed three months later.
+ */
+async function loadCompetitorMemory(orgId: string, now: Date): Promise<CompetitorMemory> {
+  const rows = await db
+    .select({
+      competitorId: signals.competitorId,
+      competitor: competitors.name,
+      category: signals.category,
+      before: signals.humanChangeBefore,
+      after: signals.humanChangeAfter,
+      at: signals.createdAt,
+    })
+    .from(signals)
+    .innerJoin(competitors, eq(competitors.id, signals.competitorId))
+    .where(
+      and(
+        eq(signals.orgId, orgId),
+        isNotNull(signals.humanChangeAfter),
+        isNull(signals.hiddenForUserAt),
+        or(
+          isNull(signals.filteredReason),
+          ne(signals.filteredReason, "faithfulness_blocked"),
+        ),
+        or(isNull(signals.groundingStatus), ne(signals.groundingStatus, "unverified")),
+      ),
+    )
+    .orderBy(desc(signals.createdAt))
+    .limit(MEMORY_HISTORY_CAP);
+
+  return buildCompetitorMemory(rows, { now });
 }
 
 // Runtime-neutral job body: shared verbatim by the pg-boss handler and the thin
@@ -128,6 +185,10 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
         }
 
         const { pages, checks } = await getAllQuietCounts(org.id, weekStart, weekEnd);
+        // A calm week is the one that reads as "is this even running?", so it is the
+        // week the accumulated memory matters most: nothing moved, and here is
+        // everything that did.
+        const quietMemory = await loadCompetitorMemory(org.id, now);
         // The counts travel with the digest, not just with the email: a stored
         // all-quiet week used to carry three empty fields, so the in-app reader had
         // nothing to render and showed a blank page. With them, a calm week can
@@ -137,6 +198,8 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
           tldr: [],
           sections: [],
           quiet: { pages, checks },
+          competitorStories: quietMemory.stories,
+          competitorStoriesOmitted: quietMemory.omitted,
         };
 
         const [stored] = existing
@@ -180,6 +243,8 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
           weekEnd: isoDate(weekEnd),
           unsubscribeUrl,
           readUrl: `${webUrl}/dashboard/digests/${stored.id}?src=digest_allquiet`,
+          competitorStories: quietMemory.stories,
+          competitorStoriesOmitted: quietMemory.omitted,
         });
 
         try {
@@ -296,6 +361,16 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
           question: w.question,
           changeSummary: w.changeSummary ?? "The answer to this question changed this week.",
         }));
+      }
+
+      // Accumulated memory (OUT-172): the only block of the brief that compounds.
+      // Third deterministic append, after the gate for the same reason as the other
+      // two — it restates facts the classifier already grounded, so it is not part
+      // of what this week's generation has to answer for.
+      const memory = await loadCompetitorMemory(org.id, now);
+      if (memory.stories.length > 0) {
+        digest.competitorStories = memory.stories;
+        digest.competitorStoriesOmitted = memory.omitted;
       }
 
       // An unsent preview (from "generate now") gets finalized in place; otherwise insert.

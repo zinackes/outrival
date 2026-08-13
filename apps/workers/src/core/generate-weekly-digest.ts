@@ -9,6 +9,7 @@ import {
   sectoralSignals,
   standingQueries,
   insertAiQualityCheck,
+  loadMemorySignals,
 } from "@outrival/db";
 import {
   generateDigest,
@@ -19,7 +20,12 @@ import {
   type DigestInputSignal,
 } from "@outrival/ai";
 import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfulness-gate";
-import { signDigestFeedbackToken, signUnsubscribeToken } from "@outrival/shared";
+import {
+  buildCompetitorMemory,
+  signDigestFeedbackToken,
+  signUnsubscribeToken,
+  type CompetitorMemory,
+} from "@outrival/shared";
 import { renderDigestEmail, renderAllQuietDigest } from "../lib/digest-email";
 import { sendEmail, ALERT_FROM } from "../lib/resend";
 import { loggedAi } from "../lib/analytics";
@@ -27,6 +33,28 @@ import { getAllQuietCounts } from "../lib/digest-counts";
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Ceiling on the signal history one memory block is built from. An org watching
+ * twenty competitors for a year sits far under it; past it the OLDEST facts are the
+ * ones dropped, so the rendered trajectory stays correct and only `since` reads
+ * later than the true first capture. The reverse (capping the recent end) would
+ * silently narrate a stale story, which is worse than a shortened one.
+ */
+const MEMORY_HISTORY_CAP = 2000;
+
+/**
+ * What the org knows about its competitors over the whole tracking period (OUT-172).
+ *
+ * Deterministic and free: no AI call, and nothing here is new prose — every line is
+ * the plain-language before/after the classifier recorded at the time, replayed.
+ * What counts as replayable is decided by `loadMemorySignals` (@outrival/db), which
+ * the competitor page reads through too so the two surfaces cannot drift.
+ */
+async function loadCompetitorMemory(orgId: string, now: Date): Promise<CompetitorMemory> {
+  const rows = await loadMemorySignals({ orgId, limit: MEMORY_HISTORY_CAP });
+  return buildCompetitorMemory(rows, { now });
 }
 
 // Runtime-neutral job body: shared verbatim by the pg-boss handler and the thin
@@ -128,6 +156,10 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
         }
 
         const { pages, checks } = await getAllQuietCounts(org.id, weekStart, weekEnd);
+        // A calm week is the one that reads as "is this even running?", so it is the
+        // week the accumulated memory matters most: nothing moved, and here is
+        // everything that did.
+        const quietMemory = await loadCompetitorMemory(org.id, now);
         // The counts travel with the digest, not just with the email: a stored
         // all-quiet week used to carry three empty fields, so the in-app reader had
         // nothing to render and showed a blank page. With them, a calm week can
@@ -137,6 +169,8 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
           tldr: [],
           sections: [],
           quiet: { pages, checks },
+          competitorStories: quietMemory.stories,
+          competitorStoriesOmitted: quietMemory.omitted,
         };
 
         const [stored] = existing
@@ -180,6 +214,8 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
           weekEnd: isoDate(weekEnd),
           unsubscribeUrl,
           readUrl: `${webUrl}/dashboard/digests/${stored.id}?src=digest_allquiet`,
+          competitorStories: quietMemory.stories,
+          competitorStoriesOmitted: quietMemory.omitted,
         });
 
         try {
@@ -296,6 +332,16 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
           question: w.question,
           changeSummary: w.changeSummary ?? "The answer to this question changed this week.",
         }));
+      }
+
+      // Accumulated memory (OUT-172): the only block of the brief that compounds.
+      // Third deterministic append, after the gate for the same reason as the other
+      // two — it restates facts the classifier already grounded, so it is not part
+      // of what this week's generation has to answer for.
+      const memory = await loadCompetitorMemory(org.id, now);
+      if (memory.stories.length > 0) {
+        digest.competitorStories = memory.stories;
+        digest.competitorStoriesOmitted = memory.omitted;
       }
 
       // An unsent preview (from "generate now") gets finalized in place; otherwise insert.

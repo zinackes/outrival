@@ -210,3 +210,96 @@ describe("renderAllQuietDigest", () => {
     expect(html).toContain("We checked 0 pages this week.");
   });
 });
+
+// OUT-172 — the accumulated memory block. It is the only part of a brief that is
+// worth anything next Monday, and the all-quiet email is where it earns its place:
+// a week with nothing in it is exactly the week that reads as "is this running?".
+describe("the accumulated memory block", () => {
+  const STORIES = [
+    {
+      competitorId: "c1",
+      competitor: "Supabase",
+      since: "2026-03-03T09:00:00.000Z",
+      sinceLabel: "Mar 3, 2026",
+      total: 7,
+      facts: [
+        {
+          category: "pricing",
+          before: "Pro · $25/mo",
+          after: "Pro · $29/mo",
+          at: "2026-05-02T09:00:00.000Z",
+          ago: "3 months ago",
+        },
+        {
+          category: "security_compliance",
+          before: null,
+          after: "SOC 2 Type II published",
+          at: "2026-07-20T09:00:00.000Z",
+          ago: "3 weeks ago",
+        },
+      ],
+    },
+  ];
+
+  test("a quiet week still tells the reader what they know", () => {
+    const html = renderAllQuietDigest({
+      pages: 12,
+      checks: 34,
+      weekStart: "2026-06-29",
+      weekEnd: "2026-07-06",
+      competitorStories: STORIES,
+      competitorStoriesOmitted: 2,
+      readUrl: "https://outrival.app/dashboard/digests/abc",
+    });
+    expect(html).toContain("What you know now");
+    expect(html).toContain("Watched since Mar 3, 2026 · 7 changes");
+    expect(html).toContain("Pro · $29/mo");
+    expect(html).toContain("3 weeks ago");
+    // A category is pipeline vocabulary; the email spells it as words.
+    expect(html).toContain("security compliance");
+    expect(html).toContain("+2 more competitors with a history on file");
+    // Above the CTA and the footer, or it is never read.
+    expect(html.indexOf("What you know now")).toBeLessThan(
+      html.indexOf("Outrival · Automated competitive intelligence"),
+    );
+  });
+
+  test("a first capture states the fact without inventing a before", () => {
+    const html = renderAllQuietDigest({
+      pages: 1,
+      checks: 1,
+      weekStart: "2026-06-29",
+      weekEnd: "2026-07-06",
+      competitorStories: STORIES,
+    });
+    const fact = html.slice(html.indexOf("SOC 2 Type II published") - 200);
+    expect(fact).not.toContain("&rarr;</span> SOC 2");
+  });
+
+  test("no story renders no section at all, in both emails", () => {
+    const quiet = renderAllQuietDigest({
+      pages: 1,
+      checks: 1,
+      weekStart: "2026-06-29",
+      weekEnd: "2026-07-06",
+      competitorStories: [],
+      competitorStoriesOmitted: 0,
+    });
+    const weekly = renderDigestEmail(DIGEST, "2026-07-06", "2026-07-13");
+    expect(quiet).not.toContain("What you know now");
+    expect(weekly).not.toContain("What you know now");
+  });
+
+  test("the weekly brief carries it after the week's own blocks", () => {
+    const html = renderDigestEmail(
+      { ...DIGEST, competitorStories: STORIES, competitorStoriesOmitted: 0 },
+      "2026-07-06",
+      "2026-07-13",
+    );
+    expect(html).toContain("What you know now");
+    expect(html.indexOf(DIGEST.sections[0]!.insight)).toBeLessThan(
+      html.indexOf("What you know now"),
+    );
+    expect(html).not.toContain("more competitor");
+  });
+});

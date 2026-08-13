@@ -10,7 +10,9 @@ import {
   isQuietDigest,
   quietSentence,
 } from "@/lib/digest-shape";
+import { storySummary } from "@outrival/shared";
 import type {
+  CompetitorStory,
   DigestContent,
   DigestSection as DigestSectionData,
   DigestSectionLink,
@@ -42,6 +44,7 @@ export function DigestView({
   const sections = content.sections ?? [];
   const trends = content.sectoralTrends ?? [];
   const questions = content.watchedQuestions ?? [];
+  const stories = content.competitorStories ?? [];
   const headline = digestHeadline(content);
   const points = digestSupportingPoints(content);
 
@@ -118,7 +121,117 @@ export function DigestView({
           ))}
         </Band>
       )}
+
+      <MemoryBand stories={stories} omitted={content.competitorStoriesOmitted ?? 0} />
     </div>
+  );
+}
+
+/**
+ * "What you know now" — the accumulated memory (OUT-172).
+ *
+ * Every other block of a brief covers seven days and is worth nothing next Monday.
+ * This one is the same competitors read over the whole watch: dated facts, oldest
+ * first, so the trajectory is visible rather than implied. Nothing here is newly
+ * written — each line is the plain-language before/after the classifier recorded at
+ * the time, replayed. Renders nothing when no competitor has enough history yet.
+ */
+export function MemoryBand({
+  stories,
+  omitted,
+}: {
+  stories: CompetitorStory[];
+  omitted: number;
+}) {
+  if (stories.length === 0) return null;
+  return (
+    <Band
+      title="What you know now"
+      sub={`${stories.length} competitor${stories.length === 1 ? "" : "s"}`}
+    >
+      {stories.map((story) => (
+        <div
+          key={story.competitorId}
+          className="border-b border-border p-4 last:border-b-0 sm:px-5"
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+            <h4 className="m-0 text-content font-medium tracking-tight">
+              {story.competitor}
+            </h4>
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {storySummary(story)}
+            </span>
+          </div>
+          <MemoryTimeline story={story} />
+        </div>
+      ))}
+      {omitted > 0 && (
+        <div className="border-t border-border px-4 py-3 text-xs text-muted-foreground sm:px-5">
+          +{omitted} more competitor{omitted === 1 ? "" : "s"} with a history on file
+        </div>
+      )}
+    </Band>
+  );
+}
+
+/**
+ * One competitor's dated facts, oldest first. The rail on the left is what makes it
+ * read as a trajectory rather than as three unrelated rows; the age leads each line
+ * because "when" is the column a reader scans for.
+ *
+ * A fact that knows which signal it came from links back to it, so the story stays
+ * sourced: every line here is replayed evidence, and the reader can open the one it
+ * was drawn from. `className` lets a host page set its own spacing above the rail.
+ */
+export function MemoryTimeline({
+  story,
+  className = "mt-3",
+}: {
+  story: CompetitorStory;
+  className?: string;
+}) {
+  return (
+    <ol
+      className={`m-0 flex list-none flex-col gap-3 border-l border-border p-0 pl-3.5 ${className}`}
+    >
+      {story.facts.map((fact, i) => {
+        const body = fact.before ? (
+          <>
+            <span className="text-muted-foreground">{fact.before}</span>
+            <ArrowRightIcon
+              size={14}
+              aria-hidden
+              className="mx-1.5 inline align-[-2px] text-muted-foreground"
+            />
+            {fact.after}
+          </>
+        ) : (
+          fact.after
+        );
+        return (
+          <li key={`${fact.at}-${i}`} className="relative flex flex-col gap-1">
+            <span
+              aria-hidden
+              className="absolute -left-[18px] top-1.5 size-1.5 rounded-full bg-border-strong"
+            />
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+              <span className="tabular-nums">{fact.ago}</span>
+              <CatText category={fact.category} />
+            </span>
+            {fact.signalId ? (
+              <Link
+                href={`/dashboard/signals?focus=${fact.signalId}`}
+                className="max-w-[68ch] text-content leading-relaxed hover:underline underline-offset-2"
+              >
+                {body}
+              </Link>
+            ) : (
+              <span className="max-w-[68ch] text-content leading-relaxed">{body}</span>
+            )}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -223,14 +336,23 @@ function Band({
  */
 function QuietBody({ content }: { content: DigestContent }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
-      <p className="m-0 max-w-[46ch] text-lg font-medium leading-snug tracking-tight text-balance">
-        {quietSentence(content)}
-      </p>
-      <p className="m-0 mt-2.5 max-w-[54ch] text-content leading-relaxed text-muted-foreground">
-        Nothing your competitors did this period was worth interrupting you for. The
-        watch continues, and the next brief lands on schedule.
-      </p>
+    <div className="flex flex-col gap-8">
+      <div className="rounded-lg border border-border bg-card p-6">
+        <p className="m-0 max-w-[46ch] text-lg font-medium leading-snug tracking-tight text-balance">
+          {quietSentence(content)}
+        </p>
+        <p className="m-0 mt-2.5 max-w-[54ch] text-content leading-relaxed text-muted-foreground">
+          Nothing your competitors did this period was worth interrupting you for. The
+          watch continues, and the next brief lands on schedule.
+        </p>
+      </div>
+
+      {/* A calm period is the one that reads as "is this even running?", so it is the
+          one that most needs everything that did happen next to it. */}
+      <MemoryBand
+        stories={content.competitorStories ?? []}
+        omitted={content.competitorStoriesOmitted ?? 0}
+      />
     </div>
   );
 }

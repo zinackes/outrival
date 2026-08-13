@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { classifyLogoName, type AnalysisStatus } from "@outrival/shared";
+import { classifyLogoName, storySummary, type AnalysisStatus } from "@outrival/shared";
 import { toast } from "@/lib/toast";
 import { useQuery } from "@tanstack/react-query";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
@@ -19,6 +19,7 @@ import {
 import {
   api,
   type CompetitorSignal,
+  type CompetitorStory,
   type CompetitorOverview,
   type Monitor,
   type PricingStatus,
@@ -36,6 +37,7 @@ import {
 } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
+import { MemoryTimeline } from "@/components/dashboard/digest-view";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { MobileAppsFact, type MobileApps } from "./mobile-apps";
 import { formatTierPrice, logoLabel, isRenderableLogoSrc } from "./helpers";
@@ -249,6 +251,7 @@ export function OverviewTab({
   competitorName,
   overview,
   signals,
+  memory,
   monitors,
   scrapingIds,
   analysis,
@@ -265,6 +268,12 @@ export function OverviewTab({
   mobileApps: MobileApps | null;
   /** Already loaded by the page; the 30-day count costs no extra query. */
   signals: CompetitorSignal[];
+  /**
+   * The whole watch, not the last 30 days: the dated facts we have on this
+   * competitor, built by the same function the weekly brief narrates from
+   * (OUT-172). Null before anything has changed.
+   */
+  memory: CompetitorStory | null;
   monitors: Monitor[];
   techStack: TechStackData;
   scrapingIds: Set<string>;
@@ -438,7 +447,10 @@ export function OverviewTab({
     numericClaims.length > 0 ||
     pricingNow.length > 0 ||
     reviews.length > 0 ||
-    hiring.openRoles > 0;
+    hiring.openRoles > 0 ||
+    // A competitor we have watched change has something to say even if the homepage
+    // capture came back thin — that history is the point of the page.
+    (memory?.facts.length ?? 0) > 0;
 
   if (!hasAnything) {
     const homepageMonitor = monitors.find((m) => m.sourceType === "homepage");
@@ -592,6 +604,31 @@ export function OverviewTab({
           {recent.length > 0 ? <Big>{recent.length}</Big> : <Absent>Nothing moved</Absent>}
         </Metric>
       </Card>
+
+      {/* The same accumulated memory the weekly brief narrates, read deep on one
+          competitor (OUT-172). It sits directly under the headline strip because
+          that strip is where the atomised version of it used to end: "changed 3
+          months ago" and "+3 in 30 days" are footnotes to a story nothing told.
+          Above the fact sheet, which describes who they are today, not what moved. */}
+      {memory && memory.facts.length > 0 && (
+        <TabCard>
+          <TabSection
+            title="What you know now"
+            action={
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {storySummary(memory)}
+              </span>
+            }
+          >
+            <MemoryTimeline story={memory} className="mt-0" />
+            {memory.total > memory.facts.length && (
+              <p className="m-0 text-xs text-muted-foreground">
+                Showing the {memory.facts.length} most recent of {memory.total} changes.
+              </p>
+            )}
+          </TabSection>
+        </TabCard>
+      )}
 
       <TabCard>
       {isForeign && (

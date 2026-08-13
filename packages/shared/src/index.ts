@@ -15,6 +15,7 @@ export * from "./constants/oauth-providers";
 export * from "./analysis-status";
 export * from "./staleness";
 export * from "./standing-queries";
+export * from "./memory/competitor-memory";
 export * from "./slo/first-signal";
 export * from "./r2/client";
 export * from "./r2/keys";

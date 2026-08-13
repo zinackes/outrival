@@ -1,6 +1,7 @@
 import { emailButton, emailSectionHead, emailShell, type EmailSeverity } from "./shell";
 import { e, t, type EmailRole } from "./theme";
 import { escapeHtml } from "./escape-html";
+import { storySummary, type CompetitorStory } from "../memory/competitor-memory";
 
 // Structural shape the digest email needs. Kept local to @outrival/shared (rather
 // than importing @outrival/ai's `Digest`) so shared stays at the bottom of the
@@ -20,6 +21,12 @@ export interface DigestEmailData {
   // Standing queries (watched Ask questions) that materially changed this week.
   // Attached deterministically by the weekly job, like sectoralTrends.
   watchedQuestions?: Array<{ question: string; changeSummary: string }>;
+  // Accumulated memory (OUT-172): what the reader knows about a competitor over the
+  // whole tracking period, not just this week. Built by buildCompetitorMemory and
+  // attached deterministically, same pattern again — no AI call, no new prose.
+  competitorStories?: CompetitorStory[];
+  /** Eligible competitors the cap left out, rendered as a "+N more" line. */
+  competitorStoriesOmitted?: number;
 }
 
 // The urgency hue is a themed role, not a literal: the dark-mode 400/500 values
@@ -68,6 +75,56 @@ function pairRow(title: string, detail: string, isFirst: boolean): string {
     <div ${e("text", t("body", "font-weight:600;margin-bottom:4px;"))}>${escapeHtml(title)}</div>
     <div ${e("muted", t("body"))}>${escapeHtml(detail)}</div>
   </div>`;
+}
+
+// One competitor's accumulated history: who, how far back, then the dated facts in
+// the order they happened. Same boxless run of rows as the week's signals, so the
+// block reads as another part of the brief rather than as an attachment.
+function storyBlock(story: CompetitorStory, isFirst: boolean): string {
+  const divider = isFirst
+    ? ""
+    : "margin-top:18px;padding-top:18px;border-top-width:1px;border-top-style:solid;";
+  const facts = story.facts
+    .map(
+      (f) => `
+    <div style="margin-top:8px;">
+      <div ${e("faint", t("meta", "margin-bottom:3px;letter-spacing:normal;"))}>${escapeHtml(f.ago)} · ${escapeHtml(f.category.replace(/_/g, " "))}</div>
+      <div ${e("text", t("body"))}>${
+        f.before
+          ? `${escapeHtml(f.before)} <span ${e("faint")}>&rarr;</span> ${escapeHtml(f.after)}`
+          : escapeHtml(f.after)
+      }</div>
+    </div>`,
+    )
+    .join("");
+  return `
+  <div ${e("rule", divider)}>
+    <div ${e("text", t("body", "font-weight:600;"))}>${escapeHtml(story.competitor)}</div>
+    <div ${e("muted", t("meta", "margin-top:2px;letter-spacing:normal;"))}>${escapeHtml(storySummary(story))}</div>
+    ${facts}
+  </div>`;
+}
+
+/**
+ * "What you know now" — the accumulated memory block (OUT-172).
+ *
+ * The rest of a brief is about the last seven days; this is the only part that
+ * compounds, which is also why it renders in the all-quiet email: a calm week is
+ * exactly when "nothing moved" needs to be read next to everything that did.
+ * Empty (no competitor over the threshold) renders nothing at all.
+ */
+function memoryHtml(stories: CompetitorStory[], omitted: number): string {
+  if (stories.length === 0) return "";
+  const more =
+    omitted > 0
+      ? `<div ${e("faint", t("meta", "margin-top:16px;letter-spacing:normal;"))}>+${omitted} more competitor${omitted === 1 ? "" : "s"} with a history on file</div>`
+      : "";
+  return `
+<div style="margin-bottom:28px;">
+  ${emailSectionHead("What you know now", "text")}
+  ${stories.map((s, i) => storyBlock(s, i === 0)).join("")}
+  ${more}
+</div>`;
 }
 
 export function renderDigestEmail(
@@ -152,6 +209,7 @@ export function renderDigestEmail(
       ${sectionsHtml}
       ${sectoralHtml}
       ${watchedHtml}
+      ${memoryHtml(digest.competitorStories ?? [], digest.competitorStoriesOmitted ?? 0)}
       ${
         readUrl
           ? `<div style="margin-top:4px;margin-bottom:4px;">${emailButton(readUrl, "Open the full briefing")}</div>`
@@ -186,6 +244,10 @@ export interface AllQuietDigestData {
   unsubscribeUrl?: string;
   // CTA back into the app (patch-20 measurement). Absent → no button.
   readUrl?: string;
+  // Accumulated memory (OUT-172). A quiet week is precisely the one that reads as
+  // "is this even running?", so the block that compounds belongs here first.
+  competitorStories?: CompetitorStory[];
+  competitorStoriesOmitted?: number;
 }
 
 // Lever 6 — a calm week (no signals) still gets a light briefing instead of
@@ -199,10 +261,13 @@ export function renderAllQuietDigest({
   weekEnd,
   unsubscribeUrl,
   readUrl,
+  competitorStories,
+  competitorStoriesOmitted,
 }: AllQuietDigestData): string {
   const pageWord = pages === 1 ? "page" : "pages";
   const checksClause = checks > 0 ? `, ${checks} time${checks === 1 ? "" : "s"}` : "";
   const copy = `We checked ${pages} ${pageWord}${checksClause} this week. No significant moves. Your market was calm.`;
+  const memory = memoryHtml(competitorStories ?? [], competitorStoriesOmitted ?? 0);
 
   return emailShell(
     // The one email that IS a single statement keeps its card: there is one
@@ -212,6 +277,7 @@ export function renderAllQuietDigest({
         <div style="margin-bottom:10px;"><span ${e("dotPositive", "display:inline-block;width:8px;height:8px;border-radius:2px;vertical-align:middle;margin-right:8px;")}></span><span ${e("positive", t("heading", "vertical-align:middle;"))}>All quiet</span></div>
         <div ${e("text", t("lead"))}>${escapeHtml(copy)}</div>
       </div>
+      ${memory}
       ${readUrl ? `<div style="margin-top:4px;">${emailButton(readUrl, "See what we checked")}</div>` : ""}
       <div ${e("faint", t("meta", "margin-top:32px;letter-spacing:normal;"))}>Outrival · Automated competitive intelligence${
         unsubscribeUrl

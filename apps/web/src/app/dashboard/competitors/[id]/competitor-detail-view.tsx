@@ -111,6 +111,7 @@ import {
   type Monitor,
   type ChangeRow,
   type CompetitorSignal,
+  type CompetitorStory,
   type TechStackData,
   type CompetitorOverview,
 } from "@/lib/api";
@@ -231,6 +232,8 @@ export type CompetitorData = {
   automaticMonitors: Monitor[];
   recentChanges: ChangeRow[];
   recentSignals: CompetitorSignal[];
+  /** What we have accumulated on this competitor, or null before any change (OUT-172). */
+  memory: CompetitorStory | null;
   techStack: TechStackData;
   overview: CompetitorOverview;
   plan: Plan;
@@ -641,7 +644,8 @@ export function CompetitorDetailView({ id }: { id: string }) {
   }
   if (!data) return <CompetitorDetailLoading />;
 
-  const { competitor, monitors, recentChanges, recentSignals, techStack, overview, plan } = data;
+  const { competitor, monitors, recentChanges, recentSignals, memory, techStack, overview, plan } =
+    data;
   const detectedTargets = detectedTargetsOf(techStack);
   // Store listings the worker detected off captures we already take. Informational:
   // it never alerts, it just spares the user a trip to the App Store search box.
@@ -770,6 +774,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 competitorName={competitor.name}
                 overview={overview}
                 signals={recentSignals}
+                memory={memory}
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 analysis={analysis}

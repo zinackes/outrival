@@ -11,6 +11,28 @@ const FILL: Record<Severity, string> = {
   critical: "bg-critical",
 };
 
+/**
+ * An unlit step: --stroke, and SHORT — roughly 60% of a lit tick, across the
+ * scale's axis so the step keeps its slot and the denominator survives.
+ *
+ * stroke, not border-strong: an unlit tick still has to read as a step,
+ * otherwise "high" loses its "out of what" — and border-strong only ever
+ * reached 2:1, which is not a step you can see.
+ *
+ * Length carries lit-vs-unlit because in light mode colour cannot. Both edges
+ * are pinned from opposite sides: --stroke is already at the ceiling that keeps
+ * an unlit tick at 3:1 on every surface (3.08 on surface-3, WCAG 1.4.11), and
+ * the lit colours are dark enough to double as text ink. What is left between
+ * them is 1.30:1 for medium and 1.37 for high (1.71 critical, 2.04 low) —
+ * against 1.8 to 3.4 in dark mode, which is why this only ever read as a
+ * light-mode fault. In the signals list the gauge carries severity with no
+ * label beside it, so "how many are lit" cannot be a colour judgement.
+ *
+ * Ratios from scripts/check-contrast.mjs's math on the current tokens; the
+ * --stroke floor itself is asserted there.
+ */
+const UNLIT = "bg-stroke";
+
 const INK: Record<Severity, string> = {
   low: "text-low",
   medium: "text-medium",
@@ -23,9 +45,11 @@ const INK: Record<Severity, string> = {
  *
  * A lone badge tells you "high" without telling you high out of what — and the
  * band is now a deterministic function of the materiality sub-scores, so showing
- * the scale is showing the reasoning. The ticks are equal height on purpose:
- * this is a position on a scale, not a magnitude like the threat meter's
- * ascending bars, and the two must not be mistaken for each other.
+ * the scale is showing the reasoning. The lit ticks are all equal height on
+ * purpose: this is a position on a scale, not a magnitude like the threat
+ * meter's ascending bars, and the two must not be mistaken for each other. Only
+ * the unlit ticks are short (see the tick below) — that is a lit/unlit cue, not
+ * a ramp.
  *
  * Stacked (`column`) it sits in the detail pane's margin; inline it fits a row.
  */
@@ -61,19 +85,10 @@ export function SeverityScale({
             key={band}
             className={cn(
               "rounded-sm",
-              compact ? "h-2.5 w-[3px]" : "h-3.5 w-1",
-              // stroke, not border-strong: an unlit tick still has to read as a
-              // step on the scale, otherwise "high" loses its "out of what" — and
-              // border-strong only ever reached 2:1, which is not a step you can see.
-              //
-              // Light mode cannot have both edges at once: clearing 3:1 on a
-              // near-white surface caps the unlit tick at L .66, and --medium (gold)
-              // sits at L .60, so lit-vs-unlit lands at 1.3:1 for that one severity
-              // (chroma still separates them). The denominator wins the tie —
-              // severity is never carried by hue alone anyway (Three-Systems Rule:
-              // there is always a label beside this scale), whereas an invisible
-              // unlit tick removes the scale itself.
-              i <= active ? FILL[severity] : "bg-stroke",
+              compact ? "w-[3px]" : "w-1",
+              i <= active
+                ? cn(compact ? "h-2.5" : "h-3.5", FILL[severity])
+                : cn(compact ? "h-1.5" : "h-2", UNLIT),
             )}
           />
         ))}
@@ -130,10 +145,15 @@ export function SeverityGauge({
         <span
           key={band}
           className={cn(
-            // Same unlit treatment as the scale: an unlit band still has to read
-            // as a step, otherwise "high" loses its "out of what".
             "h-[3px] rounded-[1px]",
-            severity && i <= active ? FILL[severity] : "bg-stroke",
+            // Same unlit treatment as the scale (see UNLIT): short across the
+            // axis — here the bands stack, so an unlit one is a centred stub and
+            // the lit ones run the full 10px. Lit reads as one mass rather than
+            // a rung of a uniform ladder, which is what the light-mode palette
+            // could not give on colour alone.
+            severity && i <= active
+              ? cn("w-full", FILL[severity])
+              : cn("w-1.5 self-center", UNLIT),
           )}
         />
       ))}

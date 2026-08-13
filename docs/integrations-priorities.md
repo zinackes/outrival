@@ -245,8 +245,13 @@ Proposed default, all three must hold for `build now`:
 - It forces at most one new piece of shared infrastructure.
 - The first customer can use it without waiting on a partner directory review.
 
-**Q4. Does the current gating hold?**
-`[confirmed]` CRM destinations are business-tier only today. `[unknown]` Whether
-Slack as an app stays a notification-tier feature or moves behind
-`crmIntegrations` changes both pricing and the build. Worth settling before the
-Slack build starts, not after.
+**Q4. Does the current gating hold? Decided: yes.**
+`[confirmed]` Two different prices apply today. Slack is a notification channel
+available from `starter` up (`allowedChannels`), while CRM destinations are
+`business` only (`crmIntegrations`).
+
+Decision, 2026-08-13: the Slack app stays a notification-tier feature, available
+from `starter`, and does not move behind `crmIntegrations`. Slack drives
+activation, not upgrade. What justifies the business tier is HubSpot, not a
+channel picker, and paywalling a capability starter already has would read as a
+downgrade. HubSpot and Salesforce stay behind `crmIntegrations`.

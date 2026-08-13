@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { toast } from "@/lib/toast";
 import {
   WarningCircleIcon,
   ArrowLeftIcon,
@@ -53,6 +52,7 @@ import {
   trackOnboarding,
 } from "@/lib/posthog/onboarding-events";
 import { useOnboardingSession } from "@/hooks/use-onboarding-session";
+import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import {
   PaywallDialog,
   paywallFromError,
@@ -387,10 +387,20 @@ export function OnboardingForm({
     router.push("/auth");
   }
 
+  // Both exits out of the wizard leave through here rather than through the client
+  // router. /dashboard gates on onboardingCompleted / onboardingSkipped in a server
+  // component, and the Router Cache still holds the payload it rendered BEFORE the
+  // flag flipped — the one that redirects to /onboarding, whose own gate now sends
+  // it back. `replace` also keeps /onboarding out of history, so Back can't re-enter
+  // a finished flow and bounce off the same pair of gates.
+  function leaveTo(path: string) {
+    window.location.replace(path);
+  }
+
   async function handleSkip() {
     try {
       await api.skipOnboarding();
-      router.push("/dashboard");
+      leaveTo("/dashboard");
     } catch (e) {
       setError(extractMessage(e));
     }
@@ -629,17 +639,17 @@ export function OnboardingForm({
       setError("All fields are required. Fill in the empty ones.");
       return;
     }
-    try {
-      await api.patchProductProfile(profile);
-    } catch (e) {
-      setError(extractMessage(e));
-      return;
-    }
     trackOnboarding(ONBOARDING_EVENTS.PRODUCT_PROFILE_CONFIRMED, sessionId);
     void updateSession({
       timings: { [milestoneKey(ONBOARDING_EVENTS.PRODUCT_PROFILE_CONFIRMED)]: Date.now() },
     });
+    // Move first, then work. The profile save and the search both used to gate the
+    // step change, so confirming held the user on a screen with nothing left to do
+    // for as long as the search took. The discover step renders its own loading
+    // state, and a save that fails still surfaces there — goTo clears the notice
+    // slot on the way in, so a later rejection lands on the step the user is on.
     goTo("discover");
+    void api.patchProductProfile(profile).catch((e) => setError(extractMessage(e)));
     // runDiscovery replays the background prefetch when it already resolved for
     // this exact input (instant), and searches otherwise.
     await runDiscovery(profile, committedUrl, region);
@@ -795,14 +805,11 @@ export function OnboardingForm({
       // straight to the dashboard — where OnboardingAnalysisPanel renders the very
       // progress this wizard used to poll for on a screen with nothing else on it.
       // `busy` deliberately stays set: the button holds its pending state until the
-      // route actually changes.
+      // route actually changes. The success toast is gone with the client-side push
+      // that used to carry it — a document navigation tears the toaster down before
+      // it paints, and OnboardingAnalysisPanel already names the same work on arrival.
       trackOnboarding(ONBOARDING_EVENTS.REDIRECT_TO_DASHBOARD, sessionId);
-      toast.success(
-        selected.length === 1
-          ? "Setup complete. We're reading your competitor now."
-          : `Setup complete. We're reading your ${selected.length} competitors now.`,
-      );
-      router.push("/dashboard");
+      leaveTo("/dashboard");
     } catch (e) {
       const reason = paywallFromError(e);
       if (reason) setPaywall(reason);
@@ -862,7 +869,10 @@ export function OnboardingForm({
         onSkip={handleSkip}
       />
 
-      <main className="flex-1 mx-auto w-full max-w-3xl px-4 sm:px-8 py-8 sm:py-12">
+      {/* The header is in normal flow, so `flex-1` is already the space below it:
+          centring here centres against that space, not against the viewport, and
+          a step taller than the fold still grows the column instead of clipping. */}
+      <main className="flex flex-1 flex-col justify-center mx-auto w-full max-w-3xl px-4 sm:px-8 py-8 sm:py-12">
         <div
           key={screen}
           className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200 motion-safe:ease-out"
@@ -931,6 +941,7 @@ export function OnboardingForm({
               onConfirm={handleCompetitorsConfirm}
               onBack={() => goTo("profile")}
               onRefine={() => goTo("profile")}
+              onUpgrade={() => showCompetitorLimitPaywall(selectedCount)}
             />
           )}
 
@@ -963,7 +974,10 @@ function Header({
 
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/65">
-      <div className="mx-auto flex h-14 max-w-3xl items-center gap-4 px-4 sm:px-8">
+      {/* Three tracks rather than a flex row: progress is centred on the page,
+          not on whatever width the brand and the actions leave over. Brand reads
+          first, progress second, the two controls last as one right-hand cluster. */}
+      <div className="mx-auto grid h-16 max-w-3xl grid-cols-[auto_1fr_auto] items-center gap-4 px-4 sm:px-8">
         <Link
           href="/"
           className="shrink-0 text-base font-semibold font-[var(--font-display)] tracking-tight"
@@ -974,28 +988,31 @@ function Header({
 
         <HeaderSteps step={step} />
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="shrink-0"
-              aria-label="Setup options"
-            >
-              <DotsThreeIcon size={16} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuItem onSelect={() => setConfirmRestart(true)}>
-              <ArrowCounterClockwiseIcon size={16} /> Start over
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void onSkip()}>
-              <SignOutIcon size={16} /> Leave for now
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => void onSignOut()}>Sign out</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <ThemeToggle />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0"
+                aria-label="Setup options"
+              >
+                <DotsThreeIcon size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onSelect={() => setConfirmRestart(true)}>
+                <ArrowCounterClockwiseIcon size={16} /> Start over
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void onSkip()}>
+                <SignOutIcon size={16} /> Leave for now
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => void onSignOut()}>Sign out</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Restart discards every answer given so far, so it asks first. */}
@@ -1029,32 +1046,32 @@ function Header({
 }
 
 // Progress lives in the header rather than at the top of the content column, so
-// it stays on screen while a step scrolls. Below md the four labels don't fit,
-// and a truncated name is worse than a number: the bar keeps position there and
-// the count keeps the total.
+// it stays on screen while a step scrolls. Below md the four labels don't fit, so
+// the bars keep position on their own. The "2/4" counter that used to sit beside
+// them is gone: it restated the bars in the one place with the least room, and
+// the step's own title and description say where you are with actual words.
 function HeaderSteps({ step }: { step: number }) {
-  const total = SETUP_STEPS.length;
-
   return (
-    <div className="min-w-0 flex-1">
-      <div className="flex items-center gap-2 md:hidden">
-        <div className="flex flex-1 gap-1" aria-hidden>
-          {SETUP_STEPS.map((label, i) => (
-            <span
-              key={label}
-              className={cn(
-                "h-0.5 flex-1 rounded-full transition-colors duration-300",
-                i < step ? "bg-primary" : "bg-stroke",
-              )}
-            />
-          ))}
-        </div>
-        <span className="shrink-0 text-meta text-muted-foreground tabular-nums">
-          {step}/{total}
-        </span>
+    <div className="min-w-0">
+      {/* The desktop list is display:none below md, so it is gone from the
+          accessibility tree too — without this, dropping the counter would leave a
+          small screen with no readable progress at all. */}
+      <span className="sr-only md:hidden">
+        Step {step} of {SETUP_STEPS.length}: {SETUP_STEPS[step - 1]}
+      </span>
+      <div className="flex items-center gap-1.5 md:hidden" aria-hidden>
+        {SETUP_STEPS.map((label, i) => (
+          <span
+            key={label}
+            className={cn(
+              "h-1 flex-1 rounded-full transition-colors duration-300",
+              i < step ? "bg-primary" : "bg-stroke",
+            )}
+          />
+        ))}
       </div>
 
-      <ol className="hidden items-center md:flex">
+      <ol className="hidden items-center justify-center md:flex">
         {SETUP_STEPS.map((label, i) => {
           const n = i + 1;
           const done = n < step;
@@ -1065,14 +1082,14 @@ function HeaderSteps({ step }: { step: number }) {
               aria-current={current ? "step" : undefined}
               className="flex min-w-0 items-center"
             >
-              {i > 0 && <span aria-hidden className="mx-2 h-px w-4 shrink-0 bg-border" />}
-              <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+              {i > 0 && <span aria-hidden className="mx-2.5 h-px w-5 shrink-0 bg-border" />}
+              <span aria-hidden className="grid size-5 shrink-0 place-items-center">
                 {done ? (
-                  <CheckIcon size={14} className="text-primary" />
+                  <CheckIcon size={16} className="text-primary" />
                 ) : (
                   <span
                     className={cn(
-                      "size-1.5 rounded-full transition-colors duration-300",
+                      "size-2 rounded-full transition-colors duration-300",
                       current ? "bg-primary" : "bg-stroke",
                     )}
                   />
@@ -1080,8 +1097,8 @@ function HeaderSteps({ step }: { step: number }) {
               </span>
               <span
                 className={cn(
-                  "ml-2 truncate text-meta transition-colors",
-                  current ? "text-foreground" : "text-muted-foreground",
+                  "ml-2 truncate text-dense transition-colors",
+                  current ? "font-medium text-foreground" : "text-muted-foreground",
                 )}
               >
                 {label}
@@ -1368,6 +1385,10 @@ function ModeForm({
       <h1 className="text-title md:text-title-lg font-semibold">
         {STAGE_META[stage].title}
       </h1>
+      {/* Every other screen opens title-then-description; this one used to open on
+          a bare title, with the sentence that explains the ask stranded on the card
+          the user just left. */}
+      <p className="text-sm text-muted-foreground mt-3">{STAGE_META[stage].description}</p>
 
       {notice}
 
@@ -1805,6 +1826,7 @@ function DiscoverStep({
   onConfirm,
   onBack,
   onRefine,
+  onUpgrade,
 }: {
   competitors: Selection[];
   notice: ReactNode;
@@ -1824,6 +1846,7 @@ function DiscoverStep({
   onConfirm: () => void;
   onBack: () => void;
   onRefine: () => void;
+  onUpgrade: () => void;
 }) {
   const atLimit = selectedCount >= maxCompetitors;
   const noStrongMatch =
@@ -1858,58 +1881,66 @@ function DiscoverStep({
           </Notice>
         ) : null)}
 
+      {/* The search used to replace this whole step with a wait screen, which read
+          as "you can't be here yet" for the fifteen seconds it ran. The step keeps
+          its shape now and the wait sits where the list will land, so arriving
+          early is a normal state: the market line and the manual field stay usable. */}
+      <BudgetMeter
+        selected={selectedCount}
+        max={maxCompetitors}
+        found={competitors.length}
+        searching={busy}
+        onUpgrade={onUpgrade}
+      />
+
       {busy ? (
         <WaitChecklist title="Searching your market…" steps={DISCOVERY_STEPS} stepMs={6000} />
       ) : (
-        <>
-          <BudgetMeter selected={selectedCount} max={maxCompetitors} found={competitors.length} />
-
-          <Card className="mt-3 p-2 sm:p-3 max-h-[420px] overflow-auto">
-            {competitors.length === 0 ? (
-              <div className="px-4 py-12 text-center text-sm text-muted-foreground">
-                No competitors suggested. Add some manually below.
-              </div>
-            ) : (
-              <ul className="flex flex-col">
-                {competitors.map((c) => (
-                  <CompetitorRow
-                    key={c.url}
-                    competitor={c}
-                    overBudget={atLimit && !c.selected}
-                    onToggle={() => toggleCompetitor(c.url)}
-                    onRemove={() => removeCompetitor(c.url)}
-                  />
-                ))}
-              </ul>
-            )}
-          </Card>
-
-          <div className="mt-6">
-            <Label htmlFor="manual-url" className="text-sm mb-2 block">
-              Add a competitor manually
-            </Label>
-            <div className="flex gap-2">
-              <Input
-                id="manual-url"
-                type="url"
-                value={manualUrl}
-                onChange={(e) => setManualUrl(e.target.value)}
-                placeholder="https://another-competitor.com"
-                className="flex-1"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addManualCompetitor();
-                  }
-                }}
-              />
-              <Button type="button" variant="outline" onClick={addManualCompetitor}>
-                <PlusIcon size={16} /> Add
-              </Button>
+        <Card className="mt-3 p-2 sm:p-3 max-h-[420px] overflow-auto">
+          {competitors.length === 0 ? (
+            <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+              No competitors suggested. Add some manually below.
             </div>
-          </div>
-        </>
+          ) : (
+            <ul className="flex flex-col">
+              {competitors.map((c) => (
+                <CompetitorRow
+                  key={c.url}
+                  competitor={c}
+                  overBudget={atLimit && !c.selected}
+                  onToggle={() => toggleCompetitor(c.url)}
+                  onRemove={() => removeCompetitor(c.url)}
+                />
+              ))}
+            </ul>
+          )}
+        </Card>
       )}
+
+      <div className="mt-6">
+        <Label htmlFor="manual-url" className="text-sm mb-2 block">
+          Add a competitor manually
+        </Label>
+        <div className="flex gap-2">
+          <Input
+            id="manual-url"
+            type="url"
+            value={manualUrl}
+            onChange={(e) => setManualUrl(e.target.value)}
+            placeholder="https://another-competitor.com"
+            className="flex-1"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addManualCompetitor();
+              }
+            }}
+          />
+          <Button type="button" variant="outline" onClick={addManualCompetitor}>
+            <PlusIcon size={16} /> Add
+          </Button>
+        </div>
+      </div>
 
       {/* What gets monitored is decided by the plan, not by a step, and it used to
           be asserted for the first time after the flow was over. One line, above
@@ -1941,10 +1972,14 @@ function BudgetMeter({
   selected,
   max,
   found,
+  searching,
+  onUpgrade,
 }: {
   selected: number;
   max: number;
   found: number;
+  searching: boolean;
+  onUpgrade: () => void;
 }) {
   const capped = Number.isFinite(max);
   const atLimit = capped && selected >= max;
@@ -1964,9 +1999,16 @@ function BudgetMeter({
             </>
           )}
         </p>
-        <p className="text-dense text-muted-foreground">
-          <span className="tabular-nums text-foreground">{found}</span> found
-        </p>
+        {/* "0 found" mid-search reads as a result, not a pending one. */}
+        {searching ? (
+          <p className="flex items-center gap-1.5 text-dense text-muted-foreground">
+            <SpinnerIcon size={14} className="animate-spin" /> Searching…
+          </p>
+        ) : (
+          <p className="text-dense text-muted-foreground">
+            <span className="tabular-nums text-foreground">{found}</span> found
+          </p>
+        )}
       </div>
 
       {capped && max <= 10 && (
@@ -1983,19 +2025,32 @@ function BudgetMeter({
         </div>
       )}
 
-      <p className="mt-2 text-dense text-muted-foreground">
-        {atLimit
-          ? "That's every slot your plan tracks. The rest stay in Detections, ready to track later."
-          : "Whatever you leave unchecked stays in Detections, ready to track later."}
-      </p>
+      {atLimit ? (
+        // The rows over budget are inert now, so the limit no longer explains itself
+        // on the click that hits it. It says so here, next to the way past it.
+        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <p className="text-dense text-muted-foreground">
+            That's every slot your plan tracks. The rest stay in Detections, ready to track
+            later.
+          </p>
+          <Button variant="ghost" size="sm" onClick={onUpgrade}>
+            Track more
+          </Button>
+        </div>
+      ) : (
+        <p className="mt-2 text-dense text-muted-foreground">
+          Whatever you leave unchecked stays in Detections, ready to track later.
+        </p>
+      )}
     </div>
   );
 }
 
 // One company per row, not four fragments in forty pixels: name and overlap on the
-// first line, host on the second in sans, one line of snippet. Over budget the row
-// keeps its full contrast — it is a competitor kept for later, not a disabled
-// control, and clicking it still explains the limit.
+// first line, host on the second in sans, one line of snippet. Once the plan's slots
+// are full the remaining rows go inert — dimmed, checkbox disabled, no toggle — so
+// the limit is visible before the click rather than as a paywall after it. Removing
+// a row and opening its site stay live: neither spends a slot.
 function CompetitorRow({
   competitor,
   overBudget,
@@ -2010,16 +2065,19 @@ function CompetitorRow({
   return (
     <li
       className={cn(
-        "flex items-start gap-3 px-3 py-2.5 rounded-md cursor-pointer transition-colors hover:bg-surface-2",
+        "flex items-start gap-3 px-3 py-2.5 rounded-md transition-colors",
+        overBudget ? "opacity-60" : "cursor-pointer hover:bg-surface-2",
         competitor.selected && "bg-primary/5",
       )}
-      onClick={onToggle}
+      onClick={overBudget ? undefined : onToggle}
+      aria-disabled={overBudget || undefined}
       title={competitor.reason}
     >
       <Checkbox
         checked={competitor.selected}
         onCheckedChange={onToggle}
         onClick={(e) => e.stopPropagation()}
+        disabled={overBudget}
         className="mt-0.5"
         aria-label={`Track ${competitor.title}`}
       />

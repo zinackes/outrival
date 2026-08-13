@@ -69,8 +69,14 @@ export function ProductsSettings() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Invalidate the whole ["products"] prefix, not just this page's key. The sidebar
+  // switcher and the product-scope provider read ["products","list"], a sibling key:
+  // refreshing only ["products","settings"] dropped the removed product from this
+  // list while the switcher kept offering it, and a scope pointing at it stayed put
+  // (the provider only self-heals once the list itself refetches). The portfolio and
+  // the detail page already invalidate the prefix.
   function load() {
-    return queryClient.invalidateQueries({ queryKey: productsSettingsQuery().queryKey });
+    return queryClient.invalidateQueries({ queryKey: ["products"] });
   }
 
   const active = (products ?? []).filter((p) => p.status !== "archived");

@@ -871,8 +871,12 @@ export function OnboardingForm({
 
       {/* The header is in normal flow, so `flex-1` is already the space below it:
           centring here centres against that space, not against the viewport, and
-          a step taller than the fold still grows the column instead of clipping. */}
-      <main className="flex flex-1 flex-col justify-center mx-auto w-full max-w-3xl px-4 sm:px-8 py-8 sm:py-12">
+          a step taller than the fold still grows the column instead of clipping.
+          The bottom padding runs deeper than the top on purpose: geometric centre
+          reads as sitting low, and each step is bottom-heavy (a short title over a
+          grid of cards), so the extra padding lifts the block by half the surplus
+          — 40px — back onto the optical centre. */}
+      <main className="flex flex-1 flex-col justify-center mx-auto w-full max-w-3xl px-4 sm:px-8 pt-8 pb-28 sm:pt-12 sm:pb-32">
         <div
           key={screen}
           className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200 motion-safe:ease-out"
@@ -976,8 +980,11 @@ function Header({
     <header className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/65">
       {/* Three tracks rather than a flex row: progress is centred on the page,
           not on whatever width the brand and the actions leave over. Brand reads
-          first, progress second, the two controls last as one right-hand cluster. */}
-      <div className="mx-auto grid h-16 max-w-3xl grid-cols-[auto_1fr_auto] items-center gap-4 px-4 sm:px-8">
+          first, progress second, the two controls last as one right-hand cluster.
+          Full-bleed, not capped to the content column: an app bar reads as the
+          window's own chrome, and a brand indented to a text measure looks like a
+          stray heading. The middle track keeps progress on the page's centreline. */}
+      <div className="grid h-16 w-full grid-cols-[auto_1fr_auto] items-center gap-4 px-4 sm:px-6">
         <Link
           href="/"
           className="shrink-0 text-base font-semibold font-[var(--font-display)] tracking-tight"

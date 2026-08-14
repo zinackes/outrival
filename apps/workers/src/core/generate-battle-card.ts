@@ -33,7 +33,12 @@ import {
   AI_CONFIG,
   type BattleCardContent,
 } from "@outrival/ai";
-import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfulness-gate";
+import {
+  checkFaithfulness,
+  isBlocked,
+  blockedReviewEntry,
+  publishableAfterRepair,
+} from "../lib/faithfulness-gate";
 import {
   uploadToR2,
   getFromR2,
@@ -704,6 +709,7 @@ async function generate(payload: z.input<typeof InputSchema>) {
     // unfaithful one — and its failing claims land in the review queue.
     const evidence = battleCardEvidence(battleCardInput);
     let faithfulness = await checkFaithfulness({
+      task: "battle_card",
       output: content,
       sourceText: evidence,
       outputKind: "sales battle card",
@@ -736,6 +742,7 @@ async function generate(payload: z.input<typeof InputSchema>) {
       const recheck =
         repaired && !isEmptyCard(repaired)
           ? await checkFaithfulness({
+              task: "battle_card",
               output: repaired,
               sourceText: evidence,
               outputKind: "sales battle card",
@@ -751,7 +758,7 @@ async function generate(payload: z.input<typeof InputSchema>) {
       // Everywhere else an unavailable verification means publish-unverified, but this
       // content was already refused once — a provider outage mid-repair must not become
       // the way it gets through.
-      const publishable = repaired && recheck?.verdict === "pass" ? repaired : null;
+      const publishable = publishableAfterRepair(repaired, recheck);
 
       await insertAiQualityCheck(
         blockedReviewEntry({

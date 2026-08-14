@@ -84,6 +84,7 @@ export type { CosmeticGateResult } from "./tasks/cosmetic-gate";
 export { verifyFaithfulness } from "./faithfulness/verify";
 export type { VerifyFaithfulnessParams, FaithfulnessDeps } from "./faithfulness/verify";
 export { decideGate, faithfulnessMinRatio, faithfulnessGateEnabled } from "./faithfulness/gate";
+export type { FaithfulnessTask, GateDecision } from "./faithfulness/gate";
 export { isClaimSupported, scoreClaims, verbatimRatio } from "./faithfulness/score-claims";
 export { extractClaims } from "./faithfulness/extract-claims";
 export { judgeClaim, JudgeSchema, buildJudgePrompt } from "./faithfulness/judge-claim";

@@ -1,8 +1,13 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { desc, eq } from "drizzle-orm";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
 import { verifyFaithfulness, type Claim, type FaithfulnessReport } from "@outrival/ai";
-import { blockedReviewEntry, isBlocked } from "../src/lib/faithfulness-gate";
+import {
+  blockedReviewEntry,
+  checkFaithfulness,
+  isBlocked,
+  publishableAfterRepair,
+} from "../src/lib/faithfulness-gate";
 
 // What a blocked publication actually produces, against a real (in-process)
 // Postgres migrated from the versioned migrations: the review-queue row a human
@@ -185,5 +190,73 @@ describe("a fully sourced battle card", () => {
     expect(stored.verdict).toBe("pass");
     expect(stored.judgeCalls).toBe(0);
     expect(stored.durationMs).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("per-task enablement (P5)", () => {
+  const publishable = {
+    output: CARD,
+    sourceText: EVIDENCE,
+    outputKind: "sales battle card",
+    context: {},
+  };
+
+  afterEach(() => {
+    delete process.env.FAITHFULNESS_GATE_TASKS;
+    delete process.env.FAITHFULNESS_GATE_ENABLED;
+  });
+
+  test("an ungated task never enters the chain", async () => {
+    // No flag set — the repository default. A null return is the whole contract:
+    // no extraction call, no judge call, no ai_runs row, caller publishes as before.
+    expect(await checkFaithfulness({ task: "battle_card", ...publishable })).toBeNull();
+  });
+
+  test("signal insights stay out while battle cards and digests are gated", async () => {
+    process.env.FAITHFULNESS_GATE_TASKS = "battle_card,digest";
+    // The scope plan 017 decided. No provider is reachable from a test, so the
+    // null return is also the proof that this task never reached one.
+    expect(await checkFaithfulness({ task: "signal_insight", ...publishable })).toBeNull();
+  });
+
+  test("the legacy boolean alone still leaves an unlisted task ungated", async () => {
+    process.env.FAITHFULNESS_GATE_ENABLED = "true";
+    process.env.FAITHFULNESS_GATE_TASKS = "digest";
+    expect(await checkFaithfulness({ task: "signal_insight", ...publishable })).toBeNull();
+  });
+});
+
+describe("what a block leaves served", () => {
+  const input = { output: CARD, sourceText: EVIDENCE, outputKind: "sales battle card" };
+
+  test("a repaired card publishes ONLY on a clean re-verification", async () => {
+    const clean = await verifyFaithfulness(input, deps(SOURCED, false));
+    expect(clean.verdict).toBe("pass");
+    expect(publishableAfterRepair(CARD, clean)).toBe(CARD);
+  });
+
+  test("no repair to show → the previous card stays served", () => {
+    expect(publishableAfterRepair(null, null)).toBeNull();
+  });
+
+  test("FAIL CLOSED on this path: an unavailable re-verification does not publish", async () => {
+    // The one place in the system where a provider outage withholds instead of
+    // publishing. This content was already refused once; a `skipped` recheck must
+    // not become the way it gets through, so the job aborts and the customer keeps
+    // reading yesterday's card rather than a repaired-but-unverified one.
+    const unavailable = await verifyFaithfulness(input, {
+      extractClaims: async () => {
+        throw new Error("pool down");
+      },
+      judgeClaim: async () => null,
+    });
+    expect(unavailable.verdict).toBe("skipped");
+    expect(publishableAfterRepair(CARD, unavailable)).toBeNull();
+  });
+
+  test("a repair that is itself blocked does not publish", async () => {
+    const stillBlocked = await verifyFaithfulness(input, deps([...SOURCED, INVENTED], false));
+    expect(stillBlocked.verdict).toBe("blocked");
+    expect(publishableAfterRepair(CARD, stillBlocked)).toBeNull();
   });
 });

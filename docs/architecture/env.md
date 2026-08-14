@@ -301,6 +301,17 @@ AI_INTENSIVE_WINDOW_SEC=3600       # fenêtre 1h
 # critique et son destinataire.
 FAITHFULNESS_GATE_ENABLED=false
 FAITHFULNESS_MIN_RATIO=0.9         # ratio min supported/total pour publier
+# Périmètre par tâche (P5, décidé par docs/faithfulness-rollout.md). Liste
+# séparée par des virgules parmi : battle_card | digest | signal_insight. À poser
+# sur le service WORKER uniquement — le gate ne tourne nulle part ailleurs.
+# PRÉCÉDENCE : une valeur non vide GAGNE sur le booléen ci-dessus, dans les deux
+# sens (elle active une tâche que le booléen laisse à false, et elle laisse hors
+# gate toute tâche non listée même si le booléen vaut "true"). Le kill switch est
+# donc de vider cette ligne, pas de toucher au booléen. Un nom non reconnu
+# n'active rien : une faute de frappe doit échouer du côté « on publie ».
+# Premier rollout recommandé : battle_card,digest — un faux blocage y reporte une
+# sortie récupérable, là où un faux blocage sur une alerte critique ne l'est pas.
+FAITHFULNESS_GATE_TASKS=
 
 # Notifications
 RESEND_API_KEY=

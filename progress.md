@@ -466,3 +466,169 @@ misses : c'est le seul append qui vive dans un bloc que le modèle produit, et u
 | shared 952 ✓ · workers 428 ✓ · ai 251 ✓ · web 299 ✓ · api 429 ✓
 
 **Prochaine session** : phase 5 — gate de fidélité (plan 017, R7, R8). Non touchée ici.
+
+---
+
+## Véracité Intelligence v2 — P5 : la porte de fidélité, et ce qui atteint review_scores (2026-08-14)
+
+**Le cadrage, verrouillé avant la première ligne.** La phase mesure d'abord, active
+ensuite : on ne bloque jamais une publication sur une mesure inconnue, donc tant que 017
+n'avait pas de chiffre la porte restait éteinte, et « ne pas activer » était un résultat
+valide de la phase, pas un échec. Le périmètre d'activation était borné d'avance : battle
+card et digest, `generate_signal` hors porte.
+
+**Ce que 017 a mesuré** (readout complet : `docs/faithfulness-rollout.md`). 7/7 inventions
+rejetées, 7/7 paraphrases conservées sur les 14 cas étiquetés, juge `gpt-oss-120b` (tier
+SMART) contre le pool de la machine de dev (cerebras p1, groq p2). Mieux que les ~80 % de
+rétention notés dans `architecture.md`, donc la condition de STOP du plan n'est pas
+atteinte. Deux détails pèsent plus que le score :
+- **l'eval ne terminait pas sur cette machine** : `429` TPM Groq à 12 cas sur 14, puis
+  `400 json_validate_failed` avec `failed_generation` vide. La mesure a été produite en
+  espaçant les appels de 9 s et en réessayant un cas jusqu'à 4 fois, même liste, même juge,
+  mêmes critères de passage, zéro fichier du repo modifié.
+- **ce détour est une conclusion.** En production ces deux erreurs sont catchées en
+  `unverified`, qui compte comme supporté : un rapport où trois claims sur vingt-cinq n'ont
+  jamais été jugées passe la porte. La porte ne vaut que la disponibilité du pool, et sa
+  faiblesse est silencieuse puisqu'elle publie.
+- **taux de faux blocage mesuré : 0/7.** Avec n = 7 et zéro échec observé, la règle de trois
+  place la borne haute à 95 % vers 35 %. La mesure exclut un mauvais juge, elle n'établit
+  pas un bon juge à quelques points près. C'est tout l'argument du périmètre restreint.
+
+**La décision : opt-in scopé à `battle_card` et `digest`.** Les insights `critical` /
+`high` restent dehors jusqu'à ce qu'un taux de faux blocage existe en production. Un digest
+retenu est un email par semaine et par org, récupérable depuis l'UI digests ; une battle
+card retenue laisse la précédente servir ; une alerte critique retenue est le seul cas où le
+coût d'un faux blocage se paie immédiatement et ne se rattrape pas plus tard.
+
+**Le flag, et sa précédence testée.** `FAITHFULNESS_GATE_TASKS` (liste séparée par des
+virgules) l'emporte sur le booléen `FAITHFULNESS_GATE_ENABLED` **dans les deux sens** : il
+allume une tâche que le booléen laisse éteinte, et il garde éteinte toute tâche non listée
+même là où le booléen vaut `"true"`. Sans cette seconde moitié, un worker portant déjà
+l'ancien booléen à vrai aurait allumé `signal_insight` par la même occasion ; et comme
+`.env.example` livre le booléen à `false` partout, la règle inverse aurait rendu la liste
+inutilisable sans une seconde édition sans rapport. Un nom inconnu n'allume rien : une faute
+de frappe échoue vers la publication, jamais vers le blocage d'une alerte critique.
+`faithfulnessGateEnabled(task)` exige désormais la tâche, donc plus aucun appelant ne
+demande « la porte est-elle allumée » sans dire de quoi il parle.
+
+**Ce qu'un blocage ne casse pas.** L'invariant `skipped` ne bloque jamais a été retesté
+après câblage. Digest bloqué : la ligne EST écrite (c'est le marqueur d'idempotence de la
+semaine, ne pas l'écrire relancerait la génération au tick suivant), `sent_at` reste null,
+aucun email ne part, l'entrée atterrit dans la file de revue avec les claims refusées.
+Battle card bloquée : la carte n'est pas écrite et la précédente survit intacte, avec une
+passe de réparation au milieu dont la republication exige un `pass` franc (un `skipped` au
+recheck ne publie pas : seul endroit du système où une vérification indisponible retient au
+lieu de publier). Dans les deux cas la génération planifiée se termine, l'ancienne sortie
+reste servie.
+
+**`FAITHFULNESS_MIN_RATIO` reste à 0.9, mesuré puis laissé tel quel.** Pas parce que 0.9
+serait calibré, mais parce que le seuil est **inerte par construction** : `decideGate` bloque
+sur `unfaithfulClaims.length > 0` avant de regarder le ratio, donc zéro claim infidèle donne
+un ratio de 1 qui n'atteint jamais le seuil, et une seule claim infidèle a déjà bloqué. Le
+déplacer aujourd'hui serait un changement sans effet observable, ce qui est pire que ne rien
+toucher. Le ratio reste le nombre stocké et auditable ; le seuil ne redevient vivant que si
+les règles de comptage changent.
+
+**R7 : ce qui atteint `review_scores`.** La table se lit comme la note d'UN concurrent dans
+le temps, donc un point capturé sur le profil d'une autre marque ne ressemble pas à une
+erreur : il ressemble à un mouvement, et le détecteur de chute en fait un signal que
+personne ne retrace après coup. R6 note les URLs d'atterrissage à la capture mais saute les
+reviews volontairement (un profil d'avis vit légitimement sur le domaine d'un tiers), donc
+rien ne vérifiait l'identité avant ce commit. Quatre contrôles, purs, sans DB ni R2
+(`apps/workers/src/lib/reviews-authenticity.ts`) :
+1. **identité** : l'identifiant de la plateforme (app id Apple, handle Shopify, domaine
+   Trustpilot) contre celui que l'URL du monitor nomme, puis `classifyRedirect` sur l'URL
+   finale (offsite, root bounce).
+2. **marque présente** dans le texte extrait, pour les sources qui ne portent aucun
+   identifiant (G2, Capterra, TrustRadius, Gartner), vérifiée AVANT de payer l'IA pour
+   résumer un concurrent qu'on ne surveille pas.
+3. **structure reviews présente** : au moins un score, ou un compte, ou l'état vide
+   EXPLICITE de la plateforme.
+4. **régression brutale** via `protectRegression` (primitive P1) : compte effondré au-delà
+   d'un plancher de 20, ou score effondré. 4.4 vers 2.4 passe, c'est le mouvement que le
+   produit existe pour attraper ; 1240 avis vers 6 ne passe pas.
+
+**La règle qui empêche la garde de faire taire des sources.** Chaque contrôle dégrade en
+« pas d'avis » : seule une contradiction positive refuse. Aucun identifiant des deux côtés,
+texte trop court pour être fouillé, premier point sans historique, compte frais absent, tout
+cela publie exactement comme avant. Un refus, lui, n'écrit RIEN et note le snapshot
+`partial` avec `completeness` à 0, ce qui est le seul endroit où la raison devient lisible
+sans ajouter une colonne pour elle, et le point déjà stocké reste celui qui est servi. La
+garde de régression vit DANS `persistAggregateOnly`, pour qu'aucun appelant ne puisse écrire
+un point à côté d'elle.
+
+**Une plateforme qui répond « aucun avis » a répondu.** Retour `ok` avec un marqueur `empty`
+explicite au lieu d'une raison d'échec, snapshot laissé `success`, et aucune ligne 0/5
+écrite puisqu'elle polluerait la tendance. C'est un état, pas une capture ratée.
+
+**R8 reporté, pas fait à moitié.** La re-validation des parseurs mis en cache porte sur le
+périmètre du plan 030 (staged-extraction heal cache), encore **TODO** dans
+`plans/README.md`. Décision verrouillée au cadrage : jamais de demi-implémentation sur ce
+périmètre tant que 030 n'est pas DONE. Rien n'a été touché côté cache d'extraction, aucun
+garde-fou n'a été posé par anticipation. R8 se rouvre le jour où 030 passe DONE.
+
+**Écarts à signaler.**
+- **L'eval 017 ne tourne pas telle qu'elle est commitée** sur cette machine (TPM Groq, JSON
+  invalide). La mesure existe, la commande du repo ne la reproduit pas sans le pacing. C'est
+  l'eval qu'il faut corriger, pas la porte.
+- n = 14 cas étiquetés à la main : un filet de régression pour le prompt du juge, pas une
+  estimation de population. Seule la file de revue en produira une.
+- `generate_signal` passe bien sa tâche à la porte mais reste hors liste : câblé, éteint.
+- Le recheck de réparation battle card est le **seul chemin fail-closed** du système. Assumé
+  et documenté, pas un oubli.
+- La branche cloudflare de `extract-reviews` sortait tôt en laissant le snapshot lu comme
+  `success` ; elle passe maintenant par le même refus. Correction adjacente, dans le
+  périmètre de R7.
+- Sources sans identifiant : la présence de marque est le seul filet. Une page de la bonne
+  plateforme, mauvaise marque, qui cite quand même notre nom, passerait.
+- **Zéro migration cette phase**, et aucun rejugement rétroactif : la garde est prospective,
+  les points déjà écrits restent tels quels.
+- Le test bout-en-bout passe par Trustpilot, seule écriture qui n'a besoin d'aucun modèle ;
+  les branches App Store, Shopify et HTML sont couvertes en unitaire.
+
+**Fichiers modifiés** :
+- `packages/ai` : `faithfulness/gate.ts` (+ test), `index.ts`
+- `apps/workers` : `lib/reviews-authenticity.ts` (neuf), `test/reviews-authenticity.test.ts`
+  (neuf), `lib/faithfulness-gate.ts` (+ test), `lib/analytics.ts`,
+  `core/extract-reviews.ts`, `core/generate-battle-card.ts`,
+  `core/generate-weekly-digest.ts`, `core/generate-signal.ts`
+- `packages/scrapers` : `package.json` (sous-chemin `./trustpilot`)
+- docs : `docs/faithfulness-rollout.md` (neuf), `docs/architecture/env.md`, `.env.example`,
+  `plans/README.md` (017 DONE)
+
+**Tests** : `pnpm typecheck` ✓ (8/8) | `pnpm check:lint` ✓ 0 erreur (warnings inchangés)
+| ai 258 ✓ · workers 454 ✓ · shared 952 ✓ · scrapers 1154 ✓
+
+---
+
+## RESTE CÔTÉ HUMAIN (fin de projet Véracité Intelligence v2)
+
+Rien de cette liste n'a été exécuté : ce sont toutes des actions outward-facing, qui
+demandent un go explicite (`.claude/rules/production.md` §2).
+
+1. **Poser le flag sur le worker, et seulement lui.**
+   `FAITHFULNESS_GATE_TASKS=battle_card,digest`, en laissant `FAITHFULNESS_GATE_ENABLED` à
+   `false`. La porte ne tourne que dans `apps/workers` : la poser sur l'API ne fait rien. Le
+   VPS worker n'est pas sur Coolify, son `.env` est lu au boot, donc **restart requis**.
+   Rollback : retirer la variable, restart. Aucune migration, aucun backfill, aucun code à
+   changer.
+2. **Lire l'environnement réel du worker avant de conclure quoi que ce soit.**
+   `.env.example` livre le booléen à `false`, un env déployé peut différer. S'il y vaut déjà
+   `"true"`, la précédence testée garde `signal_insight` éteint, mais il faut le savoir
+   avant de dire que la porte n'a jamais tourné.
+3. **Ne pas poser `FAITHFULNESS_MIN_RATIO`.** Inerte par construction (voir plus haut) : le
+   régler donnerait une fausse impression de contrôle.
+4. **Migrations : cette phase n'en ajoute aucune.** Celles du projet sont déjà sur main
+   (0075 completeness, 0076 double capture, 0077 abstention). Avant tout `db:migrate` sur un
+   env partagé, vérifier les PENDING : le drift de hash rencontré sur 0034 fait sauter une
+   migration en affichant un succès.
+5. **Surveiller 14 jours (deux cycles de digest).** `/admin/ai-review-queue`, entrées dont
+   `faithfulness.verdict` vaut `blocked`, triées en « hallucination confirmée » contre
+   « faux positif ». Rollback si plus de 20 % des blocages sont des faux positifs, ou plus
+   de 3 battle cards par semaine en blocage dur. Si les blocages sont proches de zéro, la
+   première hypothèse est la santé du pool, pas un corpus propre : relancer
+   `pnpm --filter @outrival/ai eval:faithfulness` contre le pool de PROD, un juge mesuré sur
+   un pool ne dit rien d'un autre.
+6. **Merge.** La branche `veracite-p4` porte P4, la porte par tâche, R7 et ce log. Le merge
+   vers `main` déclenche Coolify : décision humaine.
+7. **R8 se rouvre quand le plan 030 passe DONE**, pas avant.

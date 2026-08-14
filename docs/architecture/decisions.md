@@ -137,7 +137,11 @@
   dans `faithfulness/verify.ts`, à décider sur le taux de faux blocs mesuré dans la
   review queue. Comportement du juge mesuré hors CI par
   `pnpm --filter @outrival/ai eval:faithfulness` (paires étiquetées : 100% des
-  inventions rejetées, ≥80% des paraphrases gardées).
+  inventions rejetées, ≥80% des paraphrases gardées). **Activation (P5, 2026-08-14)** :
+  opt-in scopé par `FAITHFULNESS_GATE_TASKS`, liste qui l'emporte sur le booléen legacy
+  dans les deux sens ; battle cards et digests d'abord, insights critical/high câblés mais
+  hors liste tant qu'aucun taux de faux blocage n'est mesuré en production.
+  📄 docs/faithfulness-rollout.md
 - **Ask Outrival — intelligence conversationnelle (feature ad-hoc)** — NL → réponse
   anglaise groundée sur la donnée Postgres **déjà** trackée (pas de RAG, pas d'ingestion).
   **Agent à OUTILS** org-scopés (`lib/ask/tools.ts`, jamais de SQL LLM) en **boucle 2

@@ -16,6 +16,19 @@ L'assistant ne lance JAMAIS sans go explicite de l'utilisateur : `git push origi
 main`/`staging`, (re)deploy Coolify, restart d'un worker, migration sur un env
 partagé, changement Stripe/webhook. Il propose, l'utilisateur valide.
 
+### Ce qui ne demande PAS de confirmation
+La frontière est le déploiement, pas la visibilité : `main` déclenche Coolify, une
+branche de travail ne déclenche rien et se supprime. Ces actions se font donc
+directement, sans gate :
+- `git push` d'une branche de travail (`OUT-NN`, `feat/*`, `fix/*`, `chore/*`,
+  `zinacke/*`) vers `origin`, `--force-with-lease` compris sur sa propre branche.
+- Ouvrir ou mettre à jour une PR vers `main`, la commenter, y attacher un lien.
+- Les écritures Linear du workflow ticket : statut, commentaire, attachement.
+
+Un « go » de l'utilisateur couvre toute la chaîne de publication qui suit (push,
+PR, Linear), pas seulement la commande proposée juste avant. Redemander à chaque
+maillon coûte un aller-retour pour zéro décision.
+
 ## 3. DB & migrations
 - Versionnées uniquement (`db:generate` → `db:migrate`). `db:push` INTERDIT sur un
   env partagé (drift + colonnes manquantes en prod).

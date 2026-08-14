@@ -2,7 +2,7 @@ import { logger } from "../lib/job-logger";
 import { NonRetriable as AbortTaskRunError, detectReviewThemeShifts } from "@outrival/queue";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { db, snapshots, reviews, monitors } from "@outrival/db";
+import { db, snapshots, reviews, monitors, competitors } from "@outrival/db";
 import { extractReviews, summarizeSource, AI_CONFIG } from "@outrival/ai";
 import {
   getFromR2,
@@ -13,7 +13,14 @@ import {
 import { reviewScoresFromStructured } from "@outrival/scrapers/structured-data";
 import { isCloudflareChallenge } from "@outrival/scrapers/block-detection";
 import { htmlToText } from "../lib/html-to-text";
-import { insertReviewScore, getPreviousReviewScore, loggedAi } from "../lib/analytics";
+import { insertReviewScore, getPreviousReviewPoint, loggedAi } from "../lib/analytics";
+import {
+  checkBrandPresence,
+  checkCapturedTarget,
+  checkReviewsStructure,
+  checkScoreRegression,
+  type ReviewsRefusal,
+} from "../lib/reviews-authenticity";
 
 const SourceEnum = z.enum([
   "g2", "capterra", "appstore", "playstore",
@@ -48,13 +55,21 @@ function sentimentFromRating(score: number): number {
  * empty verbatim feed or a single AI parse failure threw away a rating we already
  * held, and the Reviews tab then reported "no data" for a competitor whose rating
  * had been captured on every scrape.
+ *
+ * Carries the R7 anti-regression guard so no caller can write a point around it:
+ * returns the refusal instead of writing, null when the point was stored.
  */
 async function persistAggregateOnly(args: {
   competitorId: string;
   source: ReviewSource;
   score: number;
   reviewCount: number | null;
-}): Promise<void> {
+}): Promise<ReviewsRefusal | null> {
+  const regression = checkScoreRegression(
+    await getPreviousReviewPoint(args.competitorId, args.source),
+    { score: args.score, reviewCount: args.reviewCount },
+  );
+  if (regression) return regression;
   await insertReviewScore({
     competitor_id: args.competitorId,
     source: args.source,
@@ -64,6 +79,38 @@ async function persistAggregateOnly(args: {
     complaint_themes: null,
     recorded_at: new Date(),
   });
+  return null;
+}
+
+/**
+ * What a refused capture leaves behind (R7).
+ *
+ * Nothing is written to review_scores — the whole point — so the refusal has to be
+ * legible somewhere else, and the snapshot is that place: `partial` with a zero
+ * completeness is the same grade R6 gives a capture that is not the page it claims
+ * to be, and it already keeps a row out of the diff baseline and out of extraction.
+ * The reason itself lives in the log line and the return value: the table has no
+ * column for it, and adding one to write a string nobody queries is not worth a
+ * migration.
+ */
+async function refuseCapture(args: {
+  snapshotId: string;
+  competitorId: string;
+  source: ReviewSource;
+  refusal: ReviewsRefusal;
+}): Promise<{ ok: false; reason: string }> {
+  await db
+    .update(snapshots)
+    .set({ status: "partial", completeness: 0 })
+    .where(eq(snapshots.id, args.snapshotId));
+  logger.warn("Reviews capture refused — nothing written", {
+    snapshotId: args.snapshotId,
+    competitorId: args.competitorId,
+    source: args.source,
+    reason: args.refusal.reason,
+    detail: args.refusal.detail,
+  });
+  return { ok: false, reason: args.refusal.reason };
 }
 
 // Runtime-neutral job body: shared verbatim by the pg-boss handler and the thin
@@ -87,11 +134,50 @@ export async function runExtractReviews(payload: z.input<typeof InputSchema>) {
     // override it). App Store snapshots are our normalized JSON — they never carry
     // these HTML challenge markers, so that path is unaffected.
     if (isCloudflareChallenge(html)) {
-      logger.warn("Reviews page is an anti-bot challenge — skipping extraction", {
-        source: input.source,
+      return refuseCapture({
         snapshotId: input.snapshotId,
+        competitorId: input.competitorId,
+        source: input.source,
+        refusal: { reason: "blocked_challenge", detail: "anti-bot interstitial served at 200" },
       });
-      return { ok: false, reason: "blocked_challenge" };
+    }
+
+    // R7: is this the reviews page of the competitor we monitor?
+    //
+    // R6 grades the landing URL of own-domain sources at capture time and skips
+    // reviews on purpose — a reviews profile legitimately lives on someone else's
+    // domain. So the check happens here instead, on the identity the platform put in
+    // the capture (Apple's app id, Shopify's handle, Trustpilot's domain) against the
+    // one the monitor URL names. A point captured from another brand's profile reads
+    // as a rating move, not as an error, and the score-drop detector turns it into a
+    // signal nobody can trace back.
+    const monitor = await db.query.monitors.findFirst({
+      where: eq(monitors.id, snapshot.monitorId),
+    });
+    const competitor = await db.query.competitors.findFirst({
+      where: eq(competitors.id, input.competitorId),
+    });
+    // The monitor's own URL when it has one (a pinned profile), the competitor's site
+    // otherwise — the same resolution scrape-monitor scrapes with.
+    const configUrl =
+      monitor?.config && typeof (monitor.config as { url?: unknown }).url === "string"
+        ? String((monitor.config as { url: unknown }).url)
+        : null;
+    const intendedUrl = configUrl ?? competitor?.url ?? null;
+
+    const targetRefusal = checkCapturedTarget({
+      source: input.source,
+      intendedUrl,
+      finalUrl: snapshot.finalUrl ?? snapshot.resolvedUrl,
+      payload: html,
+    });
+    if (targetRefusal) {
+      return refuseCapture({
+        snapshotId: input.snapshotId,
+        competitorId: input.competitorId,
+        source: input.source,
+        refusal: targetRefusal,
+      });
     }
 
     // Trustpilot public surface (Reviews v2): a structured score/count snapshot with
@@ -106,8 +192,30 @@ export async function runExtractReviews(payload: z.input<typeof InputSchema>) {
         return { ok: false, reason: "parse_failed" };
       }
       if (summary.trustScore == null) {
+        // A profile Trustpilot answers for with zero reviews is an ANSWER, not a
+        // failed capture (R7 (c)): there is no point to plot, but the source is
+        // healthy and the snapshot stays `success`. Only a capture that says nothing
+        // at all — no score AND no count — is a refusal.
+        if (summary.reviewCount === 0) {
+          logger.log("Trustpilot profile has no reviews yet (explicit zero)", {
+            competitorId: input.competitorId,
+          });
+          return { ok: true, verbatimsInserted: 0, empty: true };
+        }
         logger.warn("Trustpilot snapshot has no score");
         return { ok: false, reason: "no_score" };
+      }
+      const trustpilotRegression = checkScoreRegression(
+        await getPreviousReviewPoint(input.competitorId, "trustpilot"),
+        { score: summary.trustScore, reviewCount: summary.reviewCount },
+      );
+      if (trustpilotRegression) {
+        return refuseCapture({
+          snapshotId: input.snapshotId,
+          competitorId: input.competitorId,
+          source: input.source,
+          refusal: trustpilotRegression,
+        });
       }
       const sentimentFromScore = sentimentFromRating(summary.trustScore);
       await insertReviewScore({
@@ -166,18 +274,35 @@ export async function runExtractReviews(payload: z.input<typeof InputSchema>) {
         // still holds the rating the tab is built on. Record it instead of dropping
         // the whole capture on the floor.
         if (summary.averageScore != null) {
-          await persistAggregateOnly({
+          const refusal = await persistAggregateOnly({
             competitorId: input.competitorId,
             source: input.source,
             score: summary.averageScore,
             reviewCount: summary.reviewCount,
           });
+          if (refusal) {
+            return refuseCapture({
+              snapshotId: input.snapshotId,
+              competitorId: input.competitorId,
+              source: input.source,
+              refusal,
+            });
+          }
           logger.log(`Completed extract-reviews (${label} aggregate, no verbatims)`, {
             competitorId: input.competitorId,
             score: summary.averageScore,
             reviewCount: summary.reviewCount,
           });
           return { ok: true, verbatimsInserted: 0 };
+        }
+        // A listing the platform answers for with zero reviews is an explicit empty
+        // state (R7 (c)), not a failed capture: no rating to plot, but the source is
+        // healthy — the snapshot stays `success` and nothing is graded partial.
+        if (summary.reviewCount === 0) {
+          logger.log(`${label} listing has no reviews yet (explicit zero)`, {
+            competitorId: input.competitorId,
+          });
+          return { ok: true, verbatimsInserted: 0, empty: true };
         }
         logger.warn(`${label} snapshot has no reviews`);
         return { ok: false, reason: "no_reviews" };
@@ -186,6 +311,21 @@ export async function runExtractReviews(payload: z.input<typeof InputSchema>) {
       structured = { averageScore: summary.averageScore, reviewCount: summary.reviewCount };
     } else {
       text = htmlToText(html);
+      // R7 (b): G2, Capterra, TrustRadius and Gartner carry no identifier to compare,
+      // so the brand the page names is the only anchor left. Another product's page
+      // parses perfectly and reads as a valid rating, so it is caught here — before
+      // the AI is paid to summarize a competitor we don't monitor.
+      const brandRefusal = competitor
+        ? checkBrandPresence(text, { name: competitor.name, url: competitor.url })
+        : null;
+      if (brandRefusal) {
+        return refuseCapture({
+          snapshotId: input.snapshotId,
+          competitorId: input.competitorId,
+          source: input.source,
+          refusal: brandRefusal,
+        });
+      }
       // Structured-first scores (patch-30): G2/Capterra ship schema.org
       // AggregateRating — trust those numbers over the LLM's. The qualitative
       // summary (sentiment, praises, complaints) still needs AI, so this enriches
@@ -208,12 +348,20 @@ export async function runExtractReviews(payload: z.input<typeof InputSchema>) {
       // rate limit must not cost us the rating point too — it is the whole tab for
       // a competitor whose verbatims we can't cluster.
       if (structured?.averageScore != null) {
-        await persistAggregateOnly({
+        const refusal = await persistAggregateOnly({
           competitorId: input.competitorId,
           source: input.source,
           score: structured.averageScore,
           reviewCount: structured.reviewCount,
         });
+        if (refusal) {
+          return refuseCapture({
+            snapshotId: input.snapshotId,
+            competitorId: input.competitorId,
+            source: input.source,
+            refusal,
+          });
+        }
       }
       return { ok: false, reason: "parse_failed" };
     }
@@ -263,8 +411,37 @@ export async function runExtractReviews(payload: z.input<typeof InputSchema>) {
       });
     }
 
-    // Prior score before inserting the fresh one → summary can note the trend.
-    const previousScore = await getPreviousReviewScore(input.competitorId, input.source);
+    // Prior point before inserting the fresh one → the summary can note the trend,
+    // and R7 has something to compare against.
+    const previous = await getPreviousReviewPoint(input.competitorId, input.source);
+    const previousScore = previous?.score ?? null;
+
+    // R7: the last gate before anything is written. A page that parsed but yielded no
+    // score, no count and no verbatim is not a reviews page whatever it looked like;
+    // a rating or a total that collapsed past half is better explained by a capture
+    // of something else than by the competitor's week. Either refuses the WHOLE run —
+    // no verbatims, no score point, not even the summary call — so the previous point
+    // stays the served one instead of being overwritten by a wrong reading.
+    const writeRefusal =
+      checkReviewsStructure({
+        score: extracted.average_score,
+        reviewCount: extracted.review_count,
+        verbatims: verbatims.length,
+      }) ??
+      (extracted.average_score != null
+        ? checkScoreRegression(previous, {
+            score: extracted.average_score,
+            reviewCount: extracted.review_count,
+          })
+        : null);
+    if (writeRefusal) {
+      return refuseCapture({
+        snapshotId: input.snapshotId,
+        competitorId: input.competitorId,
+        source: input.source,
+        refusal: writeRefusal,
+      });
+    }
 
     // Retry-safety: run the throwing AI call (and the monitor update it feeds)
     // BEFORE the non-idempotent inserts below, so a retried run after an AI

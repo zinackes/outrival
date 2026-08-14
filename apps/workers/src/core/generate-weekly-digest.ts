@@ -361,6 +361,7 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
       // and the row is this org's idempotency marker) but the EMAIL never goes out:
       // sentAt stays null and the failing claims land in the review queue.
       const faithfulness = await checkFaithfulness({
+        task: "digest",
         output: digest,
         sourceText: digestSourceText(input),
         outputKind: "weekly competitive-intelligence digest",

@@ -488,6 +488,12 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
     const faithfulness =
       severity === "critical" || severity === "high"
         ? await checkFaithfulness({
+            // Out of the enablement scope decided by plan 017: the wiring stays,
+            // but "signal_insight" is not in FAITHFULNESS_GATE_TASKS until the
+            // false-block rate has been observed on the two recoverable surfaces
+            // (docs/faithfulness-rollout.md §4). A withheld critical alert is the
+            // one block nobody can recover by noticing it later.
+            task: "signal_insight",
             // What will actually be published, after any abstention: a withheld
             // sentence has no claims to judge, and judging it would let the gate
             // block a signal over text nobody will ever read.

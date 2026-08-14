@@ -127,6 +127,10 @@
       "types": "./src/structured-data/index.ts",
       "default": "./src/structured-data/index.ts"
     },
+    "./trustpilot": {
+      "types": "./src/trustpilot/trustpilot.scraper.ts",
+      "default": "./src/trustpilot/trustpilot.scraper.ts"
+    },
     "./cached-extractor": {
       "types": "./src/parsers/cached-extractor.ts",
       "default": "./src/parsers/cached-extractor.ts"

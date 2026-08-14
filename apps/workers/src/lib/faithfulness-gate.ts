@@ -3,6 +3,7 @@ import {
   faithfulnessGateEnabled,
   AI_CONFIG,
   type FaithfulnessReport,
+  type FaithfulnessTask,
 } from "@outrival/ai";
 import type { QualityCheckInput, QualityEnvelope } from "@outrival/db";
 import { loggedAi, type AiRunAttribution } from "./analytics";
@@ -27,6 +28,11 @@ import { logger } from "./job-logger";
 export const FAITHFULNESS_AI_TASK = "faithfulness_check";
 
 export interface FaithfulnessCheckParams {
+  /**
+   * Which gated surface this is. Decides whether the gate runs at all
+   * (FAITHFULNESS_GATE_TASKS), so it is not a label — it is the switch.
+   */
+  task: FaithfulnessTask;
   /** The output about to be published, exactly as generated. */
   output: unknown;
   /** The evidence it must be traceable to. */
@@ -39,8 +45,10 @@ export interface FaithfulnessCheckParams {
 }
 
 /**
- * Verify a publishable output. Returns null when the gate is switched off
- * (FAITHFULNESS_GATE_ENABLED=false) — callers then publish exactly as before.
+ * Verify a publishable output. Returns null when the gate is switched off for
+ * this task (FAITHFULNESS_GATE_TASKS does not list it, or is unset and
+ * FAITHFULNESS_GATE_ENABLED is not "true") — callers then publish exactly as
+ * before, with zero added AI calls.
  *
  * Never throws: verifyFaithfulness degrades every failure to verdict "skipped",
  * and the loggedAi wrapper only adds an ai_runs row. A provider outage must not
@@ -49,7 +57,7 @@ export interface FaithfulnessCheckParams {
 export async function checkFaithfulness(
   params: FaithfulnessCheckParams,
 ): Promise<FaithfulnessReport | null> {
-  if (!faithfulnessGateEnabled()) return null;
+  if (!faithfulnessGateEnabled(params.task)) return null;
 
   const report = await loggedAi(
     FAITHFULNESS_AI_TASK,
@@ -65,6 +73,7 @@ export async function checkFaithfulness(
 
   const line = {
     ...params.context,
+    task: params.task,
     kind: params.outputKind,
     verdict: report.verdict,
     ratio: report.ratio,
@@ -92,6 +101,24 @@ export async function checkFaithfulness(
 /** True when the gate ran and refused this output. */
 export function isBlocked(report: FaithfulnessReport | null): boolean {
   return report?.verdict === "blocked";
+}
+
+/**
+ * What may publish after a block was repaired: only a repaired output whose
+ * RE-verification came back a clean `pass`. Null means the caller keeps serving
+ * what it already had — the previous battle card, untouched.
+ *
+ * Strict on THIS path only. Everywhere else an unavailable verification means
+ * publish-unverified (the fail-open posture that bounds the gate's risk), but
+ * this content was already refused once: a provider outage mid-repair must not
+ * become the way it gets through. Pure, so the rule that decides whether a
+ * customer keeps seeing yesterday's card is testable without a job run.
+ */
+export function publishableAfterRepair<T>(
+  repaired: T | null,
+  recheck: FaithfulnessReport | null,
+): T | null {
+  return repaired && recheck?.verdict === "pass" ? repaired : null;
 }
 
 /**

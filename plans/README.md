@@ -55,7 +55,7 @@ deadlines, security and direction.
 | 014 | Turning off 2FA requires the same step-up as changing a password | P2 | M | MED | — | TODO |
 | 015 | Public share links expire and report when last read | P2 | S-M | MED | — | TODO |
 | 016 | `daily_priority` either does something, or stops being sold | P2 | S/M | LOW/MED | — | TODO |
-| 017 | Measure the faithfulness gate's false-block rate, then decide | P2 | M | LOW | — | TODO |
+| 017 | Measure the faithfulness gate's false-block rate, then decide | P2 | M | LOW | — | DONE (readout in `docs/faithfulness-rollout.md`; judge measured 7/7 inventions rejected and 7/7 paraphrases kept, n=14; decision = scoped opt-in via `FAITHFULNESS_GATE_TASKS`, battle_card + digest, signal insights left out until a production false-block rate exists) |
 | 018 | One authored release ledger feeds both changelogs, plus a feed | P3 | S-M | LOW | — | TODO |
 | 019 | Every first-signal SLO miss is attributed to a named cause | P1 | M | LOW | — | DONE (merged, PR #272) |
 | 020 | Every recurring briefing links back, and its clicks are measurable | P1 | S-M | LOW | — | DONE (reviewed, PR #278) |

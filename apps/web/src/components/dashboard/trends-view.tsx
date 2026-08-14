@@ -8,6 +8,8 @@ import { useQuery } from "@tanstack/react-query";
 import { ChartLineIcon } from "@/components/icons";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { EmptyState } from "./empty-state";
+import { ListError, PartialError } from "@/components/outrival/list-error";
+import { Button } from "@/components/ui/button";
 import {
   type TrendsMarketSeries,
   type PricingMove,
@@ -795,8 +797,11 @@ export function TrendsView() {
     return ids.size;
   }, [visibleSummary]);
 
+  // OUT-190 — this used to be a bare sentence: the page it replaced had a date
+  // range and a competitor filter, and neither survives a re-navigation, so the
+  // only way out was a full reload. Same panel and same copy as every other list.
   if (summaryQ.isError) {
-    return <p className="text-muted-foreground text-sm">Couldn&apos;t load trends right now.</p>;
+    return <ListError error={summaryQ.error} onRetry={() => void summaryQ.refetch()} />;
   }
 
   const allEmpty =
@@ -857,6 +862,17 @@ export function TrendsView() {
         </div>
       )}
 
+      {/* /market is a second query, and it carries the charts, the swatches and the
+          hiring shapes. When only it fails the page still reads — in prose, with
+          every chart silently gone. Say which half is missing, and offer it back. */}
+      {marketQ.isError && summary !== null && (
+        <PartialError
+          title="The charts didn't load"
+          error={marketQ.error}
+          onRetry={() => void marketQ.refetch()}
+        />
+      )}
+
       {summary === null || reading === null ? (
         <TrendsSkeleton />
       ) : summary.degraded && allEmpty ? (
@@ -867,10 +883,14 @@ export function TrendsView() {
           <div className="mb-1.5 text-base font-semibold tracking-tight text-foreground">
             Trends temporarily unavailable
           </div>
-          <div className="mx-auto max-w-[400px] text-sm">
-            We couldn&apos;t read the trend data just now. This is usually brief. Refresh in a
-            moment.
+          <div className="mx-auto mb-4 max-w-[400px] text-sm">
+            We couldn&apos;t read the trend data just now. This is usually brief.
           </div>
+          {/* It told the reader to refresh, which throws away the range and the
+              competitor filter. Refetching keeps both. */}
+          <Button onClick={() => void summaryQ.refetch()} disabled={summaryQ.isFetching}>
+            {summaryQ.isFetching ? "Trying…" : "Try again"}
+          </Button>
         </div>
       ) : allEmpty ? (
         <EmptyState

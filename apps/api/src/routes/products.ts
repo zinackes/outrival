@@ -820,55 +820,74 @@ productsRouter.post("/", async (c) => {
 
   const plan = await getOrgPlan(orgId);
   const limit = productLimit(plan);
-  const [{ value: current } = { value: 0 }] = await db
-    .select({ value: count() })
-    .from(products)
-    .where(and(eq(products.orgId, orgId), ne(products.status, "archived")));
+  const { name, url, repoUrl, profile } = parsed.data;
 
-  if (current >= limit) {
+  // The limit count and both inserts run in one transaction, serialized per org by an
+  // advisory lock. Read outside it, two parallel POSTs both saw `current < limit` and
+  // both created; and a failure of the product insert left the self-competitor behind,
+  // orphaned — backing no product, yet still a competitor row on the org.
+  const created = await db
+    .transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${orgId}))`);
+
+      const [{ value: current } = { value: 0 }] = await tx
+        .select({ value: count() })
+        .from(products)
+        .where(and(eq(products.orgId, orgId), ne(products.status, "archived")));
+
+      if (current >= limit) return { overLimit: true as const, current };
+
+      // The product's monitoring anchor: a self-competitor (excluded from the competitor
+      // list / quota / discovery). URL / profile / monitors all live here. When the wizard
+      // analysed the product first, seed the editable selfProfile synchronously so discovery
+      // has inputs immediately (same mapping as onboarding's self, via profile-derivation).
+      const [self] = await tx
+        .insert(competitors)
+        .values({
+          orgId,
+          name: productAnchorName(url, name),
+          url: url ?? null,
+          category: profile?.category ?? null,
+          type: "self",
+          isUserProduct: true,
+          selfProfile: productProfileToSelfProfile(profile),
+        })
+        .returning();
+      if (!self) throw new Error("product anchor insert returned no row");
+
+      const [product] = await tx
+        .insert(products)
+        .values({
+          orgId,
+          name,
+          selfCompetitorId: self.id,
+          isPrimary: current === 0, // first product of the org becomes primary
+          position: current,
+        })
+        .returning();
+      if (!product) throw new Error("product insert returned no row");
+
+      return { overLimit: false as const, self, product };
+    })
+    .catch((e: unknown) => {
+      console.error("Failed to create product", { orgId, error: String(e) });
+      return null;
+    });
+
+  if (!created) return c.json({ error: "Failed to create product" }, 500);
+  if (created.overLimit) {
     return c.json(
       {
         error: "plan_limit_products",
-        used: current,
+        used: created.current,
         limit,
         plan,
-        suggestedPlan: minPlanForProductCount(current + 1),
+        suggestedPlan: minPlanForProductCount(created.current + 1),
       },
       403,
     );
   }
-
-  const { name, url, repoUrl, profile } = parsed.data;
-
-  // The product's monitoring anchor: a self-competitor (excluded from the competitor
-  // list / quota / discovery). URL / profile / monitors all live here. When the wizard
-  // analysed the product first, seed the editable selfProfile synchronously so discovery
-  // has inputs immediately (same mapping as onboarding's self, via profile-derivation).
-  const [self] = await db
-    .insert(competitors)
-    .values({
-      orgId,
-      name: productAnchorName(url, name),
-      url: url ?? null,
-      category: profile?.category ?? null,
-      type: "self",
-      isUserProduct: true,
-      selfProfile: productProfileToSelfProfile(profile),
-    })
-    .returning();
-  if (!self) return c.json({ error: "Failed to create product anchor" }, 500);
-
-  const [product] = await db
-    .insert(products)
-    .values({
-      orgId,
-      name,
-      selfCompetitorId: self.id,
-      isPrimary: current === 0, // first product of the org becomes primary
-      position: current,
-    })
-    .returning();
-  if (!product) return c.json({ error: "Failed to create product" }, 500);
+  const { self, product } = created;
 
   // Seed the monitors matching what we can actually observe (mirrors onboarding's
   // createSelfCompetitor): a live site (homepage/pricing/jobs) and/or a GitHub repo

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   changes,
   competitors,
@@ -162,6 +162,31 @@ describe("products per-tier limit + invariants", () => {
     );
     expect(res.status).toBe(403);
     expect((await res.json()).error).toBe("plan_limit_products");
+  });
+
+  // A product is two inserts (the self-competitor anchor, then the product row).
+  // Without one transaction around them, a failing product insert leaves the anchor
+  // behind: a self-competitor backing nothing. The check constraint stands in for
+  // whatever makes the second insert fail.
+  test("a failed product insert leaves no orphan self-competitor", async () => {
+    await testDb.execute(
+      sql`alter table products add constraint products_no_boom check (name <> 'Boom')`,
+    );
+    try {
+      const res = await app.request(
+        "/api/products",
+        asUser(B.userId, B.email, { method: "POST", body: JSON.stringify({ name: "Boom" }) }),
+      );
+      expect(res.status).toBe(500);
+    } finally {
+      await testDb.execute(sql`alter table products drop constraint products_no_boom`);
+    }
+
+    const anchors = await testDb
+      .select()
+      .from(competitors)
+      .where(and(eq(competitors.orgId, B.orgId), eq(competitors.type, "self")));
+    expect(anchors).toHaveLength(0);
   });
 
   test("the primary product cannot be archived", async () => {

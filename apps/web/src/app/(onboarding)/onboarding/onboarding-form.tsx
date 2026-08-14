@@ -294,9 +294,11 @@ export function OnboardingForm({
   const [error, setError] = useState<string | null>(null);
   // The fallback offer carries its own sentence: it used to arrive as a toast on
   // top of a card, which put the reason and the way out in two places at once.
-  const [fallbackOffer, setFallbackOffer] = useState<{ prefill: string; message: string } | null>(
-    null,
-  );
+  const [fallbackOffer, setFallbackOffer] = useState<{ message: string } | null>(null);
+  // Set when the user reaches the description form through "Describe it instead".
+  // The offer's sentence disappears with the notice, so the form has to restate why
+  // it is being asked; without it the screen reads as a step the user chose.
+  const [describeFromFallback, setDescribeFromFallback] = useState(false);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
 
   // Mode inputs (1-bis) — kept across back navigation within the same session.
@@ -409,6 +411,7 @@ export function OnboardingForm({
   function restart() {
     setError(null);
     setFallbackOffer(null);
+    setDescribeFromFallback(false);
     setStage(null);
     setProfile(null);
     setCompetitors([]);
@@ -421,6 +424,7 @@ export function OnboardingForm({
     setStage(s);
     setError(null);
     setFallbackOffer(null);
+    setDescribeFromFallback(false);
     goTo("input");
   }
 
@@ -449,10 +453,9 @@ export function OnboardingForm({
     goTo("profile");
   }
 
-  function handleAnalyzeError(e: unknown, prefill: string) {
+  function handleAnalyzeError(e: unknown) {
     if (fallbackFromError(e)) {
       setFallbackOffer({
-        prefill,
         message: unreadableDocumentMessage(e) ?? "Automatic analysis didn't work out.",
       });
       return;
@@ -493,23 +496,21 @@ export function OnboardingForm({
         onProfileReady(res.profile, productUrl.trim());
       }
     } catch (e) {
-      const prefill =
-        stage === "developing"
-          ? repoUrl.replace(/^https?:\/\/github\.com\//, "").replace(/\/$/, "")
-          : stage === "live"
-            ? productUrl
-            : description;
-      handleAnalyzeError(e, prefill);
+      handleAnalyzeError(e);
     } finally {
       setBusy(null);
     }
   }
 
+  // Deliberately leaves the textarea empty. It used to be seeded with whatever the
+  // failed run was given — the raw URL, or the owner/repo slug — and a user in a hurry
+  // submits that as their "description", which is exactly the input the extractor
+  // can't work from: it yields a placeholder name and a wrong category. None of those
+  // strings is a description, so there is nothing worth carrying over.
   function acceptDescriptionFallback() {
-    const prefill = fallbackOffer?.prefill ?? "";
     setFallbackOffer(null);
     setStage("idea");
-    setDescription((d) => d || prefill);
+    setDescribeFromFallback(true);
     setError(null);
     goTo("input");
   }
@@ -902,6 +903,7 @@ export function OnboardingForm({
               setRepoUrl={setRepoUrl}
               productUrl={productUrl}
               setProductUrl={setProductUrl}
+              fromFallback={describeFromFallback}
               onSwitchToRepo={() => chooseStage("developing")}
             />
           )}
@@ -1337,6 +1339,7 @@ function ModeForm({
   setRepoUrl,
   productUrl,
   setProductUrl,
+  fromFallback,
   onSwitchToRepo,
 }: {
   stage: ProjectStage;
@@ -1356,9 +1359,18 @@ function ModeForm({
   setRepoUrl: (v: string) => void;
   productUrl: string;
   setProductUrl: (v: string) => void;
+  fromFallback: boolean;
   onSwitchToRepo: () => void;
 }) {
   const temp = stage === "live" && productUrl ? detectTemporaryUrl(productUrl) : { temporary: false };
+
+  // A disabled "Analyze" is the only thing a malformed URL used to produce: no
+  // message, no aria-invalid, and nothing naming the expected format. Same predicate
+  // and same inline treatment as the product wizard, so the two forms fail alike.
+  const urlInvalid =
+    stage === "live" && productUrl.trim().length > 0 && !isValidUrl(productUrl.trim());
+  const repoInvalid =
+    stage === "developing" && repoUrl.trim().length > 0 && !isGitHubRepoUrl(repoUrl.trim());
 
   const canSubmit =
     stage === "idea"
@@ -1395,7 +1407,11 @@ function ModeForm({
       {/* Every other screen opens title-then-description; this one used to open on
           a bare title, with the sentence that explains the ask stranded on the card
           the user just left. */}
-      <p className="text-sm text-muted-foreground mt-3">{STAGE_META[stage].description}</p>
+      <p className="text-sm text-muted-foreground mt-3">
+        {fromFallback
+          ? "Automatic analysis didn't work. Describe what you're building in your own words."
+          : STAGE_META[stage].description}
+      </p>
 
       {notice}
 
@@ -1503,7 +1519,14 @@ function ModeForm({
               placeholder="https://github.com/owner/repo"
               disabled={busy}
               autoFocus
+              aria-invalid={repoInvalid}
+              aria-describedby={repoInvalid ? "repo-url-error" : undefined}
             />
+            {repoInvalid && (
+              <p id="repo-url-error" className="text-dense text-destructive">
+                Enter a full repo URL, e.g. https://github.com/owner/repo.
+              </p>
+            )}
             <p className="text-dense text-muted-foreground">
               The repo must be public. You'll be able to connect private repos later.
             </p>
@@ -1523,7 +1546,14 @@ function ModeForm({
               placeholder="https://yourproduct.com"
               disabled={busy}
               autoFocus
+              aria-invalid={urlInvalid}
+              aria-describedby={urlInvalid ? "product-url-error" : undefined}
             />
+            {urlInvalid && (
+              <p id="product-url-error" className="text-dense text-destructive">
+                Enter a full URL starting with http:// or https://.
+              </p>
+            )}
             {temp.temporary && (
               <div className="mt-2 flex items-start gap-2 rounded-md border border-border-strong bg-surface-2/60 px-3 py-2">
                 <WarningCircleIcon size={16} className="mt-0.5 text-foreground shrink-0" />

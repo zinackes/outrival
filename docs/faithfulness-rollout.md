@@ -315,10 +315,77 @@ Three consequences, and they invert parts of this document:
    days. They stayed readable in-app with `filteredReason = faithfulness_blocked`,
    which is the designed behaviour, but nobody chose it deliberately and nobody
    triaged it.
-3. **Only the deployed code can read the list.** The task list ships in this
-   branch; the running image does not have it. Until it is deployed, the only
-   available switch is the boolean, which is all-or-nothing.
+3. **The deployed code can already read the list.** Correcting what this
+   document said an hour earlier: the worker deploy is not manual.
+   `.github/workflows/deploy.yml` builds and pushes `outrival-worker:latest` on
+   every push to `main` whose diff can reach the image, then pulls and restarts
+   both workers over SSH in `/opt/outrival`. Run `31835870463` did exactly that
+   at 20:00Z on `a0af0503`, which contains the `#501` squash commit, so the
+   running image carries `FAITHFULNESS_GATE_TASKS`. Setting the variable is the
+   only step left.
 
 `skipped` at 7 of 285 (2.5%) is the one reassuring number: the pool answered
 almost every time, so the §1.1 worry about a silently degraded gate did not
 materialise at this volume.
+
+## 9. What the blocks are made of (checked 2026-08-14, same evening)
+
+The counts above move: rows are written per target and a regenerated target
+overwrites its verdict. A second readout two hours later reads 286 rows, **57
+blocked** (40 signals, 11 digests, 6 battle cards), 222 pass, 7 skipped, and
+3 triaged instead of 1 — all three `false_positive`. Use it as a snapshot, not
+as a ledger.
+
+Every blocked row stores the claims the judge refused, so the block reasons can
+be read without triaging by hand. 57 blocked rows carry **120 refused claims**,
+and they are not the same kind of claim on each surface.
+
+**Signals — 40 blocked, 88 refused claims.** Attributing each refused claim to
+the field it came from, by word overlap against the three published fields:
+
+| field of origin | refused claims |
+|---|---|
+| `so_what` | 47 |
+| `recommended_action` | 24 |
+| `insight` | 8 |
+| unattributed | 9 |
+
+**32 of the 40 blocked signals contain no refused claim traceable to the
+insight.** The cause is `apps/workers/src/core/generate-signal.ts:488`: the
+verified output is `{insight, so_what, recommended_action}` and the source is
+the competitor's diff. `so_what` states an implication for *our* product;
+`recommended_action` is advice to us. Neither can appear in a competitor's diff,
+so the judge refuses them as unsupported. Verbatim, two of them:
+
+> This shift could erode the perceived uniqueness of our AI-assisted product
+> development tool.
+
+> Develop a targeted marketing campaign that emphasizes our AI's focus on
+> software product lifecycle acceleration, not hardware piloting.
+
+The judge is answering the question it was given correctly. The question is
+wrong: it asks a diff to support a recommendation.
+
+**Digests — 11 blocked, 24 refused claims.** The same advisory claims, plus a
+second structural family: statements about the digest itself, and statements of
+absence. "The urgency assigned to the insight is watch." "No direct threat was
+identified for Diffly." "No direct feature changes or pricing moves were
+observed." A week of diffs cannot support an absence, so the judge refuses it.
+
+**Battle cards — 6 blocked, 8 refused claims.** All of them factual and about
+the competitor: "Linear offers Business and Basic plans priced at $16 and $10
+per month respectively for small teams." "Hugging Face offers a free tier with
+no monthly cost." Whether each verdict is right still needs triage, but this is
+the surface where the gate refuses the kind of claim it was built to refuse.
+
+The consequence for §6: **the per-surface block rates in §8 are not comparable
+to each other.** 28% on signals measures how much advice a signal contains, not
+how often it invents. It is a stronger reason to keep `signal_insight` out of
+`FAITHFULNESS_GATE_TASKS` than the caution §6 was written with, and it is also
+the reason the 20% false-positive rollback threshold cannot be applied to
+signals as they are: the measurement is invalid before it is unfavourable.
+
+The fix is not to loosen the judge. It is to submit only the layer that can be
+grounded — the insight, and for digests the factual lines rather than the
+urgency and the "nothing happened" statements. That is a code change on the
+call sites, not on `gate.ts`, and it is not in this phase.

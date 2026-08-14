@@ -178,7 +178,8 @@ evidence that enabling cannot cause a total outage.
 
 **Production volumes were not obtainable during this spike** (the shared-DB read
 was refused by the local tool policy). The estimate is therefore a rate, per the
-plan's instruction not to invent volumes.
+plan's instruction not to invent volumes. They were obtained afterwards and they
+change the picture: read §8 before acting on this section.
 
 - **Measured false-block rate on the labelled set: 0/7.**
 - With n = 7 and zero observed failures, the rule of three puts the 95%
@@ -273,4 +274,51 @@ gone. This asymmetry is the single most reassuring fact about the decision.
 - **The repository default is untouched.** `FAITHFULNESS_GATE_ENABLED=false`
   stays in `.env.example`. A deployed environment could differ, and this spike
   can only see repository defaults — check the worker's real environment before
-  concluding the gate has never run.
+  concluding the gate has never run. **That check was run: see §8. The worker
+  says `true`.**
+
+## 8. What production was actually doing (checked 2026-08-14)
+
+The worker's real environment carries **`FAITHFULNESS_GATE_ENABLED=true`**
+(`docker inspect outrival-worker-light`). The gate is not being enabled by this
+work. It has been live since **2026-07-22**, on all three surfaces, for 24 days.
+
+`ai_quality_checks` on production, rows where `faithfulness` is not null:
+
+| verdict | n |
+|---|---|
+| pass | 224 |
+| **blocked** | **54** |
+| skipped | 7 |
+
+Blocked, by surface (and the pass count for the same surface):
+
+| surface | blocked | passed | block rate |
+|---|---|---|---|
+| `generate_signal` (critical/high insights) | **37** | 96 | 28% |
+| `generate_digest` | 11 | 110 | 9% |
+| `generate_battle_card` | 6 | 18 | 25% |
+
+**Triage: 53 of the 54 were never reviewed.** The single one that was is recorded
+as `false_positive`. So the production false-block rate this document asked for
+still does not exist, but the queue it was supposed to come from has been filling
+for three weeks with nobody emptying it.
+
+Three consequences, and they invert parts of this document:
+
+1. **The scoped enablement is a narrowing, not an activation.** Setting
+   `FAITHFULNESS_GATE_TASKS=battle_card,digest` turns `signal_insight` **off**,
+   because the list wins over the boolean in both directions (§6). It restores
+   outward publication for critical and high alerts, which is the opposite of the
+   risk §4 was written to avoid.
+2. **37 critical/high alerts were withheld from email and Slack** over those 24
+   days. They stayed readable in-app with `filteredReason = faithfulness_blocked`,
+   which is the designed behaviour, but nobody chose it deliberately and nobody
+   triaged it.
+3. **Only the deployed code can read the list.** The task list ships in this
+   branch; the running image does not have it. Until it is deployed, the only
+   available switch is the boolean, which is all-or-nothing.
+
+`skipped` at 7 of 285 (2.5%) is the one reassuring number: the pool answered
+almost every time, so the §1.1 worry about a silently degraded gate did not
+materialise at this volume.

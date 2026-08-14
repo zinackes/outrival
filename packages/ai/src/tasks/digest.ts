@@ -14,6 +14,13 @@ export const DigestSchema = z.object({
       category: z.string(),
       insight: z.string(),
       so_what: z.string(),
+      // The double-capture badge (Véracité Intelligence v2 P4). Declared here or a
+      // re-parse would strip it, same reason as `signalId` below — but unlike every
+      // other deterministic append this one sits INSIDE a block the model writes, so
+      // the weekly job overwrites the field on every section, hit or miss. A gap the
+      // model invented must never survive as proof; only the P2 ledger can badge a
+      // row. Null `gapMinutes` = the two check timestamps aren't both recorded.
+      verification: z.object({ gapMinutes: z.number().nullable() }).optional(),
     }),
   ),
   // Sector trends (patch-13). Appended deterministically by the weekly job from

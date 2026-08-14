@@ -21,7 +21,13 @@ import {
   splitDiffText,
   SIGNAL_CATEGORIES,
 } from "@outrival/shared";
-import { complete, withAiContext, explainMateriality, AI_CONFIG } from "@outrival/ai";
+import {
+  complete,
+  withAiContext,
+  explainMateriality,
+  locateSupportedTokens,
+  AI_CONFIG,
+} from "@outrival/ai";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
@@ -669,6 +675,15 @@ signalsRouter.get("/:id/detail", async (c) => {
       engagementPoints: sql<number | null>`(${changes.rawDiff}->>'points')::int`,
       engagementComments: sql<number | null>`(${changes.rawDiff}->>'numComments')::int`,
       threadUrl: sql<string | null>`${changes.rawDiff}->>'threadUrl'`,
+      // A/B test suspected (Véracité P2): the anchor's rawDiff carries the two
+      // variants the page served and how many times the flip was observed. Same
+      // projection style as the engagement fields above — no extra join.
+      variantKind: sql<string | null>`${changes.rawDiff}->>'kind'`,
+      variantA: sql<string | null>`${changes.rawDiff}->>'variantA'`,
+      variantB: sql<string | null>`${changes.rawDiff}->>'variantB'`,
+      variantObservations: sql<number | null>`(${changes.rawDiff}->>'observations')::int`,
+      // The page that flapped, not this synthetic anchor — the key to its ledger.
+      variantMonitorId: sql<string | null>`${changes.rawDiff}->>'monitorId'`,
       competitorId: competitors.id,
       competitorName: competitors.name,
       sourceType: monitors.sourceType,
@@ -690,6 +705,15 @@ signalsRouter.get("/:id/detail", async (c) => {
       // landed overnight from one that took a month.
       afterCapturedAt: snapshots.scrapedAt,
       beforeCapturedAt: beforeSnap.scrapedAt,
+      // How the "after" capture — the one the signal quotes — was taken (Véracité
+      // P1). All five are null on every snapshot written before P1, which is why
+      // the response drops the whole block rather than rendering "unknown" five
+      // times: an old signal must read exactly as it does today.
+      captureMethod: snapshots.captureMethod,
+      observedRegion: snapshots.observedRegion,
+      finalUrl: snapshots.finalUrl,
+      httpStatus: snapshots.httpStatus,
+      completeness: snapshots.completeness,
       // Where the "before" side came from. 'archive' means the capture is a
       // Wayback reconstruction, which is what makes it replayable (and what makes
       // it impossible for it to carry a screenshot).
@@ -757,6 +781,62 @@ signalsRouter.get("/:id/detail", async (c) => {
     detectedAt: row.changeDetectedAt,
   });
 
+  // The evidence lines the panel prints, computed once here because the citations
+  // below are located INSIDE this exact string: an underline can then only ever
+  // point at a line the reader already has in front of them.
+  const evidence = evidenceDiff(row.diffText);
+
+  // Véracité P4 — the P3 check read the other way round. P3 asked "is anything here
+  // unsupported" and withheld the field carrying it; this asks "which figures ARE
+  // backed, and by which line", so the panel can underline them in place instead of
+  // asserting a badge. Gated on 'verified': on an 'unverified' signal the prose that
+  // carried the figures was already dropped at write time, and on 'skipped' nothing
+  // was ever checked — neither has anything honest to underline. Deterministic and
+  // offline (the same scanners, no model), so replaying it on read costs no AI call.
+  const citations =
+    row.groundingStatus === "verified" && evidence
+      ? locateSupportedTokens(row.insight, evidence).map((t) => ({
+          kind: t.kind,
+          text: t.text,
+          start: t.start,
+          end: t.end,
+          // Which side of the diff backs the figure. Read off the marker before it
+          // is dropped: the +/- is this panel's own rendering, not the page's words.
+          side: t.sourceLine.startsWith("-") ? "before" : "after",
+          sourceLine: t.sourceLine.replace(/^[+-] /, ""),
+        }))
+      : [];
+
+  // The neighbouring signals the corroboration sub-score was counted over, stamped
+  // onto materiality at signal creation (P4). Empty on every signal written before
+  // it and on the synthesized paths — the panel then shows the score alone, exactly
+  // as it does today.
+  const corroboration = row.materiality?.corroborationSources ?? [];
+
+  // A/B test suspected (P2): this signal's change is the synthetic variance anchor,
+  // and its rawDiff carries both variants. The two capture times behind the flip
+  // live on the FLAPPING page's ledger row rather than on the anchor, so they cost
+  // one bounded lookup — taken only on this path, which is a handful of signals.
+  const isVariantAnchor =
+    row.variantKind === "ab_test_suspected" && !!row.variantA && !!row.variantB;
+  const [variantLedger] =
+    isVariantAnchor && row.variantMonitorId
+      ? await db
+          .select({
+            firstAt: signalVerifications.quickCheckAt,
+            secondAt: signalVerifications.independentCheckAt,
+          })
+          .from(signalVerifications)
+          .where(
+            and(
+              eq(signalVerifications.monitorId, row.variantMonitorId),
+              eq(signalVerifications.outcome, "not_reproduced"),
+            ),
+          )
+          .orderBy(desc(signalVerifications.recordedAt))
+          .limit(1)
+      : [];
+
   return c.json({
     signal: {
       id: row.id,
@@ -769,14 +849,18 @@ signalsRouter.get("/:id/detail", async (c) => {
       humanChangeAfter: row.humanChangeAfter,
       narrative: row.narrative,
       changes: breakdown,
-      diffText: evidenceDiff(row.diffText),
+      diffText: evidence,
       // The band is a deterministic function of these three, so the scores plus
       // the rule that read them ARE the explanation of the severity. Null when the
       // classification was synthesized (no scoring happened) — the UI then says
-      // nothing rather than inventing a reason.
+      // nothing rather than inventing a reason. Listed one by one rather than
+      // spread: the same column now also carries the corroboration source ids,
+      // which are their own key below and have no business inside the scores.
       materiality: row.materiality
         ? {
-            ...row.materiality,
+            decisionImpact: row.materiality.decisionImpact,
+            urgency: row.materiality.urgency,
+            corroboration: row.materiality.corroboration,
             explanation: explainMateriality({
               decision_impact: row.materiality.decisionImpact,
               urgency: row.materiality.urgency,
@@ -790,6 +874,13 @@ signalsRouter.get("/:id/detail", async (c) => {
       grounding: row.groundingStatus
         ? { status: row.groundingStatus, unverified: row.groundingUnverified ?? [] }
         : null,
+      // The figures in the insight the evidence below actually prints, with their
+      // offsets in the insight string and the line backing each one. Empty unless
+      // the grounding came back 'verified' — see the derivation above.
+      citations,
+      // The other surfaces that moved on the same competitor inside the two weeks
+      // the corroboration sub-score was counted over. Empty on pre-P4 signals.
+      corroboration,
       // The discussion a Hacker News signal is about: the numbers that say whether
       // it landed, and a link to the thread. Absent for every other source.
       engagement:
@@ -825,6 +916,25 @@ signalsRouter.get("/:id/detail", async (c) => {
         beforeCapturedAt: row.beforeCapturedAt,
         afterCapturedAt: row.afterCapturedAt,
       },
+      // How the quoted capture was taken (Véracité P1): the method, where we stood,
+      // the URL the bytes came from and the status they were served with. Null in
+      // one piece when the snapshot predates P1 — a null there means "captured
+      // before we recorded this", never "unknown method", and the panel must not
+      // print the difference as if it were one.
+      provenance:
+        row.captureMethod ||
+        row.observedRegion ||
+        row.finalUrl ||
+        row.httpStatus !== null ||
+        row.completeness !== null
+          ? {
+              captureMethod: row.captureMethod,
+              observedRegion: row.observedRegion,
+              finalUrl: row.finalUrl,
+              httpStatus: row.httpStatus,
+              completeness: row.completeness,
+            }
+          : null,
       // What the double capture found (Véracité P2). Null when this signal was never
       // in the perimeter, which is most of them. `gapMinutes` is the interval between
       // the two captures — the number that makes "verified twice" a claim with a
@@ -842,6 +952,19 @@ signalsRouter.get("/:id/detail", async (c) => {
                       60_000,
                   )
                 : null,
+          }
+        : null,
+      // The page served both readings and neither is wrong (P2). Present only on the
+      // variance anchor, whose whole subject IS the pair — every other signal gets
+      // null and renders nothing. `observations` is how many times the flip was seen
+      // in the flap window, which is what makes "a test" a count rather than a guess.
+      abTest: isVariantAnchor
+        ? {
+            variantA: row.variantA,
+            variantB: row.variantB,
+            observations: row.variantObservations,
+            firstCaptureAt: variantLedger?.firstAt ?? null,
+            secondCaptureAt: variantLedger?.secondAt ?? null,
           }
         : null,
       competitor: { id: row.competitorId, name: row.competitorName },

@@ -37,8 +37,15 @@ export {
   extractVerifiableTokens,
   verifyAgainstSource,
   verifyFieldsAgainstSource,
+  // P4 — the same scanners read the other way round: what the source DOES back,
+  // and where, so the panel can underline it in place.
+  locateSupportedTokens,
 } from "./grounding/posthoc-grounding";
-export type { VerifiableToken, VerifiableTokens } from "./grounding/posthoc-grounding";
+export type {
+  VerifiableToken,
+  VerifiableTokens,
+  SupportedToken,
+} from "./grounding/posthoc-grounding";
 export { abstainFromUnverified, deterministicInsight } from "./grounding/abstention";
 export type { AbstentionResult, InsightProse } from "./grounding/abstention";
 export {

@@ -35,6 +35,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { sourceShortLabel } from "@/lib/source-labels";
 import {
   SourceStatusIcon,
+  captureLine,
   monitorStatus,
   nextScanIn,
   lastScanLabel,
@@ -258,7 +259,12 @@ export function SourceRow({
     failureCategory: monitor?.lastFailureCategory,
     fallbacks,
     minPlanLabel: PLAN_LABELS[minPlanForSource(sourceType)],
-    freshness: monitor ? lastScanLabel(monitor, status) : undefined,
+    // Véracité P4 — the two-date line when this source has one, and the single
+    // stamp it always had when it doesn't. `captureLine` returns null on every
+    // state whose sentence isn't about freshness, so nothing else on the page moves.
+    freshness: monitor
+      ? (captureLine(monitor, status) ?? lastScanLabel(monitor, status))
+      : undefined,
     homepageOnly: monitor?.pageIsHomepage === true,
   });
   const currentUrl = monitor?.config?.url ?? "";

@@ -11,6 +11,7 @@ export * from "./constants/detection";
 export * from "./constants/competitor-colors";
 export * from "./constants/regions";
 export * from "./constants/freshness";
+export * from "./constants/verification";
 export * from "./constants/oauth-providers";
 export * from "./analysis-status";
 export * from "./staleness";

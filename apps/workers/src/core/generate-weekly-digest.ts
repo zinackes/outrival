@@ -1,5 +1,5 @@
 import { logger } from "../lib/job-logger";
-import { and, desc, eq, gte, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
 import {
   db,
   organizations,
@@ -8,6 +8,7 @@ import {
   competitors,
   sectoralSignals,
   standingQueries,
+  signalVerifications,
   insertAiQualityCheck,
   loadMemorySignals,
 } from "@outrival/db";
@@ -24,6 +25,8 @@ import {
   buildCompetitorMemory,
   signDigestFeedbackToken,
   signUnsubscribeToken,
+  VERIFIED_OUTCOME,
+  verificationGapMinutes,
   type CompetitorMemory,
 } from "@outrival/shared";
 import { renderDigestEmail, renderAllQuietDigest } from "../lib/digest-email";
@@ -33,6 +36,78 @@ import { getAllQuietCounts } from "../lib/digest-counts";
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * The pair a digest section exposes, normalised. The model echoes the competitor
+ * name and the category it was given, but not always the spacing or the case, and
+ * the email itself prints `category.replace(/_/g, " ")` — so the key has to survive
+ * both spellings of `pricing_change`.
+ */
+function sectionKey(competitor: string, category: string): string {
+  return `${competitor.trim().toLowerCase()}::${category.trim().toLowerCase().replace(/[\s_]+/g, "_")}`;
+}
+
+/**
+ * The week's `confirmed` signals, keyed the way a digest section can be looked up,
+ * with the capture interval as the value (Véracité Intelligence v2 P4).
+ *
+ * The model's sections carry no signal id — it writes prose over the input list, and
+ * neither `DigestSchema` nor `DigestInputSignal` has ever held one. Putting ids in
+ * the prompt would change a shipped AI path for a display detail, so a section is
+ * traced back deterministically instead, by (competitor, category).
+ *
+ * That pair is only a key when it identifies EXACTLY ONE signal in the week. Two
+ * pricing signals for the same competitor mean the section could be describing
+ * either, and badging a sentence that might be about the unverified one is exactly
+ * the overstatement P4 exists to remove. Ambiguous pairs are therefore dropped, not
+ * resolved: nothing is attached, and the row renders as it does today.
+ */
+async function confirmedVerifications(
+  weekSignals: Array<{ changeId: string | null; competitor: string; category: string }>,
+): Promise<Map<string, number | null>> {
+  const changeIds = weekSignals
+    .map((s) => s.changeId)
+    .filter((id): id is string => id !== null);
+  if (changeIds.length === 0) return new Map();
+
+  // One query for the whole week, not one per section: the digest job already walks
+  // every org in a loop and does not need a second nested one.
+  const rows = await db
+    .select({
+      changeId: signalVerifications.changeId,
+      quickCheckAt: signalVerifications.quickCheckAt,
+      independentCheckAt: signalVerifications.independentCheckAt,
+    })
+    .from(signalVerifications)
+    .where(
+      and(
+        inArray(signalVerifications.changeId, changeIds),
+        eq(signalVerifications.outcome, VERIFIED_OUTCOME),
+      ),
+    );
+  const gapByChange = new Map(
+    rows.map((r) => [
+      r.changeId,
+      verificationGapMinutes(r.quickCheckAt, r.independentCheckAt),
+    ]),
+  );
+
+  const byKey = new Map<string, { changeId: string | null; count: number }>();
+  for (const s of weekSignals) {
+    const key = sectionKey(s.competitor, s.category);
+    const prev = byKey.get(key);
+    if (prev) prev.count++;
+    else byKey.set(key, { changeId: s.changeId, count: 1 });
+  }
+
+  const out = new Map<string, number | null>();
+  for (const [key, v] of byKey) {
+    if (v.count > 1 || !v.changeId) continue;
+    if (!gapByChange.has(v.changeId)) continue;
+    out.set(key, gapByChange.get(v.changeId) ?? null);
+  }
+  return out;
 }
 
 /**
@@ -114,6 +189,9 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
       const weekSignals = await db
         .select({
           id: signals.id,
+          // The join key for the P2 ledger, which is keyed by change and not by
+          // signal (packages/db/src/schema/signal-verifications.ts).
+          changeId: signals.changeId,
           competitor: competitors.name,
           category: signals.category,
           severity: signals.severity,
@@ -342,6 +420,23 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
       if (memory.stories.length > 0) {
         digest.competitorStories = memory.stories;
         digest.competitorStoriesOmitted = memory.omitted;
+      }
+
+      // The double-capture badge (Véracité Intelligence v2 P4): fourth deterministic
+      // append, after the gate for the same reason as the other three — it states a
+      // fact the P2 ledger already recorded rather than anything this week's
+      // generation had to produce. Only `confirmed` attaches; every other outcome and
+      // every signal that was never in the verification perimeter leave the section
+      // byte-identical to what the digest sent before P4.
+      //
+      // The field is written on every section, misses included: it is declared on the
+      // one block the model produces, so a `verification` it invented has to be
+      // cleared rather than left standing as proof nobody measured.
+      const verified = await confirmedVerifications(weekSignals);
+      for (const section of digest.sections) {
+        const gapMinutes = verified.get(sectionKey(section.competitor, section.category));
+        if (gapMinutes === undefined) delete section.verification;
+        else section.verification = { gapMinutes };
       }
 
       // An unsent preview (from "generate now") gets finalized in place; otherwise insert.

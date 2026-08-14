@@ -303,3 +303,65 @@ describe("the accumulated memory block", () => {
     expect(html).not.toContain("more competitor");
   });
 });
+
+// Véracité Intelligence v2 P4 — the double-capture badge. The garde-fou is not
+// "the badge renders correctly", it is "the digest is unchanged everywhere else":
+// the field is optional, so every caller that doesn't set it must produce the same
+// bytes it produced before P4, and a signal whose ledger row says pending,
+// not_reproduced or skipped never reaches these tests with a field set at all.
+describe("renderDigestEmail — verified badge", () => {
+  const BADGED: DigestEmailData = {
+    ...DIGEST,
+    sections: [
+      { ...DIGEST.sections[0]!, verification: { gapMinutes: 47 } },
+      DIGEST.sections[1]!,
+    ],
+  };
+
+  test("says the check with its measurement, on the verified row only", () => {
+    const html = renderDigestEmail(BADGED, "2026-07-06", "2026-07-13");
+    expect(html).toContain("Verified");
+    expect(html).toContain("2 captures 47 min apart");
+    // One badge, not one per section: the second signal was never verified.
+    expect(html.split("2 captures").length - 1).toBe(1);
+  });
+
+  test("an unbadged digest is byte-identical to what it was before P4", () => {
+    // The whole point of the field being optional. Every existing caller omits it,
+    // and a skipped or not_reproduced outcome is an omission too.
+    const before = renderDigestEmail(DIGEST, "2026-07-06", "2026-07-13");
+    const explicitlyAbsent = renderDigestEmail(
+      { ...DIGEST, sections: DIGEST.sections.map((s) => ({ ...s })) },
+      "2026-07-06",
+      "2026-07-13",
+    );
+    expect(explicitlyAbsent).toBe(before);
+    expect(before).not.toContain("Verified");
+  });
+
+  test("badges the claim without a number when the gap was never measured", () => {
+    // Both timestamps have to be stamped for an interval to exist. A confirmed row
+    // missing one still earned the badge; it just cannot show a measurement.
+    const html = renderDigestEmail(
+      {
+        ...DIGEST,
+        sections: [{ ...DIGEST.sections[0]!, verification: { gapMinutes: null } }],
+      },
+      "2026-07-06",
+      "2026-07-13",
+    );
+    expect(html).toContain("Verified");
+    expect(html).not.toContain("captures");
+  });
+
+  test("the badge is the only thing the field adds to the row", () => {
+    const before = renderDigestEmail(DIGEST, "2026-07-06", "2026-07-13");
+    const after = renderDigestEmail(BADGED, "2026-07-06", "2026-07-13");
+    // Same insight, same so-what, same order — the addition sits inside the row and
+    // moves nothing else on the page (P4: additions, never a new panel).
+    expect(after).toContain(DIGEST.sections[0]!.insight);
+    expect(after).toContain(DIGEST.sections[1]!.so_what);
+    expect(after.length).toBeGreaterThan(before.length);
+    expect(after.replace(/\s*<div [^>]*>&#10003;&#10003; Verified[^<]*<\/div>/, "")).toBe(before);
+  });
+});

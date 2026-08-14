@@ -7,6 +7,7 @@ import { api, type SignalDetail } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VisualDiff } from "@/components/outrival/visual-diff";
 import { ChangeBreakdown } from "@/components/outrival/change-breakdown";
+import { SignalProof } from "@/components/outrival/signal-proof";
 import { cn } from "@/lib/utils";
 
 const Label = ({ children }: { children: React.ReactNode }) => (
@@ -148,6 +149,11 @@ export function SignalEvidence({
             <ChangeBreakdown changes={detail.changes} />
           </section>
         ))}
+
+      {/* Véracité P4 — the dialog's proof strip at feed density: same badges, same
+          provenance, minus the capture count. It never revives a panel that had
+          nothing structured to show; the early return above still wins. */}
+      <SignalProof detail={detail} dense className="border-t border-border pt-2.5" />
     </div>
   );
 }

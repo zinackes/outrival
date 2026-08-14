@@ -140,6 +140,7 @@ import { OverviewTab } from "./competitor-detail/overview-tab";
 import { ActivityTab } from "./competitor-detail/activity-tab";
 import { PositioningTab } from "./competitor-detail/positioning-tab";
 import { ContentTab } from "./competitor-detail/content-tab";
+import { AsOf } from "@/components/outrival/as-of";
 import { readMobileApps } from "./competitor-detail/mobile-apps";
 import { PRODUCT_SOURCES } from "./competitor-detail/product-lenses";
 import { useMonitorActions } from "./competitor-detail/use-monitor-actions";
@@ -180,6 +181,28 @@ function tabFreshness(key: TabKey, monitors: Monitor[]) {
   const sources = TAB_SOURCES[key];
   if (!sources) return null;
   return aggregateFreshness(monitors.filter((m) => sources.includes(m.sourceType)));
+}
+
+// The four tabs whose content IS a capture of a page, and so has a date (Véracité
+// Intelligence v2 P4). Reviews is left out on purpose: its sources are third-party
+// listings on their own cadences, and one "as of" over three of them would date
+// something no single read produced. Activity and Overview aggregate across every
+// source, which is the same objection.
+const DATED_TABS = new Set<TabKey>(["pricing", "hiring", "content", "product"]);
+
+/** The monitors behind a dated tab, and the soonest read any of them is due. */
+function tabCapture(key: TabKey, monitors: Monitor[]) {
+  const sources = DATED_TABS.has(key) ? TAB_SOURCES[key] : undefined;
+  if (!sources) return null;
+  const backing = monitors.filter((m) => sources.includes(m.sourceType));
+  if (backing.length === 0) return null;
+  const upcoming = backing
+    .map((m) => (m.nextRunAt ? new Date(m.nextRunAt).getTime() : null))
+    .filter((t): t is number => t !== null && t > Date.now());
+  return {
+    monitors: backing,
+    nextRunAt: upcoming.length === 0 ? null : new Date(Math.min(...upcoming)).toISOString(),
+  };
 }
 
 // Plan-gated tabs: a tab whose data the current plan can't access is locked at
@@ -729,6 +752,9 @@ export function CompetitorDetailView({ id }: { id: string }) {
             selectTab(key);
           }}
         >
+          {/* The chip dates the tab's content, so it rides on the tab bar rather
+              than inside any one panel: four tabs, one component, one mount. */}
+          <div className="flex items-center gap-3">
           <TabsList variant="line" className="w-full justify-start overflow-x-auto">
             {VISIBLE_TABS.map((t) => {
               const Icon = t.icon;
@@ -761,6 +787,12 @@ export function CompetitorDetailView({ id }: { id: string }) {
               );
             })}
           </TabsList>
+          {(() => {
+            const capture = tabCapture(tab, monitors);
+            if (!capture) return null;
+            return <AsOf monitors={capture.monitors} nextRunAt={capture.nextRunAt} />;
+          })()}
+          </div>
 
           {/* The strip spans the page; the two columns start below it, so the rail's
               first card is level with the tab content, not with the strip. The

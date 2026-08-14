@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { aggregateFreshness, computeFreshness } from "./freshness";
+import {
+  aggregateCaptureFreshness,
+  aggregateFreshness,
+  captureFreshness,
+  computeFreshness,
+} from "./freshness";
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
 
@@ -80,5 +85,93 @@ describe("aggregateFreshness: a surface that doesn't exist has no freshness", ()
       status: "success",
     });
     expect(aggregateFreshness([])).toBeNull();
+  });
+});
+
+describe("captureFreshness: unchanged for six days is not the same claim as not verified for six days", () => {
+  test("a healthy source reports the same date twice and calls it verified", () => {
+    const run = hoursAgo(3);
+    expect(captureFreshness({ lastRunAt: run, lastFailedAt: null })).toEqual({
+      lastSuccessAt: run,
+      lastAttemptAt: run,
+      verified: true,
+      level: "fresh",
+    });
+  });
+
+  test("a failure after the last success splits the two dates and drops `verified`", () => {
+    const run = hoursAgo(200);
+    const failed = hoursAgo(2);
+    const f = captureFreshness({ lastRunAt: run, lastFailedAt: failed });
+    expect(f.lastSuccessAt).toBe(run);
+    expect(f.lastAttemptAt).toBe(failed);
+    expect(f.verified).toBe(false);
+    // The capture is out of the fresh window AND unconfirmed since: the failure is
+    // now the reason it is old, exactly as the dots grade it.
+    expect(f.level).toBe("failed");
+  });
+
+  test("a failure inside the fresh window still shows fresh data, and still says it is unconfirmed", () => {
+    const f = captureFreshness({ lastRunAt: hoursAgo(4), lastFailedAt: hoursAgo(1) });
+    expect(f.verified).toBe(false);
+    expect(f.level).toBe("fresh");
+  });
+
+  test("a source that never ran has no success date and no attempt to report", () => {
+    expect(captureFreshness({ lastRunAt: null, lastFailedAt: null })).toEqual({
+      lastSuccessAt: null,
+      lastAttemptAt: null,
+      verified: true,
+      level: "stale",
+    });
+  });
+
+  test("a surface the competitor doesn't have is graded `none`, not fresh", () => {
+    expect(captureFreshness(noSurface).level).toBe("none");
+  });
+});
+
+describe("aggregateCaptureFreshness: what one dated tab can honestly claim", () => {
+  test("the chip is dated by the OLDEST read behind it, not the newest", () => {
+    const old = hoursAgo(50);
+    const f = aggregateCaptureFreshness([
+      { lastRunAt: hoursAgo(1), lastFailedAt: null },
+      { lastRunAt: old, lastFailedAt: null },
+    ]);
+    expect(f?.lastSuccessAt).toBe(old);
+    expect(f?.verified).toBe(true);
+  });
+
+  test("one failing source is enough to drop the whole tab to unverified", () => {
+    const failed = hoursAgo(1);
+    const f = aggregateCaptureFreshness([
+      { lastRunAt: hoursAgo(2), lastFailedAt: null },
+      { lastRunAt: hoursAgo(300), lastFailedAt: failed },
+    ]);
+    expect(f?.verified).toBe(false);
+    // The latest attempt is the failure: it is what the panel reports back.
+    expect(f?.lastAttemptAt).toBe(failed);
+  });
+
+  test("a source never read leaves the tab undated instead of borrowing a sibling's capture", () => {
+    const f = aggregateCaptureFreshness([
+      { lastRunAt: hoursAgo(2), lastFailedAt: null },
+      { lastRunAt: null, lastFailedAt: null },
+    ]);
+    expect(f?.lastSuccessAt).toBeNull();
+    expect(f?.level).toBe("stale");
+  });
+
+  test("surfaces the competitor doesn't have are left out of the fold", () => {
+    const run = hoursAgo(2);
+    expect(aggregateCaptureFreshness([noSurface, { lastRunAt: run, lastFailedAt: null }])).toEqual({
+      lastSuccessAt: run,
+      lastAttemptAt: run,
+      verified: true,
+      level: "fresh",
+    });
+    // Nothing collectible at all: no date to print, and no chip.
+    expect(aggregateCaptureFreshness([noSurface])).toBeNull();
+    expect(aggregateCaptureFreshness([])).toBeNull();
   });
 });

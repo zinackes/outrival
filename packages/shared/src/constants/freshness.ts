@@ -44,20 +44,8 @@ export function computeNextScanAt(
   return new Date(ts + intervalDays * 86_400_000).toISOString();
 }
 
-/**
- * Classify how recent a scraped source is. A failed last scan always wins (the
- * data on screen is whatever the previous success left, so we warn regardless of
- * age). No date → treated as stale. Pure + side-effect-free: reused by the
- * per-section dots, the global competitor dot, and any aggregate.
- */
-export function computeFreshness(
-  lastScrapedAt: string | Date | null | undefined,
-  status: FreshnessStatus | null | undefined,
-): FreshnessLevel {
-  // Ranked above "failed" and above age: a surface the competitor doesn't have has
-  // no age to grade, and grading it anyway is what painted an absent source green.
-  if (status === "not_available") return "none";
-  if (status === "failed") return "failed";
+/** Age alone, with no successful capture read as the oldest thing there is. */
+function gradeByAge(lastScrapedAt: string | Date | null | undefined): FreshnessLevel {
   if (!lastScrapedAt) return "stale";
   const ts =
     lastScrapedAt instanceof Date
@@ -68,6 +56,31 @@ export function computeFreshness(
   if (days < FRESHNESS_THRESHOLDS.fresh) return "fresh";
   if (days < FRESHNESS_THRESHOLDS.aging) return "aging";
   return "stale";
+}
+
+/**
+ * Classify how recent a scraped source is. No date → treated as stale. Pure +
+ * side-effect-free: reused by the per-section dots, the global competitor dot, and
+ * any aggregate.
+ *
+ * A failed last scan grades the DATA, not the attempt. What is on screen is
+ * whatever the last success left, so while that capture is still inside the fresh
+ * window the page is showing current data and the dot says so. A critical "Last
+ * scan failed" pastille over a full, week-old timeline read as an outage the user
+ * could neither confirm nor act on — one of four folded sources failing was enough
+ * to paint the whole tab red. Once the frozen data ages out of the fresh window the
+ * failure IS the reason it is stale, and it takes the dot back.
+ */
+export function computeFreshness(
+  lastScrapedAt: string | Date | null | undefined,
+  status: FreshnessStatus | null | undefined,
+): FreshnessLevel {
+  // Ranked above "failed" and above age: a surface the competitor doesn't have has
+  // no age to grade, and grading it anyway is what painted an absent source green.
+  if (status === "not_available") return "none";
+  const level = gradeByAge(lastScrapedAt);
+  if (status === "failed") return level === "fresh" ? "fresh" : "failed";
+  return level;
 }
 
 export interface MonitorFreshnessInput {

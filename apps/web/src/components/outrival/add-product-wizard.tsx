@@ -40,7 +40,7 @@ import {
   type ProductProfile,
   type ProjectStage,
 } from "@/lib/api";
-import { PLAN_LABELS, type Plan } from "@outrival/shared";
+import { PLAN_LABELS, hasDiscoveryInputs, type Plan } from "@outrival/shared";
 import { useSetProductScope } from "@/components/dashboard/product-scope-provider";
 import { toastApiError } from "@/lib/error-helpers";
 import { discoverOutcome, type DiscoverOutcome } from "@/lib/discovery-outcome";
@@ -356,7 +356,10 @@ export function AddProductWizard({
     setScreen("profile");
   }
 
-  const profileReady = profile.category.trim() !== "" || profile.valueProp.trim() !== "";
+  // Same predicate the API refuses discovery with (`selfProfileToDiscoveryProfile`),
+  // so this button can't hand over a profile the very next call answers
+  // `missing_profile` to.
+  const profileReady = hasDiscoveryInputs(profile);
 
   // Create the product with the (edited) profile seeded synchronously, then move to
   // the discovery step and kick off detection for it.

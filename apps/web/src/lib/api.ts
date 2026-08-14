@@ -4470,8 +4470,10 @@ export const api = {
     }),
   // patch-28 — battle cards are per (product, competitor); productId scopes the
   // couple (the API defaults to the org's primary product when omitted).
+  // OUT-186 — `battleCard` is null when the couple has no card yet (200, not 404); a
+  // 404 now means the competitor itself is gone.
   getBattleCard: (competitorId: string, productId?: string) =>
-    request<{ battleCard: BattleCard; evidence?: BattleCardEvidence }>(
+    request<{ battleCard: BattleCard | null; evidence?: BattleCardEvidence }>(
       `/api/competitors/${competitorId}/battle-card${productId ? `?productId=${productId}` : ""}`,
     ),
   // Whether regenerating is worth it (patch-22): "fresh" → greyed-out button.
@@ -4480,7 +4482,7 @@ export const api = {
       `/api/competitors/${competitorId}/battle-card/staleness${productId ? `?productId=${productId}` : ""}`,
     ),
   // The evidence readiness on its own, which GET /battle-card cannot serve because it
-  // 404s until a card exists. Powers the empty state and the build view.
+  // carries no readiness until a card exists. Powers the empty state and the build view.
   getBattleCardEvidence: (competitorId: string, productId?: string) =>
     request<{ evidence: BattleCardEvidence; productId: string | null }>(
       `/api/competitors/${competitorId}/battle-card/evidence${productId ? `?productId=${productId}` : ""}`,

@@ -145,7 +145,11 @@ battleCardsRouter.get("/:id/battle-card", async (c) => {
   const card = await db.query.battleCards.findFirst({
     where: battleCardWhere(competitor.id, product?.id),
   });
-  if (!card) return c.json({ error: "Not generated" }, 404);
+  // OUT-186 — "no card yet" is a normal state of an existing competitor, not a missing
+  // resource: 200 with a null body. The 404 above stays for a competitor that does not
+  // exist, so the two cases are finally distinguishable. No readiness here — the empty
+  // state reads it from /battle-card/evidence, which answers without a card.
+  if (!card) return c.json({ battleCard: null });
 
   const evidence = await battleCardEvidence(competitor.id, card.id);
   return c.json({ battleCard: card, evidence });

@@ -34,6 +34,7 @@ import { PaymentMethodDialog } from "@/components/outrival/payment-method-dialog
 import { BillingDashboardSkeleton } from "@/app/dashboard/settings/billing/billing-skeleton";
 import { SettingsSection } from "@/components/dashboard/settings-page";
 import { SettingsError } from "@/components/outrival/list-error";
+import { PLAN_CARDS, planPrice } from "@/lib/plan-catalog";
 
 type PaidPlan = Exclude<Plan, "free">;
 type Invoice = Awaited<ReturnType<typeof api.getInvoices>>["invoices"][number];
@@ -64,60 +65,6 @@ const PLAN_RANK: Record<Plan, number> = {
 
 const EYEBROW =
   "text-xs font-medium text-[var(--muted-2)]";
-
-/** Curated plan blurbs + feature bullets, mirrored from the landing pricing section
- *  (`components/landing/pricing.tsx`) — keep the two in sync. `includes` renders the
- *  "Everything in <prev>, plus:" line so each tier reads as additive. */
-const PLAN_CARDS: Record<
-  Plan,
-  { tag: string; featured: boolean; desc: string; includes?: string; features: string[] }
-> = {
-  free: {
-    tag: "Free",
-    featured: false,
-    desc: "Validate the tool on 2 competitors before bringing in your team.",
-    features: [
-      "2 competitors",
-      "Weekly email digest",
-      "Homepage · pricing · blog",
-      "1 user",
-    ],
-  },
-  starter: {
-    tag: "Starter",
-    featured: false,
-    desc: "For solo operators who need daily scans and Slack delivery.",
-    includes: "Everything in Free, plus:",
-    features: [
-      "5 competitors",
-      "Daily scans · Slack & email digests",
-      "Adds jobs + status page",
-    ],
-  },
-  pro: {
-    tag: "Pro",
-    featured: true,
-    desc: "For product, growth, or strategy teams that need the full signal stream.",
-    includes: "Everything in Starter, plus:",
-    features: [
-      "15 competitors",
-      "Real-time Slack/email alerts",
-      "AI-generated battle cards",
-      "Trustpilot & App Store reviews",
-    ],
-  },
-  business: {
-    tag: "Business",
-    featured: false,
-    desc: "50 competitors, the highest limits, multi-user, and API access.",
-    includes: "Everything in Pro, plus:",
-    features: [
-      "50 competitors",
-      "Multi-user · API access",
-      "Priority cadence · audit logs · DPA",
-    ],
-  },
-};
 
 export function BillingDashboard() {
   const router = useRouter();
@@ -529,9 +476,7 @@ export function BillingDashboard() {
             const card = PLAN_CARDS[plan];
             const isCurrent = plan === billing.plan;
             const isPaid = plan !== "free";
-            const pricing = isPaid ? PLAN_PRICING[plan as PaidPlan][period] : 0;
-            const perMonth =
-              period === "yearly" && isPaid ? Math.round(pricing / 12) : pricing;
+            const { perMonth, total } = planPrice(plan, period);
             const isUpgrade = PLAN_RANK[plan] > currentRank;
             // The primary accent (border + ring + filled badge) is rationed to the
             // upsell. The current plan is a *state*, not a CTA → neutral, solid
@@ -568,7 +513,7 @@ export function BillingDashboard() {
                       isPopular ? "text-primary" : "text-text-subtle",
                     )}
                   >
-                    {card.tag}
+                    {PLAN_LABELS[plan]}
                   </div>
                   <div className="mt-1.5 text-lg font-semibold">
                     {PLAN_LABELS[plan]}
@@ -587,7 +532,7 @@ export function BillingDashboard() {
                   </div>
                   <span className="mt-1 block h-4 text-meta tabular-nums text-text-subtle">
                     {period === "yearly" && isPaid
-                      ? `€${pricing} billed yearly`
+                      ? `€${total} billed yearly`
                       : isPaid
                         ? "billed monthly"
                         : "No card required"}

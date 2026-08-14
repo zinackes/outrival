@@ -17,7 +17,6 @@ import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { useCompetitorScopeGuard } from "@/hooks/use-competitor-scope-guard";
 import {
   api,
-  ApiError,
   type BattleCard,
   type BattleCardContent,
   type BattleCardJob,
@@ -240,6 +239,12 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
     if (!silent) setStatus("loading");
     try {
       const res = await api.getBattleCard(competitorId, productId);
+      // A null card mid-generation just means the row isn't written yet — keep the
+      // build view instead of flashing the empty state.
+      if (!res.battleCard) {
+        if (!silent) setStatus("absent");
+        return null;
+      }
       setCard(res.battleCard);
       setDraft(res.battleCard.content);
       // While polling, the poll loop owns the status (it keeps the build view up until
@@ -247,12 +252,6 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
       if (!silent) setStatus("ready");
       return res.battleCard;
     } catch (e) {
-      if (e instanceof ApiError && e.status === 404) {
-        // A 404 mid-generation just means the row isn't written yet — keep the build
-        // view instead of flashing the empty state.
-        if (!silent) setStatus("absent");
-        return null;
-      }
       if (!silent) {
         setError(errorConfig(e));
         setStatus("error");

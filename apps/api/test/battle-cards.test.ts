@@ -100,6 +100,51 @@ async function seedSignal(opts: {
   });
 }
 
+// OUT-186 — the two absences the endpoint used to answer with the same 404: a
+// competitor with no card yet (normal, the page offers to generate one) and a
+// competitor that isn't there (a real miss).
+describe("GET /:id/battle-card", () => {
+  test("a competitor with no card yet answers 200 with a null card", async () => {
+    const competitorId = await seedCompetitor(A.orgId);
+    const res = await app.request(
+      `/api/competitors/${competitorId}/battle-card`,
+      asUser(A.userId, A.email),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { battleCard: null };
+    expect(body.battleCard).toBeNull();
+  });
+
+  test("the card comes back once it exists", async () => {
+    const competitorId = await seedCompetitor(A.orgId);
+    const id = `bc-${++seq}`;
+    await testDb.insert(battleCards).values({
+      id,
+      competitorId,
+      orgId: A.orgId,
+      content: {},
+      generatedAt: AT(10),
+    });
+
+    const res = await app.request(
+      `/api/competitors/${competitorId}/battle-card`,
+      asUser(A.userId, A.email),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { battleCard: { id: string } | null };
+    expect(body.battleCard?.id).toBe(id);
+  });
+
+  test("a competitor of another org is still a 404", async () => {
+    const competitorId = await seedCompetitor(A.orgId);
+    const res = await app.request(
+      `/api/competitors/${competitorId}/battle-card`,
+      asUser(B.userId, B.email),
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("GET /:id/battle-card/evidence", () => {
   test("answers before any card exists, and says what each source holds", async () => {
     const competitorId = await seedCompetitor(A.orgId);

@@ -30,6 +30,7 @@ import {
   applyBlogGuards,
   planBlogRun,
   resolveSelfMatch,
+  rivalMentions,
   type ContentItemInput,
   type KeptMention,
   type SelfIdentity,
@@ -226,22 +227,33 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
         topics: entry.topics,
         products: entry.products,
         personas: entry.personas,
-        competitorsNamed: entry.competitors_named.map((m) => ({
+        competitorsNamed: entry.companies_named.map((m) => ({
           name: m.name,
           snippet: m.snippet ?? null,
+          relationship: m.relationship ?? null,
         })),
         summary: entry.summary,
       });
 
-      // Which of the named competitors is the reader themselves. Decided here, so
+      // Which of the named companies is the reader themselves. Decided here, so
       // the sentence stored as the row's quote is the one about them: a post that
       // names three rivals would otherwise file the first mention's sentence, and
       // the alert would show the reader a quote about somebody else.
+      //
+      // Scanned across EVERY kept mention, not just the rivals: a competitor naming
+      // the reader is news whether the post calls them a rival, a customer or an
+      // integration, and `competitor_named_you` is the one alert here that is
+      // `critical`.
       const mine: KeptMention | undefined = self
         ? guarded.mentions.find(
             (m) => resolveSelfMatch({ mention: m.name, postText: post.text, self }) !== null,
           )
         : undefined;
+
+      // The market map takes positioning facts only. A post naming the customers
+      // running on the product names companies, not rivals, and filing those is what
+      // put airlines and streaming services on a container registry's market map.
+      const rivals = rivalMentions(guarded.mentions).slice(0, MAX_MENTIONS_PER_POST);
 
       await db
         .update(contentItems)
@@ -250,7 +262,10 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
           topics: guarded.topics,
           products: guarded.products,
           personas: guarded.personas,
-          competitorsNamed: guarded.mentions.slice(0, MAX_MENTIONS_PER_POST).map((m) => m.name),
+          // The column is `competitors_named` and now holds exactly that: the
+          // backfill script reads it straight into the registry, so a customer
+          // stored here is a customer on somebody's market map.
+          competitorsNamed: rivals.map((m) => m.name),
           summary: guarded.summary,
           // The publisher's words or nothing, substring-verified above.
           evidenceSnippet: mine?.snippet ?? guarded.mentions[0]?.snippet ?? null,
@@ -262,9 +277,8 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
       // Positioning Intelligence v2 P2 — the rivals this post named go into the
       // market map. Already extracted and already paid for above: until now they
       // sat in an array column nothing queried. Registry only, never a signal.
-      const mentions = guarded.mentions.slice(0, MAX_MENTIONS_PER_POST).map((m) => m.name);
-      if (mentions.length > 0) {
-        mentioned.push({ sourceType: "blog", url: post.url, mentions });
+      if (rivals.length > 0) {
+        mentioned.push({ sourceType: "blog", url: post.url, mentions: rivals.map((m) => m.name) });
       }
       // Content Intelligence v2 P3 — a post the model just read as a customer story
       // is one, and the customers path knows what to do with it. The URL goes over,

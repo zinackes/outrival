@@ -188,6 +188,39 @@ describe("the battle-card facts", () => {
     expect(body.comparison.recent).toEqual(["Klue"]);
   });
 
+  // OUT-180. The card renders this as "They publish comparison pages against X" —
+  // a sentence that is false about a company they only ever named in a post.
+  test("a blog or docs mention is never counted as a comparison page", async () => {
+    const id = await seedCompetitor();
+    await testDb.insert(namedCompetitors).values([
+      {
+        competitorId: id,
+        nameNormalized: "klue",
+        displayName: "Klue",
+        source: "vs_page",
+        firstSeenAt: daysAgo(5),
+      },
+      {
+        competitorId: id,
+        nameNormalized: "priceline",
+        displayName: "Priceline",
+        source: "blog",
+        firstSeenAt: daysAgo(5),
+      },
+      {
+        competitorId: id,
+        nameNormalized: "intel",
+        displayName: "Intel",
+        source: "docs",
+        firstSeenAt: daysAgo(5),
+      },
+    ]);
+
+    const body = await facts(id);
+    expect(body.comparison.total).toBe(1);
+    expect(body.comparison.recent).toEqual(["Klue"]);
+  });
+
   test("one rival on two page shapes is one target, not two", async () => {
     const id = await seedCompetitor();
     await testDb.insert(namedCompetitors).values([

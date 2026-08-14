@@ -10,13 +10,18 @@ import { safeParseJson } from "../lib/parse";
  * understood least: a post announcing a launch, a teardown of a rival and an SEO
  * filler page all reached the pipeline as the same three added lines on an index
  * page. This says what each post IS, what it is about, and — the part that earns
- * its cost — which competitors it names.
+ * its cost — which other companies it names AND what each one is to them.
+ *
+ * The relationship is asked for because presence is not rivalry. A launch post names
+ * the customers running on the product and the vendors it integrates with, and the
+ * question "which companies does this post name" answers all three the same way.
  *
  * Everything it returns is a PROPOSAL. `applyBlogGuards`
- * (@outrival/scrapers/content) decides what survives: a named competitor is kept
- * only when the post writes that name and the quoted sentence is genuinely in the
- * text. That check is in code because the alert it gates is `critical`, and a
- * guard living in a prompt is a request rather than a check.
+ * (@outrival/scrapers/content) decides what survives: a named company is kept only
+ * when the post writes that name and the quoted sentence is genuinely in the text,
+ * and only a `competitor` relationship reaches the market map. That check is in code
+ * because the alert it gates is `critical`, and a guard living in a prompt is a
+ * request rather than a check.
  *
  * Batched at ~10 posts per call: posts are independent, so a run of twenty costs
  * two calls rather than twenty.
@@ -32,10 +37,18 @@ export const BLOG_POST_TYPES = [
 ] as const;
 
 export const BlogMentionSchema = z.object({
-  /** The competitor's name AS THE POST WRITES IT — never normalised or expanded. */
+  /** The company's name AS THE POST WRITES IT — never normalised or expanded. */
   name: z.string(),
   /** The sentence naming them, copied word for word. Substring-checked by the caller. */
   snippet: z.string().nullable().optional(),
+  /**
+   * 'competitor' | 'customer' | 'partner' | 'other', as the sentence frames them.
+   *
+   * Left loose on purpose: `applyBlogGuards` owns the vocabulary and defaults
+   * anything it does not recognise to `other`, so a model that invents a label or
+   * omits the field cannot put a customer on the market map.
+   */
+  relationship: z.string().nullable().optional(),
 });
 
 export const EnrichedBlogPostSchema = z.object({
@@ -48,7 +61,8 @@ export const EnrichedBlogPostSchema = z.object({
   products: z.array(z.string()).default([]),
   /** Who the post is written for ("engineering managers", "RevOps"). */
   personas: z.array(z.string()).default([]),
-  competitors_named: z.array(BlogMentionSchema).default([]),
+  /** EVERY other company the post names, each with what the post makes them. */
+  companies_named: z.array(BlogMentionSchema).default([]),
   /** One or two sentences, English, about what the post says. */
   summary: z.string(),
 });
@@ -105,13 +119,24 @@ RULES — these decide whether your answer is usable:
 - "topics" is 2 to 5 lowercase subject tags ("api security", "onboarding").
 - "products" names THEIR OWN products or features the post is about. Empty if none.
 - "personas" is who the post is written for. Empty if it does not address anyone.
-- "competitors_named" lists OTHER companies the post names. For each one, "snippet"
+- "companies_named" lists OTHER companies the post names. For each one, "snippet"
   MUST be copied WORD FOR WORD from the post body — the sentence that names them.
   Do not paraphrase it, do not translate it, do not join two sentences.
 - List a company ONLY if the post writes its name. Do not infer a company from
   "the incumbents", "legacy tools" or "the usual alternatives" — return nothing
   there. A name that is not in the text is discarded.
-- Do not list the company whose blog this is among "competitors_named".
+- Do not list the company whose blog this is among "companies_named".
+- "relationship" says what THAT SENTENCE makes the company to the publisher:
+  - "competitor": the post treats them as a rival — an alternative to the product,
+    something a reader would use instead, a vendor they compare against or migrate
+    people off.
+  - "customer": they use the product. A case study subject, a logo, a quoted user.
+  - "partner": they build, integrate, resell, invest or run alongside — the post
+    frames them as working WITH the publisher.
+  - "other": named for any other reason (an example, an acquisition in the news, a
+    standards body, a tool used to write the post).
+  Judge only from what the post says, never from what you know about the two
+  companies. When the sentence does not make the relationship clear, answer "other".
 - "summary" is one or two sentences, at most 35 words, written in English even when
   the post is not, about what the post says — never about how important it is.
 
@@ -127,8 +152,17 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
       "topics": ["migration", "data warehouse"],
       "products": ["Sync Engine"],
       "personas": ["data engineers"],
-      "competitors_named": [
-        { "name": "Fivetran", "snippet": "The team moved off Fivetran after two years." }
+      "companies_named": [
+        {
+          "name": "Fivetran",
+          "snippet": "The team moved off Fivetran after two years.",
+          "relationship": "competitor"
+        },
+        {
+          "name": "Ramp",
+          "snippet": "Ramp runs 400 pipelines on our sync engine.",
+          "relationship": "customer"
+        }
       ],
       "summary": "How one customer migrated their pipelines and cut sync latency."
     }

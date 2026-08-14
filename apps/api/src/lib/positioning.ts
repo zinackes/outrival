@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   audiencePages,
   caseStudies,
@@ -8,6 +8,7 @@ import {
 import { db } from "./db";
 import { analyticsQuery } from "./analytics-safe";
 import { industryLabel, pricingModelOf, type MeteredRow, type PricingModel } from "@outrival/shared";
+import { PAGE_SOURCES } from "@outrival/scrapers/positioning";
 import { namedBy } from "./market-map";
 import { shareOfModelFor, type ShareOfModel } from "./share-of-model";
 
@@ -132,6 +133,7 @@ export interface PositioningFacts {
   } | null;
   /** Their loudest quantified claims, as the page printed them. */
   claims: Array<{ rawText: string; observedAt: string }>;
+  /** Rivals they built a comparison PAGE against. A blog mention is not one. */
   comparison: {
     /** Targets first seen inside the window, newest first. */
     recent: string[];
@@ -195,10 +197,19 @@ export async function positioningFacts(args: {
         WHERE competitor_id = ${competitorId}
         ORDER BY pattern, unit, context, observed_at DESC
       `),
+      // Page sources only, in BOTH queries. The card states this as "they publish
+      // comparison pages against X", so a name a blog post happened to write must
+      // never reach it — that sentence would be false about a company they have
+      // never built a page against.
       db
         .select({ n: sql<number>`count(distinct ${namedCompetitors.nameNormalized})::int` })
         .from(namedCompetitors)
-        .where(eq(namedCompetitors.competitorId, competitorId)),
+        .where(
+          and(
+            eq(namedCompetitors.competitorId, competitorId),
+            inArray(namedCompetitors.source, [...PAGE_SOURCES]),
+          ),
+        ),
       db
         .selectDistinctOn([namedCompetitors.nameNormalized], {
           name: namedCompetitors.displayName,
@@ -208,6 +219,7 @@ export async function positioningFacts(args: {
         .where(
           and(
             eq(namedCompetitors.competitorId, competitorId),
+            inArray(namedCompetitors.source, [...PAGE_SOURCES]),
             gte(namedCompetitors.firstSeenAt, cutoff),
           ),
         )

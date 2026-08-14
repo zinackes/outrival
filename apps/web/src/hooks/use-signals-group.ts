@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
-import { GROUP_MODES, type GroupMode } from "@/components/dashboard/signals-list-header";
+import {
+  DEFAULT_GROUP,
+  GROUP_MODES,
+  type GroupMode,
+} from "@/components/dashboard/signals-list-header";
 
 // How the signals list is grouped, remembered across visits. The mode already
 // lived in ?group=, which survives a refresh but not leaving the page — so a
@@ -18,14 +22,16 @@ import { GROUP_MODES, type GroupMode } from "@/components/dashboard/signals-list
 const KEY = "outrival:signals-group";
 const listeners = new Set<() => void>();
 
+// A value stored before "Fold similar" was retired no longer names a mode, and
+// falls through to the default like any other unknown string.
 function read(): GroupMode {
   try {
     const v = localStorage.getItem(KEY);
     return (GROUP_MODES as readonly string[]).includes(v ?? "")
       ? (v as GroupMode)
-      : "none";
+      : DEFAULT_GROUP;
   } catch {
-    return "none";
+    return DEFAULT_GROUP;
   }
 }
 
@@ -47,7 +53,7 @@ export function useSignalsGroup(): readonly [GroupMode, (mode: GroupMode) => voi
   const stored = useSyncExternalStore(
     subscribe,
     read,
-    () => "none" as GroupMode, // server snapshot — the preference is client-only
+    () => DEFAULT_GROUP, // server snapshot — the preference is client-only
   );
 
   // Re-sync once on mount: the server rendered "none", storage may say otherwise.
@@ -55,7 +61,7 @@ export function useSignalsGroup(): readonly [GroupMode, (mode: GroupMode) => voi
 
   const set = useCallback((mode: GroupMode) => {
     try {
-      if (mode === "none") localStorage.removeItem(KEY);
+      if (mode === DEFAULT_GROUP) localStorage.removeItem(KEY);
       else localStorage.setItem(KEY, mode);
     } catch {
       /* ignore — private mode / disabled storage */

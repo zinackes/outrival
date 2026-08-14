@@ -80,6 +80,12 @@ export const organizations = pgTable("organizations", {
   // competitors have an AI summary) or the watcher times out. One-shot guard for
   // the "analysis ready" notification so it never fires twice (e.g. re-onboarding).
   analysisNotifiedAt: timestamp("analysis_notified_at"),
+  // OUT-193 — self-updating battle cards. When on, the daily
+  // refresh-stale-battle-cards cron regenerates the org's cards that the feed has
+  // outdated, instead of leaving them frozen until someone clicks Regenerate.
+  // Defaults ON, but the cron skips free orgs: their whole quota is 1 card/day, so
+  // an automatic refresh would spend the card the user wanted to generate himself.
+  battleCardAutoRefresh: boolean("battle_card_auto_refresh").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -163,8 +163,22 @@ export function BattleCardsView() {
                     >
                       {cardTitle(c)}
                     </Link>
-                    <div className="text-meta text-muted-foreground">
-                      Updated {formatDistanceToNow(new Date(c.updatedAt), { addSuffix: true })}
+                    {/* OUT-193 — the row says which cards the feed has outdated, so the
+                        reader picks the one to reopen instead of opening all of them.
+                        Age alone doesn't answer it: a two-month-old card on a quiet
+                        competitor is still correct. */}
+                    <div className="flex flex-wrap items-center gap-x-1.5 text-meta text-muted-foreground">
+                      <span>
+                        Updated {formatDistanceToNow(new Date(c.updatedAt), { addSuffix: true })}
+                      </span>
+                      {c.signalsSince > 0 && (
+                        <>
+                          <span aria-hidden>·</span>
+                          <span className="text-high tabular-nums">
+                            {c.signalsSince} signal{c.signalsSince === 1 ? "" : "s"} since
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                   {c.hasPdf && (

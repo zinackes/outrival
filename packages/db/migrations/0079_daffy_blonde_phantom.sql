@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ADD COLUMN "battle_card_auto_refresh" boolean DEFAULT true NOT NULL;

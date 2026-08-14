@@ -320,6 +320,11 @@ const InputSchema = z.object({
   // notification when the card lands, so a user who navigated away (the ~10-20s +
   // PDF render outlasts a page visit) isn't left without any signal it finished.
   notifyOnComplete: z.boolean().optional(),
+  // OUT-193 — the run came from refresh-stale-battle-cards, not from a click. Only
+  // changes the wording of the notification: "is ready" reads as an answer to a
+  // request nobody made, and the whole point of the auto-refresh is that the user
+  // learns their card followed the feed on its own.
+  auto: z.boolean().optional(),
 });
 
 // Runtime-neutral job body: shared verbatim by the pg-boss handler and the thin
@@ -869,8 +874,12 @@ async function generate(payload: z.input<typeof InputSchema>) {
         (input.productId ? `?product=${input.productId}` : "");
       await notifyJobComplete({
         orgId: org.id,
-        title: `Battle card vs ${competitor.name} is ready`,
-        body: "Your AI battle card is ready to view and download.",
+        title: input.auto
+          ? `Battle card vs ${competitor.name} refreshed`
+          : `Battle card vs ${competitor.name} is ready`,
+        body: input.auto
+          ? "New signals landed on this competitor, so the card was rewritten on them."
+          : "Your AI battle card is ready to view and download.",
         linkUrl,
       });
     }

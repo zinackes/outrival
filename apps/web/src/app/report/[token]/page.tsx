@@ -11,7 +11,7 @@ import {
 } from "@/components/icons";
 import { RecapDeck } from "@/components/dashboard/recap-wrapped";
 import { serverApiBase } from "@/lib/api-base";
-import type { MonthlyRecap } from "@/lib/api";
+import type { BattleCardContent, MonthlyRecap } from "@/lib/api";
 
 // Public, read-only share view (Lever 8/9). Rendered from a share token — no auth, no
 // cookies. Always noindex + never in the sitemap: the token is the only capability.
@@ -58,8 +58,12 @@ type Report = {
   }[];
   insights: { kind: string; text: string }[];
   // Discriminator (Lever 9): "recap" → the shared Wrapped instead of the landscape.
-  kind?: "landscape" | "recap";
+  // "battle_card" (OUT-193) → one competitor's card, resolved live from the couple the
+  // token names, so a card the auto-refresh rewrote shows through the same link.
+  kind?: "landscape" | "recap" | "battle_card";
   recap?: MonthlyRecap;
+  competitor?: { name: string };
+  content?: BattleCardContent;
 };
 
 async function fetchReport(token: string): Promise<Report | null> {
@@ -145,6 +149,29 @@ function Cell({ value }: { value: string | null }) {
   );
 }
 
+// One list section of a shared battle card. An empty section is dropped rather than
+// rendered as a heading over nothing: the reader can't regenerate the card from here,
+// so an empty block is a dead end rather than a prompt.
+function CardSection({ title, lines }: { title: string; lines: string[] }) {
+  if (lines.length === 0) return null;
+  return (
+    <section className="mb-12">
+      <SectionLabel>{title}</SectionLabel>
+      <ul className="mt-4 space-y-2.5">
+        {lines.map((line, i) => (
+          <li
+            key={i}
+            className="flex items-start gap-3 rounded-lg border border-border bg-card px-4 py-3.5 text-sm leading-snug"
+          >
+            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
+            <span>{line}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function PoweredBy() {
   return (
     <footer className="mt-16 border-t border-border pt-6">
@@ -187,6 +214,66 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
     return (
       <Shell>
         <RecapDeck recap={report.recap} publicMode />
+      </Shell>
+    );
+  }
+
+  // Battle card share (OUT-193): the same six sections the dashboard shows, minus
+  // everything that needs a session (edit, regenerate, evidence drilldown). The date
+  // is stated plainly because a card read before a call is only worth what its age
+  // says it is, and the reader here has no dashboard to check it against.
+  if (report.kind === "battle_card" && report.content && report.competitor) {
+    const { content, competitor } = report;
+    const generatedOn = new Date(report.generatedAt).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    return (
+      <Shell>
+        <header className="mb-12">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-meta font-medium uppercase tracking-wide text-muted-foreground">
+              Battle card
+            </p>
+            <Wordmark className="text-muted-foreground" />
+          </div>
+          <h1 className="mt-3 flex items-center gap-3 text-title-lg font-semibold tracking-tight sm:text-stat sm:leading-tight">
+            <Monogram name={competitor.name} />
+            <span className="min-w-0">
+              {report.product ? `${report.product.name} vs ` : "vs "}
+              {competitor.name}
+            </span>
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {report.org.name} · Generated {generatedOn}
+          </p>
+          <div className="mt-6 h-px w-full bg-gradient-to-r from-primary/60 via-border to-transparent" />
+        </header>
+
+        <CardSection title="Their strengths" lines={content.their_strengths} />
+        <CardSection title="Their weaknesses" lines={content.their_weaknesses} />
+        <CardSection title="Our strengths" lines={content.our_strengths} />
+        <CardSection title="When we win" lines={content.when_we_win} />
+        <CardSection title="When we lose" lines={content.when_we_lose} />
+
+        {content.common_objections.length > 0 && (
+          <section className="mb-12">
+            <SectionLabel>Common objections</SectionLabel>
+            <div className="mt-4 space-y-3">
+              {content.common_objections.map((o, i) => (
+                <div key={i} className="rounded-lg border border-border bg-card px-4 py-3.5">
+                  <p className="text-sm font-semibold">{o.objection}</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    {o.response}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <PoweredBy />
       </Shell>
     );
   }

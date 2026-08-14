@@ -306,6 +306,15 @@ export function sourceDefaultsQuery() {
   });
 }
 
+// Whether the nightly pass rewrites battle cards the feed has outdated (OUT-193),
+// plus whether the current plan lets it act.
+export function battleCardSettingsQuery() {
+  return queryOptions({
+    queryKey: ["battleCardSettings"] as const,
+    queryFn: () => api.getBattleCardSettings(),
+  });
+}
+
 // The volumes this workspace compares metered pricing at. Read by the settings
 // card and by the price lens's volume selector, so the two offer the same list.
 export function referenceVolumesQuery() {

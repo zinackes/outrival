@@ -45,6 +45,7 @@ import {
   feedbackPatternDetection,
   purgeRetention,
   detectSilentMonitors,
+  refreshStaleBattleCards,
   heartbeat,
   scrapeMonitor,
   probePricingCalculator,
@@ -107,6 +108,7 @@ import { runOpsHealthCheck } from "../core/ops-health-check";
 import { runFeedbackPatternDetection } from "../core/feedback-pattern-detection";
 import { runPurgeRetention } from "../core/purge-retention";
 import { runDetectSilentMonitors } from "../core/detect-silent-monitors";
+import { runRefreshStaleBattleCards } from "../core/refresh-stale-battle-cards";
 import { runHeartbeat } from "../core/heartbeat";
 import { runScrapeMonitor, onScrapeMonitorFailure } from "../core/scrape-monitor";
 import { runDetectPlatform } from "../core/detect-platform";
@@ -220,6 +222,9 @@ export async function registerHandlers(role: WorkerRole): Promise<string[]> {
     await on(feedbackPatternDetection, runFeedbackPatternDetection);
     await on(purgeRetention, runPurgeRetention);
     await on(detectSilentMonitors, runDetectSilentMonitors);
+    // Scan only — DB reads plus an enqueue. The generations it fans out are consumed
+    // by the browser worker, which is where the PDF render lives.
+    await on(refreshStaleBattleCards, runRefreshStaleBattleCards);
 
     // Dead-man's switch — pg-boss only (Trigger's schedule cap is what blocked it).
     await on(heartbeat, runHeartbeat);

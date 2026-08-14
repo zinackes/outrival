@@ -30,7 +30,7 @@ import {
   competitorDetailQuery,
   productsListQuery,
 } from "@/lib/queries";
-import { formatDate } from "@/lib/format-date";
+import { formatDate, longAge } from "@/lib/format-date";
 import { disclosureMotion } from "@/lib/motion";
 import { track } from "@/lib/posthog/events";
 import {
@@ -50,6 +50,7 @@ import { BattleCardEmpty } from "./empty-view";
 import { BattleCardHead, MetaDot } from "./head";
 import { ConfidenceBadge } from "./evidence";
 import { BattleCardSections, flattenCardLines } from "./sections";
+import { ShareBattleCardButton } from "./share-button";
 import { useWriteIn } from "./write-in";
 import { PackagingSection } from "./packaging";
 import { PositioningSection } from "./positioning";
@@ -620,9 +621,24 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
     <>
       <span>Battle card</span>
       <MetaDot />
-      <span className={staleness?.needsRegeneration ? "text-high" : undefined}>
-        generated {formatDate(card.generatedAt, LONG_DATE)}
+      {/* Age is relative and the signal count sits next to it, always — not only
+          inside the amber banner. "generated June 7, 2026" makes the reader subtract
+          dates to answer the one question a battle card raises before a call: is this
+          still what the competitor looks like. The absolute date stays on hover. */}
+      <span
+        title={formatDate(card.generatedAt, LONG_DATE)}
+        className={staleness?.needsRegeneration ? "text-high" : undefined}
+      >
+        generated {longAge(card.generatedAt)}
       </span>
+      {since && since.total > 0 && (
+        <>
+          <MetaDot />
+          <span className={staleness?.needsRegeneration ? "text-high" : undefined}>
+            {since.total} signal{since.total === 1 ? "" : "s"} since
+          </span>
+        </>
+      )}
       {!card.pdfR2Key && (
         <>
           <MetaDot />
@@ -709,6 +725,9 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
           </span>
         )}
       </Button>
+      {/* Next to the PDF on purpose: both answer "get this card to someone else",
+          and the link is the one that keeps working after the next refresh. */}
+      <ShareBattleCardButton competitorId={competitorId} productId={productId} />
     </>
   );
 

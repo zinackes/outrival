@@ -516,3 +516,38 @@ settingsRouter.patch("/notifications", async (c) => {
   await db.update(organizations).set(update).where(eq(organizations.id, orgId));
   return c.json({ ok: true });
 });
+
+// OUT-193 — self-updating battle cards. `planAllows` is NOT a paywall: the toggle is
+// writable on every tier, and the value survives an upgrade. It only says whether the
+// nightly pass will act on it, because free orgs get one card a day and spending it
+// automatically would take the card the user wanted to write himself.
+settingsRouter.get("/battle-cards", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { battleCardAutoRefresh: true },
+  });
+  if (!org) return c.json({ error: "Not found" }, 404);
+
+  const plan = await getOrgPlan(orgId);
+  return c.json({ autoRefresh: org.battleCardAutoRefresh, plan, planAllows: plan !== "free" });
+});
+
+settingsRouter.patch("/battle-cards", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = z.object({ autoRefresh: z.boolean() }).safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+  }
+
+  await db
+    .update(organizations)
+    .set({ battleCardAutoRefresh: parsed.data.autoRefresh, updatedAt: new Date() })
+    .where(eq(organizations.id, orgId));
+  return c.json({ ok: true });
+});

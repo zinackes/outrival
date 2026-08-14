@@ -173,6 +173,8 @@ export type GenerateBattleCardPayload = {
   orgId: string;
   productId?: string;
   notifyOnComplete?: boolean;
+  /** OUT-193 — enqueued by refresh-stale-battle-cards, not by a click. Wording only. */
+  auto?: boolean;
 };
 export type NotifyOnboardingPayload = { orgId: string; competitorIds: string[] };
 export type BackfillHistoryPayload = {
@@ -464,6 +466,15 @@ export const purgeRetention = defineJob<Empty>("purge-retention", { expireInSeco
 export const detectSilentMonitors = defineJob<Empty>("detect-silent-monitors", {
   expireInSeconds: 300,
 });
+// OUT-193 — self-updating battle cards. Scans once a day for cards the feed has
+// outdated and fans out one generate-battle-card per card. The scan itself is DB-only
+// (light worker); the cards it enqueues land on the browser worker like any other.
+// Never retried: a missed day is a card that stays stale for 24h, whereas a retry
+// storm would re-enqueue generations that the first attempt already queued.
+export const refreshStaleBattleCards = defineJob<Empty>("refresh-stale-battle-cards", {
+  retryLimit: 0,
+  expireInSeconds: 300,
+});
 
 // Dead-man's switch: pings an external heartbeat monitor every few minutes so the
 // alert fires from OUTSIDE when this system stops running. Never retried — a
@@ -507,6 +518,10 @@ export const CRON_SCHEDULES: Record<string, string> = {
   "feedback-pattern-detection": "0 9 * * 1",
   "purge-retention": "0 4 * * *",
   "detect-silent-monitors": "0 8 * * *",
+  // Once a day, after the night's scrapes have landed their signals but before the
+  // 06:00-08:00 digest/detect block — a refreshed card should be what the morning
+  // digest links to, not what it misses by an hour.
+  "refresh-stale-battle-cards": "30 5 * * *",
 };
 
 /**

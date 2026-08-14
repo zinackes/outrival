@@ -4,10 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowClockwiseIcon,
   ArrowLeftIcon,
   ArrowSquareOutIcon,
   CheckIcon,
   CircleIcon,
+  ClockIcon,
   FileTextIcon,
   GitBranchIcon,
   GlobeIcon,
@@ -15,6 +17,7 @@ import {
   SpinnerIcon,
   SparkleIcon,
   UploadSimpleIcon,
+  WarningCircleIcon,
 } from "@/components/icons";
 import { toast } from "@/lib/toast";
 import {
@@ -40,6 +43,7 @@ import {
 import { PLAN_LABELS, type Plan } from "@outrival/shared";
 import { useSetProductScope } from "@/components/dashboard/product-scope-provider";
 import { toastApiError } from "@/lib/error-helpers";
+import { discoverOutcome, type DiscoverOutcome } from "@/lib/discovery-outcome";
 import { cn, isValidHttpUrl } from "@/lib/utils";
 
 // "Add product" as a mini-onboarding (patch-28 multi-SKU). Adding a 2nd+ product used
@@ -250,7 +254,11 @@ export function AddProductWizard({
   const [profile, setProfile] = useState<ProductProfile>(blankProfile());
   const [productId, setProductId] = useState<string | null>(null);
   const [detected, setDetected] = useState<number | null>(null);
-  const [discoverError, setDiscoverError] = useState<string | null>(null);
+  // Why discovery produced nothing, as a titled outcome rather than one sentence: the
+  // product is already created at this point, so the screen has to say which of the
+  // refusals happened (still running / rate-limited / quota / failed) and whether
+  // retrying it here can work at all.
+  const [discoverError, setDiscoverError] = useState<DiscoverOutcome | null>(null);
   // The discovery step's own lifecycle, kept OUT of `busy`. `busy` is cleared by every
   // action's `finally`, and createAndDiscover's finally ran after runDiscover had set
   // busy="discover" — so the screen rendered its terminal branch ("No new competitors
@@ -414,21 +422,21 @@ export function AddProductWizard({
         }
       }
     } catch (e) {
-      // A client timeout doesn't cancel the server: discovery keeps running and
-      // its results (candidates + a notification) land moments later. Don't claim
-      // failure — that would contradict the notification toast that follows.
-      if (e instanceof ApiError && e.data?.error === "timeout") {
-        setDiscoverError(
-          "Still searching for competitors. They'll appear on the Discovery page and in your notifications shortly.",
-        );
-      } else if (e instanceof ApiError && e.status === 429) {
-        setDiscoverError("Discovery is rate-limited right now. You can run it later from the Discovery page.");
-      } else {
-        setDiscoverError("Couldn't run discovery now. You can run it later from the Discovery page.");
-      }
+      // Each refusal reads differently (a client timeout is not a failure at all, a
+      // monthly quota is not a rate limit, a 500 is neither), and none of them means
+      // the product wasn't created. discoverOutcome() keeps that copy in one place.
+      setDiscoverError(discoverOutcome(e));
     } finally {
       setDiscoverPhase("done");
     }
+  }
+
+  // Re-run discovery for the product this wizard already created. Only offered for the
+  // refusals another attempt can actually clear (a 500, a dropped connection, the short
+  // cooldown), never for a spent quota.
+  function retryDiscover() {
+    if (!productId || discoverPhase === "searching") return;
+    void runDiscover(productId);
   }
 
   const seatsFree = seats ? Math.max(0, seats.limit - seats.used) : null;
@@ -753,14 +761,32 @@ export function AddProductWizard({
               <DialogDescription>
                 {discoverPhase !== "done"
                   ? "It's being monitored. We're looking for its competitors now."
-                  : "It's being monitored. Here's what discovery came back with."}
+                  : discoverError
+                    ? discoverError.tone === "pending"
+                      ? "It's created and being monitored. The competitor search is still running."
+                      : "It's created and being monitored. The competitor search is what didn't go through."
+                    : "It's being monitored. Here's what discovery came back with."}
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
               {discoverPhase !== "done" ? (
                 <DiscoverProgress />
               ) : discoverError ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">{discoverError}</p>
+                <div className="flex flex-col items-center gap-3 rounded-lg border border-border px-4 py-6 text-center">
+                  {discoverError.tone === "pending" ? (
+                    <ClockIcon size={24} className="text-muted-foreground" />
+                  ) : (
+                    <WarningCircleIcon size={24} className="text-critical" />
+                  )}
+                  <p className="text-content font-medium">{discoverError.title}</p>
+                  <p className="text-sm text-muted-foreground">{discoverError.description}</p>
+                  {discoverError.canRetry && (
+                    <Button variant="secondary" size="sm" onClick={retryDiscover}>
+                      <ArrowClockwiseIcon size={16} />
+                      Try discovery again
+                    </Button>
+                  )}
+                </div>
               ) : detected && detected > 0 ? (
                 <div className="flex flex-col gap-3">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">

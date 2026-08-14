@@ -1471,19 +1471,35 @@ export async function getPreviousPricing(
   return rows && rows.length > 0 ? rows : null;
 }
 
+/**
+ * The last stored point of a competitor's rating on one source.
+ *
+ * Carries the review total as well as the score because the R7 anti-regression guard
+ * compares both: a collapsed count is the louder of the two symptoms of a capture
+ * that isn't this competitor's profile.
+ */
+export async function getPreviousReviewPoint(
+  competitorId: string,
+  source: string,
+): Promise<{ score: number; reviewCount: number } | null> {
+  const rows = await bestEffortRead<{ score: number; reviewCount: number }>(
+    "getPreviousReviewPoint",
+    () =>
+      db
+        .select({ score: reviewScores.score, reviewCount: reviewScores.reviewCount })
+        .from(reviewScores)
+        .where(and(eq(reviewScores.competitorId, competitorId), eq(reviewScores.source, source)))
+        .orderBy(desc(reviewScores.recordedAt))
+        .limit(1),
+  );
+  return rows && rows.length > 0 ? (rows[0] ?? null) : null;
+}
+
 export async function getPreviousReviewScore(
   competitorId: string,
   source: string,
 ): Promise<number | null> {
-  const rows = await bestEffortRead<{ score: number }>("getPreviousReviewScore", () =>
-    db
-      .select({ score: reviewScores.score })
-      .from(reviewScores)
-      .where(and(eq(reviewScores.competitorId, competitorId), eq(reviewScores.source, source)))
-      .orderBy(desc(reviewScores.recordedAt))
-      .limit(1),
-  );
-  return rows && rows.length > 0 ? (rows[0]?.score ?? null) : null;
+  return (await getPreviousReviewPoint(competitorId, source))?.score ?? null;
 }
 
 // --- Numeric claims (patch-17). Append-only tracking of quantified homepage

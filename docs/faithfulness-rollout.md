@@ -178,7 +178,8 @@ evidence that enabling cannot cause a total outage.
 
 **Production volumes were not obtainable during this spike** (the shared-DB read
 was refused by the local tool policy). The estimate is therefore a rate, per the
-plan's instruction not to invent volumes.
+plan's instruction not to invent volumes. They were obtained afterwards and they
+change the picture: read §8 before acting on this section.
 
 - **Measured false-block rate on the labelled set: 0/7.**
 - With n = 7 and zero observed failures, the rule of three puts the 95%
@@ -273,4 +274,144 @@ gone. This asymmetry is the single most reassuring fact about the decision.
 - **The repository default is untouched.** `FAITHFULNESS_GATE_ENABLED=false`
   stays in `.env.example`. A deployed environment could differ, and this spike
   can only see repository defaults — check the worker's real environment before
-  concluding the gate has never run.
+  concluding the gate has never run. **That check was run: see §8. The worker
+  says `true`.**
+
+## 8. What production was actually doing (checked 2026-08-14)
+
+The worker's real environment carries **`FAITHFULNESS_GATE_ENABLED=true`**
+(`docker inspect outrival-worker-light`). The gate is not being enabled by this
+work. It has been live since **2026-07-22**, on all three surfaces, for 24 days.
+
+`ai_quality_checks` on production, rows where `faithfulness` is not null:
+
+| verdict | n |
+|---|---|
+| pass | 224 |
+| **blocked** | **54** |
+| skipped | 7 |
+
+Blocked, by surface (and the pass count for the same surface):
+
+| surface | blocked | passed | block rate |
+|---|---|---|---|
+| `generate_signal` (critical/high insights) | **37** | 96 | 28% |
+| `generate_digest` | 11 | 110 | 9% |
+| `generate_battle_card` | 6 | 18 | 25% |
+
+**Triage: 53 of the 54 were never reviewed.** The single one that was is recorded
+as `false_positive`. So the production false-block rate this document asked for
+still does not exist, but the queue it was supposed to come from has been filling
+for three weeks with nobody emptying it.
+
+Three consequences, and they invert parts of this document:
+
+1. **The scoped enablement is a narrowing, not an activation.** Setting
+   `FAITHFULNESS_GATE_TASKS=battle_card,digest` turns `signal_insight` **off**,
+   because the list wins over the boolean in both directions (§6). It restores
+   outward publication for critical and high alerts, which is the opposite of the
+   risk §4 was written to avoid.
+2. **37 critical/high alerts were withheld from email and Slack** over those 24
+   days. They stayed readable in-app with `filteredReason = faithfulness_blocked`,
+   which is the designed behaviour, but nobody chose it deliberately and nobody
+   triaged it.
+3. **The deployed code can already read the list.** Correcting what this
+   document said an hour earlier: the worker deploy is not manual.
+   `.github/workflows/deploy.yml` builds and pushes `outrival-worker:latest` on
+   every push to `main` whose diff can reach the image, then pulls and restarts
+   both workers over SSH in `/opt/outrival`. Run `31835870463` did exactly that
+   at 20:00Z on `a0af0503`, which contains the `#501` squash commit, so the
+   running image carries `FAITHFULNESS_GATE_TASKS`. Setting the variable is the
+   only step left.
+
+`skipped` at 7 of 285 (2.5%) is the one reassuring number: the pool answered
+almost every time, so the §1.1 worry about a silently degraded gate did not
+materialise at this volume.
+
+## 9. What the blocks are made of (checked 2026-08-14, same evening)
+
+The counts above move: rows are written per target and a regenerated target
+overwrites its verdict. A second readout two hours later reads 286 rows, **57
+blocked** (40 signals, 11 digests, 6 battle cards), 222 pass, 7 skipped, and
+3 triaged instead of 1 — all three `false_positive`. Use it as a snapshot, not
+as a ledger.
+
+Every blocked row stores the claims the judge refused, so the block reasons can
+be read without triaging by hand. 57 blocked rows carry **120 refused claims**,
+and they are not the same kind of claim on each surface.
+
+**Signals — 40 blocked, 88 refused claims.** Attributing each refused claim to
+the field it came from, by word overlap against the three published fields:
+
+| field of origin | refused claims |
+|---|---|
+| `so_what` | 47 |
+| `recommended_action` | 24 |
+| `insight` | 8 |
+| unattributed | 9 |
+
+**32 of the 40 blocked signals contain no refused claim traceable to the
+insight.** The cause is `apps/workers/src/core/generate-signal.ts:488`: the
+verified output is `{insight, so_what, recommended_action}` and the source is
+the competitor's diff. `so_what` states an implication for *our* product;
+`recommended_action` is advice to us. Neither can appear in a competitor's diff,
+so the judge refuses them as unsupported. Verbatim, two of them:
+
+> This shift could erode the perceived uniqueness of our AI-assisted product
+> development tool.
+
+> Develop a targeted marketing campaign that emphasizes our AI's focus on
+> software product lifecycle acceleration, not hardware piloting.
+
+The judge is answering the question it was given correctly. The question is
+wrong: it asks a diff to support a recommendation.
+
+**Digests — 11 blocked, 24 refused claims.** The same advisory claims, plus a
+second structural family: statements about the digest itself, and statements of
+absence. "The urgency assigned to the insight is watch." "No direct threat was
+identified for Diffly." "No direct feature changes or pricing moves were
+observed." A week of diffs cannot support an absence, so the judge refuses it.
+
+**Battle cards — 6 blocked, 8 refused claims.** All of them factual and about
+the competitor: "Linear offers Business and Basic plans priced at $16 and $10
+per month respectively for small teams." "Hugging Face offers a free tier with
+no monthly cost." Whether each verdict is right still needs triage, but this is
+the surface where the gate refuses the kind of claim it was built to refuse.
+
+The consequence for §6: **the per-surface block rates in §8 are not comparable
+to each other.** 28% on signals measures how much advice a signal contains, not
+how often it invents. It is a stronger reason to keep `signal_insight` out of
+`FAITHFULNESS_GATE_TASKS` than the caution §6 was written with, and it is also
+the reason the 20% false-positive rollback threshold cannot be applied to
+signals as they are: the measurement is invalid before it is unfavourable.
+
+The fix is not to loosen the judge. It is to submit only the layer that can be
+grounded, and that is a change on the call sites, never on `gate.ts`.
+
+**For signals it is done here.** `groundableSignalLayer`
+(`apps/workers/src/lib/faithfulness-gate.ts`) submits the insight alone, and
+three tests pin the rule: the wide output blocks on the advice, the narrow one
+publishes on the same diff, and an invented fact in the insight still blocks.
+The narrowing also stops paying two smart-tier judge calls per signal to rule on
+sentences no diff can settle.
+
+**For digests it is done here too**, after attributing their 24 refused claims
+the same way: 3 come from a section insight, the rest are advice, absences, or
+the digest describing itself. `groundableDigestLayer` submits
+`sections[].insight` and nothing else. What it drops, and why the drop is not a
+judgement call:
+
+| dropped field | why no source can support it |
+|---|---|
+| `tldr[]` | the prompt asks for lines "framed around what it means for OUR product (threat, opportunity, or **non-event**)" |
+| `sections[].so_what` | same instruction, per section |
+| `sections[].urgency`, `temperature` | labels the model assigns to its own output — "The urgency assigned to the insight is watch." is a real refused claim |
+
+`_quality` was never in play: `attachQuality` defines it non-enumerable, so it
+never reaches the serialiser the extractor reads.
+
+**The gap this leaves, stated rather than discovered later:** a `tldr` line
+carrying an invented figure now publishes unverified, and the tldr is the most
+read part of the email. Closing it means changing the digest prompt so a tldr
+line separates the fact from the implication — a change to what the model
+writes, not to what the gate reads, and not part of this.

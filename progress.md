@@ -500,6 +500,21 @@ retenu est un email par semaine et par org, récupérable depuis l'UI digests ; 
 card retenue laisse la précédente servir ; une alerte critique retenue est le seul cas où le
 coût d'un faux blocage se paie immédiatement et ne se rattrape pas plus tard.
 
+**Puis l'environnement réel du worker a été lu, et il inverse la moitié de ce qui précède.**
+`docker inspect outrival-worker-light` dit `FAITHFULNESS_GATE_ENABLED=true` : la porte
+tourne en production depuis le 2026-07-22, sur les TROIS surfaces, depuis 24 jours. Cette
+phase n'allume donc rien, elle **restreint**. Les chiffres, lus dans `ai_quality_checks`
+(détail et conséquences en §8 de `docs/faithfulness-rollout.md`) : 224 `pass`, **54
+`blocked`**, 7 `skipped`. Par surface : `generate_signal` 37 bloqués sur 133 contrôles
+(28 %), `generate_digest` 11 sur 121 (9 %), `generate_battle_card` 6 sur 24 (25 %). **53 des
+54 blocages n'ont jamais été triés** ; le seul qui l'a été est classé `false_positive`. Donc
+37 alertes critical/high ont été retenues hors email et Slack sans que personne ne l'ait
+décidé, le taux de faux blocage que la décision attendait n'existe toujours pas, et poser
+`FAITHFULNESS_GATE_TASKS=battle_card,digest` **rend leur publication sortante** aux alertes
+critiques au lieu de la retirer. Le `skipped` à 7 sur 285 (2,5 %) est la bonne nouvelle : le
+pool a répondu presque à tous les coups, la porte silencieusement dégradée redoutée en §1.1
+ne s'est pas matérialisée à ce volume.
+
 **Le flag, et sa précédence testée.** `FAITHFULNESS_GATE_TASKS` (liste séparée par des
 virgules) l'emporte sur le booléen `FAITHFULNESS_GATE_ENABLED` **dans les deux sens** : il
 allume une tâche que le booléen laisse éteinte, et il garde éteinte toute tâche non listée
@@ -606,29 +621,42 @@ garde-fou n'a été posé par anticipation. R8 se rouvre le jour où 030 passe D
 Rien de cette liste n'a été exécuté : ce sont toutes des actions outward-facing, qui
 demandent un go explicite (`.claude/rules/production.md` §2).
 
-1. **Poser le flag sur le worker, et seulement lui.**
-   `FAITHFULNESS_GATE_TASKS=battle_card,digest`, en laissant `FAITHFULNESS_GATE_ENABLED` à
-   `false`. La porte ne tourne que dans `apps/workers` : la poser sur l'API ne fait rien. Le
-   VPS worker n'est pas sur Coolify, son `.env` est lu au boot, donc **restart requis**.
-   Rollback : retirer la variable, restart. Aucune migration, aucun backfill, aucun code à
-   changer.
-2. **Lire l'environnement réel du worker avant de conclure quoi que ce soit.**
-   `.env.example` livre le booléen à `false`, un env déployé peut différer. S'il y vaut déjà
-   `"true"`, la précédence testée garde `signal_insight` éteint, mais il faut le savoir
-   avant de dire que la porte n'a jamais tourné.
+1. **Poser `FAITHFULNESS_GATE_TASKS=battle_card,digest`** dans `/opt/outrival`
+   (`docker-compose.yml` + `docker-compose.override.yml`, l'env vit là, pas dans
+   `/home/deploy`), et **redémarrer**. Le worker tournant sait déjà lire la liste :
+   contrairement à ce qui était écrit ici il y a une heure, son déploiement n'est pas
+   manuel, `.github/workflows/deploy.yml` reconstruit et redémarre l'image à chaque push
+   sur `main` qui touche du code atteignable, et le run `31835870463` l'a fait à 20:00Z sur
+   `a0af0503`, qui contient le squash de #501. `FAITHFULNESS_GATE_ENABLED` peut rester à
+   `true`, la liste l'emporte. Effet réel : les alertes critical/high **retrouvent** leur
+   publication sortante, battle cards et digests restent gardés. Rollback : retirer la
+   variable, restart, on revient à la porte globale actuelle.
+2. **Vider la file de revue : 54 blocages jamais triés** (3 l'ont été, tous les trois
+   `false_positive`). C'est la mesure que toute la décision attendait et personne ne l'a
+   produite depuis trois semaines.
 3. **Ne pas poser `FAITHFULNESS_MIN_RATIO`.** Inerte par construction (voir plus haut) : le
    régler donnerait une fausse impression de contrôle.
-4. **Migrations : cette phase n'en ajoute aucune.** Celles du projet sont déjà sur main
+4. **Le taux de blocage mesuré AVANT le rétrécissement ne mesure pas l'hallucination.**
+   Les deux call sites soumettaient au juge des phrases qu'aucune source ne peut
+   soutenir : sur les signaux, 47 des 88 claims refusées viennent de `so_what` et 24 de
+   `recommended_action`, et 32 des 40 signaux bloqués n'ont aucune claim refusée issue de
+   l'insight ; sur les digests, 3 des 24 seulement viennent d'un insight de section.
+   `groundableSignalLayer` et `groundableDigestLayer` corrigent les deux (dans #505). Le
+   seuil de rollback à 20 % ne s'applique qu'aux blocages postérieurs à ce déploiement, et
+   c'est cette mesure-là, pas l'ancienne, qui peut rouvrir `signal_insight`. Détail
+   chiffré : `docs/faithfulness-rollout.md` §9. Trou connu et assumé : une ligne de `tldr`
+   qui invente un chiffre publie désormais sans vérification.
+5. **Migrations : cette phase n'en ajoute aucune.** Celles du projet sont déjà sur main
    (0075 completeness, 0076 double capture, 0077 abstention). Avant tout `db:migrate` sur un
    env partagé, vérifier les PENDING : le drift de hash rencontré sur 0034 fait sauter une
    migration en affichant un succès.
-5. **Surveiller 14 jours (deux cycles de digest).** `/admin/ai-review-queue`, entrées dont
+6. **Surveiller 14 jours (deux cycles de digest).** `/admin/ai-review-queue`, entrées dont
    `faithfulness.verdict` vaut `blocked`, triées en « hallucination confirmée » contre
    « faux positif ». Rollback si plus de 20 % des blocages sont des faux positifs, ou plus
    de 3 battle cards par semaine en blocage dur. Si les blocages sont proches de zéro, la
    première hypothèse est la santé du pool, pas un corpus propre : relancer
    `pnpm --filter @outrival/ai eval:faithfulness` contre le pool de PROD, un juge mesuré sur
    un pool ne dit rien d'un autre.
-6. **Merge.** La branche `veracite-p4` porte P4, la porte par tâche, R7 et ce log. Le merge
-   vers `main` déclenche Coolify : décision humaine.
-7. **R8 se rouvre quand le plan 030 passe DONE**, pas avant.
+7. **Merge.** #501 (porte par tâche, R7, ce log) est mergée. Reste #505, qui porte le
+   constat de production et le §9.
+8. **R8 se rouvre quand le plan 030 passe DONE**, pas avant.

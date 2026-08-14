@@ -104,6 +104,61 @@ export function isBlocked(report: FaithfulnessReport | null): boolean {
 }
 
 /**
+ * The layer of a published signal that a competitor diff can actually support.
+ *
+ * The check used to submit the whole signal — insight, so_what and
+ * recommended_action — against the diff. Only the insight is a statement ABOUT
+ * the source. `so_what` states an implication for OUR product and
+ * `recommended_action` is advice to us; a competitor's diff contains neither, so
+ * the judge refused them as unsupported and the signal was blocked over
+ * sentences it had no evidence to rule on either way.
+ *
+ * Measured on production 2026-08-14: of 88 refused claims across 40 blocked
+ * signals, 47 came from `so_what` and 24 from `recommended_action`, and 32 of
+ * the 40 held no refused claim from the insight at all
+ * (docs/faithfulness-rollout.md §9).
+ *
+ * Narrowing the input is not loosening the gate. The hallucination it exists to
+ * stop is an invented fact about the competitor, and that fact can only be
+ * stated in the insight — an invented one there still blocks.
+ */
+export function groundableSignalLayer(published: {
+  insight: string;
+  soWhat: string | null;
+  recommendedAction: string | null;
+}): { insight: string } {
+  return { insight: published.insight };
+}
+
+/**
+ * The layer of a weekly digest that its own week of signals can support.
+ *
+ * The same rule as `groundableSignalLayer`, on the surface it was found on
+ * second. A section's `insight` says what a competitor did. `so_what` and the
+ * `tldr` do not: the digest prompt instructs both to be written "from OUR
+ * perspective" and to name a "non-event" when there is one, so the week's
+ * signals cannot support them, and no source can ever support an absence.
+ * `urgency` and `temperature` are labels the model assigns to its own output,
+ * not assertions about the week — "The urgency assigned to the insight is
+ * watch." is a real refused claim from production.
+ *
+ * Measured 2026-08-14: 24 refused claims across 11 blocked digests, of which 3
+ * attribute to a section insight. The rest are advice, statements of absence, or
+ * the digest describing itself (docs/faithfulness-rollout.md §9).
+ *
+ * The gap this knowingly leaves: a `tldr` line stating an invented figure now
+ * publishes unverified, and the tldr is the most-read part of the email.
+ * Closing it means changing the prompt so a tldr line separates the fact from
+ * the implication — a change to what the model writes, not to what the gate
+ * reads.
+ */
+export function groundableDigestLayer(digest: { sections: Array<{ insight: string }> }): {
+  sections: Array<{ insight: string }>;
+} {
+  return { sections: digest.sections.map((s) => ({ insight: s.insight })) };
+}
+
+/**
  * What may publish after a block was repaired: only a repaired output whose
  * RE-verification came back a clean `pass`. Null means the caller keeps serving
  * what it already had — the previous battle card, untouched.

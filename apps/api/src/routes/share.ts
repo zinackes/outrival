@@ -41,7 +41,9 @@ shareRouter.post("/", async (c) => {
   // Recap link: keyed to a month, no product. Dedupe on (org, recap, meta.month).
   if (type === "recap") {
     const month =
-      typeof body.month === "string" && /^\d{4}-\d{2}$/.test(body.month) ? body.month : null;
+      typeof body.month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(body.month)
+        ? body.month
+        : null;
     if (!month) return c.json({ error: "month_required" }, 400);
     const recaps = await db
       .select({ id: shareLinks.id, token: shareLinks.token, meta: shareLinks.meta })

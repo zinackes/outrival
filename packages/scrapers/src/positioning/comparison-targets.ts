@@ -30,6 +30,20 @@ import { normalizeCustomerName } from "@outrival/shared";
 /** Where a target was named. The first two are the only ones that can signal. */
 export type NamedCompetitorSource = "vs_page" | "alternatives_page" | "blog" | "docs";
 
+/**
+ * The sources that are EVIDENCE OF A FRONT: the competitor built a page to take
+ * this rival on, and the URL is the proof.
+ *
+ * A blog or docs mention is not that. It records that a post wrote a name, which is
+ * worth showing and is never worth stating as "they line up against them" — the two
+ * must never be counted, phrased or rendered as one list.
+ */
+export const PAGE_SOURCES = ["vs_page", "alternatives_page"] as const;
+
+export function isPageSource(source: string): boolean {
+  return (PAGE_SOURCES as readonly string[]).includes(source);
+}
+
 /** One rival a URL names. */
 export interface ComparisonTargetHit {
   /** Prettified from the slug: "microsoft-teams" → "Microsoft Teams". */

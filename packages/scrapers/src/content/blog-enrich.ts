@@ -36,9 +36,25 @@ const MAX_FACET_CHARS = 60;
 /** Summaries are one or two lines by contract; this is the guard, not the intent. */
 const MAX_SUMMARY_CHARS = 400;
 
+/**
+ * What a post says the named company IS to the publisher.
+ *
+ * The extraction has always asked for "other companies the post names", which is a
+ * question about PRESENCE. Presence is not rivalry: a launch post names the
+ * customers running on it, the chips it runs on and the registries it syncs with,
+ * and filing those as competitors is what put Priceline and Spotify on a market map
+ * for a container registry. Only `competitor` is a positioning fact.
+ *
+ * `other` is the landing place for anything unclassified, INCLUDING a model that
+ * omits the field: an unclassified mention must never be able to enter the map.
+ */
+export const MENTION_RELATIONSHIPS = ["competitor", "customer", "partner", "other"] as const;
+export type MentionRelationship = (typeof MENTION_RELATIONSHIPS)[number];
+
 export interface RawMention {
   name: string;
   snippet?: string | null;
+  relationship?: string | null;
 }
 
 export interface RawBlogEnrichment {
@@ -50,12 +66,14 @@ export interface RawBlogEnrichment {
   summary?: string | null;
 }
 
-/** One competitor the post names, with the sentence that names it. */
+/** One company the post names, with the sentence that names it. */
 export interface KeptMention {
   /** As the post writes it. */
   name: string;
   /** Verbatim from the post — substring-verified before it got here. */
   snippet: string;
+  /** What the post makes them to the publisher. Only `competitor` is a rival. */
+  relationship: MentionRelationship;
 }
 
 export interface BlogEnrichment {
@@ -69,6 +87,25 @@ export interface BlogEnrichment {
 
 export function isBlogItemType(value: string): value is BlogItemType {
   return (BLOG_ITEM_TYPES as readonly string[]).includes(value);
+}
+
+/**
+ * The model's label, or `other`.
+ *
+ * Unrecognised and absent both fall to `other` on purpose, and the direction of that
+ * default is the whole guard: an unclassified mention leaves the market map quieter,
+ * where a mention defaulted to `competitor` would put a customer back on it.
+ */
+function relationshipOf(value: string | null | undefined): MentionRelationship {
+  const label = (value ?? "").trim().toLowerCase();
+  return (MENTION_RELATIONSHIPS as readonly string[]).includes(label)
+    ? (label as MentionRelationship)
+    : "other";
+}
+
+/** The mentions that are a positioning fact — the only ones the market map takes. */
+export function rivalMentions(mentions: ReadonlyArray<KeptMention>): KeptMention[] {
+  return mentions.filter((m) => m.relationship === "competitor");
 }
 
 /** Trim, drop the empty and the overlong, dedupe, cap. `lower` for topics only. */
@@ -113,7 +150,7 @@ export function applyBlogGuards(postText: string, raw: RawBlogEnrichment): BlogE
     const snippet = (mention?.snippet ?? "").trim();
     if (!isVerbatim(snippet, postText)) continue;
     seen.add(key);
-    mentions.push({ name, snippet });
+    mentions.push({ name, snippet, relationship: relationshipOf(mention?.relationship) });
     if (mentions.length >= MAX_FACET_VALUES) break;
   }
 

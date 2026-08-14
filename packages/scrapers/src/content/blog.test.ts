@@ -4,7 +4,7 @@ import { extractContent } from "../lib/extract-content";
 import { buildBlogIsland, parseBlogItems, blogIslandShape } from "./parse";
 import { extractPostLinks, canonicalizeUrl } from "./blog-links";
 import { extractArticleText } from "./article-text";
-import { applyBlogGuards } from "./blog-enrich";
+import { applyBlogGuards, rivalMentions } from "./blog-enrich";
 import { resolveSelfMatch, namesBrand } from "./named-you";
 import { fetchPostTexts, MAX_POST_BYTES, POST_FETCH_CAP } from "./fetch";
 import { planBlogRun, BASELINE_ITEMS } from "./blog-run";
@@ -242,6 +242,78 @@ test("a mention survives only when the post writes the name AND the quote", () =
 
 test("an invented item type becomes null rather than a made-up label", () => {
   expect(applyBlogGuards(POST_TEXT, { itemType: "hot_take" }).itemType).toBeNull();
+});
+
+// ── The relationship: presence is not rivalry ───────────────────────────────
+
+// The shape that put airlines and streaming services on a container registry's
+// market map: one launch post naming a customer, a hardware partner and a rival,
+// all of them equally "another company this post names".
+const LAUNCH_POST =
+  "Priceline runs its images on Artifact Registry today. " +
+  "We tuned the build path with Intel. " +
+  "Teams migrating off Docker Hub keep their tags.";
+
+test("only a competitor mention is a market-map fact", () => {
+  const kept = applyBlogGuards(LAUNCH_POST, {
+    itemType: "feature_announcement",
+    competitorsNamed: [
+      {
+        name: "Priceline",
+        snippet: "Priceline runs its images on Artifact Registry today.",
+        relationship: "customer",
+      },
+      {
+        name: "Intel",
+        snippet: "We tuned the build path with Intel.",
+        relationship: "partner",
+      },
+      {
+        name: "Docker Hub",
+        snippet: "Teams migrating off Docker Hub keep their tags.",
+        relationship: "competitor",
+      },
+    ],
+  });
+
+  // Every one of them is still a kept mention: `competitor_named_you` is critical
+  // and fires on the reader being named at all, whatever the post makes them.
+  expect(kept.mentions.map((m) => m.name)).toEqual(["Priceline", "Intel", "Docker Hub"]);
+  // The map takes one.
+  expect(rivalMentions(kept.mentions).map((m) => m.name)).toEqual(["Docker Hub"]);
+});
+
+test("an absent or unrecognised relationship never reaches the map", () => {
+  const kept = applyBlogGuards(POST_TEXT, {
+    competitorsNamed: [
+      // The model omitted the field.
+      { name: "Fivetran", snippet: "Fivetran charges per monthly active row" },
+    ],
+  });
+
+  expect(kept.mentions[0]!.relationship).toBe("other");
+  expect(rivalMentions(kept.mentions)).toHaveLength(0);
+
+  // And a label it invented lands in the same place.
+  const invented = applyBlogGuards(POST_TEXT, {
+    competitorsNamed: [
+      { name: "Fivetran", snippet: "Fivetran charges per monthly active row", relationship: "rival" },
+    ],
+  });
+  expect(invented.mentions[0]!.relationship).toBe("other");
+});
+
+test("the label is read case-insensitively, as the model may write it", () => {
+  const kept = applyBlogGuards(POST_TEXT, {
+    competitorsNamed: [
+      {
+        name: "Fivetran",
+        snippet: "Fivetran charges per monthly active row",
+        relationship: " Competitor ",
+      },
+    ],
+  });
+  expect(rivalMentions(kept.mentions).map((m) => m.name)).toEqual(["Fivetran"]);
 });
 
 // ── competitor_named_you: the critical one ──────────────────────────────────

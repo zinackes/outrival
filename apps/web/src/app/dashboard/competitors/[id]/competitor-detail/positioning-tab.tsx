@@ -20,6 +20,7 @@ import {
   type CompetitorSignal,
   type MarketMap,
   type MessagingVersion,
+  type NamedTarget,
   type PositioningSummary,
   type VisibilitySubjectStats,
   type VisibilityWindowFact,
@@ -148,6 +149,7 @@ export function PositioningTab({
     (summary?.versionsTotal ?? 0) > 0 ||
     (claims?.length ?? 0) > 0 ||
     (map?.targetsTotal ?? 0) > 0 ||
+    (map?.mentionsTotal ?? 0) > 0 ||
     (map?.namedBy.length ?? 0) > 0 ||
     // Counts `proven` too: the ICP section renders on it alone (a vertical their case
     // studies name and they publish no page for), so leaving it out of the tab's own
@@ -241,6 +243,7 @@ export function PositioningTab({
       {(comparisons.length > 0 ||
         map === null ||
         map.targetsTotal > 0 ||
+        map.mentionsTotal > 0 ||
         map.namedBy.length > 0) && (
         <MarketMapSection
           map={map}
@@ -666,6 +669,12 @@ const trim = (n: number) => String(Math.round(n * 10) / 10);
  * it can legitimately include the reader's own product when their site names them.
  * Hiding that row would be a lie of omission on the one page about who fights whom.
  *
+ * "Also named in their content" is a THIRD list and it exists because it used to be
+ * folded into the first. A company named in a blog post rendered exactly like a
+ * company they built a `/vs/` page against, so a container registry read as lining
+ * up against the airline in its own launch post. The evidence differs, so the claim
+ * has to: a page is a front, a post is a mention, and only the first is stated.
+ *
  * A comparison page naming the READER is not in `named_competitors` by design (the
  * reader is never filed as a rival of the company attacking them), so it is
  * rendered above the map from the change that detected it.
@@ -685,16 +694,17 @@ function MarketMapSection({
   competitorName: string;
   competitorUrl: string;
 }) {
-  const [showAll, setShowAll] = useState(false);
+  const [showAllTargets, setShowAllTargets] = useState(false);
+  const [showAllMentions, setShowAllMentions] = useState(false);
   const targets = map?.targets ?? [];
-  const shown = showAll ? targets : targets.slice(0, TARGETS_SHOWN);
+  const mentions = map?.mentions ?? [];
 
   return (
     <TabSection
       title="Who they line up against"
       action={
         <span className="shrink-0 text-xs text-muted-foreground">
-          their own comparison pages and posts
+          their own pages and posts
         </span>
       }
     >
@@ -736,6 +746,7 @@ function MarketMapSection({
       {loading ? (
         <Skeleton className="h-20 w-full" />
       ) : (
+        <div className="flex flex-col gap-5 sm:gap-7">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-7">
           {targets.length > 0 && (
             <div className="flex flex-col gap-2.5 sm:only:col-span-2">
@@ -743,62 +754,15 @@ function MarketMapSection({
                 <h4 className="m-0 text-sm font-semibold tracking-tight">They compare against</h4>
                 <span className="text-xs text-muted-foreground tabular-nums">
                   {map?.targetsTotal ?? targets.length}{" "}
-                  {(map?.targetsTotal ?? targets.length) === 1 ? "rival" : "rivals"} named
+                  {(map?.targetsTotal ?? targets.length) === 1 ? "rival" : "rivals"} they publish a
+                  comparison page against
                 </span>
               </div>
-              <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(15rem,100%),1fr))] gap-x-6 p-0">
-                {shown.map((t) => (
-                  <li
-                    key={t.name}
-                    className="flex flex-col gap-0.5 border-t border-border py-2"
-                  >
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium">{t.name}</span>
-                      {t.announced && <Badge className="text-meta font-medium">New</Badge>}
-                    </span>
-                    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-                      <span>{t.sources.map(sourceLabel).join(", ")}</span>
-                      {t.firstSeenAt && (
-                        <>
-                          <span aria-hidden className="text-border-strong">
-                            ·
-                          </span>
-                          <span className="tabular-nums">
-                            first seen {format(new Date(t.firstSeenAt), "d MMM yyyy")}
-                          </span>
-                        </>
-                      )}
-                      {t.evidenceUrls[0] && (
-                        <>
-                          <span aria-hidden className="text-border-strong">
-                            ·
-                          </span>
-                          <a
-                            href={t.evidenceUrls[0]}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            className="inline-flex items-center gap-1 text-link hover:underline"
-                          >
-                            <span className="font-mono">
-                              {t.evidenceUrls[0].replace(/^https?:\/\/(www\.)?/, "")}
-                            </span>
-                            <ArrowSquareOutIcon size={12} />
-                          </a>
-                        </>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              {targets.length > TARGETS_SHOWN && !showAll && (
-                <button
-                  type="button"
-                  onClick={() => setShowAll(true)}
-                  className="self-start rounded-sm text-xs text-link hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  Show all {targets.length}
-                </button>
-              )}
+              <TargetList
+                targets={targets}
+                showAll={showAllTargets}
+                onShowAll={() => setShowAllTargets(true)}
+              />
             </div>
           )}
 
@@ -851,8 +815,102 @@ function MarketMapSection({
             </div>
           )}
         </div>
+
+        {mentions.length > 0 && (
+          <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-0.5">
+              <h4 className="m-0 text-sm font-semibold tracking-tight">
+                Also named in their content
+              </h4>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {map?.mentionsTotal ?? mentions.length}{" "}
+                {(map?.mentionsTotal ?? mentions.length) === 1 ? "company" : "companies"} a post or
+                a doc page names, with no comparison page behind them. A mention is not a rivalry.
+              </span>
+            </div>
+            <TargetList
+              targets={mentions}
+              showAll={showAllMentions}
+              onShowAll={() => setShowAllMentions(true)}
+            />
+          </div>
+        )}
+        </div>
       )}
     </TabSection>
+  );
+}
+
+/**
+ * One column of named companies, capped until asked.
+ *
+ * Shared by the two halves of the map so a front and a mention are rendered by the
+ * same code and can only ever differ in the heading that frames them — the split
+ * lives in the data, not in two lists that drifted apart.
+ */
+function TargetList({
+  targets,
+  showAll,
+  onShowAll,
+}: {
+  targets: NamedTarget[];
+  showAll: boolean;
+  onShowAll: () => void;
+}) {
+  const shown = showAll ? targets : targets.slice(0, TARGETS_SHOWN);
+  return (
+    <>
+      <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(15rem,100%),1fr))] gap-x-6 p-0">
+        {shown.map((t) => (
+          <li key={t.name} className="flex flex-col gap-0.5 border-t border-border py-2">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium">{t.name}</span>
+              {t.announced && <Badge className="text-meta font-medium">New</Badge>}
+            </span>
+            <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+              <span>{t.sources.map(sourceLabel).join(", ")}</span>
+              {t.firstSeenAt && (
+                <>
+                  <span aria-hidden className="text-border-strong">
+                    ·
+                  </span>
+                  <span className="tabular-nums">
+                    first seen {format(new Date(t.firstSeenAt), "d MMM yyyy")}
+                  </span>
+                </>
+              )}
+              {t.evidenceUrls[0] && (
+                <>
+                  <span aria-hidden className="text-border-strong">
+                    ·
+                  </span>
+                  <a
+                    href={t.evidenceUrls[0]}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-flex items-center gap-1 text-link hover:underline"
+                  >
+                    <span className="font-mono">
+                      {t.evidenceUrls[0].replace(/^https?:\/\/(www\.)?/, "")}
+                    </span>
+                    <ArrowSquareOutIcon size={12} />
+                  </a>
+                </>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {targets.length > TARGETS_SHOWN && !showAll && (
+        <button
+          type="button"
+          onClick={onShowAll}
+          className="self-start rounded-sm text-xs text-link hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Show all {targets.length}
+        </button>
+      )}
+    </>
   );
 }
 

@@ -134,6 +134,41 @@ describe("who they attack", () => {
     expect(map.targets[0].name).toBe("Aviso");
     expect(map.targets[0].sources.sort()).toEqual(["blog", "vs_page"]);
     expect(map.targets[0].evidenceUrls).toHaveLength(2);
+    // The page is the front; the post that also names them is evidence for it, not
+    // a second entry.
+    expect(map.mentions).toEqual([]);
+  });
+
+  // OUT-180. A blog post naming a company used to render exactly like a `/vs/` page
+  // built against them, so a registry read as lining up against the airline its own
+  // launch post named. The evidence differs, so the two lists have to.
+  test("a name only a post carries is a mention, never a front", async () => {
+    const src = await seedCompetitor();
+    await seedTarget(src.competitorId, {
+      displayName: "Solvex",
+      source: "vs_page",
+      evidenceUrl: "https://rival.com/vs/solvex",
+    });
+    await seedTarget(src.competitorId, {
+      displayName: "Airavia",
+      source: "blog",
+      evidenceUrl: "https://rival.com/blog/launch",
+    });
+    await seedTarget(src.competitorId, {
+      displayName: "Chipworks",
+      source: "docs",
+      evidenceUrl: "https://rival.com/docs/gpu",
+    });
+
+    const map = await marketMap(src.competitorId);
+
+    expect(map.targets.map((t: { name: string }) => t.name)).toEqual(["Solvex"]);
+    expect(map.targetsTotal).toBe(1);
+    expect(map.mentions.map((t: { name: string }) => t.name).sort()).toEqual([
+      "Airavia",
+      "Chipworks",
+    ]);
+    expect(map.mentionsTotal).toBe(2);
   });
 });
 

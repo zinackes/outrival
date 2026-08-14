@@ -2958,9 +2958,13 @@ export interface NamedByEntry {
 }
 
 export interface MarketMap {
+  /** Rivals they built a `/vs/` or `/alternatives/` page against — a front. */
   targets: NamedTarget[];
+  /** Companies only ever named in a post or a doc page — a mention, not a front. */
+  mentions: NamedTarget[];
   namedBy: NamedByEntry[];
   targetsTotal: number;
+  mentionsTotal: number;
 }
 
 // A segment they publish a page for (P3).

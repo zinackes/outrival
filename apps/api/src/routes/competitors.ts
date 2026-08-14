@@ -65,7 +65,7 @@ import { translateToEnglish } from "../lib/translate";
 import { detectContentLanguage } from "../lib/detect-language";
 import { readGtm, productNavItems, type GtmRead } from "../lib/homepage-gtm";
 import { dedupeVerbatims } from "../lib/review-verbatims";
-import { namedBy, namedTargets } from "../lib/market-map";
+import { namedBy, namedTargets, splitByEvidence } from "../lib/market-map";
 import { audienceProfile } from "../lib/audience-profile";
 import { positioningFacts, positioningSummary } from "../lib/positioning";
 import {
@@ -2950,6 +2950,11 @@ competitorsRouter.get("/:id/customers", async (c) => {
  * written by a model, so the map can never claim a rivalry the competitor has not
  * published.
  *
+ * `targets` and `mentions` ship as two lists because they are two claims. A `/vs/`
+ * page is a front they built; a name in a blog post is a name in a blog post. They
+ * were one list until a container registry's launch posts filed its own customers as
+ * rivals it lines up against.
+ *
  * The cross reference is intra-workspace STRICT (decision 2 of the card): the org
  * filter is a WHERE clause on the row's OWNER inside `namedBy`, never a filter
  * applied to the result. The tab that renders this arrives in P4.
@@ -2961,17 +2966,22 @@ competitorsRouter.get("/:id/market-map", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  const [targets, namers] = await Promise.all([
+  const [named, namers] = await Promise.all([
     namedTargets(competitor.id),
     namedBy({ competitorId: competitor.id, orgId, name: competitor.name, url: competitor.url }),
   ]);
+  const { targets, mentions } = splitByEvidence(named);
+  // Newest first: who they turned on recently is the read, not who they have been
+  // comparing against since 2021.
+  const newestFirst = (rows: typeof targets) =>
+    [...rows].sort((a, b) => (b.firstSeenAt ?? "").localeCompare(a.firstSeenAt ?? ""));
 
   return c.json({
-    // Newest first: who they turned on recently is the read, not who they have
-    // been comparing against since 2021.
-    targets: [...targets].sort((a, b) => (b.firstSeenAt ?? "").localeCompare(a.firstSeenAt ?? "")),
+    targets: newestFirst(targets),
+    mentions: newestFirst(mentions),
     namedBy: namers,
     targetsTotal: targets.length,
+    mentionsTotal: mentions.length,
   });
 });
 

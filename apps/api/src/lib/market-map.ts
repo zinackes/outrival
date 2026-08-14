@@ -1,7 +1,11 @@
 import { and, eq, isNull, like, ne, or } from "drizzle-orm";
 import { db, competitors, namedCompetitors } from "@outrival/db";
 import { normalizeCustomerName } from "@outrival/shared";
-import { matchTrackedCompetitor, type TargetMatchKind } from "@outrival/scrapers/positioning";
+import {
+  isPageSource,
+  matchTrackedCompetitor,
+  type TargetMatchKind,
+} from "@outrival/scrapers/positioning";
 
 /**
  * The market map: who a competitor attacks, and who attacks them
@@ -32,6 +36,34 @@ export interface NamedTarget {
   lastSeenAt: string | null;
   /** True once a `new_comparison_target` has announced them. */
   announced: boolean;
+}
+
+/**
+ * The two halves of "who they attack", which are NOT the same claim.
+ *
+ * `targets` is a front: they built a `/vs/` or `/alternatives/` page, and the URL is
+ * the evidence. `mentions` is a name a post or a doc page wrote — worth showing,
+ * never worth stating as "they line up against them". Folding the two into one list
+ * is what let a container registry be reported as competing with an airline and a
+ * streaming service, because its launch posts named its customers.
+ */
+export interface MarketMapTargets {
+  targets: NamedTarget[];
+  mentions: NamedTarget[];
+}
+
+/**
+ * Split folded targets on their evidence.
+ *
+ * A target holding BOTH kinds is a front: the page is the stronger claim, and the
+ * post that also names them is extra evidence for it rather than a second entry.
+ */
+export function splitByEvidence(targets: ReadonlyArray<NamedTarget>): MarketMapTargets {
+  const out: MarketMapTargets = { targets: [], mentions: [] };
+  for (const t of targets) {
+    (t.sources.some(isPageSource) ? out.targets : out.mentions).push(t);
+  }
+  return out;
 }
 
 /** Another competitor in THIS workspace that names the one being looked at. */

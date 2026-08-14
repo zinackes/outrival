@@ -20,7 +20,7 @@ import {
 } from "@/components/icons";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { toast } from "@/lib/toast";
-import { DISCOVERY_REGIONS } from "@outrival/shared";
+import { DISCOVERY_REGIONS, stripMarkdown } from "@outrival/shared";
 import {
   ApiError,
   api,
@@ -103,6 +103,16 @@ function count(n: number): string {
 
 function candidateName(c: { title: string | null; url: string }): string {
   return c.title?.trim() || prettyUrl(c.url);
+}
+
+/**
+ * Discovery now strips the search provider's markdown before storing a snippet, but
+ * the rows captured before it did still carry "# Acme", "## About" and "- Industry:
+ * Software" verbatim. Stripping again on read cleans those without a backfill; it is
+ * a no-op on everything discovered since.
+ */
+function candidateSummary(snippet: string | null | undefined): string {
+  return snippet ? stripMarkdown(snippet) : "";
 }
 
 /**
@@ -460,7 +470,7 @@ function CandidateRow({
             it, so a badge there shrank to an unreadable sliver. */}
         <span className="hidden min-w-0 items-center gap-2.5 @3xl:flex">
           <span className="min-w-0 flex-1 truncate text-dense text-muted-foreground">
-            {candidate.snippet?.trim() || candidate.reason || "No description captured."}
+            {candidateSummary(candidate.snippet) || candidate.reason || "No description captured."}
           </span>
           {productLabel && (
             <span className="hidden max-w-[7rem] shrink-0 truncate rounded-sm border border-border px-1.5 py-0.5 text-meta text-muted-foreground @5xl:block">
@@ -577,12 +587,13 @@ function Evidence({
   name: string;
 }) {
   const rows: { key: string; value: React.ReactNode }[] = [];
-  if (candidate.snippet?.trim()) {
+  const summary = candidateSummary(candidate.snippet);
+  if (summary) {
     rows.push({
       key: "What it does",
       value: (
         <>
-          {candidate.snippet.trim()}
+          {summary}
           <span className="mt-1 block text-dense text-muted-foreground">
             Captured from {prettyUrl(candidate.url)} when it was discovered.
           </span>

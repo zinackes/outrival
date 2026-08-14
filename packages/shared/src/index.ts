@@ -67,3 +67,4 @@ export * from "./email/shell";
 export * from "./email/digest";
 export * from "./email/lifecycle";
 export * from "./webhook/sign";
+export * from "./strip-markdown";

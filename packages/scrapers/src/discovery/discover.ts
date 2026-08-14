@@ -1,5 +1,5 @@
 import Exa from "exa-js";
-import { extractBrand, extractHostname, normalizeDomain } from "@outrival/shared";
+import { extractBrand, extractHostname, normalizeDomain, stripMarkdown } from "@outrival/shared";
 import { safeFetch } from "../lib/guarded-fetch";
 
 // Free-hosting / website-builder / preview platforms. Exa surfaces these for
@@ -297,7 +297,11 @@ export async function findSimilarCompanies(
   ].map((r) => ({
     url: r.url,
     title: r.title ?? new URL(r.url).hostname,
-    snippet: r.text ?? "",
+    // Exa returns the page as markdown ("# Acme", "## About", "- Industry: Software").
+    // The snippet is only ever read as plain text — in the review queue and in the
+    // overlap scoring prompt — so the markup is stripped here, at the one point every
+    // caller shares, rather than in each of them.
+    snippet: stripMarkdown(r.text ?? ""),
   }));
 
   const fromSeeds = namedSeeds.map((s) => ({

@@ -48,7 +48,12 @@ import { sendEmail, ALERT_FROM } from "../lib/resend";
 import { decideDispatch } from "../lib/notification-dispatcher";
 import { applySeverityGuard } from "../lib/severity-guard";
 import { truncatedReplyError } from "../lib/classify-errors";
-import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfulness-gate";
+import {
+  checkFaithfulness,
+  isBlocked,
+  blockedReviewEntry,
+  groundableSignalLayer,
+} from "../lib/faithfulness-gate";
 import { interceptEmission, recordEmission } from "../lib/emission-verification";
 
 // A pricing status transition (patch-11) carries its own severity and replaces
@@ -492,16 +497,15 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
             // but "signal_insight" is not in FAITHFULNESS_GATE_TASKS until the
             // false-block rate has been observed on the two recoverable surfaces
             // (docs/faithfulness-rollout.md §4). A withheld critical alert is the
-            // one block nobody can recover by noticing it later.
+            // one block nobody can recover by noticing it later — and until this
+            // narrowing has run for a cycle, the rate measured before it is not a
+            // rate of hallucination, so it cannot be what reopens the scope.
             task: "signal_insight",
-            // What will actually be published, after any abstention: a withheld
-            // sentence has no claims to judge, and judging it would let the gate
-            // block a signal over text nobody will ever read.
-            output: {
-              insight: published.insight,
-              so_what: published.soWhat,
-              recommended_action: published.recommendedAction,
-            },
+            // The INSIGHT only, and after any abstention: a withheld sentence has
+            // no claims to judge, and the two other published fields are not
+            // statements about this diff at all. See groundableSignalLayer — the
+            // production numbers that forced the narrowing are in its comment.
+            output: groundableSignalLayer(published),
             sourceText: formatDiffForPrompt(diffText),
             outputKind: "competitive intelligence signal insight",
             context: { changeId: input.changeId, competitorId: competitor.id, severity },

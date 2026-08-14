@@ -5,6 +5,7 @@ import { verifyFaithfulness, type Claim, type FaithfulnessReport } from "@outriv
 import {
   blockedReviewEntry,
   checkFaithfulness,
+  groundableSignalLayer,
   isBlocked,
   publishableAfterRepair,
 } from "../src/lib/faithfulness-gate";
@@ -223,6 +224,96 @@ describe("per-task enablement (P5)", () => {
     process.env.FAITHFULNESS_GATE_ENABLED = "true";
     process.env.FAITHFULNESS_GATE_TASKS = "digest";
     expect(await checkFaithfulness({ task: "signal_insight", ...publishable })).toBeNull();
+  });
+});
+
+describe("what a signal submits to the gate", () => {
+  // The production failure, reduced: a price move the diff states outright, an
+  // implication for OUR product, and advice to us. Nothing in a competitor's diff
+  // can support the last two, so submitting them blocked the signal over sentences
+  // the judge had no evidence to rule on (docs/faithfulness-rollout.md §9).
+  const DIFF = `<competitor_pricing_after>
+Growth — $249/month
+</competitor_pricing_after>`;
+
+  const published = {
+    insight: "Acme Analytics now lists Growth — $249/month.",
+    soWhat: "This narrows the price gap with our own mid tier.",
+    recommendedAction: "Refresh the pricing battle card before the next renewal wave.",
+  };
+
+  const KIND = "competitive intelligence signal insight";
+
+  /** One claim per submitted field. Only the insight can cite the diff. */
+  function perField(output: Record<string, string>) {
+    return {
+      extractClaims: async (): Promise<Claim[]> =>
+        Object.values(output).map((text) => ({
+          text,
+          citedQuote: text === published.insight ? "Growth — $249/month" : "",
+        })),
+      judgeClaim: async () => ({
+        faithful: false,
+        reason: "the diff says nothing about our own product",
+      }),
+    };
+  }
+
+  test("the whole signal blocks on advice the diff cannot support", async () => {
+    const wide = {
+      insight: published.insight,
+      so_what: published.soWhat,
+      recommended_action: published.recommendedAction,
+    };
+    const report = await verifyFaithfulness(
+      { output: wide, sourceText: DIFF, outputKind: KIND },
+      perField(wide),
+    );
+
+    expect(report.verdict).toBe("blocked");
+    expect(report.unfaithfulClaims.map((c) => c.claim.text)).toEqual([
+      published.soWhat,
+      published.recommendedAction,
+    ]);
+  });
+
+  test("the factual layer alone publishes — same signal, same diff", async () => {
+    const narrow = groundableSignalLayer(published);
+    expect(narrow).toEqual({ insight: published.insight });
+
+    const report = await verifyFaithfulness(
+      { output: narrow, sourceText: DIFF, outputKind: KIND },
+      perField(narrow),
+    );
+
+    expect(report.verdict).toBe("pass");
+    // The insight quotes the diff, so the judge is never called: the narrowing
+    // also removes the two smart-tier calls those two fields were paying for.
+    expect(report.judgeCalls).toBe(0);
+  });
+
+  test("an invented fact in the insight still blocks", async () => {
+    // The narrowing is not a loosening. What the gate exists to stop lives in the
+    // insight, and it is still stopped there.
+    const narrow = groundableSignalLayer({
+      ...published,
+      insight: "Acme Analytics discontinued its Starter plan.",
+    });
+    const report = await verifyFaithfulness(
+      { output: narrow, sourceText: DIFF, outputKind: KIND },
+      {
+        extractClaims: async (): Promise<Claim[]> => [
+          { text: narrow.insight, citedQuote: "" },
+        ],
+        judgeClaim: async () => ({
+          faithful: false,
+          reason: "the diff shows no plan removal",
+        }),
+      },
+    );
+
+    expect(report.verdict).toBe("blocked");
+    expect(report.unfaithfulClaims[0]?.claim.text).toBe(narrow.insight);
   });
 });
 

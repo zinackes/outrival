@@ -386,6 +386,17 @@ the reason the 20% false-positive rollback threshold cannot be applied to
 signals as they are: the measurement is invalid before it is unfavourable.
 
 The fix is not to loosen the judge. It is to submit only the layer that can be
-grounded — the insight, and for digests the factual lines rather than the
-urgency and the "nothing happened" statements. That is a code change on the
-call sites, not on `gate.ts`, and it is not in this phase.
+grounded, and that is a change on the call sites, never on `gate.ts`.
+
+**For signals it is done here.** `groundableSignalLayer`
+(`apps/workers/src/lib/faithfulness-gate.ts`) submits the insight alone, and
+three tests pin the rule: the wide output blocks on the advice, the narrow one
+publishes on the same diff, and an invented fact in the insight still blocks.
+The narrowing also stops paying two smart-tier judge calls per signal to rule on
+sentences no diff can settle.
+
+**Digests still have the fault.** Their check submits the whole digest object,
+urgency fields and "nothing happened" lines included, and `digest` is in the
+task list about to be set. That call site is the next one to narrow — it needs a
+decision about which digest fields are factual, which is why it is not bundled
+here.

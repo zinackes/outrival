@@ -104,6 +104,33 @@ export function isBlocked(report: FaithfulnessReport | null): boolean {
 }
 
 /**
+ * The layer of a published signal that a competitor diff can actually support.
+ *
+ * The check used to submit the whole signal — insight, so_what and
+ * recommended_action — against the diff. Only the insight is a statement ABOUT
+ * the source. `so_what` states an implication for OUR product and
+ * `recommended_action` is advice to us; a competitor's diff contains neither, so
+ * the judge refused them as unsupported and the signal was blocked over
+ * sentences it had no evidence to rule on either way.
+ *
+ * Measured on production 2026-08-14: of 88 refused claims across 40 blocked
+ * signals, 47 came from `so_what` and 24 from `recommended_action`, and 32 of
+ * the 40 held no refused claim from the insight at all
+ * (docs/faithfulness-rollout.md §9).
+ *
+ * Narrowing the input is not loosening the gate. The hallucination it exists to
+ * stop is an invented fact about the competitor, and that fact can only be
+ * stated in the insight — an invented one there still blocks.
+ */
+export function groundableSignalLayer(published: {
+  insight: string;
+  soWhat: string | null;
+  recommendedAction: string | null;
+}): { insight: string } {
+  return { insight: published.insight };
+}
+
+/**
  * What may publish after a block was repaired: only a repaired output whose
  * RE-verification came back a clean `pass`. Null means the caller keeps serving
  * what it already had — the previous battle card, untouched.

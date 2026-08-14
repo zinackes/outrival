@@ -289,6 +289,17 @@ export function ContentTab({
     const at = new Date(m.lastRunAt);
     return !oldest || at < oldest ? at : oldest;
   }, null);
+  // At least one source tried since its last capture and did not come back. The tab
+  // dot no longer shouts it in critical red over a full timeline, so the footer says
+  // it here in words, next to the date it froze at and the link that retries it: the
+  // entries below are real, they are simply the last ones we managed to read.
+  const frozenByFailure = contentMonitors.some((m) => {
+    if (!m.lastFailedAt) return false;
+    const failed = new Date(m.lastFailedAt).getTime();
+    if (Number.isNaN(failed)) return false;
+    const run = m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0;
+    return failed >= run;
+  });
   // The sources that actually put rows on this page. An enabled monitor can have
   // handed us nothing — never captured, or a page that lists no entries — and
   // naming it as somewhere this was "read from" credits the reading to pages we
@@ -480,8 +491,12 @@ export function ContentTab({
           </span>
         )}
         {oldestCheck && (
-          <span>last check {formatDistanceToNow(oldestCheck, { addSuffix: true })}</span>
+          <span>
+            {frozenByFailure ? "last successful check " : "last check "}
+            {formatDistanceToNow(oldestCheck, { addSuffix: true })}
+          </span>
         )}
+        {frozenByFailure && <span>a later scan failed, so this is where it stops</span>}
         {contentMonitors.length > 0 && (
           <RescanLink
             activity={groupActivity(contentMonitors, scrapingIds)}

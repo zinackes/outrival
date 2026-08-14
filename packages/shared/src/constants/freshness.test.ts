@@ -53,6 +53,26 @@ describe("aggregateFreshness: a surface that doesn't exist has no freshness", ()
     expect(agg?.status).toBe("failed");
   });
 
+  test("a failure over a still-fresh capture does not paint the dot red", () => {
+    // OUT-182: one of the four sources behind the Content tab failed last night,
+    // while the timeline on screen is a week of entries collected two days ago. The
+    // dot grades the DATA, so it stays fresh and the tooltip carries the failure.
+    const agg = aggregateFreshness([
+      { sourceType: "blog", lastError: null, lastRunAt: hoursAgo(48), lastFailedAt: null },
+      { sourceType: "roadmap", lastError: "timeout", lastRunAt: hoursAgo(50), lastFailedAt: hoursAgo(1) },
+    ]);
+    expect(agg?.status).toBe("failed");
+    expect(computeFreshness(agg!.lastScrapedAt, agg!.status)).toBe("fresh");
+  });
+
+  test("once the frozen capture ages out, the failure takes the dot back", () => {
+    // Same shape, older data: nothing has been collected in ten days, and the
+    // failure is now the reason. Red is the honest reading.
+    expect(computeFreshness(hoursAgo(24 * 10), "failed")).toBe("failed");
+    expect(computeFreshness(hoursAgo(24 * 40), "failed")).toBe("failed");
+    expect(computeFreshness(null, "failed")).toBe("failed");
+  });
+
   test("callers with no diagnosis to offer keep the old reading", () => {
     const run = hoursAgo(2);
     expect(aggregateFreshness([{ lastRunAt: run, lastFailedAt: null }])).toEqual({

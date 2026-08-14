@@ -79,6 +79,18 @@ export function FreshnessDot({
       </span>
     ) : null;
 
+  // What a failed scan IMPLIES, which the two words on their own never said: the
+  // page is not broken and not empty, it is frozen at the capture whose date sits on
+  // the line right above. Shown whenever the last attempt failed, including when the
+  // frozen data is still fresh and the dot is therefore no longer red.
+  const failedLine =
+    status === "failed" ? (
+      <span className="mt-1 block max-w-[14rem] text-muted-foreground">
+        The latest scan failed, so this is the last successful capture.
+      </span>
+    ) : null;
+  const failedSuffix = status === "failed" ? " · latest scan failed" : "";
+
   // Legacy patch-14 path — unchanged behaviour for callers that don't opt in. A
   // surface the competitor doesn't have takes it too, whatever the caller asked for:
   // there is no age to grade and no re-scan worth offering on a page that isn't
@@ -86,6 +98,8 @@ export function FreshnessDot({
   if (!sourceType || status === "not_available") {
     const level = computeFreshness(lastScrapedAt, status);
     const { dot, label } = CONFIG[level];
+    // Already the headline on a "failed" level; repeating it would read twice.
+    const spoken = level === "failed" ? label : `${label}${failedSuffix}`;
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -94,8 +108,8 @@ export function FreshnessDot({
             tabIndex={0}
             aria-label={
               lastScrapedAt
-                ? `${label} · last scan ${format(new Date(lastScrapedAt), "MMM d, yyyy 'at' HH:mm")}`
-                : label
+                ? `${spoken} · last scan ${format(new Date(lastScrapedAt), "MMM d, yyyy 'at' HH:mm")}`
+                : spoken
             }
             className={cn(
               "inline-block shrink-0 rounded-full cursor-default focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -113,24 +127,29 @@ export function FreshnessDot({
               {format(new Date(lastScrapedAt), "MMM d, yyyy 'at' HH:mm")}
             </span>
           )}
+          {failedLine}
           {nextLine}
         </TooltipContent>
       </Tooltip>
     );
   }
 
-  // patch-27 actionable path. A failed last scan still wins (the data on screen
-  // is whatever the previous success left), otherwise age + source type decide.
+  // patch-27 actionable path. Same rule as `computeFreshness`: a failed last scan
+  // only takes the dot once the capture it froze has aged out. While that capture is
+  // still fresh the data on screen IS current, and age + source type decide.
   const { state, ageDays } = computeFreshnessState(lastScrapedAt, sourceType);
-  const effective: FreshnessState = status === "failed" ? "red" : state;
+  const effective: FreshnessState = status === "failed" && state !== "fresh" ? "red" : state;
   const { dot } = STATE_CONFIG[effective];
   const ageLabel = Number.isFinite(ageDays) ? `${ageDays}d` : "never";
   const headline =
-    status === "failed"
+    status === "failed" && effective === "red"
       ? "Last scan failed"
       : effective === "fresh"
         ? "Up to date"
         : `${STATE_CONFIG[effective].label} · ${ageLabel}`;
+  // Already the headline when the failure won the dot; repeating it would read twice.
+  const spokenHeadline =
+    headline === "Last scan failed" ? headline : `${headline}${failedSuffix}`;
 
   const dotEl = (
     <Tooltip>
@@ -140,8 +159,8 @@ export function FreshnessDot({
           tabIndex={0}
           aria-label={
             lastScrapedAt
-              ? `${headline} · last scan ${format(new Date(lastScrapedAt), "MMM d, yyyy 'at' HH:mm")}`
-              : headline
+              ? `${spokenHeadline} · last scan ${format(new Date(lastScrapedAt), "MMM d, yyyy 'at' HH:mm")}`
+              : spokenHeadline
           }
           className={cn(
             "inline-block shrink-0 rounded-full cursor-default focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -158,6 +177,7 @@ export function FreshnessDot({
             {format(new Date(lastScrapedAt), "MMM d, yyyy 'at' HH:mm")}
           </span>
         )}
+        {failedLine}
         {/* 3-part message (patch-14): age → consequence → action. */}
         {(effective === "orange" || effective === "red") && (
           <span className="mt-1 block max-w-[14rem] text-muted-foreground">

@@ -2,9 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckIcon, CaretDownIcon, CopyIcon, DownloadSimpleIcon } from "@/components/icons";
+import {
+  CheckIcon,
+  CaretDownIcon,
+  CopyIcon,
+  DownloadSimpleIcon,
+  WarningIcon,
+} from "@/components/icons";
 import { api, type Competitor, type CompareColumn, type ProductSummary } from "@/lib/api";
 import { productsListQuery, competitorsQuery, compareRankingQuery } from "@/lib/queries";
+import { toast } from "@/lib/toast";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { assignSeriesColors } from "@/lib/competitor-color";
 import { PageHead } from "@/components/dashboard/page-head";
@@ -410,7 +417,15 @@ export function CompareView() {
     [entities],
   );
   const hasCompetitors = pickComps.length > 0;
-  const canExport = loadedCols.length > 0;
+  // What an export would actually write. Dropping your own column can empty the set
+  // while the matrix still has rows, so the button follows THIS and not `loadedCols`:
+  // "Include your product" off, with your product as the only loaded column, used to
+  // leave the button enabled and the click did nothing at all.
+  const exportCols = useMemo(
+    () => (exportIncludeYou ? loadedCols : loadedCols.filter((c) => !youIds.has(c.id))),
+    [exportIncludeYou, loadedCols, youIds],
+  );
+  const canExport = exportCols.length > 0;
 
   const lensProps = (lens: string) => ({
     entities: rows,
@@ -439,32 +454,36 @@ export function CompareView() {
     return <StackLens key={id} entities={rows} />;
   };
 
+  const exportIsCopy = exportFormat !== "csv";
+
   async function runExport() {
-    const cols = exportIncludeYou
-      ? loadedCols
-      : loadedCols.filter((c) => !youIds.has(c.id));
-    if (cols.length === 0) return;
+    if (exportCols.length === 0) return;
     try {
       if (exportFormat === "csv") {
-        const blob = new Blob([toDelimited(cols, ",")], { type: "text/csv;charset=utf-8" });
+        const blob = new Blob([toDelimited(exportCols, ",")], { type: "text/csv;charset=utf-8" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
         a.download = `compare-${new Date().toISOString().slice(0, 10)}.csv`;
         a.click();
         URL.revokeObjectURL(a.href);
       } else if (exportFormat === "markdown") {
-        await navigator.clipboard.writeText(toMarkdown(cols));
+        await navigator.clipboard.writeText(toMarkdown(exportCols));
       } else {
-        await navigator.clipboard.writeText(toDelimited(cols, "\t"));
+        await navigator.clipboard.writeText(toDelimited(exportCols, "\t"));
       }
       setExportDone(true);
       setTimeout(() => setExportDone(false), 1500);
     } catch {
-      /* clipboard/download blocked — no-op */
+      // A blocked clipboard write (or a blocked download) left the button untouched,
+      // so a failed export read exactly like a successful one that had nothing to write.
+      toast.error(exportIsCopy ? "Couldn't copy the comparison" : "Couldn't save the file", {
+        description: exportIsCopy
+          ? "Your browser blocked access to the clipboard. Allow it for this site, then try again."
+          : "Your browser blocked the download. Allow it for this site, then try again.",
+      });
     }
   }
 
-  const exportIsCopy = exportFormat !== "csv";
   const compCount = rows.filter((r) => !r.mine).length;
   const subject = youCol?.name ?? rows.find((r) => r.mine)?.name ?? null;
 
@@ -602,6 +621,32 @@ export function CompareView() {
             <p className="text-muted-foreground text-sm">Nothing to compare.</p>
           ) : (
             <>
+              {/* A refetch that failed WITH rows already on screen: the branch above only
+                  catches the empty case, so the page kept rendering the previous load as
+                  if it were current, timestamp included. Says so, and offers the retry. */}
+              {matrixError && (
+                <div
+                  role="alert"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-medium/25 bg-medium/8 px-4 py-3"
+                >
+                  <WarningIcon size={16} className="text-medium shrink-0" aria-hidden />
+                  <p className="min-w-0 flex-1 text-sm text-foreground">
+                    Couldn&apos;t refresh this comparison. What you see below is the last data
+                    that loaded, not the current one.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setMatrixError(false);
+                      setMatrixReloadKey((k) => k + 1);
+                    }}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              )}
+
               {youCol && compCols.length > 0 && (
                 <CompareVerdict you={youCol} comps={compCols} />
               )}

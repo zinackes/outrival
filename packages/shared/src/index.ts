@@ -26,6 +26,7 @@ export * from "./url";
 export * from "./reviews";
 export * from "./monitor-url";
 export * from "./candidates";
+export * from "./product-profile";
 export * from "./pricing";
 export * from "./pricing-diff";
 export * from "./entitlement-catalog";

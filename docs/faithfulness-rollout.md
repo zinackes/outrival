@@ -395,8 +395,23 @@ publishes on the same diff, and an invented fact in the insight still blocks.
 The narrowing also stops paying two smart-tier judge calls per signal to rule on
 sentences no diff can settle.
 
-**Digests still have the fault.** Their check submits the whole digest object,
-urgency fields and "nothing happened" lines included, and `digest` is in the
-task list about to be set. That call site is the next one to narrow — it needs a
-decision about which digest fields are factual, which is why it is not bundled
-here.
+**For digests it is done here too**, after attributing their 24 refused claims
+the same way: 3 come from a section insight, the rest are advice, absences, or
+the digest describing itself. `groundableDigestLayer` submits
+`sections[].insight` and nothing else. What it drops, and why the drop is not a
+judgement call:
+
+| dropped field | why no source can support it |
+|---|---|
+| `tldr[]` | the prompt asks for lines "framed around what it means for OUR product (threat, opportunity, or **non-event**)" |
+| `sections[].so_what` | same instruction, per section |
+| `sections[].urgency`, `temperature` | labels the model assigns to its own output — "The urgency assigned to the insight is watch." is a real refused claim |
+
+`_quality` was never in play: `attachQuality` defines it non-enumerable, so it
+never reaches the serialiser the extractor reads.
+
+**The gap this leaves, stated rather than discovered later:** a `tldr` line
+carrying an invented figure now publishes unverified, and the tldr is the most
+read part of the email. Closing it means changing the digest prompt so a tldr
+line separates the fact from the implication — a change to what the model
+writes, not to what the gate reads, and not part of this.

@@ -636,14 +636,16 @@ demandent un go explicite (`.claude/rules/production.md` §2).
    produite depuis trois semaines.
 3. **Ne pas poser `FAITHFULNESS_MIN_RATIO`.** Inerte par construction (voir plus haut) : le
    régler donnerait une fausse impression de contrôle.
-4. **Corriger ce que le check des signaux soumet, avant de rouvrir `signal_insight`.**
-   `generate-signal.ts:488` fait juger `{insight, so_what, recommended_action}` contre le
-   diff du concurrent : sur 88 claims refusées, 47 viennent de `so_what` et 24 de
+4. **Le taux de blocage mesuré AVANT le rétrécissement ne mesure pas l'hallucination.**
+   Les deux call sites soumettaient au juge des phrases qu'aucune source ne peut
+   soutenir : sur les signaux, 47 des 88 claims refusées viennent de `so_what` et 24 de
    `recommended_action`, et 32 des 40 signaux bloqués n'ont aucune claim refusée issue de
-   l'insight. Les digests ont la même faille en plus petit (énoncés d'absence, « la
-   temperature est watch »). Tant que ce n'est pas corrigé, le taux de blocage des signaux
-   ne mesure pas l'hallucination et le seuil de rollback à 20 % ne s'y applique pas.
-   Détail chiffré : `docs/faithfulness-rollout.md` §9.
+   l'insight ; sur les digests, 3 des 24 seulement viennent d'un insight de section.
+   `groundableSignalLayer` et `groundableDigestLayer` corrigent les deux (dans #505). Le
+   seuil de rollback à 20 % ne s'applique qu'aux blocages postérieurs à ce déploiement, et
+   c'est cette mesure-là, pas l'ancienne, qui peut rouvrir `signal_insight`. Détail
+   chiffré : `docs/faithfulness-rollout.md` §9. Trou connu et assumé : une ligne de `tldr`
+   qui invente un chiffre publie désormais sans vérification.
 5. **Migrations : cette phase n'en ajoute aucune.** Celles du projet sont déjà sur main
    (0075 completeness, 0076 double capture, 0077 abstention). Avant tout `db:migrate` sur un
    env partagé, vérifier les PENDING : le drift de hash rencontré sur 0034 fait sauter une

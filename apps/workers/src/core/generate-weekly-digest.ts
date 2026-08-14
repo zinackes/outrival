@@ -20,7 +20,12 @@ import {
   checkGlobalBreaker,
   type DigestInputSignal,
 } from "@outrival/ai";
-import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfulness-gate";
+import {
+  checkFaithfulness,
+  isBlocked,
+  blockedReviewEntry,
+  groundableDigestLayer,
+} from "../lib/faithfulness-gate";
 import {
   buildCompetitorMemory,
   signDigestFeedbackToken,
@@ -360,9 +365,14 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
       // signals. A blocked digest is still stored (the reviewer needs to read it,
       // and the row is this org's idempotency marker) but the EMAIL never goes out:
       // sentAt stays null and the failing claims land in the review queue.
+      //
+      // And of that output, only the section insights: the tldr and each so_what
+      // are instructed by the prompt above to be written from OUR perspective and
+      // to name a non-event, which this week's signals can never support. See
+      // groundableDigestLayer for the production numbers and for the gap it leaves.
       const faithfulness = await checkFaithfulness({
         task: "digest",
-        output: digest,
+        output: groundableDigestLayer(digest),
         sourceText: digestSourceText(input),
         outputKind: "weekly competitive-intelligence digest",
         context: { orgId: org.id, weekStart: isoDate(weekStart) },

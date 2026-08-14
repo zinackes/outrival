@@ -5,6 +5,7 @@ import { verifyFaithfulness, type Claim, type FaithfulnessReport } from "@outriv
 import {
   blockedReviewEntry,
   checkFaithfulness,
+  groundableDigestLayer,
   groundableSignalLayer,
   isBlocked,
   publishableAfterRepair,
@@ -314,6 +315,110 @@ Growth — $249/month
 
     expect(report.verdict).toBe("blocked");
     expect(report.unfaithfulClaims[0]?.claim.text).toBe(narrow.insight);
+  });
+});
+
+describe("what a digest submits to the gate", () => {
+  // The week as the gate sees it: digestSourceText serialises the input signals,
+  // so a section insight that restates one of them cites it verbatim.
+  const WEEK = JSON.stringify(
+    [
+      {
+        competitor: "Acme Analytics",
+        category: "pricing",
+        severity: "high",
+        insight: "Acme Analytics raised Growth from $199 to $249 per month.",
+        so_what: "Their mid tier is now priced above ours.",
+      },
+    ],
+    null,
+    2,
+  );
+
+  // The production shape of a blocked digest: one real section, one tldr line
+  // the prompt asked to be a non-event, and the labels the model assigns itself.
+  const digest = {
+    temperature: "moderate",
+    tldr: ["No direct threat was identified this week."],
+    sections: [
+      {
+        urgency: "watch",
+        competitor: "Acme Analytics",
+        category: "pricing",
+        insight: "Acme Analytics raised Growth from $199 to $249 per month.",
+        so_what: "An opportunity to reinforce our own pricing clarity.",
+      },
+    ],
+  };
+
+  const KIND = "weekly competitive-intelligence digest";
+  const SECTION_INSIGHT = digest.sections[0]!.insight;
+
+  const judgeRefuses = async () => ({
+    faithful: false,
+    reason: "the week's signals say nothing of the sort",
+  });
+
+  function extracting(claims: Claim[]) {
+    return { extractClaims: async () => claims, judgeClaim: judgeRefuses };
+  }
+
+  test("the whole digest blocks on its tldr, its so_what and its own labels", async () => {
+    const report = await verifyFaithfulness(
+      { output: digest, sourceText: WEEK, outputKind: KIND },
+      extracting([
+        { text: SECTION_INSIGHT, citedQuote: SECTION_INSIGHT },
+        { text: digest.tldr[0]!, citedQuote: "" },
+        { text: digest.sections[0]!.so_what, citedQuote: "" },
+        { text: "The urgency assigned to the insight is watch.", citedQuote: "" },
+      ]),
+    );
+
+    expect(report.verdict).toBe("blocked");
+    expect(report.unfaithfulClaims).toHaveLength(3);
+  });
+
+  test("the section insights alone publish — same digest, same week", async () => {
+    const narrow = groundableDigestLayer(digest);
+    expect(narrow).toEqual({ sections: [{ insight: SECTION_INSIGHT }] });
+
+    const report = await verifyFaithfulness(
+      { output: narrow, sourceText: WEEK, outputKind: KIND },
+      extracting([{ text: SECTION_INSIGHT, citedQuote: SECTION_INSIGHT }]),
+    );
+
+    expect(report.verdict).toBe("pass");
+    expect(report.judgeCalls).toBe(0);
+  });
+
+  test("an invented figure in a section insight still blocks", async () => {
+    const invented = "Acme Analytics also discontinued its Starter plan.";
+    const narrow = groundableDigestLayer({
+      sections: [...digest.sections, { insight: invented }],
+    });
+    expect(narrow.sections).toHaveLength(2);
+
+    const report = await verifyFaithfulness(
+      { output: narrow, sourceText: WEEK, outputKind: KIND },
+      extracting([
+        { text: SECTION_INSIGHT, citedQuote: SECTION_INSIGHT },
+        { text: invented, citedQuote: "" },
+      ]),
+    );
+
+    expect(report.verdict).toBe("blocked");
+    expect(report.unfaithfulClaims[0]?.claim.text).toBe(invented);
+  });
+
+  test("a week with no sections is not a block", async () => {
+    // Nothing to extract, nothing to refuse. An org with a quiet week must get
+    // its email, not a review-queue row.
+    const report = await verifyFaithfulness(
+      { output: groundableDigestLayer({ sections: [] }), sourceText: WEEK, outputKind: KIND },
+      extracting([]),
+    );
+    expect(report.verdict).toBe("pass");
+    expect(report.ratio).toBe(1);
   });
 });
 

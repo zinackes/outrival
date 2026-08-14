@@ -98,6 +98,19 @@ battleCardsListRouter.get("/", async (c) => {
       hasPdf: battleCards.pdfR2Key,
       generatedAt: battleCards.generatedAt,
       updatedAt: battleCards.updatedAt,
+      // OUT-193 — how far the feed has moved past each card, so the list says which
+      // cards went stale instead of making the reader open all of them to find out.
+      // Correlated subquery rather than a second round trip: one row per card either
+      // way, and the count can never be paired with the wrong card. Same filter as
+      // GET /:id/battle-card/staleness — low severity and dismissed signals are noise,
+      // and letting noise age a card is what made "Regenerate" permanently amber.
+      signalsSince: dsql<number>`(
+        select count(*)::int from ${signals}
+        where ${signals.competitorId} = ${battleCards.competitorId}
+          and ${signals.createdAt} > coalesce(${battleCards.basedOnCompetitorSignalAt}, ${battleCards.generatedAt})
+          and ${signals.severity} <> 'low'
+          and (${signals.actionStatus} is null or ${signals.actionStatus} <> 'dismissed')
+      )`,
     })
     .from(battleCards)
     .innerJoin(competitors, eq(competitors.id, battleCards.competitorId))
@@ -115,6 +128,7 @@ battleCardsListRouter.get("/", async (c) => {
       hasPdf: Boolean(r.hasPdf),
       generatedAt: r.generatedAt,
       updatedAt: r.updatedAt,
+      signalsSince: Number(r.signalsSince ?? 0),
     })),
   });
 });

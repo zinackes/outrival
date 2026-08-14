@@ -77,6 +77,26 @@ export function shortAge(input: Date | string | number): string {
   return `${Math.floor(days / 30)}mo`;
 }
 
+// Long age for a single headline instant: "just now", "3 hours ago", "12 days ago".
+//
+// The counterpart of `shortAge`: nothing lines up in a column here, so the reader gets
+// words instead of letters. Used where the age IS the message — a battle card saying
+// how long ago it was written — because "Jun 7, 2026" makes the reader subtract dates
+// to answer the only question they had. Singular/plural is spelled out rather than
+// run through Intl.RelativeTimeFormat, whose "last week"/"yesterday" numeric:auto
+// wording drifts from the buckets below.
+export function longAge(input: Date | string | number): string {
+  const mins = Math.max(0, Math.floor((Date.now() - asDate(input).getTime()) / 60_000));
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins} minutes ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 31) return days === 1 ? "1 day ago" : `${days} days ago`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? "1 month ago" : `${months} months ago`;
+}
+
 // Month bucket — "2026-02" → "Feb 2026".
 //
 // The API buckets months by their key, and that key stays the data: sort order, React

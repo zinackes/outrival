@@ -5,6 +5,7 @@ import {
 } from "@/components/outrival/workspace-settings-form";
 import { MonitoringDefaultsCard } from "@/components/outrival/monitoring-defaults-card";
 import { ReferenceVolumesCard } from "@/components/outrival/reference-volumes-card";
+import { BattleCardRefreshCard } from "@/components/outrival/battle-card-refresh-card";
 import {
   SettingsPageHead,
   SettingsSection,
@@ -55,6 +56,13 @@ export default async function GeneralSettingsPage() {
           description="What every competitor you add starts watching. Status pages, changelogs and App Store reviews are added on their own whenever we detect one."
         >
           <MonitoringDefaultsCard />
+        </SettingsSection>
+
+        <SettingsSection
+          title="Battle cards"
+          description="A card is written once and then frozen until someone reopens it. This is what keeps it following the competitor instead."
+        >
+          <BattleCardRefreshCard />
         </SettingsSection>
 
         <SettingsSection

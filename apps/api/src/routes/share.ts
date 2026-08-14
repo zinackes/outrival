@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { and, desc, eq, isNull, ne } from "drizzle-orm";
-import { shareLinks, products } from "@outrival/db";
+import { shareLinks, products, competitors } from "@outrival/db";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
@@ -33,8 +33,10 @@ shareRouter.post("/", async (c) => {
     type?: unknown;
     productId?: unknown;
     month?: unknown;
+    competitorId?: unknown;
   };
-  const type = body.type === "recap" ? "recap" : "landscape";
+  const type =
+    body.type === "recap" ? "recap" : body.type === "battle_card" ? "battle_card" : "landscape";
 
   // Recap link: keyed to a month, no product. Dedupe on (org, recap, meta.month).
   if (type === "recap") {
@@ -55,6 +57,80 @@ shareRouter.post("/", async (c) => {
     const [row] = await db
       .insert(shareLinks)
       .values({ orgId, type: "recap", meta: { month }, token, createdBy: user.id })
+      .returning({ id: shareLinks.id, token: shareLinks.token });
+    if (!row) return c.json({ error: "create_failed" }, 500);
+    return c.json({ id: row.id, token: row.token, url: publicUrl(row.token) }, 201);
+  }
+
+  // Battle card link (OUT-193): keyed to the (product, competitor) couple the card is
+  // written for — the same key the card itself is stored under. Dedupe on that couple,
+  // so re-clicking Share hands back the live URL instead of minting a second token.
+  //
+  // The link points at the couple, NOT at a card row: a card that auto-refreshes
+  // overwrites its row, and a shared link that died on every refresh would be the
+  // opposite of what this ticket is for. The reader always sees the current card.
+  if (type === "battle_card") {
+    const competitorId = typeof body.competitorId === "string" ? body.competitorId : null;
+    if (!competitorId) return c.json({ error: "competitor_required" }, 400);
+
+    const owned = await db.query.competitors.findFirst({
+      where: and(
+        eq(competitors.id, competitorId),
+        eq(competitors.orgId, orgId),
+        isNull(competitors.deletedAt),
+      ),
+      columns: { id: true },
+    });
+    if (!owned) return c.json({ error: "not_found" }, 404);
+
+    const cardProductId = typeof body.productId === "string" ? body.productId : null;
+    if (cardProductId) {
+      const ownedProduct = await db.query.products.findFirst({
+        where: and(
+          eq(products.id, cardProductId),
+          eq(products.orgId, orgId),
+          ne(products.status, "archived"),
+        ),
+        columns: { id: true },
+      });
+      if (!ownedProduct) return c.json({ error: "not_found" }, 404);
+    }
+
+    const cards = await db
+      .select({ id: shareLinks.id, token: shareLinks.token, meta: shareLinks.meta })
+      .from(shareLinks)
+      .where(
+        and(
+          eq(shareLinks.orgId, orgId),
+          eq(shareLinks.type, "battle_card"),
+          cardProductId
+            ? eq(shareLinks.productId, cardProductId)
+            : isNull(shareLinks.productId),
+          isNull(shareLinks.revokedAt),
+        ),
+      );
+    const existingCard = cards.find(
+      (r) => (r.meta as { competitorId?: string } | null)?.competitorId === competitorId,
+    );
+    if (existingCard) {
+      return c.json({
+        id: existingCard.id,
+        token: existingCard.token,
+        url: publicUrl(existingCard.token),
+      });
+    }
+
+    const token = mintToken();
+    const [row] = await db
+      .insert(shareLinks)
+      .values({
+        orgId,
+        type: "battle_card",
+        productId: cardProductId,
+        meta: { competitorId },
+        token,
+        createdBy: user.id,
+      })
       .returning({ id: shareLinks.id, token: shareLinks.token });
     if (!row) return c.json({ error: "create_failed" }, 500);
     return c.json({ id: row.id, token: row.token, url: publicUrl(row.token) }, 201);

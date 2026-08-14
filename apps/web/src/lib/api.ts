@@ -2175,6 +2175,9 @@ export interface BattleCardSummary {
   hasPdf: boolean;
   generatedAt: string;
   updatedAt: string;
+  // OUT-193 — qualifying signals on this competitor since the card was written. 0 =
+  // the card still matches the feed. Same filter as BattleCardStaleness.since.
+  signalsSince: number;
 }
 
 export interface CompetitorCandidate {
@@ -4081,6 +4084,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ type: "recap", month }),
     }),
+  // Battle card share (OUT-193). The link tracks the (product, competitor) couple, so
+  // a card the auto-refresh rewrites stays live at the same URL.
+  createBattleCardShareLink: (competitorId: string, productId?: string) =>
+    request<{ id: string; token: string; url: string }>("/api/share", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "battle_card",
+        competitorId,
+        ...(productId ? { productId } : {}),
+      }),
+    }),
   listShareLinks: () => request<{ links: ShareLink[] }>("/api/share"),
   revokeShareLink: (id: string) =>
     request<{ ok: true }>(`/api/share/${id}`, { method: "DELETE" }),
@@ -4236,6 +4250,17 @@ export const api = {
     request<{ ok: true }>("/api/settings/workspace", {
       method: "PATCH",
       body: JSON.stringify(body),
+    }),
+  // OUT-193 — battle card auto-refresh. `planAllows` is not a paywall: the toggle is
+  // writable on free too, it just says whether the nightly pass acts on it yet.
+  getBattleCardSettings: () =>
+    request<{ autoRefresh: boolean; plan: Plan; planAllows: boolean }>(
+      "/api/settings/battle-cards",
+    ),
+  updateBattleCardSettings: (autoRefresh: boolean) =>
+    request<{ ok: true }>("/api/settings/battle-cards", {
+      method: "PATCH",
+      body: JSON.stringify({ autoRefresh }),
     }),
   getSourceDefaults: () => request<SourceDefaults>("/api/settings/sources"),
   updateSourceDefaults: (defaultSources: SourceType[] | null) =>

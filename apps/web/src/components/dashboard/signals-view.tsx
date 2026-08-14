@@ -38,11 +38,18 @@ import {
   SignalsListHeader,
   QUICK_VIEWS,
   GROUP_MODES,
+  DEFAULT_GROUP,
   type FilterKey,
   type GroupMode,
   type QuickView,
   type Sev,
 } from "./signals-list-header";
+import {
+  signalTier,
+  URGENCY_META,
+  URGENCY_ORDER,
+  type DigestUrgency,
+} from "@/lib/signal-shape";
 import { SignalsListFooter } from "./signals-list-footer";
 import { SignalDetailPanel } from "./signal-detail-panel";
 import {
@@ -88,6 +95,20 @@ const FOLD_WINDOW_MS = 7 * 24 * 3600_000;
 type FeedRow =
   | { kind: "signal"; signal: Signal }
   | { kind: "fold"; key: string; summary: string | null; signals: Signal[] };
+
+// The list is two levels deep, at most. In the default "By priority" mode the
+// section is a tier of the brief and the sub-group is a competitor; every other
+// mode keeps one unlabelled sub-group, so a single walker renders them all and
+// there is no second code path for "grouped" versus "flat".
+type SubGroup = { key: string; label: string; count: number; rows: FeedRow[] };
+type Section = {
+  key: string;
+  label: string;
+  /** The tier's colour band in the brief. Absent outside "By priority". */
+  swatch?: string;
+  count: number;
+  subs: SubGroup[];
+};
 
 // A server batch (same key across every page) wins over the client key, so a fold
 // survives pagination: a member landing on page 3 joins the fold already on screen.
@@ -216,7 +237,7 @@ export function SignalsView() {
   const setGroup = useCallback(
     (mode: GroupMode) => {
       setStoredGroup(mode);
-      setParam({ group: mode === "none" ? null : mode });
+      setParam({ group: mode === DEFAULT_GROUP ? null : mode });
     },
     [setStoredGroup, setParam],
   );
@@ -469,12 +490,62 @@ export function SignalsView() {
     });
   }, [signals, sample, sev, cat, comp, quickView, query]);
 
-  // Sectioned grouping (competitor / day). "similar" doesn't section the list, it
-  // folds rows inside it (feedRows below), so it takes the flat single-group shape.
-  const groups = useMemo<{ key: string; label: string; items: Signal[] }[]>(() => {
-    if (group === "none" || group === "similar")
-      return [{ key: "__all", label: "", items: filtered }];
-    const map = new Map<string, { key: string; label: string; items: Signal[] }>();
+  // The list, sectioned. Folding near-duplicates happens INSIDE every sub-group,
+  // in every mode — it used to be a mode of its own that the reader had to go and
+  // find, which meant the backlog they actually met was the unfolded one.
+  const sections = useMemo<Section[]>(() => {
+    const sub = (key: string, label: string, items: Signal[]): SubGroup => ({
+      key,
+      label,
+      count: items.length,
+      rows: buildFeedRows(items),
+    });
+
+    // Default: the brief's three tiers, competitor by competitor inside each.
+    // Insertion order carries the feed's own ranking down into the sub-groups, so
+    // the competitor with the most pressing move still heads its tier.
+    if (group === "priority") {
+      const byTier = new Map<DigestUrgency, Map<string, Signal[]>>();
+      for (const sig of filtered) {
+        const tier = signalTier(sig);
+        let comps = byTier.get(tier);
+        if (!comps) {
+          comps = new Map();
+          byTier.set(tier, comps);
+        }
+        const items = comps.get(sig.competitorId);
+        if (items) items.push(sig);
+        else comps.set(sig.competitorId, [sig]);
+      }
+      return URGENCY_ORDER.flatMap((tier) => {
+        const comps = byTier.get(tier);
+        if (!comps) return [];
+        const subs = [...comps].map(([id, items]) =>
+          sub(`${tier}:${id}`, items[0]!.competitorName, items),
+        );
+        return [
+          {
+            key: tier,
+            label: URGENCY_META[tier].label,
+            swatch: URGENCY_META[tier].swatch,
+            count: subs.reduce((n, s) => n + s.count, 0),
+            subs,
+          },
+        ];
+      });
+    }
+
+    if (group === "none")
+      return [
+        {
+          key: "__all",
+          label: "",
+          count: filtered.length,
+          subs: [sub("__all", "", filtered)],
+        },
+      ];
+
+    const map = new Map<string, { label: string; items: Signal[] }>();
     const order: string[] = [];
     for (const sig of filtered) {
       const { key, label } =
@@ -483,27 +554,41 @@ export function SignalsView() {
           : dayGroup(sig.createdAt);
       let g = map.get(key);
       if (!g) {
-        g = { key, label, items: [] };
+        g = { label, items: [] };
         map.set(key, g);
         order.push(key);
       }
       g.items.push(sig);
     }
-    return order.map((k) => map.get(k)!);
+    return order.map((k) => {
+      const g = map.get(k)!;
+      return {
+        key: k,
+        label: g.label,
+        count: g.items.length,
+        subs: [sub(k, "", g.items)],
+      };
+    });
   }, [filtered, group]);
 
-  // The list as rendered in "Fold similar": signal rows, with runs of near-duplicates
-  // collapsed into one fold row. Computed in every mode, because `foldedAway` is what
-  // tells the catch-up strip whether folding would buy the reader anything.
-  const feedRows = useMemo(() => buildFeedRows(filtered), [filtered]);
-  const foldedAway = useMemo(
-    () =>
-      feedRows.reduce(
-        (n, r) => (r.kind === "fold" ? n + r.signals.length - 1 : n),
-        0,
-      ),
-    [feedRows],
-  );
+  // What the catch-up strip states, over the unread rows that are LOADED. The
+  // headline count beside it is the server's, whole-set — a backlog deeper than
+  // one page breaks the breakdown down further as the reader loads more, rather
+  // than claiming a total it can't see.
+  const catchUp = useMemo(() => {
+    const tiers: Record<DigestUrgency, number> = {
+      action_required: 0,
+      watch: 0,
+      fyi: 0,
+    };
+    const competitors = new Set<string>();
+    for (const s of filtered) {
+      if (s.isRead) continue;
+      tiers[signalTier(s)]++;
+      competitors.add(s.competitorId);
+    }
+    return { tiers, competitors: competitors.size };
+  }, [filtered]);
 
   function toggleFold(key: string) {
     setExpandedFolds((prev) => {
@@ -523,20 +608,19 @@ export function SignalsView() {
   const navIds = useMemo(() => {
     const out: string[] = [];
     if (brief) out.push(BRIEF_ID);
-    if (group === "similar") {
-      for (const row of feedRows) {
-        if (row.kind === "signal") out.push(row.signal.id);
-        else if (expandedFolds.has(row.key))
-          for (const sig of row.signals) out.push(sig.id);
+    for (const sec of sections) {
+      if (sec.label && collapsed.has(sec.key)) continue;
+      for (const sub of sec.subs) {
+        if (sub.label && collapsed.has(sub.key)) continue;
+        for (const row of sub.rows) {
+          if (row.kind === "signal") out.push(row.signal.id);
+          else if (expandedFolds.has(row.key))
+            for (const sig of row.signals) out.push(sig.id);
+        }
       }
-      return out;
-    }
-    for (const g of groups) {
-      if (group !== "none" && collapsed.has(g.key)) continue;
-      for (const sig of g.items) out.push(sig.id);
     }
     return out;
-  }, [groups, collapsed, group, brief, feedRows, expandedFolds]);
+  }, [sections, collapsed, brief, expandedFolds]);
 
   // Selectable ids = visible signal rows (the brief isn't a signal to act on).
   const selectableIds = useMemo(
@@ -1111,7 +1195,7 @@ export function SignalsView() {
   // box — it now leads the gutter (row px-3 + row py-2.5), with the gauge stacked
   // beneath it rather than abreast of it.
   // The checkbox is a SIBLING of the row button (never nested — invalid HTML).
-  const renderRow = (signal: Signal) => {
+  const renderRow = (signal: Signal, showCompetitor: boolean) => {
     const id = signal.id;
     const isChecked = selected.has(id);
     return (
@@ -1145,6 +1229,7 @@ export function SignalsView() {
             selecting={selectionActive || isChecked}
             selected={selectedId === id}
             tabStop={tabStopId === id}
+            showCompetitor={showCompetitor}
             // Selecting on FOCUS, not only on click: on mobile the detail opens as
             // `fixed inset-0` over the list, so the row under the finger is covered
             // between mousedown and mouseup and the browser retargets the click to a
@@ -1252,10 +1337,10 @@ export function SignalsView() {
             (quickView === "all" || quickView === "unread") && (
               <CatchUpBanner
                 unread={quickCounts.unread}
-                brief={brief}
-                foldable={group === "similar" ? 0 : foldedAway}
+                tiers={catchUp.tiers}
+                competitors={catchUp.competitors}
+                brief={brief !== null}
                 onReadBrief={() => selectRow(BRIEF_ID)}
-                onFold={() => setGroup("similar")}
                 onMarkAllRead={markAllRead}
                 onDismiss={() => setCatchUpDismissed(true)}
               />
@@ -1299,70 +1384,88 @@ export function SignalsView() {
                     onSelect={() => selectRow(BRIEF_ID)}
                   />
                 )}
-                {group === "similar" ? (
-                  <AnimatePresence initial={false} mode="popLayout">
-                    {feedRows.map((row) =>
-                      row.kind === "signal" ? (
-                        renderRow(row.signal)
-                      ) : (
-                        <motion.div
-                          key={row.key}
-                          role="presentation"
-                          {...feedItemMotion}
-                          // The fold grows in place, so this wrapper keeps only its
-                          // POSITION animated: a full `layout` projects the collapsed
-                          // box over the expanded one and scales the whole band and
-                          // its text while it opens, which reads as the row bouncing
-                          // rather than as members appearing under it.
-                          layout="position"
-                        >
-                          <FoldRow
-                            signals={row.signals}
-                            summary={row.summary}
-                            expanded={expandedFolds.has(row.key)}
-                            onToggle={() => toggleFold(row.key)}
-                          />
-                          {/* Expansion is INLINE: the members become ordinary rows,
-                              each opening on its own in the detail pane. They used to
-                              appear in one frame, shoving every row below them down
-                              with nothing to say what pushed. The band opens on the
-                              shared disclosure fold now. `initial={false}` so the
-                              members ride the height instead of each sliding in on
-                              top of it. */}
-                          <AnimatePresence initial={false}>
-                            {expandedFolds.has(row.key) && (
-                              <motion.div key="members" {...disclosureMotion}>
-                                <div className="ml-4 mt-0.5 flex flex-col gap-0.5 border-l border-border pl-1.5">
-                                  {row.signals.map(renderRow)}
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </motion.div>
-                      ),
-                    )}
-                  </AnimatePresence>
-                ) : group === "none" ? (
-                  <AnimatePresence initial={false} mode="popLayout">
-                    {groups[0]?.items.map(renderRow)}
-                  </AnimatePresence>
-                ) : (
-                  groups.map((g) => (
-                    <div key={g.key} className="mb-1 last:mb-0">
-                      <GroupHeader
-                        label={g.label}
-                        count={g.items.length}
-                        collapsed={collapsed.has(g.key)}
-                        onToggle={() => toggleCollapsed(g.key)}
-                      />
-                      {!collapsed.has(g.key) && (
-                        <AnimatePresence initial={false} mode="popLayout">
-                          {g.items.map(renderRow)}
-                        </AnimatePresence>
+                {sections.map((sec) => {
+                  const secOpen = !(sec.label && collapsed.has(sec.key));
+                  return (
+                    <div key={sec.key} className="mb-1 last:mb-0">
+                      {sec.label && (
+                        <GroupHeader
+                          label={sec.label}
+                          swatch={sec.swatch}
+                          count={sec.count}
+                          collapsed={!secOpen}
+                          onToggle={() => toggleCollapsed(sec.key)}
+                        />
                       )}
+                      {secOpen &&
+                        sec.subs.map((sub) => {
+                          const subOpen = !(sub.label && collapsed.has(sub.key));
+                          return (
+                            <div key={sub.key}>
+                              {sub.label && (
+                                <GroupHeader
+                                  nested
+                                  label={sub.label}
+                                  count={sub.count}
+                                  collapsed={!subOpen}
+                                  onToggle={() => toggleCollapsed(sub.key)}
+                                />
+                              )}
+                              {subOpen && (
+                                <AnimatePresence initial={false} mode="popLayout">
+                                  {sub.rows.map((row) =>
+                                    row.kind === "signal" ? (
+                                      renderRow(row.signal, !sub.label)
+                                    ) : (
+                                      <motion.div
+                                        key={row.key}
+                                        role="presentation"
+                                        {...feedItemMotion}
+                                        // The fold grows in place, so this wrapper keeps
+                                        // only its POSITION animated: a full `layout`
+                                        // projects the collapsed box over the expanded one
+                                        // and scales the whole band and its text while it
+                                        // opens, which reads as the row bouncing rather
+                                        // than as members appearing under it.
+                                        layout="position"
+                                      >
+                                        <FoldRow
+                                          signals={row.signals}
+                                          summary={row.summary}
+                                          expanded={expandedFolds.has(row.key)}
+                                          onToggle={() => toggleFold(row.key)}
+                                          showCompetitor={!sub.label}
+                                        />
+                                        {/* Expansion is INLINE: the members become ordinary
+                                            rows, each opening on its own in the detail pane.
+                                            They used to appear in one frame, shoving every
+                                            row below them down with nothing to say what
+                                            pushed. The band opens on the shared disclosure
+                                            fold now. `initial={false}` so the members ride
+                                            the height instead of each sliding in on top of
+                                            it. */}
+                                        <AnimatePresence initial={false}>
+                                          {expandedFolds.has(row.key) && (
+                                            <motion.div key="members" {...disclosureMotion}>
+                                              <div className="ml-4 mt-0.5 flex flex-col gap-0.5 border-l border-border pl-1.5">
+                                                {row.signals.map((s) =>
+                                                  renderRow(s, !sub.label),
+                                                )}
+                                              </div>
+                                            </motion.div>
+                                          )}
+                                        </AnimatePresence>
+                                      </motion.div>
+                                    ),
+                                  )}
+                                </AnimatePresence>
+                              )}
+                            </div>
+                          );
+                        })}
                     </div>
-                  ))
-                )}
+                  );
+                })}
                 {!sample && feedQ.hasNextPage && (
                   <Button
                     variant="ghost"
@@ -1502,25 +1605,37 @@ function SelectCheckbox({
   );
 }
 
-// A collapsible group header for the "By competitor" / "By day" list views. Sticks
-// to the top of the scrolling list so the current group stays labelled while scrolling.
+// A collapsible group header. The section level (a tier, a competitor, a day)
+// sticks to the top of the scrolling list so the current group stays labelled
+// while scrolling; the `nested` level (a competitor inside a tier) does not — two
+// bars stacking as you scroll eats a third of a 400px column.
 function GroupHeader({
   label,
   count,
   collapsed,
   onToggle,
+  swatch,
+  nested = false,
 }: {
   label: string;
   count: number;
   collapsed: boolean;
   onToggle: () => void;
+  /** The brief's colour for this tier, so the two surfaces band alike. */
+  swatch?: string;
+  nested?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onToggle}
       aria-expanded={!collapsed}
-      className="sticky top-0 z-10 flex w-full items-center gap-1.5 rounded-md bg-card/95 px-2 py-1.5 text-left outline-none backdrop-blur transition-colors hover:bg-accent/50 focus-visible:bg-accent/50"
+      className={cn(
+        "flex w-full items-center gap-1.5 rounded-md px-2 text-left outline-none transition-colors hover:bg-accent/50 focus-visible:bg-accent/50",
+        nested
+          ? "py-1 pl-3"
+          : "sticky top-0 z-10 bg-card/95 py-1.5 backdrop-blur",
+      )}
     >
       <CaretDownIcon
         size={16}
@@ -1530,7 +1645,17 @@ function GroupHeader({
         )}
         aria-hidden
       />
-      <span className="min-w-0 flex-1 truncate text-dense font-semibold text-foreground/90">
+      {swatch && (
+        <span className={cn("size-1.5 shrink-0 rounded-full", swatch)} aria-hidden />
+      )}
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate",
+          nested
+            ? "text-meta font-medium text-muted-foreground"
+            : "text-dense font-semibold text-foreground/90",
+        )}
+      >
         {label}
       </span>
       <span className="shrink-0 text-meta text-muted-foreground tabular-nums">

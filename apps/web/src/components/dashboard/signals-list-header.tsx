@@ -60,15 +60,23 @@ export const SEV_DOT: Record<Sev, string> = {
 
 // Master-list grouping (client-only — pure presentation, never touches feedParams
 // so it costs no refetch). Persisted in ?group= so a refresh keeps the view.
-// "similar" is the odd one out: it doesn't cut the list into labelled sections, it
-// folds near-duplicate rows into one (see buildFeedRows in signals-view).
-export const GROUP_MODES = ["none", "competitor", "day", "similar"] as const;
+//
+// "priority" is the default and the reason this list stopped being flat: it cuts
+// the feed into the brief's own three tiers (URGENCY_META), with the competitor
+// as the heading inside each one. A flat list ordered "most relevant" told the
+// reader nothing about where relevance stopped mattering.
+//
+// "Fold similar" is no longer a mode. Folding near-duplicates was opt-in, which
+// meant the reader met the unfolded list first and had to know the setting
+// existed; it now runs inside every mode (buildFeedRows in signals-view).
+export const GROUP_MODES = ["priority", "competitor", "day", "none"] as const;
 export type GroupMode = (typeof GROUP_MODES)[number];
+export const DEFAULT_GROUP: GroupMode = "priority";
 export const GROUP_LABEL: Record<GroupMode, string> = {
-  none: "No grouping",
+  priority: "By priority",
   competitor: "By competitor",
   day: "By day",
-  similar: "Fold similar",
+  none: "No grouping",
 };
 
 export type FilterKey = "severity" | "category" | "competitor";

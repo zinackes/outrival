@@ -5,11 +5,12 @@ import { formatDistanceToNow } from "date-fns";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { shortAge } from "@/lib/format-date";
+import { signalTitle } from "@/lib/signal-shape";
 import { sourceLabel } from "@/lib/source-labels";
 import { competitorNameColor } from "@/lib/competitor-color";
 import { SeverityGauge } from "@/components/outrival/severity-scale";
 import { CompAvatar } from "./comp-avatar";
-import { CatText } from "./cat-pill";
+import { CatText, catLabel } from "./cat-pill";
 
 type Sev = Signal["severity"];
 
@@ -20,6 +21,12 @@ const SEV_RANK: Record<Sev, number> = { critical: 4, high: 3, medium: 2, low: 1 
  * detail lives in the right pane; this stays scannable — the finding leads, and
  * who moved / from where sits under it as attribution. Read rows dim; unread
  * carry a bold title + trailing dot. Selection is a background tint (no bar).
+ *
+ * The row carries the insight's TITLE, not the insight (signalTitle): the model
+ * writes a paragraph, and fifty unread paragraphs is what made the list the
+ * opposite of the brief it summarises. The paragraph itself is one press away,
+ * in the pane. Under it sits the signal's "so what" — the same one line per item
+ * the brief gives, which is the sentence a reader triages on.
  *
  * Severity is the SeverityGauge — the same four bands the detail pane shows, so
  * the encoding is learned once. It replaced a set of four alert icons whose
@@ -33,6 +40,7 @@ export function SignalRow({
   tabStop = false,
   onFocus,
   selecting = false,
+  showCompetitor = true,
 }: {
   signal: Signal;
   selected: boolean;
@@ -45,9 +53,14 @@ export function SignalRow({
   // selection). Fade the avatar out underneath so the two never overlap — the slot
   // is reused instead of reserving a permanent empty gutter left of the list.
   selecting?: boolean;
+  // Off when a competitor heading already stands over this row (the default
+  // grouping nests rows under one). The title no longer opens with the name —
+  // signalTitle strips it — so ungrouped, the meta line is where it lives.
+  showCompetitor?: boolean;
 }) {
   const sev = signal.severityOverride ?? signal.severity;
   const unread = !signal.isRead;
+  const title = signalTitle(signal);
 
   return (
     <button
@@ -111,12 +124,30 @@ export function SignalRow({
               : "font-medium text-muted-foreground",
           )}
         >
-          {signal.insight}
+          {title}
         </span>
-        {/* Where we caught it. The competitor is NOT repeated here: the insight
-            opens with its name (the model writes it from the context it's given),
-            and it opens the line, so truncation never eats it. */}
+        {/* Why it matters, in the one line the brief gives every item. Clamped:
+            a second paragraph under the title would undo what the title bought. */}
+        {signal.soWhat && (
+          <span className="mt-0.5 block truncate text-dense leading-snug text-muted-foreground">
+            {signal.soWhat}
+          </span>
+        )}
+        {/* Where we caught it, and — ungrouped — who moved. The title used to
+            carry the competitor because the insight opens with its name; it is
+            stripped from the title now, so it reads here instead. */}
         <span className="mt-1 flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground">
+          {showCompetitor && (
+            <>
+              <span
+                className="shrink-0 truncate font-medium"
+                style={competitorNameColor(signal.competitorColor)}
+              >
+                {signal.competitorName}
+              </span>
+              <span aria-hidden>·</span>
+            </>
+          )}
           <span className="truncate">{sourceLabel(signal.sourceType)}</span>
           <span aria-hidden>·</span>
           <CatText category={signal.category} />
@@ -176,11 +207,14 @@ export function FoldRow({
   summary,
   expanded,
   onToggle,
+  showCompetitor = true,
 }: {
   signals: Signal[];
   summary: string | null;
   expanded: boolean;
   onToggle: () => void;
+  /** Off under a competitor heading, exactly as on SignalRow. */
+  showCompetitor?: boolean;
 }) {
   const first = signals[0]!;
   const maxSev = signals.reduce<Sev>((m, s) => {
@@ -222,17 +256,22 @@ export function FoldRow({
           {/* The AI batch summary when the grouping came from the server, else a
               plain count. Neither names the competitor reliably, so the meta line
               under it always does. */}
-          {summary ?? `${signals.length} similar ${first.category} signals`}
+          {summary ??
+            `${signals.length} similar ${catLabel(first.category).toLowerCase()} signals`}
         </span>
         <span className="mt-1 flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground">
           <StackIcon size={14} className="shrink-0" aria-hidden />
-          <span
-            className="truncate font-medium"
-            style={competitorNameColor(first.competitorColor)}
-          >
-            {first.competitorName}
-          </span>
-          <span aria-hidden>·</span>
+          {showCompetitor && (
+            <>
+              <span
+                className="truncate font-medium"
+                style={competitorNameColor(first.competitorColor)}
+              >
+                {first.competitorName}
+              </span>
+              <span aria-hidden>·</span>
+            </>
+          )}
           <span className="shrink-0 tabular-nums">{signals.length}</span>
           <span className="shrink-0">signals</span>
           {unread > 0 && (

@@ -159,7 +159,11 @@ export function DigestsView() {
     }
   }
 
-  if (err && digests === null) return <ListError error={err} />;
+  // Same missing argument Discovery had (OUT-190): ListError takes an onRetry, and
+  // a failed list without one is a dead end that only a full reload leaves.
+  if (err && digests === null) {
+    return <ListError error={err} onRetry={() => void digestsQ.refetch()} />;
+  }
 
   return (
     <div className="flex flex-col gap-5">

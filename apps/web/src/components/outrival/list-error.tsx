@@ -25,6 +25,45 @@ export function ListError({ error, onRetry }: { error: unknown; onRetry?: () => 
 }
 
 /**
+ * A page that loaded, missing one of its parts (OUT-190).
+ *
+ * The failure ListError can't carry: what failed isn't the query the screen is
+ * made of, so blanking the page would throw away everything that did arrive.
+ * Names the missing part, leaves the rest readable, and still offers the retry —
+ * the shape AI Visibility already uses for a refetch that didn't land.
+ */
+export function PartialError({
+  title,
+  error,
+  onRetry,
+}: {
+  /** The part that is missing, named: "The market charts didn't load". */
+  title: string;
+  error: unknown;
+  onRetry: () => void;
+}) {
+  const cfg = errorConfig(error);
+  return (
+    <div
+      // Context, not an interruption: the page around it is intact and readable.
+      role="status"
+      className="flex flex-wrap items-start gap-x-3 gap-y-3 rounded-md border border-border bg-card px-4 py-3"
+    >
+      <WarningIcon size={16} className="mt-0.5 shrink-0 text-medium" aria-hidden />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-foreground">{title}</div>
+        <p className="max-w-[62ch] text-dense leading-relaxed text-muted-foreground">
+          {cfg.description}
+        </p>
+      </div>
+      <Button variant="outline" size="sm" onClick={onRetry} className="shrink-0">
+        {cfg.action?.label ?? "Try again"}
+      </Button>
+    </div>
+  );
+}
+
+/**
  * The same failure, inside a settings section (OUT-38).
  *
  * Settings used to state a failed load five different ways — a bare

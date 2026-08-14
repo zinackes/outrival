@@ -36,7 +36,7 @@ import {
   productsListQuery,
 } from "@/lib/queries";
 import { toastApiError } from "@/lib/error-helpers";
-import { ListError } from "@/components/outrival/list-error";
+import { ListError, PartialError } from "@/components/outrival/list-error";
 import {
   PaywallDialog,
   paywallFromError,
@@ -1094,7 +1094,11 @@ export function DiscoveryView() {
     }
   }
 
-  if (error && items === null) return <ListError error={error} />;
+  // OUT-190 — ListError has always taken an onRetry; this view was the one place
+  // that didn't pass it, so a failed queue load was a dead end with nothing to click.
+  if (error && items === null) {
+    return <ListError error={error} onRetry={() => void candidatesQ.refetch()} />;
+  }
 
   const ranked = [...(items ?? [])].sort(
     (a, b) => (b.overlapScore ?? -1) - (a.overlapScore ?? -1),
@@ -1172,6 +1176,17 @@ export function DiscoveryView() {
           </>
         }
       />
+
+      {/* A refetch that failed on top of a list already on screen: the rows below
+          are the previous read, so they stay, and the staleness is stated rather
+          than left to look current. */}
+      {error && items !== null && (
+        <PartialError
+          title="The queue didn't refresh"
+          error={error}
+          onRetry={() => void candidatesQ.refetch()}
+        />
+      )}
 
       {/* The reading, its source note, and the numbers both are made of. */}
       <div className="flex flex-col gap-3 border-b border-border pb-[18px]">

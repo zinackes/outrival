@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { CaretLeftIcon, CaretRightIcon, SparkleIcon, ArrowUpRightIcon } from "@/components/icons";
 import { api, type MonthlyRecap } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { errorConfig } from "@/lib/error-helpers";
 import { ShareRecapButton } from "./share-recap-button";
 
 // Monthly "Competitive Recap" — Wrapped-style (Lever 9). A full-bleed slideshow of
@@ -315,7 +316,7 @@ export function RecapDeck({ recap, publicMode = false }: { recap: MonthlyRecap; 
 // Dashboard entry — fetches the authed recap (needs the dashboard QueryClientProvider),
 // then renders the deck. The public share page renders <RecapDeck> directly instead.
 export function RecapWrapped({ month, publicMode = false }: { month?: string; publicMode?: boolean }) {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
     queryKey: ["recap", month ?? null] as const,
     queryFn: () => api.getRecap(month),
   });
@@ -327,7 +328,27 @@ export function RecapWrapped({ month, publicMode = false }: { month?: string; pu
       </div>
     );
   }
-  if (isError || !data) {
+  // OUT-190 — a failed fetch and a month with nothing in it used to read the same,
+  // and both offered only the way out. /api/recap always builds a recap, so a
+  // rejection here is the request failing, not an empty month: say so, and retry.
+  if (isError) {
+    const cfg = errorConfig(error);
+    return (
+      <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className="text-base font-semibold tracking-tight text-foreground">{cfg.title}</div>
+        <p className="max-w-[380px] text-sm text-muted-foreground">{cfg.description}</p>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button size="sm" onClick={() => void refetch()} disabled={isFetching}>
+            {isFetching ? "Trying…" : (cfg.action?.label ?? "Try again")}
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/dashboard">Back to dashboard</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  if (!data) {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 text-center">
         <p className="text-sm text-muted-foreground">Your recap isn’t ready yet.</p>

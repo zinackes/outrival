@@ -11,7 +11,13 @@ import {
 } from "@/components/icons";
 import { RecapDeck } from "@/components/dashboard/recap-wrapped";
 import { serverApiBase } from "@/lib/api-base";
-import type { BattleCardContent, MonthlyRecap } from "@/lib/api";
+import type { PricingRow, ReportFailure, SharedReport } from "@/lib/report-outcome";
+import {
+  REPORT_FAILURE_COPY,
+  reportFailureFromStatus,
+  reportTitle,
+  resolveReportView,
+} from "@/lib/report-outcome";
 
 // Public, read-only share view (Lever 8/9). Rendered from a share token — no auth, no
 // cookies. Always noindex + never in the sitemap: the token is the only capability.
@@ -19,63 +25,43 @@ import type { BattleCardContent, MonthlyRecap } from "@/lib/api";
 
 const API = serverApiBase();
 
-export const metadata: Metadata = {
-  title: "Competitive Snapshot | Outrival",
-  robots: { index: false, follow: false },
-};
+type ReportLoad = { ok: true; report: SharedReport } | { ok: false; failure: ReportFailure };
 
-type PricingRow = {
-  competitorId: string;
-  planName: string;
-  price: number | null;
-  currency: string | null;
-  billingPeriod: string | null;
-};
-type Competitor = {
-  id: string;
-  name: string;
-  url: string | null;
-  category: string | null;
-  aiSummary: string | null;
-};
-type Report = {
-  org: { name: string };
-  product: { name: string } | null;
-  generatedAt: string;
-  // The user's own product — anchors the "you vs the field" row in the matrix.
-  self: { id: string; name: string; url: string | null } | null;
-  selfPricing: PricingRow[];
-  competitors: Competitor[];
-  pricing: PricingRow[];
-  hiring: { competitorId: string; total: number }[];
-  reviews: { competitorId: string; source: string; score: number; reviewCount: number }[];
-  recentActivity: {
-    competitorName: string;
-    title: string;
-    link: string | null;
-    source: string | null;
-    publishedAt: string | null;
-  }[];
-  insights: { kind: string; text: string }[];
-  // Discriminator (Lever 9): "recap" → the shared Wrapped instead of the landscape.
-  // "battle_card" (OUT-193) → one competitor's card, resolved live from the couple the
-  // token names, so a card the auto-refresh rewrote shows through the same link.
-  kind?: "landscape" | "recap" | "battle_card";
-  recap?: MonthlyRecap;
-  competitor?: { name: string };
-  content?: BattleCardContent;
-};
-
-async function fetchReport(token: string): Promise<Report | null> {
+async function attempt(url: string, init: RequestInit): Promise<ReportLoad> {
   try {
-    const res = await fetch(`${API}/api/public/report/${encodeURIComponent(token)}`, {
-      next: { revalidate: 300 },
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as Report;
+    const res = await fetch(url, init);
+    if (!res.ok) return { ok: false, failure: reportFailureFromStatus(res.status) };
+    return { ok: true, report: (await res.json()) as SharedReport };
   } catch {
-    return null;
+    // Nothing answered at all — never the reader's link.
+    return { ok: false, failure: "unavailable" };
   }
+}
+
+async function loadReport(token: string): Promise<ReportLoad> {
+  const url = `${API}/api/public/report/${encodeURIComponent(token)}`;
+  const first = await attempt(url, { next: { revalidate: 300 } });
+  if (first.ok || first.failure === "revoked") return first;
+  // A revoked link stays revoked, so its 404 is worth the 300s window. An outage is
+  // not: cached, it would keep telling the reader to refresh while every refresh
+  // replays the same stored failure. The uncached retry also opts this render out of
+  // the full-route cache, so the next visit reaches the API again.
+  return attempt(url, { cache: "no-store" });
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}): Promise<Metadata> {
+  const { token } = await params;
+  // Same URL and options as the render's first attempt, so Next's request
+  // memoization serves both from one call.
+  const load = await loadReport(token);
+  return {
+    title: load.ok ? reportTitle(load.report) : "Shared report",
+    robots: { index: false, follow: false },
+  };
 }
 
 function fmtPrice(price: number, currency: string | null): string {
@@ -190,30 +176,42 @@ function PoweredBy() {
   );
 }
 
+// The one screen a reader gets when there is nothing to show. It has to say which of
+// the two it is: "ask for a new link" and "refresh in a minute" are opposite moves,
+// and a stranger has no other way to tell them apart (OUT-189).
+function FailureScreen({ failure }: { failure: ReportFailure }) {
+  const { title, description } = REPORT_FAILURE_COPY[failure];
+  return (
+    <Shell>
+      <div className="rounded-lg border border-border bg-card px-6 py-16 text-center">
+        <h1 className="text-title font-semibold">{title}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+      </div>
+      <PoweredBy />
+    </Shell>
+  );
+}
+
 export default async function ReportPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const report = await fetchReport(token);
+  const load = await loadReport(token);
 
-  if (!report) {
-    return (
-      <Shell>
-        <div className="rounded-lg border border-border bg-card px-6 py-16 text-center">
-          <h1 className="text-title font-semibold">This report isn’t available</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            The link may have been revoked or is no longer valid.
-          </p>
-        </div>
-        <PoweredBy />
-      </Shell>
-    );
-  }
+  if (!load.ok) return <FailureScreen failure={load.failure} />;
+
+  const report = load.report;
+  const resolved = resolveReportView(report);
+
+  // A payload that names a kind it didn't carry is a server fault, not a dead link:
+  // the landscape branch below reads `pricing`/`competitors` unconditionally, so
+  // falling through to it threw a TypeError and served a 500 to a public reader.
+  if (resolved.view === "incomplete") return <FailureScreen failure="unavailable" />;
 
   // Recap share (Lever 9): the Wrapped, in public mode (dashboard links dropped, its own
   // "Powered by Outrival" close).
-  if (report.kind === "recap" && report.recap) {
+  if (resolved.view === "recap") {
     return (
       <Shell>
-        <RecapDeck recap={report.recap} publicMode />
+        <RecapDeck recap={resolved.recap} publicMode />
       </Shell>
     );
   }
@@ -222,8 +220,8 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
   // everything that needs a session (edit, regenerate, evidence drilldown). The date
   // is stated plainly because a card read before a call is only worth what its age
   // says it is, and the reader here has no dashboard to check it against.
-  if (report.kind === "battle_card" && report.content && report.competitor) {
-    const { content, competitor } = report;
+  if (resolved.view === "battle_card") {
+    const { content, competitor } = resolved;
     const generatedOn = new Date(report.generatedAt).toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",

@@ -36,7 +36,9 @@ export interface MonthlyRecap {
 // [start, end) UTC window.
 export function resolveRecapMonth(monthParam: string | undefined, now: Date) {
   let year: number, month: number; // month 0-11
-  const m = monthParam?.match(/^(\d{4})-(\d{2})$/);
+  // Real months only: `2026-13` used to roll over into the next year and hand back a
+  // window nobody asked for, under a label that didn't match the URL (OUT-189).
+  const m = monthParam?.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
   if (m) {
     year = Number(m[1]);
     month = Number(m[2]) - 1;

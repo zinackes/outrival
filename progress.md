@@ -362,3 +362,107 @@ importe déjà `@outrival/queue` · 028 et le périmètre P1/P2 intouchés.
   pas jusqu'au contrôle.
 - P4 (preuve visible dans l'UI) et P5 (porte faithfulness, plan 017) NON entamées, la porte
   reste éteinte.
+
+---
+
+## Véracité Intelligence v2 — P4 : rendre la preuve visible (2026-08-14)
+
+**Le cadrage, verrouillé avant la première ligne.** P1/P2/P3 avaient collecté la preuve
+et l'avaient laissée en base. P4 ne collecte rien : zéro appel IA, zéro migration, on lit
+et on affiche. Les additions vivent DANS les panneaux existants (`signal-evidence.tsx`,
+`why-insight-panel.tsx`, page Sources, digest) — jamais un panneau neuf. L'existant
+(screenshots, wipe #395, scores de corroboration, lien archive) ne bouge pas d'un pixel.
+Arbitrages donnés au GO : **1B** (les citations rejouent `posthoc-grounding.ts` PUR à la
+lecture, rien de persisté), **2B** (la corroboration persiste les ids), **3 GO** sur la
+maquette.
+
+**Le principe qui décide de tout le reste : l'absence de preuve n'affiche rien.** Un
+`outcome = 'skipped'` (la vérification a échoué de NOTRE côté) et un `groundingStatus =
+'skipped'` rendent zéro octet. Pas de badge « non vérifié », pas de placeholder, pas
+d'espace réservé. Un signal d'avant P2/P3, colonnes NULL, se relit exactement comme
+aujourd'hui — c'est un test, pas une intention.
+
+**Fraîcheur honnête : deux dates, pas une.** `lastScanLabel` n'imprimait qu'un nombre, et
+l'événement qu'il décrit change avec le statut — « Scanned 2 days ago » est la dernière
+capture, « Failed 3 hours ago » la dernière tentative. Aucun des deux ne dit jamais quel
+âge a la donnée à l'écran PENDANT qu'on échoue à la rafraîchir : une page confirmée
+inchangée ce matin et une page gelée depuis le 2 août se lisaient pareil. `captureLine`
+(`monitor-status.tsx`) sépare les deux phrases — « Unchanged for 12 days · last checked
+today at 09:12 » (on a regardé, rien n'a bougé) contre « Not verified for 12 days · last
+attempt failed 3 hours ago » (on ne peut plus regarder) — et retourne `null` sur tout
+état dont la phrase parle d'autre chose (bloqué, en pause, pas de surface), où la ligne
+d'aujourd'hui est conservée telle quelle.
+
+**Le chip « as of », une règle pour deux surfaces.** `aggregateCaptureFreshness`
+(`@outrival/shared`) plie N monitors en une date : la PLUS ANCIENNE lecture réussie
+derrière l'onglet, même règle « la source la plus périmée gagne » que `aggregateFreshness`
+utilise pour la pastille — le chip et la pastille ne peuvent donc pas se contredire. Une
+seule source en échec suffit à faire tomber `verified`, parce qu'une partie de l'onglet
+est alors gelée. Le composant `AsOf` est monté une fois sur la barre d'onglets et sert les
+quatre onglets datés. `reviews` en est exclu délibérément : ses sources sont des listings
+tiers sur leurs propres cadences, et un « as of » unique daterait quelque chose qu'aucune
+lecture n'a produit.
+
+**Le badge double capture, un vocabulaire partagé.** `packages/shared/src/constants/
+verification.ts` : `VERIFIED_OUTCOME`, `verificationGapLabel`, `verificationGapMinutes`.
+Le dialogue signal, le digest hebdo et l'alerte Slack lisent le même intervalle — ils ne
+peuvent plus l'arrondir de trois façons. Sous la minute, le label est `null` : « 0 min
+apart » ou « -3 min apart » se lit comme une mesure, ce qui est pire qu'un signal non
+badgé. `formatGap` (privé, dans `signal-proof.tsx`) délègue maintenant à la version
+partagée.
+
+**Slack.** `sendSlackMessage` prend une chaîne mrkdwn, pas des blocks : l'addition est une
+ligne. Le ledger P2 est lu DANS la branche Slack et pas à côté de `text`, pour qu'une org
+sans destination Slack ne paie pas une requête pour un badge que rien n'affichera. Pas de
+lien « voir la preuve » : aucune route par signal n'existe (`/dashboard/signals` est une
+liste, pas un détail) — bloqué, pas oublié.
+
+**Digest.** `DigestEmailData.sections[].verification` est **optionnel**, et c'est ce qui
+rend « le digest est inchangé hors `confirmed` » vrai par construction plutôt que par
+relecture : tous les appelants existants omettent le champ. L'attachement est
+déterministe, quatrième append après le gate de fidélité, comme `sectoralTrends` — aucune
+prose neuve. Mais les sections du modèle ne portent AUCUN id (ni `DigestSchema` ni
+`DigestInputSignal` n'en a jamais eu), donc une section se retrace par (competitor,
+category), et **seulement quand cette paire identifie exactement un signal de la semaine**.
+Deux signaux pricing du même concurrent : la section peut décrire l'un ou l'autre, badger
+une phrase qui parle peut-être du non vérifié est précisément la surinterprétation que P4
+supprime — la paire ambiguë est abandonnée, pas résolue. Le champ est déclaré dans
+`DigestSchema` (sinon un re-parse le supprime) et donc écrit sur CHAQUE section, hits et
+misses : c'est le seul append qui vive dans un bloc que le modèle produit, et une
+`verification` qu'il aurait inventée doit être effacée, pas laissée debout comme preuve.
+
+**Écarts à signaler.**
+- 2B n'a demandé aucune migration : `signals.materiality` est déjà en jsonb. Calculé dans
+  `generate-signal.ts`, pas dans `classify-change.ts`.
+- Tâche #4 sans changement d'API : les monitors expédient déjà toutes les colonnes de
+  fraîcheur, `lastChangedAt` comprise.
+- La position « ligne 42 » du panneau de citations est abandonnée ; `before`/`after` seuls.
+- Le badge A/B dit « not a change » et non « not a price change » sur les sources non
+  pricing.
+- **Ligne 3 de la maquette Sources (« Partial captures on the last 3 runs ») non
+  construite** : `source_degraded` n'existe que comme `logger.warn` dans
+  `scrape-monitor.ts`, jamais persisté en colonne interrogeable. La bâtir demande un
+  rollup API neuf sur `snapshots.status` → signalé, pas d'initiative silencieuse.
+- La clause « le site nous refuse depuis le 2 août » (ligne 2 Sources) est formulée depuis
+  `lastFailedAt` plutôt qu'en réécrivant la copie `blocked` déjà en prod.
+- **Aucune route par signal → la corroboration s'affiche en texte, pas en liens**, et le
+  lien preuve du digest/Slack est bloqué pour la même raison.
+
+**Fichiers modifiés** :
+- `packages/shared` : `constants/verification.ts` (+ test), `constants/freshness.ts`
+  (`aggregateCaptureFreshness` + tests), `email/digest.ts` (+ tests), `index.ts`
+- `packages/ai` : `grounding/posthoc-grounding.ts` (+ test), `index.ts`, `tasks/digest.ts`
+- `packages/db` : `schema/signals.ts`
+- `apps/api` : `routes/signals.ts`
+- `apps/workers` : `core/generate-signal.ts`, `core/generate-weekly-digest.ts`,
+  `core/send-alert.ts`
+- `apps/web` : `components/outrival/signal-proof.tsx` (neuf), `components/outrival/
+  as-of.tsx` (neuf), `components/outrival/signal-evidence.tsx`, `components/outrival/
+  why-insight-panel.tsx`, `lib/api.ts`, `dashboard/competitors/[id]/
+  competitor-detail-view.tsx`, `.../competitor-detail/monitor-status.tsx`,
+  `.../sources/source-row.tsx`
+
+**Tests** : `pnpm typecheck` ✓ (7/7) | `pnpm check:lint` ✓ 0 erreur, 78 warnings (base 81)
+| shared 952 ✓ · workers 428 ✓ · ai 251 ✓ · web 299 ✓ · api 429 ✓
+
+**Prochaine session** : phase 5 — gate de fidélité (plan 017, R7, R8). Non touchée ici.

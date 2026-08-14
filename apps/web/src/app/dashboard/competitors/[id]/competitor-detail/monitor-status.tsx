@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDistanceToNow, formatDistanceToNowStrict } from "date-fns";
+import { format, formatDistanceToNow, formatDistanceToNowStrict, isToday } from "date-fns";
 import {
   WarningCircleIcon,
   ClockIcon,
@@ -9,7 +9,7 @@ import {
   ProhibitIcon,
   ShieldSlashIcon,
 } from "@/components/icons";
-import { hasNoTargetError, isRefused } from "@outrival/shared";
+import { captureFreshness, hasNoTargetError, isRefused } from "@outrival/shared";
 import type { Monitor } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -138,6 +138,50 @@ export function nextScanIn(
   // Strict, so a schedule reads "in 14 hours" and not "in about 14 hours": the
   // hedge is noise on a number the scheduler treats as a ceiling anyway.
   return formatDistanceToNowStrict(new Date(next), { addSuffix: true });
+}
+
+/**
+ * The row's freshness said with BOTH dates it takes to be honest (Véracité
+ * Intelligence v2 P4).
+ *
+ * `lastScanLabel` prints ONE number, and which event it describes changes with the
+ * status: "Scanned 2 days ago" is the last capture, "Failed 3 hours ago" is the last
+ * attempt. Neither ever says how old the data on screen is while we are failing to
+ * refresh it, so a page confirmed unchanged this morning and a page frozen since
+ * Aug 2 read exactly alike — that is the lie this removes. "Unchanged for 12 days"
+ * means we looked and nothing moved; "Not verified for 12 days" means we stopped
+ * being able to look.
+ *
+ * Returns null whenever there is no second date to add — a source that never ran,
+ * one that has never changed since we started watching, or any state whose sentence
+ * is about something other than freshness (blocked, paused, no such surface). The
+ * caller keeps `lastScanLabel` for those, so a monitor from before P4 reads exactly
+ * as it does today.
+ */
+export function captureLine(m: Monitor, status: MonitorStatus): string | null {
+  if (status !== "ok" && status !== "failed") return null;
+  const { lastSuccessAt, verified } = captureFreshness(m);
+  if (!lastSuccessAt) return null;
+  const since = formatDistanceToNowStrict(new Date(lastSuccessAt));
+
+  if (!verified) {
+    // The attempt is the newer event, so it carries the reason the data is frozen.
+    // Without it the line states an age and leaves the user to guess whether we
+    // gave up or the site went quiet.
+    const attempt = m.lastFailedAt
+      ? ` · last attempt failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
+      : "";
+    return `Not verified for ${since}${attempt}`;
+  }
+
+  // No recorded change means we have nothing to say is unchanged — this source has
+  // never produced a diff, and claiming stability over a gap we never measured is
+  // the same overstatement in the other direction.
+  if (!m.lastChangedAt) return null;
+  const stable = formatDistanceToNowStrict(new Date(m.lastChangedAt));
+  const run = new Date(m.lastRunAt ?? lastSuccessAt);
+  const checked = isToday(run) ? `today at ${format(run, "HH:mm")}` : format(run, "MMM d");
+  return `Unchanged for ${stable} · last checked ${checked}`;
 }
 
 /** How long ago this source last produced a capture, phrased for a dense row. */

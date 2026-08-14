@@ -10,8 +10,15 @@ import {
   alerts,
   notifications,
   crmDestinations,
+  signalVerifications,
 } from "@outrival/db";
-import { PLAN_LIMITS, sendWebhook } from "@outrival/shared";
+import {
+  PLAN_LIMITS,
+  sendWebhook,
+  VERIFIED_OUTCOME,
+  verificationGapLabel,
+  verificationGapMinutes,
+} from "@outrival/shared";
 import { sendSlackMessage } from "../lib/slack";
 import { pushWebhook } from "../lib/crm-webhook";
 import { sendEmail, ALERT_FROM } from "../lib/resend";
@@ -46,6 +53,34 @@ const SEVERITY_ROLE: Record<string, EmailSeverity> = {
   medium: "medium",
   low: "low",
 };
+
+/**
+ * "✓✓ Verified · 2 captures 47 min apart", or an empty string (Véracité
+ * Intelligence v2 P4).
+ *
+ * Reads the P2 ledger for the change this signal came from. Returns "" on every
+ * outcome that isn't `confirmed` — `pending`, `not_reproduced`, `skipped`, and the
+ * signals that were never in the verification perimeter, which is most of them — so
+ * the caller concatenates unconditionally and an unbadged alert stays byte-identical
+ * to what it was before P4. A badge is earned, never a default.
+ *
+ * `sendSlackMessage` takes an mrkdwn string rather than blocks, so the addition is
+ * one line. The interval is phrased by the shared `verificationGapLabel`: Slack, the
+ * signal dialog and the weekly digest cannot round the same gap differently. When
+ * the two timestamps aren't both recorded the badge states the claim without a
+ * number instead of inventing one.
+ */
+async function verificationBadge(changeId: string | null): Promise<string> {
+  if (!changeId) return "";
+  const row = await db.query.signalVerifications.findFirst({
+    where: eq(signalVerifications.changeId, changeId),
+  });
+  if (row?.outcome !== VERIFIED_OUTCOME) return "";
+  const gap = verificationGapLabel(
+    verificationGapMinutes(row.quickCheckAt, row.independentCheckAt),
+  );
+  return `\n✓✓ Verified${gap ? ` · 2 captures ${gap} apart` : ""}`;
+}
 
 // Runtime-neutral job body: shared verbatim by the pg-boss handler and the thin
 // Trigger.dev wrapper in ../jobs/send-alert.job.ts (deleted at the cutover). The
@@ -120,7 +155,10 @@ export async function runSendAlert(payload: z.input<typeof InputSchema>) {
       !sentChannels.has("slack")
     ) {
       try {
-        await sendSlackMessage(org.slackWebhookUrl, text);
+        // The ledger is read here and not next to `text`: an org with no Slack
+        // destination pays no extra query for a badge nothing will render.
+        const slackText = `${text}${await verificationBadge(signal.changeId)}`;
+        await sendSlackMessage(org.slackWebhookUrl, slackText);
         await db.insert(alerts).values({
           signalId: signal.id,
           orgId: org.id,

@@ -146,6 +146,8 @@ interface RawNumber {
   currency: string | null;
   core: string;
   suffix: string | null;
+  /** Where `text` starts in the scanned string, so a caller can underline it in place. */
+  index: number;
 }
 
 function scanNumbers(text: string): RawNumber[] {
@@ -154,11 +156,15 @@ function scanNumbers(text: string): RawNumber[] {
   for (const m of normalized.matchAll(NUMBER_RE)) {
     const core = m[2];
     if (!core) continue;
+    // The pattern allows leading whitespace, so the trim that makes `text` readable
+    // also moves where it starts.
+    const lead = m[0].length - m[0].trimStart().length;
     out.push({
       text: m[0].trim(),
       currency: (m[1] ?? m[4] ?? null)?.trim() || null,
       core,
       suffix: m[3] ?? null,
+      index: (m.index ?? 0) + lead,
     });
   }
   return out;
@@ -181,17 +187,22 @@ function kindOf(n: RawNumber): TokenKind {
   return "number";
 }
 
-/** Every quoted span in a text, as the output wrote it (quotes stripped). */
-function scanQuotes(text: string): string[] {
-  const out: string[] = [];
+/** Every quoted span in a text, as the output wrote it (quotes stripped), and where. */
+function scanQuotesAt(text: string): Array<{ span: string; index: number }> {
+  const out: Array<{ span: string; index: number }> = [];
   const re = /"([^"\n]+)"|“([^”\n]+)”|«\s?([^»\n]+?)\s?»/g;
   for (const m of text.matchAll(re)) {
     const span = (m[1] ?? m[2] ?? m[3] ?? "").trim();
     if (span.length < MIN_QUOTED_CHARS || span.length > MAX_QUOTED_CHARS) continue;
     if (!/[a-z0-9]/i.test(span)) continue;
-    out.push(span);
+    out.push({ span, index: (m.index ?? 0) + m[0].indexOf(span) });
   }
   return out;
+}
+
+/** Every quoted span in a text, as the output wrote it (quotes stripped). */
+function scanQuotes(text: string): string[] {
+  return scanQuotesAt(text).map((q) => q.span);
 }
 
 /** The verifiable tokens of a generated output, grouped by kind. */
@@ -275,4 +286,79 @@ export function verifyFieldsAgainstSource(
   }
 
   return { verified: unverified.length === 0, unverified, checked };
+}
+
+/** Past this, the line the popover quotes back stops being a quote and becomes a page. */
+const MAX_SOURCE_LINE_CHARS = 200;
+
+export interface SupportedToken {
+  kind: TokenKind;
+  /** Verbatim, as the output wrote it. */
+  text: string;
+  /** Where `text` sits in the checked output, so the caller can underline in place. */
+  start: number;
+  end: number;
+  /** The source line that carries it, trimmed and bounded. */
+  sourceLine: string;
+}
+
+function excerptLine(line: string): string {
+  const trimmed = line.trim();
+  return trimmed.length > MAX_SOURCE_LINE_CHARS
+    ? `${trimmed.slice(0, MAX_SOURCE_LINE_CHARS - 1)}…`
+    : trimmed;
+}
+
+/**
+ * The mirror image of verifyFieldsAgainstSource: the tokens the source DOES support,
+ * where they sit in the prose, and the line that backs them (Véracité v2 P4).
+ *
+ * Same scanners, same reading rules, same significance test, so a token can never be
+ * reported here AND as unverified there. It only ever produces positives: a figure
+ * whose value is in the source but on no single line is dropped rather than shown
+ * without the quote that justifies it.
+ *
+ * PURE and free, like the rest of the module — no model call, nothing persisted. The
+ * caller decides when it may run; P4 gates it on groundingStatus = 'verified' so an
+ * underline can never contradict the verdict already stored on the signal.
+ */
+export function locateSupportedTokens(output: string, sourceText: string): SupportedToken[] {
+  if (!output || !sourceText) return [];
+  // Offsets are the OUTPUT's own: the unicode-space normalisation in scanNumbers
+  // replaces one character with one character, so what it returns still indexes the
+  // string the caller passed in.
+  const lines = sourceText.split(/\r?\n/);
+  const lineValues = lines.map((line) => sourceValues(line));
+  const normalizedLines = lines.map((line) => normalizeText(line));
+  const found: SupportedToken[] = [];
+
+  for (const n of scanNumbers(output)) {
+    if (!isSignificant(n)) continue;
+    const candidates = valuesOf(n.core, n.suffix);
+    if (candidates.length === 0) continue;
+    const line = lineValues.findIndex((values) => candidates.some((v) => values.has(v)));
+    if (line < 0) continue;
+    found.push({
+      kind: kindOf(n),
+      text: n.text,
+      start: n.index,
+      end: n.index + n.text.length,
+      sourceLine: excerptLine(lines[line] ?? ""),
+    });
+  }
+
+  for (const { span, index } of scanQuotesAt(output)) {
+    const needle = normalizeText(span);
+    const line = normalizedLines.findIndex((l) => l.includes(needle));
+    if (line < 0) continue;
+    found.push({
+      kind: "quoted",
+      text: span,
+      start: index,
+      end: index + span.length,
+      sourceLine: excerptLine(lines[line] ?? ""),
+    });
+  }
+
+  return found.sort((a, b) => a.start - b.start);
 }

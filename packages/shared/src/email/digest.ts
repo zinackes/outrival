@@ -2,6 +2,7 @@ import { emailButton, emailSectionHead, emailShell, type EmailSeverity } from ".
 import { e, t, type EmailRole } from "./theme";
 import { escapeHtml } from "./escape-html";
 import { storySummary, type CompetitorStory } from "../memory/competitor-memory";
+import { verificationGapLabel } from "../constants/verification";
 
 // Structural shape the digest email needs. Kept local to @outrival/shared (rather
 // than importing @outrival/ai's `Digest`) so shared stays at the bottom of the
@@ -16,6 +17,18 @@ export interface DigestEmailData {
     category: string;
     insight: string;
     so_what: string;
+    /**
+     * The double-capture badge (Véracité Intelligence v2 P4). Present ONLY on a
+     * signal whose P2 ledger row reads `confirmed`, attached deterministically by
+     * the weekly job — same pattern as sectoralTrends: no AI call, no new prose.
+     *
+     * Optional is what makes "the digest is unchanged outside `confirmed`" true by
+     * construction rather than by review. Every existing caller omits the field, so
+     * every unverified signal renders the bytes it rendered before P4. A null
+     * `gapMinutes` means the two check timestamps aren't both recorded, and the
+     * badge then states the claim without a measurement instead of inventing one.
+     */
+    verification?: { gapMinutes: number | null };
   }>;
   sectoralTrends?: Array<{ title: string; insight: string }>;
   // Standing queries (watched Ask questions) that materially changed this week.
@@ -47,6 +60,18 @@ const URGENCY_META: Record<
   fyi: { label: "Noted", role: "low", severity: "low" },
 };
 
+// The one line the P4 badge adds to a signal row, or nothing at all. Concatenated
+// unconditionally by signalRow, so the absence of a verification is the absence of a
+// byte rather than a branch someone has to keep honest. `verificationGapLabel` is the
+// same phrasing the signal dialog and the Slack alert use — the three surfaces cannot
+// round one gap three ways.
+function verifiedBadge(v: DigestEmailData["sections"][number]["verification"]): string {
+  if (!v) return "";
+  const gap = verificationGapLabel(v.gapMinutes);
+  return `
+    <div ${e("positive", t("meta", "margin-top:6px;letter-spacing:normal;"))}>&#10003;&#10003; Verified${gap ? ` · 2 captures ${gap} apart` : ""}</div>`;
+}
+
 // One signal, boxless: a hairline above every row but the first, instead of a
 // bordered card per item. Three groups of identical cards gave the week no shape
 // — "Needs an answer" and "Noted" rendered the same weight (DESIGN.md §5).
@@ -61,7 +86,7 @@ function signalRow(
   <div ${e("rule", divider)}>
     <div ${e("muted", t("dense", "margin-bottom:5px;"))}>${escapeHtml(s.competitor)} · ${escapeHtml(s.category.replace(/_/g, " "))}</div>
     <div ${e("text", t("lead", "margin-bottom:6px;"))}>${escapeHtml(s.insight)}</div>
-    ${s.so_what ? `<div ${e("muted", t("body"))}>→ ${escapeHtml(s.so_what)}</div>` : ""}
+    ${s.so_what ? `<div ${e("muted", t("body"))}>→ ${escapeHtml(s.so_what)}</div>` : ""}${verifiedBadge(s.verification)}
   </div>`;
 }
 

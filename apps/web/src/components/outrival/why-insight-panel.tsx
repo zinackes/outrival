@@ -4,11 +4,17 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowSquareOutIcon } from "@/components/icons";
 import { format } from "date-fns";
-import { api } from "@/lib/api";
+import { api, type SignalDetail } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { sourceLabel } from "@/lib/source-labels";
 import { GroupedChanges } from "@/components/outrival/change-breakdown";
 import { DiffPreview } from "@/components/outrival/diff-preview";
+import {
+  AbVariants,
+  CitedInsight,
+  CorroborationSources,
+  SignalProof,
+} from "@/components/outrival/signal-proof";
 import {
   Dialog,
   DialogContent,
@@ -85,8 +91,13 @@ const MATERIALITY_AXES = [
  */
 function MaterialityReadout({
   scores,
+  corroboration = [],
 }: {
   scores: { decisionImpact: number; urgency: number; corroboration: number; explanation: string };
+  // The surfaces the corroboration sub-score counted (Véracité P4). Empty on every
+  // signal classified before they were persisted, and then the axis reads as it
+  // always has: four ticks and a number.
+  corroboration?: NonNullable<SignalDetail["corroboration"]>;
 }) {
   return (
     <div className="mt-2.5 space-y-2.5">
@@ -116,6 +127,9 @@ function MaterialityReadout({
                 {value}/3
               </span>
               <span className="block text-xs text-muted-foreground">{axis.gloss}</span>
+              {axis.key === "corroboration" && (
+                <CorroborationSources sources={corroboration} />
+              )}
             </span>
           </div>
         );
@@ -222,6 +236,27 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
           </DialogDescription>
         </DialogHeader>
 
+        {/* Véracité P4 — the proof sits under the line that says where the signal
+            came from and above the evidence: it qualifies the whole signal, not one
+            of its columns. Each part renders null when its field is absent, so a
+            signal from before the checks existed keeps the panel it always had.
+            The insight itself is only printed here when the grounder can underline
+            figures inside it — otherwise the sentence is already on the card behind
+            this dialog and repeating it would move everything down for nothing. */}
+        {detail && (
+          <div className="space-y-3">
+            {detail.citations && detail.citations.length > 0 && (
+              <CitedInsight
+                text={detail.insight}
+                citations={detail.citations}
+                className="block text-sm leading-relaxed text-foreground"
+              />
+            )}
+            <SignalProof detail={detail} />
+            <AbVariants detail={detail} />
+          </div>
+        )}
+
         {state === "loading" && (
           <div className="space-y-3">
             <Skeleton className="h-3 w-24" />
@@ -295,7 +330,10 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
               {detail.materiality && (
                 <>
                   <SectionLabel className="mt-6">Why this severity</SectionLabel>
-                  <MaterialityReadout scores={detail.materiality} />
+                  <MaterialityReadout
+                scores={detail.materiality}
+                corroboration={detail.corroboration ?? []}
+              />
                 </>
               )}
 

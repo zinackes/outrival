@@ -5,7 +5,7 @@ import {
   evaluateStandingQueries,
 } from "@outrival/queue";
 import { z } from "zod";
-import { and, asc, desc, eq, ne, or, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, ne, or, isNull } from "drizzle-orm";
 import {
   db,
   type SelfProfile,
@@ -504,6 +504,45 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
         : null;
     const faithfulnessBlocked = isBlocked(faithfulness);
 
+    // Véracité P4 — the surfaces the corroboration sub-score was counted over, kept
+    // as IDS so the panel can link them instead of restating a 0-3 score the reader
+    // cannot check. Same competitor, same 14-day window, same limit as the block the
+    // classifier was shown (classify-change) — the ids are the one field that block
+    // deliberately never carried, because prose from a neighbouring signal is what
+    // contaminated prod signal fdd882b1.
+    //
+    // Anchored on the change's own detection instant rather than on now, so the row
+    // means the same thing when it is read a month later, and so a signal deferred 30
+    // minutes by the P2 double capture resolves the same neighbours as one that was
+    // not. Skipped entirely on the synthesized paths, which score no materiality.
+    const corroborationSources = input.classification?.materiality
+      ? (
+          await db
+            .select({
+              signalId: signals.id,
+              sourceType: monitors.sourceType,
+              at: signals.createdAt,
+            })
+            .from(signals)
+            .innerJoin(changes, eq(changes.id, signals.changeId))
+            .innerJoin(monitors, eq(monitors.id, changes.monitorId))
+            .where(
+              and(
+                eq(signals.competitorId, competitor.id),
+                ne(signals.changeId, input.changeId),
+                lte(signals.createdAt, change.detectedAt),
+                gte(signals.createdAt, new Date(change.detectedAt.getTime() - 14 * 86400_000)),
+              ),
+            )
+            .orderBy(desc(signals.createdAt))
+            .limit(5)
+        ).map((s) => ({
+          signalId: s.signalId,
+          sourceType: s.sourceType,
+          at: s.at.toISOString(),
+        }))
+      : [];
+
     const [newSignal] = await db
       .insert(signals)
       .values({
@@ -534,7 +573,10 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
         // the synthesized paths (pricing transitions, Hacker News, wellknown,
         // comparison pages) — those force a severity without scoring materiality.
         materiality: input.classification?.materiality
-          ? toMaterialityScores(input.classification.materiality)
+          ? {
+              ...toMaterialityScores(input.classification.materiality),
+              ...(corroborationSources.length > 0 ? { corroborationSources } : {}),
+            }
           : null,
         faithfulness,
       })

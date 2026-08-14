@@ -60,6 +60,12 @@ export const signals = pgTable("signals", {
     decisionImpact: number;
     urgency: number;
     corroboration: number;
+    // Véracité v2 P4 — the neighbouring signals the corroboration count was taken
+    // over, stamped at signal creation so the "Why this insight?" panel can LINK the
+    // surfaces instead of restating a score the reader cannot check. Same jsonb
+    // column, so nothing to migrate; absent on every pre-P4 signal and on the
+    // synthesized paths, and the panel then shows the score alone, as it does today.
+    corroborationSources?: Array<{ signalId: string; sourceType: string; at: string }>;
   }>(),
   // Claim-level faithfulness report for the insight (critical/high only): the
   // FaithfulnessReport produced before dispatch — { verdict, ratio, claims,

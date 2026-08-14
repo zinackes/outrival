@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   extractVerifiableTokens,
+  locateSupportedTokens,
   verifyAgainstSource,
   verifyFieldsAgainstSource,
 } from "./posthoc-grounding";
@@ -139,5 +140,50 @@ describe("verifyFieldsAgainstSource", () => {
       "",
     );
     expect(r).toEqual({ verified: true, unverified: [], checked: 0 });
+  });
+});
+
+describe("locateSupportedTokens", () => {
+  const SOURCE = "Starter — $19 / seat\nPro — $79 / seat / month\nEnterprise — talk to us";
+
+  test("reports the figure the source carries, where it sits, and the line backing it", () => {
+    const output = "Pro moved to $79 per seat, up 60%.";
+    const found = locateSupportedTokens(output, SOURCE);
+    expect(found.map((t) => t.text)).toEqual(["$79"]);
+    const token = found[0]!;
+    expect(token.kind).toBe("amount");
+    expect(output.slice(token.start, token.end)).toBe("$79");
+    expect(token.sourceLine).toBe("Pro — $79 / seat / month");
+  });
+
+  test("never reports a figure the source does not carry", () => {
+    expect(locateSupportedTokens("They now charge $1,299.", SOURCE)).toEqual([]);
+  });
+
+  test("locates a quoted span and quotes its line back", () => {
+    const source = "Plans\nSSO is now included in every paid plan\nFAQ";
+    const found = locateSupportedTokens('They say "SSO is now included in every paid plan".', source);
+    expect(found.map((t) => t.kind)).toEqual(["quoted"]);
+    expect(found[0]!.sourceLine).toBe("SSO is now included in every paid plan");
+  });
+
+  test("a token is never both supported here and unverified there", () => {
+    const output = "Pro is $79, up from $49.";
+    const supported = locateSupportedTokens(output, SOURCE).map((t) => t.text);
+    const unverified = verifyAgainstSource(output, SOURCE).unverified.map((t) => t.text);
+    expect(supported).toEqual(["$79"]);
+    expect(unverified).toEqual(["$49"]);
+    expect(supported.some((t) => unverified.includes(t))).toBe(false);
+  });
+
+  test("offsets survive a figure the pattern reaches across a space", () => {
+    const output = "Seats went up 19 percent.";
+    const token = locateSupportedTokens(output, SOURCE)[0]!;
+    expect(output.slice(token.start, token.end)).toBe("19");
+  });
+
+  test("returns nothing when either side is empty", () => {
+    expect(locateSupportedTokens("", SOURCE)).toEqual([]);
+    expect(locateSupportedTokens("Pro is $79", "")).toEqual([]);
   });
 });

@@ -1138,6 +1138,60 @@ export interface SignalDetail {
     beforeCapturedAt?: string | null;
     afterCapturedAt?: string | null;
   };
+  // ---- Véracité Intelligence v2 (P1 provenance, P2 double capture, P3 grounding).
+  // Every field below is absent on signals written before its phase, and each one
+  // renders NOTHING when absent: an old signal must read exactly as it did.
+  //
+  // What the double capture found. `outcome: 'skipped'` means the check itself
+  // failed on our side and the signal went out unbadged — it shows nothing, same as
+  // null. `gapMinutes` is the measured interval between the two captures, which is
+  // what turns "verified" into a claim with a number behind it.
+  verification?: {
+    outcome: "pending" | "confirmed" | "not_reproduced" | "skipped" | string;
+    quickCheckAt: string | null;
+    independentCheckAt: string | null;
+    gapMinutes: number | null;
+  } | null;
+  // Whether every figure and quotation in the prose is in the captured page.
+  // 'unverified' means the sentence carrying an unsupported figure was WITHHELD at
+  // write time, and `unverified[]` is the record of what it said and which field it
+  // came from. 'skipped' shows nothing — nothing was checked, so nothing is claimed.
+  grounding?: {
+    status: "verified" | "unverified" | "skipped" | string;
+    unverified: Array<{ kind: string; text: string; field?: string }>;
+  } | null;
+  // How the quoted capture was taken. Null in one piece on pre-P1 snapshots.
+  provenance?: {
+    captureMethod: string | null;
+    observedRegion: string | null;
+    finalUrl: string | null;
+    httpStatus: number | null;
+    completeness: number | null;
+  } | null;
+  // The figures in `insight` the evidence really prints, with their offsets in the
+  // insight string and the source line backing each. Empty unless grounding is
+  // 'verified' — see the derivation in apps/api/src/routes/signals.ts.
+  citations?: Array<{
+    kind: string;
+    text: string;
+    start: number;
+    end: number;
+    /** Which side of the diff prints it. Absent on the first P4 responses. */
+    side?: "before" | "after" | string;
+    sourceLine: string;
+  }>;
+  // The other surfaces of the same competitor that moved inside the window the
+  // corroboration sub-score was counted over. Empty on pre-P4 signals.
+  corroboration?: Array<{ signalId: string; sourceType: string; at: string }>;
+  // The page served two readings and neither is wrong. Present only on the variance
+  // anchor signal, whose entire subject is the pair.
+  abTest?: {
+    variantA: string | null;
+    variantB: string | null;
+    observations: number | null;
+    firstCaptureAt: string | null;
+    secondCaptureAt: string | null;
+  } | null;
   competitor: { id: string; name: string };
 }
 

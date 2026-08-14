@@ -129,6 +129,101 @@ function noSurface(m: MonitorFreshnessInput): boolean {
  * in that state there is no freshness to report at all, and the dot says so instead
  * of going green.
  */
+export interface CaptureFreshness {
+  /** The last capture that SUCCEEDED — when this page was actually read. */
+  lastSuccessAt: string | null;
+  /** The last time we tried at all, whether it worked or not. */
+  lastAttemptAt: string | null;
+  /**
+   * Whether the most recent attempt is the most recent success. False means what is
+   * on screen is the older capture and we have not been able to check it since.
+   */
+  verified: boolean;
+  level: FreshnessLevel;
+}
+
+/**
+ * The two dates a freshness line needs to be honest, out of one monitor row
+ * (Véracité Intelligence v2 P4).
+ *
+ * "Unchanged for six days" and "not verified for six days" are different claims and
+ * the surfaces made only the first one. `lastRunAt` is stamped by the SUCCESS paths
+ * of scrape-monitor alone, so it is the last time the page was really read; the last
+ * ATTEMPT is that or a later failure. When they differ, the page is showing a capture
+ * we have since failed to reconfirm, and saying "unchanged" about it asserts
+ * something nobody checked.
+ *
+ * `level` grades the data exactly as the dots do (a failure inside the fresh window
+ * still reads fresh — see computeFreshness), so one rule drives the Sources page and
+ * the "as of" chips on the dated tabs instead of two thresholds that drift.
+ */
+export function captureFreshness(m: MonitorFreshnessInput): CaptureFreshness {
+  const successTs = m.lastRunAt ? new Date(m.lastRunAt).getTime() : null;
+  const failedTs = m.lastFailedAt ? new Date(m.lastFailedAt).getTime() : null;
+  const success = successTs !== null && !Number.isNaN(successTs) ? successTs : null;
+  const failed = failedTs !== null && !Number.isNaN(failedTs) ? failedTs : null;
+  // A failure at the same instant as a success is the failure of a LATER run whose
+  // timestamps landed in the same millisecond; ties go to the failure, as they do in
+  // aggregateFreshness, so the two never disagree about the same row.
+  const verified = failed === null || (success !== null && success > failed);
+  const attempt = Math.max(success ?? 0, failed ?? 0);
+  return {
+    lastSuccessAt: success === null ? null : new Date(success).toISOString(),
+    lastAttemptAt: attempt === 0 ? null : new Date(attempt).toISOString(),
+    verified,
+    level: noSurface(m)
+      ? "none"
+      : computeFreshness(success === null ? null : new Date(success), verified ? "success" : "failed"),
+  };
+}
+
+/**
+ * The same two dates for a GROUP of sources: one dated tab, several monitors
+ * (Véracité Intelligence v2 P4).
+ *
+ * "As of" is a claim about everything on the tab, so the date it prints is the
+ * OLDEST successful read behind it — the same "stalest source wins" rule
+ * aggregateFreshness uses for the dot, so the chip and the dot can never disagree.
+ * One source failing since its last success is enough to drop `verified`: part of
+ * the tab is then frozen, and that is exactly what the degraded variant says.
+ *
+ * A source that has never been read leaves the group undated rather than borrowing
+ * a sibling's capture. Surfaces the competitor doesn't have are left out, as
+ * everywhere else. Returns null when there is nothing to date.
+ */
+export function aggregateCaptureFreshness(
+  monitors: MonitorFreshnessInput[],
+): CaptureFreshness | null {
+  const parts = monitors.filter((m) => !noSurface(m)).map(captureFreshness);
+  if (parts.length === 0) return null;
+  let oldestSuccess: number | null = null;
+  let latestAttempt: number | null = null;
+  let neverRead = false;
+  let verified = true;
+  for (const p of parts) {
+    if (!p.verified) verified = false;
+    if (p.lastSuccessAt === null) neverRead = true;
+    else {
+      const ts = new Date(p.lastSuccessAt).getTime();
+      oldestSuccess = oldestSuccess === null ? ts : Math.min(oldestSuccess, ts);
+    }
+    if (p.lastAttemptAt !== null) {
+      const ts = new Date(p.lastAttemptAt).getTime();
+      latestAttempt = latestAttempt === null ? ts : Math.max(latestAttempt, ts);
+    }
+  }
+  const success = neverRead ? null : oldestSuccess;
+  return {
+    lastSuccessAt: success === null ? null : new Date(success).toISOString(),
+    lastAttemptAt: latestAttempt === null ? null : new Date(latestAttempt).toISOString(),
+    verified,
+    level: computeFreshness(
+      success === null ? null : new Date(success),
+      verified ? "success" : "failed",
+    ),
+  };
+}
+
 export function aggregateFreshness(
   monitors: MonitorFreshnessInput[],
 ): SourceFreshness | null {

@@ -100,13 +100,23 @@ type FeedRow =
 // section is a tier of the brief and the sub-group is a competitor; every other
 // mode keeps one unlabelled sub-group, so a single walker renders them all and
 // there is no second code path for "grouped" versus "flat".
-type SubGroup = { key: string; label: string; count: number; rows: FeedRow[] };
+// `unread` rides alongside `count` at both levels: a collapsed header is the only
+// thing left on screen for the group under it, so it has to say how much of that
+// group is still waiting. Without it, folding the list away folds the backlog away.
+type SubGroup = {
+  key: string;
+  label: string;
+  count: number;
+  unread: number;
+  rows: FeedRow[];
+};
 type Section = {
   key: string;
   label: string;
   /** The tier's colour band in the brief. Absent outside "By priority". */
   swatch?: string;
   count: number;
+  unread: number;
   subs: SubGroup[];
 };
 
@@ -498,6 +508,7 @@ export function SignalsView() {
       key,
       label,
       count: items.length,
+      unread: items.reduce((n, s) => (s.isRead ? n : n + 1), 0),
       rows: buildFeedRows(items),
     });
 
@@ -529,21 +540,19 @@ export function SignalsView() {
             label: URGENCY_META[tier].label,
             swatch: URGENCY_META[tier].swatch,
             count: subs.reduce((n, s) => n + s.count, 0),
+            unread: subs.reduce((n, s) => n + s.unread, 0),
             subs,
           },
         ];
       });
     }
 
-    if (group === "none")
+    if (group === "none") {
+      const all = sub("__all", "", filtered);
       return [
-        {
-          key: "__all",
-          label: "",
-          count: filtered.length,
-          subs: [sub("__all", "", filtered)],
-        },
+        { key: "__all", label: "", count: all.count, unread: all.unread, subs: [all] },
       ];
+    }
 
     const map = new Map<string, { label: string; items: Signal[] }>();
     const order: string[] = [];
@@ -562,11 +571,13 @@ export function SignalsView() {
     }
     return order.map((k) => {
       const g = map.get(k)!;
+      const only = sub(k, "", g.items);
       return {
         key: k,
         label: g.label,
-        count: g.items.length,
-        subs: [sub(k, "", g.items)],
+        count: only.count,
+        unread: only.unread,
+        subs: [only],
       };
     });
   }, [filtered, group]);
@@ -1393,6 +1404,7 @@ export function SignalsView() {
                           label={sec.label}
                           swatch={sec.swatch}
                           count={sec.count}
+                          unread={sec.unread}
                           collapsed={!secOpen}
                           onToggle={() => toggleCollapsed(sec.key)}
                         />
@@ -1407,6 +1419,7 @@ export function SignalsView() {
                                   nested
                                   label={sub.label}
                                   count={sub.count}
+                                  unread={sub.unread}
                                   collapsed={!subOpen}
                                   onToggle={() => toggleCollapsed(sub.key)}
                                 />
@@ -1612,6 +1625,7 @@ function SelectCheckbox({
 function GroupHeader({
   label,
   count,
+  unread,
   collapsed,
   onToggle,
   swatch,
@@ -1619,6 +1633,8 @@ function GroupHeader({
 }: {
   label: string;
   count: number;
+  /** How many of `count` are still unread — the whole point of a collapsed header. */
+  unread: number;
   collapsed: boolean;
   onToggle: () => void;
   /** The brief's colour for this tier, so the two surfaces band alike. */
@@ -1631,16 +1647,25 @@ function GroupHeader({
       onClick={onToggle}
       aria-expanded={!collapsed}
       className={cn(
-        "flex w-full items-center gap-1.5 rounded-md px-2 text-left outline-none transition-colors hover:bg-accent/50 focus-visible:bg-accent/50",
+        // min-h, not padding: the label's own line-height differs between the two
+        // levels, so padding alone gave a 30px tier and a 24px competitor — both
+        // under the 32px this list wants for something you are meant to hit.
+        // Full accent on hover rather than /50: at half strength the fill was
+        // indistinguishable from the row hover underneath it, so the header did
+        // not read as the clickable thing it is.
+        "group/hdr flex w-full items-center gap-1.5 rounded-md px-2 text-left outline-none transition-colors hover:bg-accent focus-visible:bg-accent",
         nested
-          ? "py-1 pl-3"
-          : "sticky top-0 z-10 bg-card/95 py-1.5 backdrop-blur",
+          ? "min-h-8 py-1 pl-3"
+          : "sticky top-0 z-10 min-h-9 bg-card/95 py-1.5 backdrop-blur",
       )}
     >
       <CaretDownIcon
         size={16}
         className={cn(
-          "shrink-0 text-muted-foreground transition-transform",
+          "shrink-0 transition-transform group-hover/hdr:text-foreground",
+          // The tier's caret carries the section; the competitor's stays quiet so
+          // the two levels don't compete for the same eye.
+          nested ? "text-muted-foreground" : "text-foreground",
           collapsed && "-rotate-90",
         )}
         aria-hidden
@@ -1650,16 +1675,31 @@ function GroupHeader({
       )}
       <span
         className={cn(
+          // Tier over competitor: 14 semibold at full contrast against 13 medium
+          // muted. Both were 14/400 before, which flattened the two levels into one.
           "min-w-0 flex-1 truncate",
           nested
-            ? "text-meta font-medium text-muted-foreground"
-            : "text-dense font-semibold text-foreground/90",
+            ? "text-dense font-medium text-muted-foreground"
+            : "text-sm font-semibold text-foreground",
         )}
       >
         {label}
       </span>
+      {unread > 0 && (
+        // Dot first, so the two numerals on this line can never be read as one:
+        // the tinted pair is what is left to read, the muted one is the total. The
+        // dot is the row's unread dot, one size down.
+        <span className="flex shrink-0 items-center gap-1 text-meta font-semibold text-primary tabular-nums">
+          <span className="size-1.5 rounded-full bg-primary" aria-hidden />
+          {unread}
+          <span className="sr-only">
+            {unread === 1 ? "unread signal" : "unread signals"}
+          </span>
+        </span>
+      )}
       <span className="shrink-0 text-meta text-muted-foreground tabular-nums">
         {count}
+        <span className="sr-only"> total</span>
       </span>
     </button>
   );

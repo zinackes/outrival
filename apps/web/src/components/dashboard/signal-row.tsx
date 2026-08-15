@@ -115,13 +115,22 @@ export function SignalRow({
       </span>
 
       <span className="min-w-0">
+        {/* The read state, in the row's ACCESSIBLE NAME. It used to be an
+            aria-label on the trailing dot's span, which is not an interactive or
+            labellable element — so it was dropped, and a screen-reader user had
+            no read state at all. Inside the button's content it lands in the
+            name, first, the way the dot lands first for a sighted reader. */}
+        {unread && <span className="sr-only">Unread. </span>}
         {/* The finding leads: it's what the reader is scanning for. */}
         <span
           className={cn(
+            // 700 against 400 — the widest step the family gives. At 600/500 the
+            // two rows were one notch apart and a 62-item backlog read as one
+            // uniform block, which is what the audit measured.
             "block truncate text-dense leading-snug",
             unread
-              ? "font-semibold text-foreground"
-              : "font-medium text-muted-foreground",
+              ? "font-bold text-foreground"
+              : "font-normal text-muted-foreground",
           )}
         >
           {title}
@@ -176,12 +185,10 @@ export function SignalRow({
         >
           {shortAge(signal.createdAt)}
         </time>
-        {unread && (
-          <span
-            className="size-1.5 rounded-full bg-primary"
-            aria-label="Unread"
-          />
-        )}
+        {/* 8px, not 6: at 6 the dot sat under the age's x-height and read as
+            punctuation. The name it used to carry now lives in the row's
+            accessible name (sr-only, above), so this is decoration. */}
+        {unread && <span className="size-2 rounded-full bg-primary" aria-hidden />}
       </span>
     </button>
   );
@@ -232,7 +239,10 @@ export function FoldRow({
       type="button"
       onClick={onToggle}
       aria-expanded={expanded}
-      aria-label={`${expanded ? "Collapse" : "Expand"} ${signals.length} similar signals from ${first.competitorName}`}
+      // The label is authored rather than composed from the content, so the
+      // unread count has to be said here or it is not said at all — the visible
+      // "N unread" below is inside an element the label overrides.
+      aria-label={`${expanded ? "Collapse" : "Expand"} ${signals.length} similar signals from ${first.competitorName}${unread > 0 ? `, ${unread} unread` : ""}`}
       className="group relative grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors hover:bg-accent/50 focus-visible:bg-accent/50"
     >
       <span className="flex shrink-0 flex-col items-center gap-1">
@@ -247,10 +257,12 @@ export function FoldRow({
       <span className="min-w-0">
         <span
           className={cn(
+            // Same 700/400 step as SignalRow — a fold holding unread members has
+            // to shout as loud as a single unread row, or the backlog hides behind it.
             "block truncate text-dense leading-snug",
             unread > 0
-              ? "font-semibold text-foreground"
-              : "font-medium text-muted-foreground",
+              ? "font-bold text-foreground"
+              : "font-normal text-muted-foreground",
           )}
         >
           {/* The AI batch summary when the grouping came from the server, else a

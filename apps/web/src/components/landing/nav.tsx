@@ -29,9 +29,9 @@ const LANDING_LINKS = [
 // tone="app" (default) is the fixed, blurred, theme-aware bar used on /sample
 // and the doc pages. tone="landing" sits in flow inside the hero — transparent
 // so the fog shows through, ink logo (the hero is pinned light), no theme
-// toggle (the landing's rhythm is fixed, not a preference). Once the hero is
-// off screen the landing bar detaches into a floating pill (.lp-nav.is-stuck);
-// the <nav> keeps its own height so nothing under it moves when that happens.
+// toggle (the landing's rhythm is fixed, not a preference). As soon as it
+// scrolls out of view the landing bar comes back as a floating pill
+// (.lp-nav.is-stuck); the <nav> keeps its own height so nothing moves.
 export function Nav({ tone = "app" }: { tone?: "app" | "landing" }) {
   const landing = tone === "landing";
   const links = landing ? LANDING_LINKS : APP_LINKS;
@@ -57,18 +57,20 @@ export function Nav({ tone = "app" }: { tone?: "app" | "landing" }) {
     };
   }, [open]);
 
-  // The pill turns on when the hero has left the viewport, so the bar is only
-  // ever floating over the sections that follow it. An observer on the hero
-  // rather than a scroll listener: no work on frames where nothing crosses.
+  // The pill takes over the moment the bar itself leaves the viewport, so the
+  // page is never navless. The observed element is the <nav> placeholder, which
+  // stays in flow and keeps its box in both states — the pill can't chase its
+  // own trigger. An observer rather than a scroll listener: no work on frames
+  // where nothing crosses.
   useEffect(() => {
     if (!landing) return;
-    const hero = ref.current?.closest("section");
-    if (!hero) return;
+    const el = ref.current;
+    if (!el) return;
     const io = new IntersectionObserver(
       ([entry]) => setStuck(!!entry && !entry.isIntersecting),
       { threshold: 0 },
     );
-    io.observe(hero);
+    io.observe(el);
     return () => io.disconnect();
   }, [landing]);
 

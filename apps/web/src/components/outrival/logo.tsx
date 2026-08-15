@@ -16,9 +16,14 @@ import { cn } from "@/lib/utils";
 export function LogoMark({
   className,
   size = 28,
+  ink = false,
 }: {
   className?: string;
   size?: number;
+  /** Pin the dark-ink mark regardless of theme — for regions whose background
+      stays light even under html.dark (the landing's pinned-light paper hero),
+      where the `dark:` swap would show the white mark on paper. */
+  ink?: boolean;
 }) {
   return (
     <span
@@ -26,10 +31,16 @@ export function LogoMark({
       style={{ width: size, height: size }}
       aria-hidden
     >
-      {/* light surfaces → dark-ink mark */}
-      <span className="block h-full w-full bg-[url('/logo-dark-96.png')] bg-contain bg-center bg-no-repeat dark:hidden" />
-      {/* dark surfaces → light-ink mark */}
-      <span className="hidden h-full w-full bg-[url('/logo-light-96.png')] bg-contain bg-center bg-no-repeat dark:block" />
+      {ink ? (
+        <span className="block h-full w-full bg-[url('/logo-dark-96.png')] bg-contain bg-center bg-no-repeat" />
+      ) : (
+        <>
+          {/* light surfaces → dark-ink mark */}
+          <span className="block h-full w-full bg-[url('/logo-dark-96.png')] bg-contain bg-center bg-no-repeat dark:hidden" />
+          {/* dark surfaces → light-ink mark */}
+          <span className="hidden h-full w-full bg-[url('/logo-light-96.png')] bg-contain bg-center bg-no-repeat dark:block" />
+        </>
+      )}
     </span>
   );
 }

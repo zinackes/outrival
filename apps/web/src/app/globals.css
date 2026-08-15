@@ -15,7 +15,10 @@
    reachable by finger. Buttons keep their momentary active: press states on top. */
 @custom-variant hover (&:hover);
 
-:root {
+/* .lp-light re-applies the full light set on a subtree: the landing's fixed
+   paper→graphite rhythm pins its paper regions light even under html.dark. */
+:root,
+.lp-light {
   color-scheme: light;
 
   /* Base surfaces — near-white tinted (hue 260, never pure #fff); cards brighter
@@ -760,33 +763,31 @@
   }
 }
 
-/* Landing (brand register) runs a deeper canvas + slightly darker surfaces than
-   the dashboard, so the alternating bands and the cards read as distinct planes
-   without the cards looking light/poppy against the deep canvas. Scoped to the
-   landing wrapper in page.tsx via .landing-canvas — the product keeps the
-   standard tokens. The compound selector (.dark.landing-canvas) wins over .dark
-   regardless of source order. */
-/* Landing brand register — Zodiak (a modern editorial serif) drives the headings
-   in BOTH themes. Kept out of the dark-only block so light mode keeps the serif +
-   sans contrast that reads "intelligence briefing", not a default dev-tool
-   grotesque. h1–h5 pick this up via the base rule's var(--font-display). Light
-   surfaces come straight from :root (near-white bands); only the deep dark canvas
-   needs the overrides below. */
+/* Landing brand register — Zodiak (a modern editorial serif) is the display
+   face; h1–h5 pick it up via the base rule's var(--font-display), and the lp-
+   heading rules below opt back into the sans where the composition wants Geist
+   with a serif accent span. The landing's light/dark rhythm is region-based
+   (page.tsx wraps sections in .lp-light / .dark), so there is no whole-page
+   dark override here anymore. */
 .landing-canvas {
   --font-display: var(--font-zodiak), ui-serif, Georgia, serif;
-}
 
-.dark .landing-canvas {
-  /* Same neutral-graphite shift as the dashboard — chroma stripped so the deep
-     landing canvas no longer reads navy; lightness kept so the band rhythm and
-     card separation are unchanged. */
-  --background: oklch(0.135 0 0);
-  --background-2: oklch(0.17 0 0);
-  --surface: oklch(0.18 0 0);
-  /* Softer hairline than the dashboard's --border: on the landing's deep canvas
-     a stronger edge reads as a drawn box. 0.255 sits close to the card so the
-     edge is felt, not shouted (the Linear/Vercel low-contrast border). */
-  --border: oklch(0.255 0 0);
+  /* Landing-only palette (OUT-227). Severities, categories and the type scale
+     stay on the system tokens (--critical, --cat-*, --text-*) and resolve per
+     region; these are only the colors the landing adds on top. */
+  --lp-paper: #faf8f3;
+  --lp-ink: oklch(0.22 0.01 260);
+  --lp-ink-hover: oklch(0.3 0.01 260);
+  --lp-ink-muted: oklch(0.4 0.015 260);
+  --lp-ink-subtle: oklch(0.5 0.014 260);
+  --lp-line: oklch(0.9 0.005 260);
+  --lp-surface: oklch(0.998 0.001 260);
+  --lp-accent: oklch(0.53 0.14 200);
+  --lp-accent-hover: oklch(0.49 0.15 200);
+  --lp-iris: #6c5dfd;
+  --lp-iris-b: #a89dff;
+  --lp-teal: oklch(0.76 0.1 175);
+  --lp-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
 /* Landing: smooth in-page anchor scrolling with an offset for the fixed nav.
@@ -949,4 +950,1536 @@ html:has(.landing-canvas) {
 }
 .dark .prose-blog pre code span {
   color: var(--shiki-dark);
+}
+
+/* ==================================================================== */
+/* OUT-227 landing — editorial paper hero, graphite body, paper return. */
+/* Every class is lp- prefixed: flat specificity, zero collision with   */
+/* dashboard styles. The graphite literals (#0a0a0a, #131316,           */
+/* rgba(242,245,248,x), the card tints…) ARE this section's token layer */
+/* — the dark body is a fixed register, it never theme-switches.        */
+/* Display sizes that sit outside the app scale (hero/section clamps,   */
+/* the miniature product replicas) stay raw and are commented as such.  */
+/* ==================================================================== */
+
+/* ---- Announcement banner — quiet instrument strip ------------------- */
+.lp-banner {
+  background: var(--lp-paper);
+  border-bottom: 1px solid var(--lp-line);
+  color: var(--lp-ink-muted);
+  text-align: center;
+  font-size: var(--text-dense);
+  font-weight: 500;
+  padding: 0.55rem 1rem;
+}
+.lp-banner b {
+  color: var(--lp-ink);
+  font-weight: 500;
+}
+
+/* ---- Hero shell ------------------------------------------------------ */
+.lp-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: calc(100dvh - 2.5rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--lp-paper);
+  color: var(--lp-ink);
+}
+/* Background stack: the CSS fog banks at z -3 are the static / no-JS /
+   reduced-motion fallback; the Vanta FOG canvas mounts at z -2 with an opaque
+   paper baseColor and simply covers them once loaded; the turbulence grain at
+   z -1 rides on whichever fog is showing. */
+.lp-hero::before {
+  content: "";
+  position: absolute;
+  z-index: -3;
+  pointer-events: none;
+  width: 74rem;
+  height: 46rem;
+  top: -16rem;
+  left: -22rem;
+  background:
+    radial-gradient(38% 42% at 30% 42%, color-mix(in oklab, var(--lp-teal) 30%, transparent), transparent 74%),
+    radial-gradient(30% 34% at 58% 60%, color-mix(in oklab, var(--lp-teal) 20%, transparent), transparent 70%),
+    radial-gradient(24% 30% at 44% 26%, rgba(255, 255, 255, 0.55), transparent 70%);
+  filter: blur(24px);
+  animation: lp-fog-a 26s ease-in-out infinite alternate;
+}
+.lp-hero::after {
+  content: "";
+  position: absolute;
+  z-index: -3;
+  pointer-events: none;
+  width: 64rem;
+  height: 42rem;
+  top: -14rem;
+  right: -20rem;
+  background:
+    radial-gradient(40% 44% at 62% 40%, color-mix(in oklab, var(--lp-iris) 22%, transparent), transparent 74%),
+    radial-gradient(28% 32% at 38% 62%, color-mix(in oklab, var(--lp-iris) 14%, transparent), transparent 70%),
+    radial-gradient(22% 28% at 70% 60%, rgba(255, 255, 255, 0.55), transparent 70%);
+  filter: blur(24px);
+  animation: lp-fog-b 32s ease-in-out infinite alternate;
+}
+.lp-glow-red {
+  position: absolute;
+  z-index: -3;
+  pointer-events: none;
+  width: 50rem;
+  height: 32rem;
+  top: -8rem;
+  left: 50%;
+  margin-left: -22rem;
+  background:
+    radial-gradient(42% 44% at 46% 46%, color-mix(in oklab, #ff5c72 12%, transparent), transparent 72%),
+    radial-gradient(26% 30% at 64% 58%, color-mix(in oklab, #ff5c72 7%, transparent), transparent 70%);
+  filter: blur(20px);
+  animation: lp-fog-c 21s ease-in-out infinite alternate;
+}
+.lp-vanta {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+}
+.lp-fog-grain {
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  inset: -6rem -6rem auto -6rem;
+  height: 44rem;
+  opacity: 0.2;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='480'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012' numOctaves='4' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.36 0 0 0 0 0.42 0 0 0 0 0.47 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='480' height='480' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 480px 480px;
+  -webkit-mask-image: linear-gradient(black 25%, transparent 90%);
+  mask-image: linear-gradient(black 25%, transparent 90%);
+  animation: lp-fog-g 70s linear infinite alternate;
+}
+@keyframes lp-fog-a {
+  to {
+    transform: translate(8rem, 3rem) rotate(6deg) scale(1.18);
+  }
+}
+@keyframes lp-fog-b {
+  to {
+    transform: translate(-7rem, 4rem) rotate(-5deg) scale(1.14);
+  }
+}
+@keyframes lp-fog-c {
+  to {
+    transform: translate(5rem, 2rem) scale(1.15);
+  }
+}
+@keyframes lp-fog-g {
+  to {
+    background-position: 300px 90px;
+  }
+}
+@keyframes lp-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ---- Centered hero content ------------------------------------------- */
+.lp-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2.5rem 1.25rem 1.5rem;
+}
+.lp-h1 {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: clamp(2.6rem, 5.8vw, 4.6rem); /* display clamp — above the scale */
+  line-height: 1.12;
+  letter-spacing: -0.032em;
+  max-width: 22ch;
+  text-wrap: balance;
+}
+/* The one editorial grace note — Zodiak italic. */
+.lp-monday {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-size: 1.04em;
+}
+.lp-cycle {
+  white-space: nowrap;
+}
+/* Thin instrument caret — signal cyan, not a terminal block. */
+.lp-caret {
+  display: inline-block;
+  width: 3px;
+  height: 0.78em;
+  margin-left: 3px;
+  vertical-align: -0.04em;
+  background: var(--lp-accent);
+  border-radius: 1.5px;
+}
+.lp-caret.blink {
+  animation: lp-blink 1.06s step-end infinite;
+}
+@keyframes lp-blink {
+  50% {
+    opacity: 0;
+  }
+}
+.lp-sub {
+  margin-top: 1.6rem;
+  max-width: 44rem;
+  font-size: var(--text-lead);
+  line-height: 1.6;
+  color: var(--lp-ink-muted);
+  text-wrap: pretty;
+}
+.lp-ctas {
+  margin-top: 2.1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+}
+.lp-btn-accent {
+  display: inline-block;
+  text-decoration: none;
+  background: var(--lp-accent);
+  color: #fff;
+  font-size: var(--text-content);
+  font-weight: 500;
+  line-height: 1;
+  padding: 0.8rem 1.25rem;
+  border-radius: 0.5rem;
+  transition: background-color 150ms var(--lp-ease);
+}
+.lp-btn-accent:hover {
+  background: var(--lp-accent-hover);
+}
+.lp-btn-hero {
+  padding: 0.95rem 1.5rem;
+  font-size: var(--text-base);
+}
+.lp-link-sample {
+  text-decoration: none;
+  font-size: var(--text-base);
+  font-weight: 500;
+  border-bottom: 1.5px solid var(--lp-line);
+  padding-bottom: 2px;
+  transition: border-color 150ms var(--lp-ease);
+}
+.lp-link-sample:hover {
+  border-color: var(--lp-ink);
+}
+
+/* ---- Signal lane — noise in, signals out ------------------------------ */
+.lp-machine {
+  width: 100%;
+  max-width: 66rem;
+  margin: 0 auto;
+  padding: 0 clamp(1.25rem, 3vw, 2.5rem) 2.5rem;
+}
+.lp-lane {
+  position: relative;
+  height: 3.4rem;
+  overflow: hidden;
+  border-block: 1px solid var(--lp-line);
+  /* the lane fades at both ends so chips materialize and dissolve */
+  -webkit-mask-image: linear-gradient(90deg, transparent, black 7%, black 93%, transparent);
+  mask-image: linear-gradient(90deg, transparent, black 7%, black 93%, transparent);
+}
+/* Uniform conveyor: one continuous strip, constant speed, no overlap.
+   Signals travel inline with the noise — brighter, never on top of it. */
+.lp-lane-track {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  width: max-content;
+  animation: lp-lane-mq 60s linear infinite;
+}
+.lp-lane-half {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-right: 0.6rem;
+}
+@keyframes lp-lane-mq {
+  to {
+    transform: translateX(-50%);
+  }
+}
+.lp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: var(--text-dense);
+  color: var(--lp-ink-subtle);
+  border: 1px solid var(--lp-line);
+  border-radius: 999px;
+  background: var(--lp-paper);
+  padding: 0.3rem 0.75rem;
+}
+/* One in a few ignites: a scored, colored signal card. */
+.lp-chip.signal {
+  color: var(--lp-ink);
+  background: var(--lp-surface);
+  box-shadow: 0 8px 20px -12px rgba(0, 0, 0, 0.35);
+}
+.lp-chip.signal .sev {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.lp-chip.signal .who {
+  font-weight: 500;
+}
+.lp-chip.signal .cat {
+  font-weight: 500;
+  font-size: var(--text-meta);
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.lp-chip.signal .what {
+  color: var(--lp-ink-muted);
+}
+.lp-lane-legend {
+  margin-top: 0.8rem;
+  text-align: center;
+  font-size: var(--text-dense);
+  color: var(--lp-ink-subtle);
+}
+
+/* ---- The cut — paper ends, graphite begins. No gradient, no seam. ---- */
+.lp-body-dark {
+  background: #0a0a0a;
+  color: #f2f5f8;
+  padding-top: 5.5rem;
+}
+.lp-dark-inner {
+  max-width: 66rem;
+  margin: 0 auto;
+  padding: 0 clamp(1.25rem, 3vw, 2.5rem);
+}
+/* The product bento breaks out wider than the text sections. */
+.lp-bento-wide {
+  max-width: 88rem;
+}
+.lp-bento-wide .lp-card {
+  padding: 2rem 2rem 0;
+}
+/* Split section header: statement left, support right. */
+.lp-dark-head {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 2rem;
+  align-items: end;
+}
+@media (max-width: 860px) {
+  .lp-dark-head {
+    grid-template-columns: 1fr;
+  }
+}
+.lp-dark-head h2 {
+  font-family: var(--font-sans);
+  font-size: clamp(1.9rem, 3.4vw, 2.6rem); /* display clamp */
+  font-weight: 500;
+  letter-spacing: -0.022em;
+  line-height: 1.15;
+}
+.lp-serif-accent {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-size: 1.04em;
+}
+.lp-dark-head p {
+  max-width: 26rem;
+  justify-self: end;
+  font-size: var(--text-lead);
+  line-height: 1.6;
+  color: rgba(242, 245, 248, 0.64);
+  text-wrap: pretty;
+}
+@media (max-width: 860px) {
+  .lp-dark-head p {
+    justify-self: start;
+    margin-top: 0.9rem;
+  }
+}
+
+/* ---- Product bento — four tinted cards -------------------------------- */
+/* 8/4 then 4/8, tall row then short row, tight gap. */
+.lp-cards {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 1rem;
+  margin-top: 2.6rem;
+}
+.lp-card-marine,
+.lp-card-bordeaux {
+  grid-column: span 8;
+}
+.lp-card-teal,
+.lp-card-iris {
+  grid-column: span 4;
+}
+.lp-card-marine,
+.lp-card-teal {
+  min-height: 28rem;
+}
+.lp-card-iris,
+.lp-card-bordeaux {
+  min-height: 21.5rem;
+}
+@media (max-width: 860px) {
+  .lp-card-marine,
+  .lp-card-teal,
+  .lp-card-iris,
+  .lp-card-bordeaux {
+    grid-column: span 12;
+  }
+}
+.lp-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--tint) 19%, #111114);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+  padding: 1.7rem 1.7rem 0;
+  display: flex;
+  flex-direction: column;
+}
+/* Card fill: the React Bits Silk canvas (tinted per card) over a soft corner
+   glow in the same tint — the glow doubles as the reduced-motion/no-JS fill. */
+.lp-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(30rem 22rem at 92% -14%, color-mix(in oklab, var(--tint-b) 20%, transparent), transparent 62%);
+}
+.lp-card,
+.lp-pstep {
+  isolation: isolate;
+}
+.lp-silk {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.lp-card .lp-silk {
+  opacity: 0.9;
+}
+.lp-pstep .lp-silk {
+  opacity: 0.55;
+}
+.lp-card-marine {
+  --tint: oklch(0.5 0.15 247);
+  --tint-b: oklch(0.74 0.12 247);
+}
+.lp-card-teal {
+  --tint: oklch(0.5 0.12 175);
+  --tint-b: oklch(0.76 0.1 175);
+}
+.lp-card-iris {
+  --tint: #6c5dfd;
+  --tint-b: #a89dff;
+  background: color-mix(in oklab, var(--tint) 25%, #111114);
+}
+.lp-card-bordeaux {
+  --tint: oklch(0.52 0.15 355);
+  --tint-b: oklch(0.75 0.12 355);
+  background: color-mix(in oklab, var(--tint) 25%, #111114);
+}
+.lp-card .eyebrow {
+  font-size: var(--text-meta);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--tint-b) 88%, white);
+}
+.lp-card h3 {
+  margin-top: 0.6rem;
+  font-family: var(--font-sans);
+  font-size: 1.375rem; /* between text-xl and text-2xl — kept raw */
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  max-width: 26ch;
+  text-wrap: balance;
+}
+/* Screenshot bleeding out of the card's bottom-right corner. max-width: none
+   counters the preflight img { max-width: 100% } — the 112% bleed is the point. */
+.lp-card .shot {
+  position: relative;
+  flex: 1;
+  margin-top: 1.5rem;
+  min-height: 15rem;
+}
+.lp-card .shot img {
+  position: absolute;
+  top: 0;
+  left: 1.6rem;
+  width: 112%;
+  max-width: none;
+  display: block;
+  border-radius: 8px 0 0 0;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 24px 48px -24px rgba(0, 0, 0, 0.8);
+}
+
+/* ---- Signal detail replica (teal card) — miniature type, role="img" --- */
+.lp-sigdet {
+  position: relative;
+  flex: 1;
+  margin: 1.5rem 0 0 1.6rem;
+  min-height: 15rem;
+  background: #161616;
+  border-radius: 8px 0 0 0;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 24px 48px -24px rgba(0, 0, 0, 0.8);
+  padding: 1rem 1.1rem;
+  font-size: var(--text-dense);
+  line-height: 1.5;
+}
+.lp-sigdet .sd-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lp-sigdet .sd-top b {
+  font-weight: 600;
+  margin-left: 0.15rem;
+}
+.lp-sigdet .sd-time {
+  margin-left: auto;
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.45);
+}
+.lp-sigdet .sd-title {
+  margin-top: 0.85rem;
+  font-size: var(--text-content);
+  font-weight: 500;
+  line-height: 1.4;
+}
+.lp-sigdet .sd-sec {
+  margin-top: 0.95rem;
+}
+.lp-sigdet .sd-lbl {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.65625rem; /* replica miniature */
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(242, 245, 248, 0.4);
+}
+.lp-sigdet .sd-sec p {
+  color: rgba(242, 245, 248, 0.72);
+}
+.lp-sigdet .sd-diff {
+  display: grid;
+  gap: 0.35rem;
+  font-size: var(--text-dense);
+}
+.lp-sigdet .sd-was {
+  color: rgba(242, 245, 248, 0.45);
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 92, 114, 0.55);
+}
+.lp-sigdet .sd-now {
+  color: #f2f5f8;
+}
+.lp-sigdet .sd-now::before {
+  content: "→ ";
+  color: var(--tint-b);
+}
+
+/* ---- Digest replica (iris card) --------------------------------------- */
+.lp-digest {
+  position: relative;
+  flex: 1;
+  margin: 1.5rem 0 0 1.6rem;
+  min-height: 15rem;
+  background: #161616;
+  border-radius: 8px 0 0 0;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 24px 48px -24px rgba(0, 0, 0, 0.8);
+  font-size: 0.75rem; /* replica miniature */
+}
+.lp-digest .dg-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #1d1d1d;
+  white-space: nowrap;
+}
+.lp-digest .dg-top b {
+  font-weight: 600;
+}
+.lp-digest .dg-top b i {
+  font-style: normal;
+  color: var(--lp-teal);
+}
+.lp-digest .dg-top .path {
+  color: rgba(242, 245, 248, 0.45);
+}
+.lp-digest .dg-top .tab {
+  margin-left: auto;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 500;
+}
+.lp-digest .dg-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.lp-digest .dg-stats > div {
+  background: #161616;
+  padding: 0.55rem 0.9rem;
+}
+.lp-digest .dg-stats i {
+  display: block;
+  font-style: normal;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: rgba(242, 245, 248, 0.45);
+}
+.lp-digest .dg-stats b {
+  font-size: 1.05rem; /* replica miniature */
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.lp-digest .dg-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.lp-digest .dg-row .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.lp-digest .dg-row .chip-cat {
+  flex-shrink: 0;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.65625rem; /* replica miniature */
+  font-weight: 500;
+  color: rgba(242, 245, 248, 0.6);
+}
+.lp-digest .dg-row .txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: rgba(242, 245, 248, 0.6);
+}
+.lp-digest .dg-row .txt b {
+  color: #f2f5f8;
+  font-weight: 500;
+}
+/* Narrow bento cell: drop the category chips so the sentences fit whole. */
+.lp-card-iris .dg-row .chip-cat {
+  display: none;
+}
+/* Severity dots — system tokens; the .dark region resolves the dark set. */
+.lp-sev-critical {
+  background: var(--critical);
+}
+.lp-sev-high {
+  background: var(--high);
+}
+.lp-sev-medium {
+  background: var(--medium);
+}
+.lp-sev-low {
+  background: var(--low);
+}
+
+/* ---- Battle card excerpt (bordeaux card) ------------------------------ */
+.lp-battle {
+  position: relative;
+  flex: 1;
+  margin: 1.5rem 0 0 1.6rem;
+  min-height: 13rem;
+  background: #161616;
+  border-radius: 8px 0 0 0;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 24px 48px -24px rgba(0, 0, 0, 0.8);
+  padding: 1rem 1rem 0;
+}
+.lp-battle .bc-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  padding-bottom: 0.8rem;
+  font-size: var(--text-dense);
+}
+.lp-battle .bc-head b {
+  font-weight: 600;
+}
+.lp-battle .bc-head .path {
+  color: rgba(242, 245, 248, 0.45);
+}
+.lp-battle .bc-head .fresh {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: var(--text-meta);
+  color: color-mix(in oklab, var(--tint-b) 85%, white);
+}
+.lp-battle .bc-head .fresh::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--critical);
+  animation: lp-pulse 2.2s var(--lp-ease) infinite;
+}
+.lp-battle .bc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+}
+@media (max-width: 860px) {
+  .lp-battle .bc-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.lp-battle .bc-sec {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 0.6rem 0.7rem 0.7rem;
+}
+.lp-battle .bc-t {
+  display: block;
+  font-size: 0.625rem; /* replica miniature */
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(242, 245, 248, 0.45);
+}
+.lp-battle .bc-x {
+  margin-top: 0.35rem;
+  font-size: 0.75rem; /* replica miniature */
+  line-height: 1.45;
+  color: rgba(242, 245, 248, 0.75);
+}
+.lp-battle .bc-x b {
+  font-weight: 500;
+  color: #f2f5f8;
+}
+/* The section a fresh signal just rewrote. */
+.lp-battle .bc-sec.live {
+  border-color: color-mix(in oklab, var(--tint-b) 55%, transparent);
+}
+.lp-battle .bc-sec.live .bc-t {
+  color: color-mix(in oklab, var(--tint-b) 85%, white);
+}
+
+/* ---- Stats strip ------------------------------------------------------- */
+.lp-stats {
+  margin-top: 4.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 2.8rem clamp(1.25rem, 3vw, 2.5rem) 3rem;
+}
+.lp-stats-grid {
+  max-width: 66rem;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+}
+@media (max-width: 720px) {
+  .lp-stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.lp-stat b {
+  display: block;
+  font-size: var(--text-3xl);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.lp-stat span {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: var(--text-dense);
+  line-height: 1.4;
+  color: rgba(242, 245, 248, 0.55);
+}
+.lp-stats-note {
+  max-width: 66rem;
+  margin: 2.2rem auto 0;
+  font-size: var(--text-dense);
+  color: rgba(242, 245, 248, 0.4);
+}
+
+/* ---- Pipeline — five step cards, everything visible -------------------- */
+/* Graphite cards; each step's tint (--pc) comes from the data it produces. */
+.lp-pipe-wrap {
+  margin-top: 5.5rem;
+}
+.lp-pipe-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 1rem;
+  margin-top: 2.4rem;
+}
+.lp-pstep {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  grid-column: span 4;
+  background: #131316;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.11);
+  padding: 1.3rem 1.3rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+}
+.lp-pstep-digest {
+  grid-column: span 7;
+}
+.lp-pstep-act {
+  grid-column: span 5;
+}
+@media (max-width: 860px) {
+  .lp-pstep,
+  .lp-pstep-digest,
+  .lp-pstep-act {
+    grid-column: span 12;
+  }
+}
+/* Same silk fill as the product bento, one notch quieter. */
+.lp-pstep::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(24rem 17rem at 92% -14%, color-mix(in oklab, var(--pc) 13%, transparent), transparent 62%);
+}
+.lp-pstep .pstep-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+/* Plain colored figure, not a badge. */
+.lp-pstep .pstep-num {
+  font-size: var(--text-content);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--pc);
+}
+.lp-pstep .pstep-head h3 {
+  font-family: var(--font-sans);
+  font-size: var(--text-lead);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.lp-pstep > p {
+  margin-top: 0.7rem;
+  font-size: 0.84375rem; /* step copy, between dense and sm — kept raw */
+  line-height: 1.5;
+  color: rgba(242, 245, 248, 0.62);
+}
+.lp-pstep .pstep-viz {
+  position: relative;
+  margin-top: auto;
+  padding-top: 1.1rem;
+}
+.lp-pstep .src-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 0.1rem;
+  font-size: var(--text-dense);
+  color: rgba(242, 245, 248, 0.75);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.lp-pstep .src-row .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--lp-teal);
+  animation: lp-pulse 2.2s var(--lp-ease) infinite;
+}
+.lp-pstep .src-row:nth-child(2) .dot {
+  animation-delay: 0.4s;
+}
+.lp-pstep .src-row:nth-child(3) .dot {
+  animation-delay: 0.8s;
+}
+.lp-pstep .src-more {
+  padding-top: 0.6rem;
+  font-size: 0.75rem; /* replica miniature */
+  color: rgba(242, 245, 248, 0.45);
+}
+.lp-pstep .cls-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.1rem;
+  font-size: var(--text-dense);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  white-space: nowrap;
+}
+.lp-pstep .cls-noise {
+  color: rgba(242, 245, 248, 0.55);
+}
+.lp-pstep .cls-arrow {
+  color: rgba(242, 245, 248, 0.35);
+}
+/* Colored category chip, dark set: soft fill, no border. */
+.lp-chip-cat-c {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: color-mix(in oklab, var(--c) 80%, white);
+  background: color-mix(in oklab, var(--c) 16%, #141414);
+}
+.lp-sev-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+/* Flat signal excerpt: no card-in-card, same row language as the rest. */
+.lp-sig-card {
+  font-size: var(--text-dense);
+  line-height: 1.55;
+}
+.lp-sig-card .sig-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+}
+.lp-sig-card .sig-chips b {
+  font-weight: 500;
+  margin-left: 0.2rem;
+}
+/* Severity: neutral pill, the color lives in the dot. */
+.lp-chip-sev {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.6rem 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: #f2f5f8;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+.lp-chip-sev::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--sev, var(--critical));
+}
+.lp-sig-card .lbl {
+  display: block;
+  margin-top: 0.85rem;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(242, 245, 248, 0.4);
+}
+.lp-sig-card .txt-muted {
+  color: rgba(242, 245, 248, 0.68);
+}
+.lp-act-done {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.95rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: var(--text-dense);
+  color: rgba(242, 245, 248, 0.78);
+}
+.lp-act-done .tick {
+  color: var(--lp-teal);
+  font-weight: 600;
+}
+
+/* ---- Category marquees + fixed severities ------------------------------ */
+.lp-cats {
+  margin-top: 5.5rem;
+  padding-bottom: 5rem;
+}
+.lp-cats-head {
+  margin-bottom: 1.6rem;
+}
+.lp-mq {
+  overflow: hidden;
+  margin-top: 1.1rem;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  -webkit-mask-image: linear-gradient(90deg, transparent, black 6%, black 94%, transparent);
+  mask-image: linear-gradient(90deg, transparent, black 6%, black 94%, transparent);
+}
+.lp-mq-track {
+  display: flex;
+  width: max-content;
+  animation: lp-mq-scroll 46s linear infinite;
+}
+.lp-mq-b .lp-mq-track {
+  animation: lp-mq-rev 58s linear infinite;
+}
+.lp-mq-half {
+  display: flex;
+  gap: 0.8rem;
+  margin-right: 0.8rem;
+}
+@keyframes lp-mq-scroll {
+  to {
+    transform: translateX(-50%);
+  }
+}
+@keyframes lp-mq-rev {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.lp-cat-chip {
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: var(--text-content);
+  font-weight: 500;
+  color: var(--c);
+  background: color-mix(in oklab, var(--c) 12%, #141414);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c) 32%, transparent);
+}
+.lp-sev-fixed {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2.4rem;
+  margin-top: 2.2rem;
+  font-size: var(--text-content);
+  font-weight: 500;
+}
+.lp-sev-fixed .s {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: rgba(242, 245, 248, 0.8);
+}
+
+/* ---- Hot price card — the one warm moment in the dark body ------------- */
+.lp-hot {
+  margin-top: 1.5rem;
+}
+.lp-hot-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #6d270c;
+  box-shadow: inset 0 0 0 1px rgba(255, 214, 178, 0.22);
+  padding: clamp(2rem, 4vw, 3.2rem);
+  color: #faf8f3;
+}
+.lp-hot-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(42rem 26rem at 88% -18%, rgba(255, 138, 91, 0.3), transparent 62%),
+    radial-gradient(30rem 20rem at -8% 112%, rgba(40, 12, 3, 0.5), transparent 60%);
+}
+.lp-hot-card > * {
+  position: relative;
+}
+/* Statement stacked: headline, then the argument running wide under it. */
+.lp-hot-copy {
+  margin-top: 1.5rem;
+  max-width: 56rem;
+}
+.lp-hot-card h2 {
+  font-family: var(--font-sans);
+  font-size: clamp(2.1rem, 4vw, 3rem); /* display clamp */
+  font-weight: 500;
+  letter-spacing: -0.022em;
+  line-height: 1.1;
+}
+.lp-hot-card .lp-serif-accent {
+  color: #ffd6b2;
+}
+.lp-hot-copy p {
+  font-size: var(--text-lead);
+  line-height: 1.6;
+  color: rgba(250, 248, 243, 0.82);
+  text-wrap: pretty;
+}
+.lp-hot-note {
+  margin-top: 0.8rem;
+}
+.lp-hot-copy p.lp-hot-note {
+  font-size: var(--text-dense);
+  color: rgba(250, 248, 243, 0.55);
+}
+.lp-hot-links {
+  margin-top: 1.3rem;
+  font-size: var(--text-content);
+  font-weight: 500;
+}
+.lp-hot-links a {
+  color: #ffd6b2;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(255, 214, 178, 0.45);
+}
+.lp-hot-links a:hover {
+  text-decoration-color: #ffd6b2;
+}
+/* Compact comparison table: cream hairlines, Outrival column lifted. */
+.lp-hot-table {
+  margin-top: 2.4rem;
+  overflow-x: auto;
+}
+.lp-ht-grid {
+  min-width: 640px;
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1.1fr 1.1fr;
+  font-size: var(--text-dense);
+  line-height: 1.35;
+}
+.lp-ht-grid > div {
+  display: flex;
+  align-items: center;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid rgba(250, 248, 243, 0.16);
+}
+.lp-ht-grid > div:nth-last-child(-n + 4) {
+  border-bottom: 0;
+}
+.lp-ht-grid .ht-h {
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: rgba(250, 248, 243, 0.6);
+}
+.lp-ht-grid .ht-label {
+  color: rgba(250, 248, 243, 0.85);
+}
+.lp-ht-grid .ht-no {
+  color: rgba(250, 248, 243, 0.45);
+}
+.lp-ht-grid .ht-mid {
+  color: rgba(250, 248, 243, 0.68);
+}
+.lp-ht-grid .ht-us {
+  background: rgba(250, 248, 243, 0.09);
+  color: #fff;
+  font-weight: 500;
+}
+.lp-ht-grid .ht-h.ht-us {
+  color: #ffd6b2;
+}
+
+/* ---- Pricing, dark ------------------------------------------------------ */
+.lp-pricing {
+  margin-top: 6.5rem;
+  padding-bottom: 7rem;
+}
+.lp-plans {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-top: 2.6rem;
+}
+@media (max-width: 1000px) {
+  .lp-plans {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .lp-plans {
+    grid-template-columns: 1fr;
+  }
+}
+.lp-plan {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  background: #131316;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  padding: 1.6rem 1.5rem 1.5rem;
+}
+.lp-plan-featured {
+  background: #16161c;
+  box-shadow: inset 0 0 0 1px rgba(168, 157, 255, 0.55);
+  isolation: isolate;
+  --tint-b: #a89dff;
+}
+.lp-plan-featured .lp-silk {
+  opacity: 0.4;
+}
+.lp-plan .plan-pop {
+  position: absolute;
+  top: -0.8rem;
+  left: 1.4rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: #c9c2ff;
+  background: #241f47;
+}
+.lp-plan h3 {
+  font-family: var(--font-sans);
+  font-size: var(--text-lead);
+  font-weight: 600;
+}
+.lp-plan .plan-price {
+  margin-top: 0.9rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+.lp-plan .plan-price b {
+  font-size: var(--text-3xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.lp-plan .plan-price span {
+  font-size: var(--text-dense);
+  color: rgba(242, 245, 248, 0.5);
+}
+.lp-plan .plan-desc {
+  margin-top: 0.7rem;
+  font-size: var(--text-dense);
+  line-height: 1.55;
+  color: rgba(242, 245, 248, 0.6);
+}
+.lp-plan .plan-inc {
+  margin-top: 1.1rem;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: rgba(242, 245, 248, 0.45);
+}
+.lp-plan ul {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  flex: 1;
+  display: grid;
+  gap: 0.55rem;
+  align-content: start;
+  font-size: var(--text-dense);
+}
+.lp-plan li {
+  display: flex;
+  gap: 0.5rem;
+  color: rgba(242, 245, 248, 0.78);
+}
+.lp-plan li::before {
+  content: "\2713";
+  color: var(--lp-teal);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.lp-plan .plan-cta {
+  margin-top: 1.4rem;
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  padding: 0.7rem 1rem;
+  border-radius: 0.5rem;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1;
+  color: #f2f5f8;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  transition: background-color 150ms var(--lp-ease);
+}
+.lp-plan .plan-cta:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.lp-plan-featured .plan-cta {
+  background: #f2f5f8;
+  color: #0a0a0a;
+  box-shadow: none;
+}
+.lp-plan-featured .plan-cta:hover {
+  background: #fff;
+}
+.lp-plan .plan-note {
+  margin-top: 0.8rem;
+  text-align: center;
+  font-size: var(--text-meta);
+}
+.lp-plan .plan-note a {
+  color: rgba(242, 245, 248, 0.5);
+  text-underline-offset: 2px;
+}
+.lp-plans-foot {
+  margin-top: 2rem;
+  text-align: center;
+  font-size: var(--text-dense);
+  color: rgba(242, 245, 248, 0.5);
+}
+
+/* ---- Light return: founder letter · FAQ · final CTA --------------------- */
+.lp-body-light {
+  background: var(--lp-paper);
+  color: var(--lp-ink);
+  padding: 6rem 0 7rem;
+}
+.lp-light-inner {
+  max-width: 66rem;
+  margin: 0 auto;
+  padding: 0 clamp(1.25rem, 3vw, 2.5rem);
+}
+/* Editorial letter, not a boxed card: the serif carries the register. */
+.lp-founder {
+  max-width: 44rem;
+  margin: 0 auto;
+}
+.lp-founder figure {
+  margin: 0;
+}
+.lp-founder .founder-eyebrow {
+  font-size: var(--text-meta);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lp-ink-subtle);
+}
+.lp-founder blockquote {
+  margin: 1.4rem 0 0;
+  font-family: var(--font-display);
+  font-size: 1.4375rem; /* editorial letter body — kept raw */
+  line-height: 1.55;
+  color: var(--lp-ink);
+  text-wrap: pretty;
+}
+.lp-founder figcaption {
+  margin-top: 1.9rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.lp-founder .sig {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.375rem; /* pairs the letter body — kept raw */
+}
+.lp-founder .role {
+  margin-top: 0.2rem;
+  font-size: var(--text-dense);
+  color: var(--lp-ink-subtle);
+}
+.lp-founder .more {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--lp-accent);
+  text-decoration: none;
+}
+.lp-founder .more:hover {
+  text-decoration: underline;
+}
+
+.lp-faq {
+  margin-top: 6.5rem;
+  display: grid;
+  grid-template-columns: 1fr 1.6fr;
+  gap: 3rem;
+}
+@media (max-width: 860px) {
+  .lp-faq {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+.lp-light-h2 {
+  font-family: var(--font-sans);
+  font-size: clamp(1.9rem, 3.4vw, 2.6rem); /* display clamp */
+  font-weight: 500;
+  letter-spacing: -0.022em;
+  line-height: 1.15;
+}
+.lp-faq-lead {
+  margin-top: 1rem;
+  font-size: var(--text-base);
+  line-height: 1.6;
+  color: var(--lp-ink-muted);
+}
+.lp-faq-lead a {
+  color: var(--lp-accent);
+}
+.lp-faq-list {
+  border-top: 1px solid var(--lp-line);
+}
+.lp-faq-list details {
+  border-bottom: 1px solid var(--lp-line);
+}
+.lp-faq-list summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.05rem 0;
+  font-size: var(--text-base);
+  font-weight: 500;
+}
+.lp-faq-list summary::-webkit-details-marker {
+  display: none;
+}
+.lp-faq-list summary::after {
+  content: "+";
+  font-weight: 400;
+  color: var(--lp-ink-subtle);
+}
+.lp-faq-list details[open] summary::after {
+  content: "\2212";
+}
+.lp-faq-list details p {
+  margin: 0;
+  padding: 0 2rem 1.2rem 0;
+  font-size: var(--text-content);
+  line-height: 1.6;
+  color: var(--lp-ink-muted);
+}
+
+.lp-final {
+  margin-top: 7rem;
+  text-align: center;
+}
+.lp-final h2 {
+  font-family: var(--font-sans);
+  font-size: clamp(2.2rem, 4.4vw, 3.4rem); /* display clamp */
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+}
+.lp-final .sub-f {
+  margin: 1.2rem auto 0;
+  max-width: 34rem;
+  font-size: var(--text-lead);
+  line-height: 1.6;
+  color: var(--lp-ink-muted);
+}
+.lp-final .lp-btn-accent {
+  margin-top: 2rem;
+  padding: 0.95rem 1.5rem;
+  font-size: var(--text-base);
+}
+.lp-sample-fold {
+  max-width: 34rem;
+  margin: 2.2rem auto 0;
+}
+.lp-sample-fold summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-block;
+  font-size: var(--text-content);
+  font-weight: 500;
+  border-bottom: 1.5px solid var(--lp-line);
+  padding-bottom: 2px;
+}
+.lp-sample-fold summary::-webkit-details-marker {
+  display: none;
+}
+.lp-sample-fold summary:hover {
+  border-color: var(--lp-ink);
+}
+.lp-sample-fold p {
+  margin: 0.9rem 0 0;
+  font-size: var(--text-content);
+  line-height: 1.6;
+  color: var(--lp-ink-muted);
+}
+.lp-final-micro {
+  margin-top: 2.2rem;
+  font-size: var(--text-dense);
+  color: var(--lp-ink-subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-caret.blink {
+    animation: none;
+  }
+  .lp-hero::before,
+  .lp-hero::after,
+  .lp-glow-red,
+  .lp-fog-grain {
+    animation: none;
+  }
+  .lp-lane-track {
+    animation: none;
+  }
+  .lp-lane {
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+  .lp-btn-accent,
+  .lp-link-sample {
+    transition: none;
+  }
+  .lp-pstep .src-row .dot {
+    animation: none;
+  }
+  .lp-mq-track {
+    animation: none;
+    flex-wrap: wrap;
+    width: auto;
+  }
+  .lp-mq {
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+  .lp-battle .bc-head .fresh::before {
+    animation: none;
+  }
 }

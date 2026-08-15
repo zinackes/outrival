@@ -1576,7 +1576,8 @@ html:has(.landing-canvas) {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.lp-digest .dg-row {
+.lp-digest .dg-row,
+.lp-pstep .dg-row {
   display: flex;
   align-items: center;
   gap: 0.55rem;
@@ -1585,13 +1586,15 @@ html:has(.landing-canvas) {
   white-space: nowrap;
   overflow: hidden;
 }
-.lp-digest .dg-row .dot {
+.lp-digest .dg-row .dot,
+.lp-pstep .dg-row .dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
 }
-.lp-digest .dg-row .chip-cat {
+.lp-digest .dg-row .chip-cat,
+.lp-pstep .dg-row .chip-cat {
   flex-shrink: 0;
   padding: 0.12rem 0.5rem;
   border-radius: 999px;
@@ -1600,12 +1603,14 @@ html:has(.landing-canvas) {
   font-weight: 500;
   color: rgba(242, 245, 248, 0.6);
 }
-.lp-digest .dg-row .txt {
+.lp-digest .dg-row .txt,
+.lp-pstep .dg-row .txt {
   overflow: hidden;
   text-overflow: ellipsis;
   color: rgba(242, 245, 248, 0.6);
 }
-.lp-digest .dg-row .txt b {
+.lp-digest .dg-row .txt b,
+.lp-pstep .dg-row .txt b {
   color: #f2f5f8;
   font-weight: 500;
 }

@@ -1137,6 +1137,21 @@ html:has(.landing-canvas) {
 .lp-btn-accent:hover {
   background: var(--lp-ink-hover);
 }
+/* Same pill as a form's submit: full width, and able to hold a spinner beside
+   its label. */
+.lp-btn-accent.is-block {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 0;
+  cursor: pointer;
+}
+.lp-btn-accent:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 .lp-btn-hero {
   padding: 0.95rem 1.5rem;
   font-size: var(--text-base);
@@ -3801,6 +3816,49 @@ html:has(.landing-canvas) {
 .lp-doc-body .fine {
   font-size: var(--text-meta);
   color: var(--lp-ink-subtle);
+}
+
+/* The promises standing next to a form. No hairlines: the form beside it is
+   already a drawn box, and two boxes of rules compete. */
+.lp-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+.lp-checks li {
+  display: flex;
+  gap: 0.6rem;
+  font-size: var(--text-content);
+  line-height: 1.55;
+  color: color-mix(in oklab, currentColor 72%, transparent);
+}
+.lp-checks svg {
+  margin-top: 0.2rem;
+  flex: none;
+  color: var(--lp-accent);
+}
+
+/* The two footnotes under it — an alternative route and an email address. */
+.lp-form-note {
+  margin-top: 2rem;
+  font-size: var(--text-dense);
+  line-height: 1.6;
+  color: color-mix(in oklab, currentColor 58%, transparent);
+}
+.lp-form-note + .lp-form-note {
+  margin-top: 0.75rem;
+}
+.lp-form-note a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in oklab, currentColor 35%, transparent);
+  transition: text-decoration-color 150ms var(--lp-ease);
+}
+.lp-form-note a:hover {
+  text-decoration-color: currentColor;
 }
 
 /* Cross-links: the neighbouring comparisons, as a row of quiet links rather

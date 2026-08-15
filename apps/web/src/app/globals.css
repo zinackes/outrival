@@ -3262,6 +3262,21 @@ html:has(.landing-canvas) {
   color: var(--lp-ink-muted);
   text-wrap: pretty;
 }
+/* A second lead paragraph is an argument continuing, not a new block. */
+.lp-page-lead + .lp-page-lead {
+  margin-top: 1rem;
+}
+
+/* Provenance stamp under the opening argument: when a page compares a rival on
+   public information, the date it was checked is part of the claim. */
+.lp-page-meta {
+  margin-top: 1.6rem;
+  font-size: var(--text-meta);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lp-ink-subtle);
+}
+
 .lp-page-ctas {
   margin-top: 2rem;
   display: flex;
@@ -3335,6 +3350,114 @@ html:has(.landing-canvas) {
 .lp-band-dark > :first-child .lp-head,
 .lp-band-paper > .lp-inner > :first-child .lp-head {
   align-items: start;
+}
+
+/* ---- Honest two-up — where each tool wins ---------------------------
+   Not two cards: two columns of one argument, split by a hairline. Cards
+   would frame them as competing offers, which is the opposite of what the
+   section says. The rule derives from currentColor so the block reads the
+   same on paper and on graphite. */
+.lp-twoup {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(2rem, 4vw, 3.5rem);
+  margin-top: 2.75rem;
+}
+.lp-twoup > * + * {
+  border-left: 1px solid color-mix(in oklab, currentColor 14%, transparent);
+  padding-left: clamp(2rem, 4vw, 3.5rem);
+}
+@media (max-width: 860px) {
+  .lp-twoup {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+  .lp-twoup > * + * {
+    border-left: 0;
+    padding-left: 0;
+    border-top: 1px solid color-mix(in oklab, currentColor 14%, transparent);
+    padding-top: 2rem;
+  }
+}
+.lp-twoup h3 {
+  font-family: var(--font-sans);
+  font-size: var(--text-lead);
+  font-weight: 500;
+  letter-spacing: -0.012em;
+}
+.lp-twoup ul {
+  list-style: none;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 1.15rem;
+}
+.lp-twoup li {
+  display: flex;
+  gap: 0.7rem;
+}
+.lp-twoup li svg {
+  margin-top: 0.2rem;
+  flex: none;
+}
+.lp-twoup li p {
+  font-size: var(--text-content);
+  line-height: 1.55;
+  color: color-mix(in oklab, currentColor 64%, transparent);
+  text-wrap: pretty;
+}
+.lp-twoup li b {
+  font-weight: 500;
+  color: currentColor;
+}
+
+/* Blocks stacked inside one band: the band owns the outer padding, this owns
+   the breathing room between the arguments it holds. */
+.lp-block + .lp-block {
+  margin-top: clamp(4rem, 7vw, 6.5rem);
+}
+
+/* Cross-links: the neighbouring comparisons, as a row of quiet links rather
+   than a card grid — they are the page's exits, not its content. */
+.lp-xlinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.75rem;
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid color-mix(in oklab, currentColor 14%, transparent);
+  font-size: var(--text-dense);
+}
+.lp-xlinks a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: color-mix(in oklab, currentColor 62%, transparent);
+  text-decoration: none;
+  transition: color 150ms var(--lp-ease);
+}
+.lp-xlinks a:hover {
+  color: currentColor;
+}
+
+/* Sources and the affiliation disclaimer. Smallest type on the page, because
+   it is the part a reader checks rather than reads. */
+.lp-sources {
+  margin-top: 2.5rem;
+  font-size: var(--text-dense);
+  line-height: 1.6;
+  color: color-mix(in oklab, currentColor 52%, transparent);
+}
+.lp-sources p + p {
+  margin-top: 0.5rem;
+}
+.lp-sources a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.lp-sources a:hover {
+  color: currentColor;
 }
 
 /* The closing fine print carries one link — the alternative to signing up. */

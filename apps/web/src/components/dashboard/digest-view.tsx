@@ -182,19 +182,29 @@ export function MemoryBand({
  * A fact that knows which signal it came from links back to it, so the story stays
  * sourced: every line here is replayed evidence, and the reader can open the one it
  * was drawn from. `className` lets a host page set its own spacing above the rail.
+ *
+ * `max` trims the rail to its most recent facts, for a host that shows the story as a
+ * summary before the reader asks for the whole of it (OUT-213). The tail is what gets
+ * kept: the trajectory still ends where the competitor stands today.
  */
 export function MemoryTimeline({
   story,
   className = "mt-3",
+  max,
 }: {
   story: CompetitorStory;
   className?: string;
+  max?: number;
 }) {
+  // Offset the keys by what the slice dropped, so expanding the rail keeps the rows
+  // already on screen mounted instead of re-keying every one of them.
+  const start = max === undefined ? 0 : Math.max(0, story.facts.length - max);
+  const facts = start === 0 ? story.facts : story.facts.slice(start);
   return (
     <ol
       className={`m-0 flex list-none flex-col gap-3 border-l border-border p-0 pl-3.5 ${className}`}
     >
-      {story.facts.map((fact, i) => {
+      {facts.map((fact, i) => {
         const body = fact.before ? (
           <>
             <span className="text-muted-foreground">{fact.before}</span>
@@ -209,7 +219,7 @@ export function MemoryTimeline({
           fact.after
         );
         return (
-          <li key={`${fact.at}-${i}`} className="relative flex flex-col gap-1">
+          <li key={`${fact.at}-${start + i}`} className="relative flex flex-col gap-1">
             <span
               aria-hidden
               className="absolute -left-[18px] top-1.5 size-1.5 rounded-full bg-border-strong"

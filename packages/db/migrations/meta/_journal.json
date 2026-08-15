@@ -575,6 +575,13 @@
       "when": 1786782895892,
       "tag": "0081_eager_jackal",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1786783422922,
+      "tag": "0082_amusing_ted_forrester",
+      "breakpoints": true
     }
   ]
 }

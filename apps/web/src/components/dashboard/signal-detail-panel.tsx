@@ -260,6 +260,12 @@ export function SignalDetailPanel({
   );
   const archiveChipClass =
     "inline-flex items-center gap-1 rounded-sm border border-border bg-surface-2 px-2 py-0.5 text-meta font-medium text-muted-foreground";
+  // The importance verdict reads louder than the chips around it on purpose: it is
+  // the one line that answers "do I stop for this?", and the severity band next to
+  // it answers a different question. The negative verdict stays deliberately quiet
+  // so a feed of ordinary changes does not shout "Not important" at the reader.
+  const importantChipClass =
+    "rounded-sm border border-foreground/25 bg-surface-3 px-2 py-0.5 text-meta font-semibold text-foreground";
   const changes = detail?.changes ?? [];
   // The lines the page added and removed. For the sources with no structured
   // breakdown, which is most of them, this is what makes the Evidence section
@@ -512,6 +518,29 @@ export function SignalDetailPanel({
                       </TooltipContent>
                     </Tooltip>
                   )}
+                  {/* Important / not important, with the reason behind it (OUT-192).
+                      The flag alone is the thing users learn to distrust, so the
+                      reason is one hover away and never omitted. Null means the
+                      signal predates the flag: show nothing rather than guess. */}
+                  {signal.isImportant !== null && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className={
+                            signal.isImportant
+                              ? importantChipClass
+                              : archiveChipClass
+                          }
+                        >
+                          {signal.isImportant ? "Important" : "Not important"}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[280px]">
+                        {signal.importanceReason ??
+                          "Flagged from this signal's own scores."}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                   {heldBack && (
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -539,7 +568,7 @@ export function SignalDetailPanel({
                       </TooltipTrigger>
                       <TooltipContent className="max-w-[280px]">
                         This page served both readings{" "}
-                        {signal.oscillation.observations} times — “
+                        {signal.oscillation.observations} times: “
                         {signal.oscillation.variantA}” and “
                         {signal.oscillation.variantB}”. Likely an A/B test still
                         running, so the later flips were folded in here instead of

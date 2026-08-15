@@ -22,6 +22,7 @@ export * from "./r2/client";
 export * from "./r2/keys";
 export * from "./diff";
 export * from "./scoring/threat";
+export * from "./scoring/importance";
 export * from "./scheduling";
 export * from "./url";
 export * from "./reviews";

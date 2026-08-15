@@ -243,6 +243,10 @@ signalsRouter.get("/", async (c) => {
       // as an immediate alert (quiet hours / cap / threshold / muted). Null = it
       // wasn't held back. Critical signals bypass moderation entirely.
       filteredReason: signals.filteredReason,
+      // Important / not important + the one-line reason (OUT-192). Null on every
+      // signal written before the flag existed; the row then shows severity alone.
+      isImportant: signals.isImportant,
+      importanceReason: signals.importanceReason,
       // A/B oscillation (OUT-192): later flips of this exact delta were folded into
       // this signal instead of becoming their own cards. Null = it never flipped.
       oscillation: signals.oscillation,

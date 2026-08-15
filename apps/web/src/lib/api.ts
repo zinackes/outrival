@@ -545,6 +545,11 @@ export interface Signal {
   // alert (below_threshold | channel_muted | quiet_hours | frequency_cap). Null =
   // not held back.
   filteredReason: string | null;
+  // Important / not important + the one line that says why (OUT-192). Severity is how
+  // big the move is; this is whether the reader should stop for it. Null on signals
+  // written before the flag existed, and the row then shows severity alone.
+  isImportant: boolean | null;
+  importanceReason: string | null;
   // A/B oscillation (OUT-192): the page served this delta and then its exact inverse,
   // repeatedly. The flips were folded into this one signal rather than raising a card
   // each. Null for every signal that never flipped.

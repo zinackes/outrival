@@ -164,6 +164,20 @@ export function SignalRow({
           <span className="truncate">{sourceLabel(signal.sourceType)}</span>
           <span aria-hidden>·</span>
           <CatText category={signal.category} />
+          {/* The importance verdict, shown as its REASON rather than as the word
+              "Important" (OUT-192): the reason is the part a reader cannot get
+              anywhere else on this row, and a bare flag is what they stop
+              trusting. Only the positive verdict renders — a feed that annotates
+              every ordinary change with "Not important" costs a line of attention
+              per row to say nothing. It truncates: the panel has it in full. */}
+          {signal.isImportant && signal.importanceReason && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="min-w-0 truncate font-medium text-foreground">
+                {signal.importanceReason}
+              </span>
+            </>
+          )}
           {/* L2 provenance marker — this row was reconstructed from the web archive. */}
           {signal.filteredReason === "backfill" && (
             // Below the 14px floor on purpose: everywhere else the marker sits

@@ -40,6 +40,7 @@ import {
   PRICING_STATUSES,
   PRICING_STATUS_LABELS,
   buildDeltaProof,
+  decideImportance,
   formatDiffForPrompt,
   renderCelebrationEmail,
 } from "@outrival/shared";
@@ -614,6 +615,19 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
         }))
       : [];
 
+    // Important / not important + the one-line reason the feed badges (OUT-192).
+    // Deterministic over numbers this run already produced, so it adds no call and no
+    // second opinion: the reason can be checked against the row it sits on.
+    const materialityScores = input.classification?.materiality
+      ? toMaterialityScores(input.classification.materiality)
+      : null;
+    const importance = decideImportance({
+      severity,
+      materiality: materialityScores,
+      relevanceScore: change.relevanceScore,
+      isBackfill,
+    });
+
     const [newSignal] = await db
       .insert(signals)
       .values({
@@ -643,12 +657,14 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
         // The materiality sub-scores the severity above was computed from. Null on
         // the synthesized paths (pricing transitions, Hacker News, wellknown,
         // comparison pages) — those force a severity without scoring materiality.
-        materiality: input.classification?.materiality
+        materiality: materialityScores
           ? {
-              ...toMaterialityScores(input.classification.materiality),
+              ...materialityScores,
               ...(corroborationSources.length > 0 ? { corroborationSources } : {}),
             }
           : null,
+        isImportant: importance.important,
+        importanceReason: importance.reason,
         faithfulness,
       })
       .onConflictDoNothing({ target: signals.changeId })

@@ -561,6 +561,13 @@
       "when": 1786723408970,
       "tag": "0079_daffy_blonde_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1786781420146,
+      "tag": "0080_foamy_quicksilver",
+      "breakpoints": true
     }
   ]
 }

@@ -41,6 +41,11 @@ export const onboardingSessions = pgTable("onboarding_sessions", {
 
   // Saved state for resume after a tab close / refresh.
   productUrl: text("product_url"),
+  // What the user typed in "Product name" on the profile step, saved as a draft
+  // while they type. It is only asked for when the run produced no URL, and it is
+  // read back on resume — the field used to live in React state until the step was
+  // confirmed, so leaving the screen lost it.
+  productName: text("product_name"),
   productProfile: jsonb("product_profile").$type<OnboardingSessionProfile>(),
   discoverySuggestions: jsonb("discovery_suggestions").$type<unknown[]>(),
   addedCompetitorIds: jsonb("added_competitor_ids").$type<string[]>(),

@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/metadata";
 import Link from "next/link";
-import { ArrowRightIcon } from "@/components/icons";
 import { Nav } from "@/components/landing/nav";
 import { Footer } from "@/components/landing/footer";
-import { Button } from "@/components/ui/button";
+import { Band, Breadcrumbs } from "@/components/landing/compare/compare-shell";
 import { DigestView } from "@/components/dashboard/digest-view";
 import { SAMPLE_DIGEST, SAMPLE_DIGEST_READY } from "@/lib/sample-digest";
 
@@ -23,41 +22,23 @@ export const metadata: Metadata = pageMetadata({
   ownImage: true,
 });
 
+// WebPage only — the BreadcrumbList that used to live here now comes from
+// <Breadcrumbs>, which emits it alongside the visible trail.
 function SampleJsonLd() {
-  const data = [
-    {
-      "@context": "https://schema.org",
-      "@type": "WebPage",
-      name: TITLE,
-      description: DESCRIPTION,
-      url: "https://outrival.app/sample",
-      inLanguage: "en",
-      isPartOf: { "@id": "https://outrival.app#org" },
-      about: {
-        "@type": "SoftwareApplication",
-        name: "Outrival",
-        applicationCategory: "BusinessApplication",
-      },
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    name: TITLE,
+    description: DESCRIPTION,
+    url: "https://outrival.app/sample",
+    inLanguage: "en",
+    isPartOf: { "@id": "https://outrival.app#org" },
+    about: {
+      "@type": "SoftwareApplication",
+      name: "Outrival",
+      applicationCategory: "BusinessApplication",
     },
-    {
-      "@context": "https://schema.org",
-      "@type": "BreadcrumbList",
-      itemListElement: [
-        {
-          "@type": "ListItem",
-          position: 1,
-          name: "Home",
-          item: "https://outrival.app",
-        },
-        {
-          "@type": "ListItem",
-          position: 2,
-          name: "Sample digest",
-          item: "https://outrival.app/sample",
-        },
-      ],
-    },
-  ];
+  };
   return (
     <script
       type="application/ld+json"
@@ -72,76 +53,76 @@ export default function SamplePage() {
   const critCount = sections.filter((s) => s.urgency === "action_required").length;
 
   return (
-    <div className="landing-canvas min-h-dvh bg-background font-sans text-foreground antialiased">
+    <div className="landing-canvas lp-light lp-page min-h-dvh font-sans antialiased">
       <SampleJsonLd />
-      <Nav />
-      <main
-        id="main-content"
-        tabIndex={-1}
-        className="mx-auto w-full max-w-3xl px-6 py-16 sm:py-20"
-      >
-        {/* Contextual banner — factual, not marketing. */}
-        <div className="rounded-lg border border-border bg-background-2 px-4 py-3 text-sm leading-relaxed text-text-muted">
-          This is a real Outrival weekly digest{SAMPLE_DIGEST_READY ? `, ${weekLabel}` : ""}, showing {sections.length}{" "}
-          of its signals, unedited. The client organization is anonymized; the
-          competitors named are real, public companies. It renders with the same
-          component clients read in the app. Nothing here is a marketing
-          mock-up.
-        </div>
+      <Nav tone="marketing" />
 
-        <header className="mt-10">
-          <h1 className="text-title-lg font-semibold tracking-tight sm:text-4xl">
-            The Monday brief
+      <main id="main-content" tabIndex={-1}>
+        <header className="lp-page-head">
+          <Breadcrumbs
+            items={[
+              { name: "Home", path: "/" },
+              { name: "Sample digest", path: "/sample" },
+            ]}
+          />
+          <h1>
+            The Monday <span className="lp-serif-accent">brief</span>
           </h1>
-          <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-text-muted">
-            <span>{sections.length} signals</span>
-            <span aria-hidden>·</span>
-            <span>{critCount} critical</span>
-            <span aria-hidden>·</span>
-            <span>Temperature · {content.temperature}</span>
-            {competitorCount > 0 && (
-              <>
-                <span aria-hidden>·</span>
-                <span>{competitorCount} competitors</span>
-              </>
-            )}
-          </div>
+          <p className="lp-page-lead">
+            This is a real Outrival weekly digest
+            {SAMPLE_DIGEST_READY ? `, ${weekLabel}` : ""}, showing{" "}
+            {sections.length} of its signals, unedited. The client organization
+            is anonymized; the competitors named are real, public companies. It
+            renders with the same component clients read in the app. Nothing
+            here is a marketing mock-up.
+          </p>
+          <p className="lp-page-meta">
+            {sections.length} signals · {critCount} critical · Temperature{" "}
+            {content.temperature}
+            {competitorCount > 0 ? ` · ${competitorCount} competitors` : ""}
+          </p>
         </header>
 
-        {SAMPLE_DIGEST_READY ? (
-          <div className="mt-8">
-            <DigestView content={content} />
+        {/* The digest on graphite: it is the product, and the landing shows the
+            product on its dark region. Band flips the token set, so the app
+            component renders in its dark theme rather than a light one pasted
+            onto a dark ground. */}
+        <Band tone="dark">
+          {/* Capped to a reading measure but not centred in the band: a digest
+              is read, and it shares its left edge with the head above it. */}
+          <div className="w-full max-w-3xl">
+            {SAMPLE_DIGEST_READY ? (
+              <DigestView content={content} />
+            ) : (
+              <div className="rounded-lg border border-dashed border-border bg-surface px-4 py-8 text-center text-sm text-text-subtle">
+                This sample digest is being prepared.
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="mt-8 rounded-lg border border-dashed border-border bg-surface px-4 py-8 text-center text-sm text-text-subtle">
-            This sample digest is being prepared.
-          </div>
-        )}
+        </Band>
 
-        {/* Bottom CTA — self-serve, consistent with the rest of the site. */}
-        <div className="mt-14 grid gap-6 rounded-2xl border border-border bg-gradient-to-b from-surface to-background-2 p-8 sm:grid-cols-2 sm:items-center">
-          <div>
-            <h2 className="text-2xl font-semibold tracking-tight">
-              This, for your market.
+        <Band tone="paper">
+          <aside className="lp-final">
+            <h2>
+              This, for your <span className="lp-serif-accent">market</span>.
             </h2>
-            <p className="mt-3 text-sm leading-relaxed text-text-muted">
+            <p className="sub-f">
               Add your competitors. We scrape them immediately and your first
               digest reads exactly like this one.
             </p>
-          </div>
-          <div className="flex flex-col items-start gap-3 sm:items-end">
-            <Button asChild size="lg">
-              <Link href="/auth">
-                Start monitoring free <ArrowRightIcon size={16} />
-              </Link>
-            </Button>
-            <div className="text-xs text-text-subtle">
+            <Link className="lp-btn-accent" href="/auth">
+              Start monitoring free
+            </Link>
+            <p className="lp-final-micro">
               No credit card · cancel in one click
-            </div>
-          </div>
-        </div>
+            </p>
+          </aside>
+        </Band>
       </main>
-      <Footer />
+
+      <div className="dark" data-lp-tone="dark">
+        <Footer />
+      </div>
     </div>
   );
 }

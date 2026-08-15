@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { LogoMark } from "@/components/outrival/logo";
 import { useSession } from "@/lib/auth-client";
 
-const LINKS = [
+const APP_LINKS = [
   { href: "#sources", label: "Sources" },
   { href: "#product", label: "Product" },
   { href: "#signals", label: "Signals" },
@@ -18,7 +18,21 @@ const LINKS = [
   { href: "/about", label: "About" },
 ] as const;
 
-export function Nav() {
+const LANDING_LINKS = [
+  { href: "#product", label: "Product" },
+  { href: "#signals", label: "Signals" },
+  { href: "#compare", label: "Compare" },
+  { href: "#pricing", label: "Pricing" },
+  { href: "/blog", label: "Blog" },
+] as const;
+
+// tone="app" (default) is the fixed, blurred, theme-aware bar used on /sample
+// and the doc pages. tone="landing" sits in flow inside the hero — transparent
+// so the fog shows through, ink logo (the hero is pinned light), no theme
+// toggle (the landing's rhythm is fixed, not a preference).
+export function Nav({ tone = "app" }: { tone?: "app" | "landing" }) {
+  const landing = tone === "landing";
+  const links = landing ? LANDING_LINKS : APP_LINKS;
   const [open, setOpen] = useState(false);
   const { data: session } = useSession();
   // While the session is still resolving, keep the signed-out CTAs (matches SSR)
@@ -40,17 +54,27 @@ export function Nav() {
   }, [open]);
 
   return (
-    <nav className="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/85 backdrop-blur-sm">
-      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
+    <nav
+      className={
+        landing
+          ? "relative z-10"
+          : "fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/85 backdrop-blur-sm"
+      }
+    >
+      <div
+        className={`mx-auto flex h-16 w-full items-center justify-between px-6 ${
+          landing ? "max-w-[88rem]" : "max-w-6xl"
+        }`}
+      >
         <a
           href="/"
           className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight"
         >
-          <LogoMark size={26} />
+          <LogoMark size={26} ink={landing} />
           Out<span className="text-primary">rival</span>
         </a>
         <div className="hidden items-center gap-7 text-sm text-text-muted md:flex">
-          {LINKS.map((l) => (
+          {links.map((l) => (
             <a
               key={l.href}
               href={l.href}
@@ -60,9 +84,27 @@ export function Nav() {
             </a>
           ))}
         </div>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          {isAuthed ? (
+        <div className={`flex items-center ${landing ? "gap-4" : "gap-2"}`}>
+          {!landing && <ThemeToggle />}
+          {landing ? (
+            isAuthed ? (
+              <Link href="/dashboard" className="lp-btn-accent">
+                Go to dashboard
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/auth"
+                  className="text-sm font-medium text-text-muted transition-colors hover:text-foreground max-sm:hidden"
+                >
+                  Sign in
+                </Link>
+                <Link href="/auth" className="lp-btn-accent">
+                  Start free
+                </Link>
+              </>
+            )
+          ) : isAuthed ? (
             <Button asChild size="sm">
               <Link href="/dashboard">Go to dashboard</Link>
             </Button>
@@ -98,14 +140,18 @@ export function Nav() {
             aria-hidden
             tabIndex={-1}
             onClick={() => setOpen(false)}
-            className="fixed inset-0 top-16 z-40 cursor-default bg-background/40 md:hidden"
+            className={`fixed inset-0 z-40 cursor-default bg-background/40 md:hidden ${
+              landing ? "" : "top-16"
+            }`}
           />
           <div
             id="mobile-nav"
-            className="absolute inset-x-0 top-16 z-50 border-b border-border bg-background px-6 py-4 md:hidden"
+            className={`absolute inset-x-0 z-50 border-b border-border bg-background px-6 py-4 md:hidden ${
+              landing ? "top-full" : "top-16"
+            }`}
           >
             <div className="flex flex-col">
-              {LINKS.map((l) => (
+              {links.map((l) => (
                 <a
                   key={l.href}
                   href={l.href}

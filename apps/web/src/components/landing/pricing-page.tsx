@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Breadcrumbs, CompareShell } from "./compare/compare-shell";
+import { Band, CompareShell, PageHead } from "./compare/compare-shell";
 import { CompareFaq } from "./compare/compare-faq";
 import { Pricing } from "./pricing";
 import { COMPETITORS, LAST_REVIEWED, PRICE_AS_OF } from "./compare/data";
@@ -74,30 +73,34 @@ const PRICING_FAQS = [
   },
 ];
 
+// Real tabular data, in the landing's compact register: meta-sized column
+// heads, hairline rows, our own row lifted off the graphite. Colour is spent
+// once, on the row that is ours.
 function ContextTable() {
+  const HEADS = [
+    "Tool",
+    "Published price",
+    "Typical annual cost",
+    "How you buy",
+    "Commitment",
+  ];
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[46rem] border-collapse text-sm">
+    <div className="mt-10 overflow-x-auto">
+      <table className="w-full min-w-[46rem] border-collapse text-dense">
         <caption className="sr-only">
           What competitive intelligence tools cost, compared
         </caption>
         <thead>
           <tr className="border-b border-border-strong text-left">
-            <th scope="col" className="py-3 pr-4 font-medium">
-              Tool
-            </th>
-            <th scope="col" className="py-3 pr-4 font-medium">
-              Published price
-            </th>
-            <th scope="col" className="py-3 pr-4 font-medium">
-              Typical annual cost
-            </th>
-            <th scope="col" className="py-3 pr-4 font-medium">
-              How you buy
-            </th>
-            <th scope="col" className="py-3 font-medium">
-              Commitment
-            </th>
+            {HEADS.map((h) => (
+              <th
+                key={h}
+                scope="col"
+                className="py-3 pr-5 text-meta font-medium uppercase tracking-[0.06em] text-text-subtle"
+              >
+                {h}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -110,17 +113,17 @@ function ContextTable() {
             >
               <th
                 scope="row"
-                className={`py-4 pr-4 text-left font-medium ${
+                className={`py-4 pr-5 text-left font-medium ${
                   row.self ? "text-primary" : ""
                 }`}
               >
                 {row.name}
               </th>
-              <td className="py-4 pr-4 text-text-muted">{row.price}</td>
-              <td className="py-4 pr-4 tabular-nums text-text-muted">
+              <td className="py-4 pr-5 text-text-muted">{row.price}</td>
+              <td className="py-4 pr-5 tabular-nums text-text-muted">
                 {row.yearly}
               </td>
-              <td className="py-4 pr-4 text-text-muted">{row.access}</td>
+              <td className="py-4 pr-5 text-text-muted">{row.access}</td>
               <td className="py-4 text-text-muted">{row.commitment}</td>
             </tr>
           ))}
@@ -130,82 +133,97 @@ function ContextTable() {
   );
 }
 
+// The page runs the landing's rhythm: paper opening, one graphite body holding
+// the whole price argument (our plans, then what the category charges), paper
+// again for the questions and the close, dark footer. The plan cards are the
+// landing's own <Pricing />, which is why they can never quote a different
+// number — and why they finally sit on the dark they were drawn for.
 export function PricingPage() {
   return (
     <CompareShell>
-      <section className="mx-auto w-full max-w-6xl px-6 pb-10 pt-10 sm:pt-12">
-        <Breadcrumbs
-          items={[
-            { name: "Home", path: "/" },
-            { name: "Pricing", path: "/pricing" },
-          ]}
-        />
-        <h1 className="mt-8 max-w-3xl text-[clamp(2.4rem,5vw,3.6rem)] font-semibold leading-[1.05] tracking-[-0.02em] text-balance">
-          Competitive intelligence, priced in public
-        </h1>
-        <p className="mt-6 max-w-2xl text-lead leading-relaxed text-text-muted text-pretty">
-          Free forever on 2 competitors, then €29, €79 or €199 a month. Every AI
-          cost is included, billing is monthly, and cancelling takes one click.
-          No demo stands between you and the price.
-        </p>
-      </section>
+      <PageHead
+        crumbs={[
+          { name: "Home", path: "/" },
+          { name: "Pricing", path: "/pricing" },
+        ]}
+        title={
+          <>
+            Competitive intelligence, priced{" "}
+            <span className="lp-serif-accent">in public</span>.
+          </>
+        }
+        lead="Free forever on 2 competitors, then €29, €79 or €199 a month. Every AI cost is included, billing is monthly, and cancelling takes one click. No demo stands between you and the price."
+      >
+        <a className="lp-btn-accent lp-btn-hero" href="/auth">
+          Start free
+        </a>
+        <Link href="/sample" className="lp-link-sample">
+          Read a real digest
+        </Link>
+      </PageHead>
 
-      <Pricing />
-
-      <section className="mx-auto w-full max-w-6xl px-6 py-16 sm:py-20">
-        <div className="max-w-2xl">
-          <h2 className="text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
-            What this category normally costs
-          </h2>
-          <p className="mt-4 leading-relaxed text-text-muted text-pretty">
-            The established competitive-intelligence platforms are sales-led and
-            publish no list price, so the only figures available are dated
-            third-party estimates. They are reproduced here as they are
-            published, with their source, because a buyer comparing options
-            deserves the number before the call rather than after it.
+      <section className="lp-band-dark dark" data-lp-tone="dark">
+        <Pricing />
+        <div className="lp-inner">
+          <div className="lp-head">
+            <h2>
+              What this category normally{" "}
+              <span className="lp-serif-accent">costs</span>.
+            </h2>
+            <p>
+              Every established platform here is sales-led and publishes no list
+              price, so the only figures that exist are dated third-party
+              estimates. They are reproduced as published, with their source.
+            </p>
+          </div>
+          <ContextTable />
+          <p className="mt-6 text-dense text-text-subtle">
+            Competitor figures are third-party estimates, not list prices, and
+            are attributed on{" "}
+            <Link href="/vs/crayon" className="text-primary hover:underline">
+              Outrival vs Crayon
+            </Link>{" "}
+            and{" "}
+            <Link href="/vs/klue" className="text-primary hover:underline">
+              Outrival vs Klue
+            </Link>
+            . Last reviewed {LAST_REVIEWED}.
           </p>
         </div>
-        <div className="mt-10">
-          <ContextTable />
-        </div>
-        <p className="mt-6 text-dense text-text-subtle">
-          Competitor figures are third-party estimates, not list prices, and are
-          attributed on{" "}
-          <Link href="/vs/crayon" className="text-primary hover:underline">
-            Outrival vs Crayon
-          </Link>{" "}
-          and{" "}
-          <Link href="/vs/klue" className="text-primary hover:underline">
-            Outrival vs Klue
-          </Link>
-          . Last reviewed {LAST_REVIEWED}.
-        </p>
       </section>
 
-      <div className="border-t border-border bg-background-2">
-        <CompareFaq heading="Pricing questions" faqs={PRICING_FAQS} />
-      </div>
-
-      <section className="mx-auto w-full max-w-6xl px-6 py-16 sm:py-20">
-        <div className="rounded-xl border border-border bg-surface p-8 sm:p-10">
-          <h2 className="text-2xl font-semibold leading-tight tracking-tight">
-            See the output before you pay for it
+      <Band tone="paper">
+        <CompareFaq
+          heading={
+            <>
+              Questions about the{" "}
+              <span className="lp-serif-accent">price</span>.
+            </>
+          }
+          faqs={PRICING_FAQS}
+        />
+        {/* Closing ask in the landing's register: one statement, one button,
+            and the offer that answers the objection the price raises — judge
+            the output before paying for it. */}
+        <div className="lp-final">
+          <h2>
+            See the output before you{" "}
+            <span className="lp-serif-accent">pay</span> for it.
           </h2>
-          <p className="mt-4 max-w-2xl leading-relaxed text-text-muted text-pretty">
+          <p className="sub-f">
             A real generated weekly digest is published on this site, readable
             without an account. Judge the signal quality on that, then start on
             the free plan.
           </p>
-          <div className="mt-7 flex flex-wrap items-center gap-3">
-            <Button asChild size="lg">
-              <Link href="/auth">Start free</Link>
-            </Button>
-            <Button asChild size="lg" variant="outline">
-              <Link href="/sample">Read a real digest</Link>
-            </Button>
-          </div>
+          <a className="lp-btn-accent" href="/auth">
+            Start free
+          </a>
+          <p className="lp-final-micro">
+            No credit card · cancel in one click ·{" "}
+            <Link href="/sample">read a real digest</Link>
+          </p>
         </div>
-      </section>
+      </Band>
     </CompareShell>
   );
 }

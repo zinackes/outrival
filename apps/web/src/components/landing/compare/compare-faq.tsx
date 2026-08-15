@@ -1,57 +1,49 @@
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { FaqJsonLd } from "./structured-data";
 
-// FAQ block for the comparison / alternatives pages: the visible accordion and
-// its FAQPage JSON-LD from one source, so the rich-result markup can't drift
-// from the rendered questions.
+// FAQ block for the comparison / alternatives / pricing pages: the visible
+// accordion and its FAQPage JSON-LD from one source, so the rich-result markup
+// can't drift from the rendered questions.
+//
+// It renders the landing's own FAQ markup (.lp-faq / native <details>) rather
+// than the shadcn Accordion it used to: same editorial hairlines, same +/−
+// affordance, and no client JS on a page that otherwise needs none. The first
+// question ships open — a closed list of seven reads as a wall.
 export function CompareFaq({
-  heading = "Common questions",
+  heading = (
+    <>
+      The questions we get <span className="lp-serif-accent">asked</span>.
+    </>
+  ),
+  lead,
   faqs,
 }: {
-  heading?: string;
+  heading?: React.ReactNode;
+  lead?: React.ReactNode;
   faqs: { q: string; a: string }[];
 }) {
   return (
-    <section className="mx-auto w-full max-w-6xl px-6 py-16 sm:py-20">
+    <div className="lp-faq">
       <FaqJsonLd faqs={faqs} />
-      <div className="grid gap-x-12 gap-y-8 lg:grid-cols-[1fr_1.6fr]">
-        <div>
-          <h2 className="text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
-            {heading}
-          </h2>
-          <p className="mt-4 leading-relaxed text-text-muted">
-            Still deciding? Email{" "}
-            <a
-              href="mailto:hello@outrival.app"
-              className="text-primary hover:underline"
-            >
-              hello@outrival.app
-            </a>{" "}
-            and the founder answers.
-          </p>
-        </div>
-        <Accordion
-          type="single"
-          collapsible
-          className="border-t border-border-strong"
-        >
-          {faqs.map((f, i) => (
-            <AccordionItem key={i} value={`item-${i}`}>
-              <AccordionTrigger className="text-left text-base hover:no-underline">
-                {f.q}
-              </AccordionTrigger>
-              <AccordionContent className="leading-relaxed text-text-muted">
-                {f.a}
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
+      <div>
+        <h2 className="lp-light-h2">{heading}</h2>
+        <p className="lp-faq-lead">
+          {lead ?? (
+            <>
+              Still deciding? Write to{" "}
+              <a href="mailto:hello@outrival.app">hello@outrival.app</a> and the
+              founder answers.
+            </>
+          )}
+        </p>
       </div>
-    </section>
+      <div className="lp-faq-list">
+        {faqs.map((f, i) => (
+          <details key={f.q} open={i === 0}>
+            <summary>{f.q}</summary>
+            <p>{f.a}</p>
+          </details>
+        ))}
+      </div>
+    </div>
   );
 }

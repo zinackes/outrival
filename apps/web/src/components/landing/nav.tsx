@@ -26,6 +26,17 @@ const LANDING_LINKS = [
   { href: "/blog", label: "Blog" },
 ] as const;
 
+// Same five slots as the landing, resolved absolutely: off the home page a
+// bare "#product" scrolls nowhere, and Pricing now has a page of its own
+// rather than an anchor.
+const MARKETING_LINKS = [
+  { href: "/#product", label: "Product" },
+  { href: "/#signals", label: "Signals" },
+  { href: "/vs/crayon", label: "Compare" },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/blog", label: "Blog" },
+] as const;
+
 // Vertical centre of the floating pill, in px: .lp-nav.is-stuck sits at
 // top: 0.85rem and is 3.5rem tall, so 13.6 + 28. Keep the two in step.
 const PILL_CENTER = 42;
@@ -36,9 +47,19 @@ const PILL_CENTER = 42;
 // toggle (the landing's rhythm is fixed, not a preference). As soon as it
 // scrolls out of view the landing bar comes back as a floating pill
 // (.lp-nav.is-stuck); the <nav> keeps its own height so nothing moves.
-export function Nav({ tone = "app" }: { tone?: "app" | "landing" }) {
-  const landing = tone === "landing";
-  const links = landing ? LANDING_LINKS : APP_LINKS;
+// tone="marketing" is that same bar on the pages around the landing
+// (/pricing, /vs/*, /alternatives/*): identical behaviour, links resolved
+// absolutely because there is no hero underneath them to anchor into.
+export function Nav({ tone = "app" }: { tone?: "app" | "landing" | "marketing" }) {
+  // Both landing tones share every visual and every observer; only the link
+  // set differs, so the flag below stays a two-state thing.
+  const landing = tone !== "app";
+  const links =
+    tone === "landing"
+      ? LANDING_LINKS
+      : tone === "marketing"
+        ? MARKETING_LINKS
+        : APP_LINKS;
   const [open, setOpen] = useState(false);
   const [stuck, setStuck] = useState(false);
   const [onDark, setOnDark] = useState(false);

@@ -39,6 +39,7 @@ import {
   PLAN_LIMITS,
   PRICING_STATUSES,
   PRICING_STATUS_LABELS,
+  buildDeltaProof,
   formatDiffForPrompt,
   renderCelebrationEmail,
 } from "@outrival/shared";
@@ -55,6 +56,12 @@ import {
   groundableSignalLayer,
 } from "../lib/faithfulness-gate";
 import { interceptEmission, recordEmission } from "../lib/emission-verification";
+import {
+  findOscillation,
+  foldOscillation,
+  OSCILLATION_WINDOW_DAYS,
+  type PriorSignalDelta,
+} from "../lib/oscillation";
 
 // A pricing status transition (patch-11) carries its own severity and replaces
 // the generic diff classification for that change.
@@ -315,6 +322,60 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
     const humanChangeAfter = input.pricingTransition
       ? PRICING_STATUS_LABELS[input.pricingTransition.current]
       : (input.classification!.humanChangeAfter ?? null);
+
+    // A/B oscillation folding (OUT-192).
+    //
+    // Before anything is verified, generated or dispatched: if this delta is the exact
+    // inverse of one this page was already signalled for inside the fold window, the
+    // page is flipping, not deciding. Fold the flip into the signal that is already
+    // there and stop — one grouped card, no second alert, no second AI call.
+    //
+    // Skipped for the ab_test_suspected anchor (skipVerification), whose whole content
+    // is a statement ABOUT flapping and whose synthetic page_variance monitor would
+    // otherwise fold its own findings into each other, and for archive backfill, where
+    // the back-and-forth IS the history the user asked to see.
+    if (!input.skipVerification && !isBackfill && monitor.sourceType !== "page_variance") {
+      const proof = buildDeltaProof({ diffText, humanChangeBefore, humanChangeAfter });
+      const priors: PriorSignalDelta[] = await db
+        .select({
+          signalId: signals.id,
+          changeId: signals.changeId,
+          detectedAt: changes.detectedAt,
+          diffText: changes.diffText,
+          humanChangeBefore: signals.humanChangeBefore,
+          humanChangeAfter: signals.humanChangeAfter,
+          oscillation: signals.oscillation,
+        })
+        .from(signals)
+        .innerJoin(changes, eq(changes.id, signals.changeId))
+        .where(
+          and(
+            eq(changes.monitorId, monitor.id),
+            ne(signals.changeId, input.changeId),
+            gte(
+              changes.detectedAt,
+              new Date(change.detectedAt.getTime() - OSCILLATION_WINDOW_DAYS * 86_400_000),
+            ),
+          ),
+        )
+        .orderBy(desc(changes.detectedAt))
+        .limit(20);
+
+      const prior = findOscillation(proof, priors, change.detectedAt);
+      const folded = prior ? foldOscillation(prior, input.changeId, change.detectedAt) : null;
+      if (prior && folded) {
+        await db
+          .update(signals)
+          .set({ oscillation: folded })
+          .where(eq(signals.id, prior.signalId));
+        logger.log("Change folded into an oscillating signal", {
+          changeId: input.changeId,
+          signalId: prior.signalId,
+          observations: folded.observations,
+        });
+        return { folded: true, signalId: prior.signalId, observations: folded.observations };
+      }
+    }
 
     // Double capture before a high-stakes emission (Véracité Intelligence v2 P2).
     //

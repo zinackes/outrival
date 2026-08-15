@@ -545,6 +545,20 @@ export interface Signal {
   // alert (below_threshold | channel_muted | quiet_hours | frequency_cap). Null =
   // not held back.
   filteredReason: string | null;
+  // A/B oscillation (OUT-192): the page served this delta and then its exact inverse,
+  // repeatedly. The flips were folded into this one signal rather than raising a card
+  // each. Null for every signal that never flipped.
+  oscillation: SignalOscillation | null;
+}
+
+/** The folded back-and-forth behind an oscillating signal. */
+export interface SignalOscillation {
+  /** Distinct readings of the flip, this signal's own included (so it starts at 2). */
+  observations: number;
+  variantA: string;
+  variantB: string;
+  changeIds: string[];
+  lastObservedAt: string;
 }
 
 // User-safe "Why this insight?" payload (patch-14). No raw HTML, no diff, no AI

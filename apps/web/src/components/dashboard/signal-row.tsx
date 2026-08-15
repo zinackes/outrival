@@ -176,6 +176,17 @@ export function SignalRow({
               aria-label="From archive"
             />
           )}
+          {/* The page kept serving this delta and then its exact inverse. The flips
+              were folded into this one row instead of raising a card each, so the
+              count is the only place that fold is visible from the list. */}
+          {signal.oscillation && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="shrink-0 tabular-nums">
+                Oscillating · {signal.oscillation.observations} readings
+              </span>
+            </>
+          )}
         </span>
       </span>
 

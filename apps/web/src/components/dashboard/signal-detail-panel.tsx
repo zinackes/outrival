@@ -526,6 +526,27 @@ export function SignalDetailPanel({
                       </TooltipContent>
                     </Tooltip>
                   )}
+                  {/* The page went back and forth on this exact delta. Every flip
+                      after the first was folded into this signal, so the chip is
+                      where the reader learns the number is not settled — and the
+                      tooltip is the only place the two readings are named. */}
+                  {signal.oscillation && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="rounded-sm border border-border bg-surface-2 px-2 py-0.5 text-meta font-medium text-muted-foreground tabular-nums">
+                          Oscillating ×{signal.oscillation.observations}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[280px]">
+                        This page served both readings{" "}
+                        {signal.oscillation.observations} times — “
+                        {signal.oscillation.variantA}” and “
+                        {signal.oscillation.variantB}”. Likely an A/B test still
+                        running, so the later flips were folded in here instead of
+                        raising a signal each.
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                   {/* Confidence only shows when it is worth a second look — the
                       rule ConfidenceDot has always applied. A permanent "High"
                       spends a slot on a non-event. */}

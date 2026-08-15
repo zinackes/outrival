@@ -243,6 +243,9 @@ signalsRouter.get("/", async (c) => {
       // as an immediate alert (quiet hours / cap / threshold / muted). Null = it
       // wasn't held back. Critical signals bypass moderation entirely.
       filteredReason: signals.filteredReason,
+      // A/B oscillation (OUT-192): later flips of this exact delta were folded into
+      // this signal instead of becoming their own cards. Null = it never flipped.
+      oscillation: signals.oscillation,
       changeId: signals.changeId,
       // Surfaced inline by the signal source line (patch-14). Joined through the
       // originating change → monitor; null for signals whose change/monitor was

@@ -53,6 +53,7 @@ function signal(s: Partial<Signal> & Pick<Signal, "id" | "severity" | "category"
     batchSummary: null,
     batchCount: null,
     filteredReason: null,
+    oscillation: null,
     competitorColor: SAMPLE_COMPETITOR_COLORS[s.competitorId] ?? null,
     ...s,
   };

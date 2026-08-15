@@ -568,6 +568,13 @@
       "when": 1786781420146,
       "tag": "0080_foamy_quicksilver",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1786782895892,
+      "tag": "0081_eager_jackal",
+      "breakpoints": true
     }
   ]
 }

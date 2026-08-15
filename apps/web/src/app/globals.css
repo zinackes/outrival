@@ -1816,27 +1816,53 @@ html:has(.landing-canvas) {
   margin-top: auto;
   padding-top: 1.1rem;
 }
-.lp-pstep .src-row {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  padding: 0.6rem 0.1rem;
-  font-size: var(--text-dense);
-  color: rgba(242, 245, 248, 0.75);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+/* Bleed vignette: the miniature runs past the card's padding and is cropped
+   mid-row, the mask fading the cut instead of slicing it. Three lines listing
+   sources said "we read three things"; a cloud that doesn't fit says the
+   opposite, and says it before the copy is read. */
+.lp-pstep .viz-bleed {
+  margin: auto -1.3rem -1.2rem 0;
+  padding: 1.1rem 0 0;
+  mask-image:
+    linear-gradient(to right, #000 58%, transparent 96%),
+    linear-gradient(to bottom, #000 55%, transparent 97%);
+  mask-composite: intersect;
 }
-.lp-pstep .src-row .dot {
-  width: 6px;
-  height: 6px;
+.lp-pstep .src-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  width: 128%;
+  height: 7.6rem;
+  overflow: hidden;
+}
+.lp-pstep .src-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.62rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.72);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+.lp-pstep .src-chip .dot {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: var(--lp-teal);
+  background: var(--pc);
+  opacity: 0.5;
+}
+/* Every fourth chip is live, half of those offset: enough to read as running,
+   not eighteen blinking lights. */
+.lp-pstep .src-chip:nth-child(4n + 1) .dot {
+  opacity: 1;
   animation: lp-pulse 2.2s var(--lp-ease) infinite;
 }
-.lp-pstep .src-row:nth-child(2) .dot {
-  animation-delay: 0.4s;
-}
-.lp-pstep .src-row:nth-child(3) .dot {
-  animation-delay: 0.8s;
+.lp-pstep .src-chip:nth-child(8n + 5) .dot {
+  animation-delay: 1.1s;
 }
 .lp-pstep .src-more {
   padding-top: 0.6rem;

@@ -1,6 +1,30 @@
 import type { CSSProperties } from "react";
 import { SilkFill } from "./silk-fill";
 
+// Scan's vignette is deliberately longer than its card: the cloud is cropped
+// mid-row and faded out, so the eye reads "there is more of this than fits"
+// without a number claiming it.
+const SCAN_SOURCES = [
+  "homepage",
+  "pricing",
+  "changelog",
+  "jobs",
+  "blog",
+  "docs",
+  "G2",
+  "Capterra",
+  "release notes",
+  "LinkedIn",
+  "Trustpilot",
+  "news",
+  "status page",
+  "case studies",
+  "App Store",
+  "sitemap",
+  "ads",
+  "integrations",
+];
+
 // The five-step pipeline, raw change → decision. Each step's accent (--pc)
 // and Silk fill echo the stage's signal hue: teal scan, medium-amber classify,
 // iris write, low-blue digest, critical-red act. The visualisations are
@@ -27,20 +51,15 @@ export function Pipeline() {
             Everything they publish: homepage, pricing, jobs, reviews, news.
             Continuously.
           </p>
-          <div className="pstep-viz" aria-hidden>
-            <div className="src-row">
-              <span className="dot" />
-              homepage
+          <div className="pstep-viz viz-bleed" aria-hidden>
+            <div className="src-cloud">
+              {SCAN_SOURCES.map((src) => (
+                <span key={src} className="src-chip">
+                  <span className="dot" />
+                  {src}
+                </span>
+              ))}
             </div>
-            <div className="src-row">
-              <span className="dot" />
-              pricing
-            </div>
-            <div className="src-row">
-              <span className="dot" />
-              jobs
-            </div>
-            <p className="src-more">+ 14 more source types</p>
           </div>
         </div>
 

@@ -30,7 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TabCard, TabSection } from "@/components/outrival/tab-shell";
+import { TabAbsence, TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { SeverityScale } from "@/components/outrival/severity-scale";
 import { CatBadge } from "@/components/outrival/data-marks";
 import { sourceShortLabel } from "@/lib/source-labels";
@@ -576,6 +576,24 @@ function ProofSection({
       <TabSection title="What they claim">
         <Skeleton className="h-20 w-full" />
       </TabSection>
+    );
+  }
+
+  // The section's whole subject is the numbers they state, and they state none. A
+  // heading over a bare "12 customer logos" promised a claim and delivered a count,
+  // which is the empty-block-with-content-styling this page had four of (OUT-183).
+  // The proof we do hold is not lost, it just stops being a section.
+  if (claims.length === 0) {
+    const proof: string[] = [];
+    if (logos > 0) proof.push(`${logos} customer ${logos === 1 ? "logo" : "logos"}`);
+    if (testimonials > 0)
+      proof.push(`${testimonials} ${testimonials === 1 ? "testimonial" : "testimonials"}`);
+    return (
+      <TabAbsence title="What they claim">
+        No number stated on their homepage
+        {proof.length > 0 && `. Their proof is social: ${proof.join(" and ")}`}
+        {capturedAt && `, captured ${format(new Date(capturedAt), "d MMM yyyy")}`}.
+      </TabAbsence>
     );
   }
 
@@ -1127,36 +1145,37 @@ function ShareOfModelSection({
   if (!som || som.prompts === 0) return null;
 
   if (som.status !== "ready") {
+    // Collecting, not empty — the runs are real and already accruing, so this still
+    // says what is being gathered. But it is an absence, and rendering it as a
+    // section with a bordered panel inside made a page of waiting figures read as a
+    // page of thin results (OUT-183). One inset line, same words.
     return (
-      <TabSection title="Share of Model">
-        <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-2 p-4">
-          <p className="m-0 max-w-[70ch] text-sm">
-            We ask {som.prompts} buyer-intent {som.prompts === 1 ? "question" : "questions"} to the
-            AI engines and record who gets named.
-            {som.answers > 0 && (
+      <TabAbsence title="Share of Model">
+        {som.status === "insufficient_data" ? (
+          <>
+            <span className="tabular-nums">{som.nRuns}</span> of{" "}
+            <span className="tabular-nums">{som.minRuns}</span> runs so far in the last{" "}
+            <span className="tabular-nums">{som.windowDays}</span> days. An engine answers the
+            same question differently each time, so a rate is only worth showing once enough runs
+            have averaged that out.
+          </>
+        ) : (
+          <>
+            We ask <span className="tabular-nums">{som.prompts}</span> buyer-intent{" "}
+            {som.prompts === 1 ? "question" : "questions"} to the AI engines and record who gets
+            named.{" "}
+            {som.answers > 0 ? (
               <>
-                {" "}
                 <span className="tabular-nums">{som.answers}</span>{" "}
                 {som.answers === 1 ? "answer" : "answers"} held about them
                 {som.lastRunAt && `, last run ${format(new Date(som.lastRunAt), "d MMM yyyy")}`}.
               </>
-            )}
-          </p>
-          <p className="m-0 max-w-[70ch] text-sm text-muted-foreground">
-            {som.status === "insufficient_data" ? (
-              <>
-                <span className="tabular-nums">{som.nRuns}</span> of{" "}
-                <span className="tabular-nums">{som.minRuns}</span> runs so far in the last{" "}
-                <span className="tabular-nums">{som.windowDays}</span> days. An engine answers the
-                same question differently each time, so a rate is only worth showing once enough
-                runs have averaged that out.
-              </>
             ) : (
-              "How often they are named, where they rank and how that compares to you lands with Share of Model."
+              "No answer has come back about them yet."
             )}
-          </p>
-        </div>
-      </TabSection>
+          </>
+        )}
+      </TabAbsence>
     );
   }
 

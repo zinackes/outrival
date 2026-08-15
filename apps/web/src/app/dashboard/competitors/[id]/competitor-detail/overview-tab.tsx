@@ -582,7 +582,11 @@ export function OverviewTab({
                   {topReview.review_count} reviews
                 </span>
               )
-            ) : undefined
+            ) : (
+              // An untracked cell that only says "not tracked" is a dead cell. The
+              // tab it opens is where reviews get turned on, so name that (OUT-183).
+              <span className="text-link">Add a review source</span>
+            )
           }
         >
           {topReview ? (
@@ -879,22 +883,18 @@ export function OverviewTab({
 
       </TabCard>
 
-      <TechStackCard techStack={techStack} />
+      {/* Tech stack lost its tab: it is reference material, not a lens you flip to
+          every visit. It reads in place here, with the platform rows and the evidence
+          the sheet used to hold: a stack you have to open a panel to see is a stack
+          nobody reads, and the summary that stood in for it repeated the same grouping
+          with less in it. It renders nothing at all when neither axis detected
+          anything — the "no card" decision lives in the component, next to the two
+          reads that decide it. */}
+      <CompetitorTechStack techStack={techStack} />
 
       <HeadToHead competitorName={competitorName} overview={overview} />
     </div>
   );
-}
-
-// Tech stack lost its tab: it is reference material, not a lens you flip to every
-// visit. It reads in place here, with the platform rows and the evidence the sheet
-// used to hold: a stack you have to open a panel to see is a stack nobody reads,
-// and the summary that stood in for it repeated the same grouping with less in it.
-function TechStackCard({ techStack }: { techStack: TechStackData }) {
-  // Never scanned and nothing detected: no card at all, rather than a card whose
-  // only content is a promise that the scan is coming.
-  if (techStack.entries.length === 0 && !techStack.platformProfile) return null;
-  return <CompetitorTechStack techStack={techStack} />;
 }
 
 /** Cheapest tier carrying a real figure. Quote-based tiers have none. */

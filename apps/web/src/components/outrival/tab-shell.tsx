@@ -50,3 +50,41 @@ export function TabSection({
     </section>
   );
 }
+
+/**
+ * An absence, in the same card as the sections but not shaped like one.
+ *
+ * A block that says "nothing found here yet" was reading exactly like a block that
+ * says something: a heading at section weight, a paragraph at section padding, the
+ * same divider above and below. Four of those on one page made a filled product
+ * look unfinished. An absence is an inset band at a third of the height, its label
+ * inline with its note, and it never carries a heading. What it says stays honest
+ * and specific ("no recognizable tech in the last scan", never "coming soon"), and
+ * `action` names the thing that would fill it, when there is one.
+ */
+export function TabAbsence({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 bg-surface-2 px-5 py-3">
+      <p className="m-0 max-w-[75ch] text-dense text-muted-foreground">
+        <span className="font-medium text-foreground">{title}</span>
+        {children != null && (
+          <>
+            <span aria-hidden className="mx-1.5 text-border-strong">
+              ·
+            </span>
+            {children}
+          </>
+        )}
+      </p>
+      {action}
+    </div>
+  );
+}

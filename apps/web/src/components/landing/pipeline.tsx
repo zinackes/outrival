@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { LogoMark } from "@/components/outrival/logo";
 import { SilkFill } from "./silk-fill";
 
 // Scan's vignette is deliberately longer than its card: the cloud is cropped
@@ -27,23 +28,17 @@ const SCAN_SOURCES = [
   "integrations",
 ];
 
-// Classify shows the ratio the copy claims: the two rows that earn a category
-// sit among the ones filed as noise, and the stack is cut before it ends.
-const CLASSIFY_ROWS: {
-  raw: string;
-  cat?: string;
-  c?: string;
-  sev?: string;
-}[] = [
-  { raw: "pricing page edited", cat: "pricing", c: "var(--cat-pricing)", sev: "var(--high)" },
-  { raw: "footer copy changed" },
-  { raw: "4 reviews added", cat: "reviews", c: "var(--cat-reviews)", sev: "var(--medium)" },
-  { raw: "cookie banner tweak" },
-  { raw: "2 AE roles opened", cat: "hiring", c: "var(--cat-hiring)", sev: "var(--medium)" },
-  { raw: "hero image swapped" },
-  { raw: "changelog: SSO shipped", cat: "product", c: "var(--cat-product)", sev: "var(--high)" },
-  { raw: "nav link reordered" },
-];
+// Classify is the sentence above it, drawn: sixty raw changes, five of them
+// lit. A list of example rows made the reader read; a field of cells makes the
+// ratio visible before anything is read.
+const CLASSIFY_CELLS = 60;
+const CLASSIFY_HITS: Record<number, string> = {
+  4: "var(--cat-pricing)",
+  17: "var(--cat-product)",
+  26: "var(--cat-hiring)",
+  41: "var(--cat-reviews)",
+  53: "var(--cat-funding)",
+};
 
 // The five-step pipeline, raw change → decision. Each step's accent (--pc)
 // and Silk fill echo the stage's signal hue: teal scan, medium-amber classify,
@@ -97,32 +92,17 @@ export function Pipeline() {
             your time.
           </p>
           <div className="pstep-viz viz-bleed" aria-hidden>
-            <div className="cls-stack">
-              {CLASSIFY_ROWS.map((row) => (
-                <div
-                  key={row.raw}
-                  className={row.cat ? "cls-row" : "cls-row is-noise"}
-                >
-                  <span className="cls-noise">{row.raw}</span>
-                  <span className="cls-arrow">→</span>
-                  {row.cat ? (
-                    <>
-                      <span
-                        className="lp-chip-cat-c"
-                        style={{ "--c": row.c } as CSSProperties}
-                      >
-                        {row.cat}
-                      </span>
-                      <span
-                        className="lp-sev-dot"
-                        style={{ background: row.sev }}
-                      />
-                    </>
-                  ) : (
-                    <span className="cls-drop">noise</span>
-                  )}
-                </div>
-              ))}
+            <div className="cls-grid">
+              {Array.from({ length: CLASSIFY_CELLS }, (_, i) => {
+                const hit = CLASSIFY_HITS[i];
+                return (
+                  <span
+                    key={i}
+                    className={hit ? "cell is-hit" : "cell"}
+                    style={hit ? ({ "--c": hit } as CSSProperties) : undefined}
+                  />
+                );
+              })}
             </div>
           </div>
         </div>
@@ -138,28 +118,15 @@ export function Pipeline() {
           </div>
           <p>AI writes the so-what and the one action, in plain English.</p>
           <div className="pstep-viz viz-bleed" aria-hidden>
-            <div className="lp-sig-card">
-              <div className="sig-chips">
-                <span className="lp-chip-sev">Critical</span>
-                <span
-                  className="lp-chip-cat-c"
-                  style={{ "--c": "var(--cat-pricing)" } as CSSProperties}
-                >
-                  pricing
-                </span>
-                <b>Vantage</b>
-              </div>
-              <div>Pro plan cut 30% to $49/mo, seat minimum dropped.</div>
-              <span className="lbl">So what</span>
-              <div className="txt-muted">
-                Undercuts your $69 Pro tier on mid-market deals.
-              </div>
-              <span className="lbl">Do this</span>
-              <div className="txt-muted">
-                Give sales the objection line before Monday&rsquo;s calls.
-              </div>
-              <span className="lbl">Source</span>
-              <div className="txt-muted">vantage.io/pricing · captured 06:12</div>
+            <p className="wr-line">
+              Vantage undercuts your $69 Pro tier on mid-market deals.
+            </p>
+            <span className="wr-from">written from</span>
+            <div className="wr-diff">
+              <span className="d-row d-del">- Pro $69/mo · 5 seat minimum</span>
+              <span className="d-row d-add">+ Pro $49/mo · no seat minimum</span>
+              <span className="d-row d-del">- Annual billing only</span>
+              <span className="d-row d-add">+ Monthly or annual</span>
             </div>
           </div>
         </div>
@@ -239,7 +206,7 @@ export function Pipeline() {
           <div className="pstep-viz viz-bleed" aria-hidden>
             <div className="act-thread">
               <div className="act-msg">
-                <span className="ava" />
+                <LogoMark size={22} className="ava" />
                 <div>
                   <div className="act-meta">
                     <b>Outrival</b>
@@ -256,7 +223,7 @@ export function Pipeline() {
                 </div>
               </div>
               <div className="act-msg">
-                <span className="ava" />
+                <LogoMark size={22} className="ava" />
                 <div>
                   <div className="act-meta">
                     <b>Outrival</b>

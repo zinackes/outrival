@@ -27,6 +27,24 @@ const SCAN_SOURCES = [
   "integrations",
 ];
 
+// Classify shows the ratio the copy claims: the two rows that earn a category
+// sit among the ones filed as noise, and the stack is cut before it ends.
+const CLASSIFY_ROWS: {
+  raw: string;
+  cat?: string;
+  c?: string;
+  sev?: string;
+}[] = [
+  { raw: "pricing page edited", cat: "pricing", c: "var(--cat-pricing)", sev: "var(--high)" },
+  { raw: "footer copy changed" },
+  { raw: "4 reviews added", cat: "reviews", c: "var(--cat-reviews)", sev: "var(--medium)" },
+  { raw: "cookie banner tweak" },
+  { raw: "2 AE roles opened", cat: "hiring", c: "var(--cat-hiring)", sev: "var(--medium)" },
+  { raw: "hero image swapped" },
+  { raw: "changelog: SSO shipped", cat: "product", c: "var(--cat-product)", sev: "var(--high)" },
+  { raw: "nav link reordered" },
+];
+
 // The five-step pipeline, raw change → decision. Each step's accent (--pc)
 // and Silk fill echo the stage's signal hue: teal scan, medium-amber classify,
 // iris write, low-blue digest, critical-red act. The visualisations are
@@ -78,33 +96,34 @@ export function Pipeline() {
             Every change gets a category and a severity. About 1 in 12 is worth
             your time.
           </p>
-          <div className="pstep-viz" aria-hidden>
-            <div className="cls-row">
-              <span className="cls-noise">pricing page edited</span>
-              <span className="cls-arrow">→</span>
-              <span
-                className="lp-chip-cat-c"
-                style={{ "--c": "var(--cat-pricing)" } as CSSProperties}
-              >
-                pricing
-              </span>
-              <span className="lp-sev-dot" style={{ background: "var(--high)" }} />
+          <div className="pstep-viz viz-bleed" aria-hidden>
+            <div className="cls-stack">
+              {CLASSIFY_ROWS.map((row) => (
+                <div
+                  key={row.raw}
+                  className={row.cat ? "cls-row" : "cls-row is-noise"}
+                >
+                  <span className="cls-noise">{row.raw}</span>
+                  <span className="cls-arrow">→</span>
+                  {row.cat ? (
+                    <>
+                      <span
+                        className="lp-chip-cat-c"
+                        style={{ "--c": row.c } as CSSProperties}
+                      >
+                        {row.cat}
+                      </span>
+                      <span
+                        className="lp-sev-dot"
+                        style={{ background: row.sev }}
+                      />
+                    </>
+                  ) : (
+                    <span className="cls-drop">noise</span>
+                  )}
+                </div>
+              ))}
             </div>
-            <div className="cls-row">
-              <span className="cls-noise">4 reviews added</span>
-              <span className="cls-arrow">→</span>
-              <span
-                className="lp-chip-cat-c"
-                style={{ "--c": "var(--cat-reviews)" } as CSSProperties}
-              >
-                reviews
-              </span>
-              <span
-                className="lp-sev-dot"
-                style={{ background: "var(--medium)" }}
-              />
-            </div>
-            <p className="src-more">Everything else is filed as noise.</p>
           </div>
         </div>
 
@@ -118,7 +137,7 @@ export function Pipeline() {
             <h3>Write</h3>
           </div>
           <p>AI writes the so-what and the one action, in plain English.</p>
-          <div className="pstep-viz" aria-hidden>
+          <div className="pstep-viz viz-bleed" aria-hidden>
             <div className="lp-sig-card">
               <div className="sig-chips">
                 <span className="lp-chip-sev">Critical</span>
@@ -135,6 +154,12 @@ export function Pipeline() {
               <div className="txt-muted">
                 Undercuts your $69 Pro tier on mid-market deals.
               </div>
+              <span className="lbl">Do this</span>
+              <div className="txt-muted">
+                Give sales the objection line before Monday&rsquo;s calls.
+              </div>
+              <span className="lbl">Source</span>
+              <div className="txt-muted">vantage.io/pricing · captured 06:12</div>
             </div>
           </div>
         </div>
@@ -149,34 +174,54 @@ export function Pipeline() {
             <h3>Digest</h3>
           </div>
           <p>The handful that matter, in one email. Monday morning.</p>
-          <div className="pstep-viz" aria-hidden>
-            <div className="dg-row">
-              <span className="dot lp-sev-critical" />
-              <span className="chip-cat">product</span>
-              <span className="txt">
-                <b>Meridian</b>: launches usage-based billing
-              </span>
-            </div>
-            <div className="dg-row">
-              <span className="dot lp-sev-high" />
-              <span className="chip-cat">pricing</span>
-              <span className="txt">
-                <b>Vantage</b>: Business plan $16 → $14/seat
-              </span>
-            </div>
-            <div className="dg-row">
-              <span className="dot lp-sev-high" />
-              <span className="chip-cat">funding</span>
-              <span className="txt">
-                <b>Beacon</b>: raises Series E, $200M
-              </span>
-            </div>
-            <div className="dg-row">
-              <span className="dot lp-sev-medium" />
-              <span className="chip-cat">hiring</span>
-              <span className="txt">
-                <b>Lumen</b>: opens 3 AI Research roles
-              </span>
+          <div className="pstep-viz viz-bleed" aria-hidden>
+            <div className="dg-frame">
+              <div className="dg-bar">
+                <b>Your week in 6 signals</b>
+                <i>Mon 07:00</i>
+              </div>
+              <div className="dg-row">
+                <span className="dot lp-sev-critical" />
+                <span className="chip-cat">product</span>
+                <span className="txt">
+                  <b>Meridian</b>: launches usage-based billing
+                </span>
+              </div>
+              <div className="dg-row">
+                <span className="dot lp-sev-high" />
+                <span className="chip-cat">pricing</span>
+                <span className="txt">
+                  <b>Vantage</b>: Business plan $16 → $14/seat
+                </span>
+              </div>
+              <div className="dg-row">
+                <span className="dot lp-sev-high" />
+                <span className="chip-cat">funding</span>
+                <span className="txt">
+                  <b>Beacon</b>: raises Series E, $200M
+                </span>
+              </div>
+              <div className="dg-row">
+                <span className="dot lp-sev-medium" />
+                <span className="chip-cat">hiring</span>
+                <span className="txt">
+                  <b>Lumen</b>: opens 3 AI Research roles
+                </span>
+              </div>
+              <div className="dg-row">
+                <span className="dot lp-sev-medium" />
+                <span className="chip-cat">reviews</span>
+                <span className="txt">
+                  <b>Vantage</b>: rating slips 4.6 → 4.3 on onboarding
+                </span>
+              </div>
+              <div className="dg-row">
+                <span className="dot lp-sev-low" />
+                <span className="chip-cat">content</span>
+                <span className="txt">
+                  <b>Meridian</b>: publishes a migration guide off your API
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -191,21 +236,40 @@ export function Pipeline() {
             <h3>Act</h3>
           </div>
           <p>Adopt the move, or forget it. You decide in seconds.</p>
-          <div className="pstep-viz" aria-hidden>
-            <div className="lp-sig-card">
-              <div className="sig-chips">
-                <span
-                  className="lp-chip-cat-c"
-                  style={{ "--c": "var(--cat-product)" } as CSSProperties}
-                >
-                  product
-                </span>
-                <b>Meridian</b>
+          <div className="pstep-viz viz-bleed" aria-hidden>
+            <div className="act-thread">
+              <div className="act-msg">
+                <span className="ava" />
+                <div>
+                  <div className="act-meta">
+                    <b>Outrival</b>
+                    <i>09:04</i>
+                  </div>
+                  <div className="act-txt">
+                    Meridian launches usage-based billing.
+                  </div>
+                  <div className="act-reacts">
+                    <span className="rc rc-done">✓ Adopted</span>
+                    <span className="rc">Sales briefed</span>
+                    <span className="rc">Added to Q3 plan</span>
+                  </div>
+                </div>
               </div>
-              <div>Meridian launches usage-based billing.</div>
-              <div className="lp-act-done">
-                <span className="tick">✓</span>Adopted · sales briefed the same
-                morning
+              <div className="act-msg">
+                <span className="ava" />
+                <div>
+                  <div className="act-meta">
+                    <b>Outrival</b>
+                    <i>09:04</i>
+                  </div>
+                  <div className="act-txt">
+                    Vantage cuts Pro to $49/mo, seat minimum dropped.
+                  </div>
+                  <div className="act-reacts">
+                    <span className="rc">Dismissed</span>
+                    <span className="rc">Snooze 30d</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

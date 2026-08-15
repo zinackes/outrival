@@ -84,6 +84,53 @@ describe("evaluateSignificance", () => {
     expect(r.worth).toBe(false);
   });
 
+  it("skips a changelog entry whose only move is its published date (OUT-181)", () => {
+    const r = evaluateSignificance(
+      {
+        added: "June 14, 2026 — Improved search relevance for large workspaces.",
+        removed: "June 1, 2026 — Improved search relevance for large workspaces.",
+      },
+      { sourceType: "changelog" },
+    );
+    expect(r.worth).toBe(false);
+    expect(r.reason).toBe("dates_only");
+  });
+
+  it("skips a news feed re-rendering its relative dates", () => {
+    const r = evaluateSignificance(
+      {
+        added: "4 days ago · We are opening a second data region in Frankfurt.",
+        removed: "2 days ago · We are opening a second data region in Frankfurt.",
+      },
+      { sourceType: "news" },
+    );
+    expect(r.worth).toBe(false);
+    expect(r.reason).toBe("dates_only");
+  });
+
+  it("keeps a changelog entry whose text moved along with its date", () => {
+    const r = evaluateSignificance(
+      {
+        added: "June 14, 2026 — Improved search relevance and added saved filters.",
+        removed: "June 1, 2026 — Improved search relevance for large workspaces.",
+      },
+      { sourceType: "changelog" },
+    );
+    expect(r.worth).toBe(true);
+  });
+
+  it("keeps a date-only move on a source whose dates ARE the fact", () => {
+    // The same shape on a pricing page is a promotion being extended, not churn.
+    const r = evaluateSignificance(
+      {
+        added: "Launch pricing is available until September 30, 2026 for new workspaces.",
+        removed: "Launch pricing is available until August 31, 2026 for new workspaces.",
+      },
+      { sourceType: "pricing" },
+    );
+    expect(r.worth).toBe(true);
+  });
+
   it("still rejects a timestamps-only diff on a pricing source with no price token", () => {
     const r = evaluateSignificance(
       {

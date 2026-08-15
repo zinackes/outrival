@@ -135,7 +135,17 @@ export function PositioningTab({
   // else: what they shipped (changelog / news / status) and where they are talked
   // about (community). The narrative third of the old feed is what the five
   // sections above replace, not these.
-  const shipped = filterByLens(changes, "product");
+  // "What they shipped" may only name things they shipped. Two kinds of row could
+  // not (OUT-181): a SUPPRESSED change, whose `summary` is the suppression itself —
+  // the semantic gate writes its own one-line verdict there, which is how "Only the
+  // date of the changelog entry changed" ended up reading as a release — and a row
+  // carrying no text at all, whose "Change detected, not yet classified" announces
+  // a shipment we cannot name. Both stay on the Activity tab, which is where the
+  // audit trail belongs; the other two lenses keep them, because "they published
+  // something we haven't read yet" is itself the reading there.
+  const shipped = filterByLens(changes, "product").filter(
+    (c) => !c.suppressionReason && (Boolean(c.summary) || signalByChangeId.has(c.id)),
+  );
   const social = filterByLens(changes, "social");
   const narrative = filterByLens(changes, "narrative");
   // A competitor publishing a comparison page naming YOU is the one front the

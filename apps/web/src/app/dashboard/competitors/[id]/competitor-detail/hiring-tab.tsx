@@ -119,7 +119,13 @@ export function HiringTab({
   // Strategic recap (patch-32 enrichment): how many senior+ bets, and the salary
   // band the ATS disclosed. Both are leading indicators of budget and maturity, so
   // they belong in the headline strip rather than in a 12px line above a list.
-  const seniorPlus = allRoles.filter(
+  //
+  // Both are read off what the ATS disclosed, so both are counted against the roles
+  // that disclosed it, never against the whole board: a level is `null` when the
+  // posting never named one, and "0 senior of 40 roles" would state as a fact about
+  // their hiring what is a fact about our extraction (OUT-181).
+  const levelled = allRoles.filter((r) => r.seniority != null);
+  const seniorPlus = levelled.filter(
     (r) => (SENIORITY_RANK[r.seniority ?? ""] ?? 0) >= SENIOR_PLUS_THRESHOLD,
   ).length;
   const withSalary = allRoles.filter((r) => r.salaryMin != null || r.salaryMax != null);
@@ -230,20 +236,22 @@ export function HiringTab({
             <span className="tabular-nums">{jobs.total}</span>
           </Fact>
           <Fact label="Senior or above" muted={seniorPlus === 0}>
-            {seniorPlus > 0 ? (
+            {levelled.length === 0 ? (
+              "No level stated"
+            ) : seniorPlus > 0 ? (
               <>
                 <span className="tabular-nums">{seniorPlus}</span> of{" "}
-                <span className="tabular-nums">{allRoles.length}</span>
+                <span className="tabular-nums">{levelled.length}</span>
               </>
             ) : (
-              "None posted"
+              "None detected"
             )}
           </Fact>
           <Fact label="Salary observed" muted={!salaryBand}>
             {salaryBand ? (
               <span className="tabular-nums">{salaryBand}</span>
             ) : (
-              "No bands posted"
+              "None detected"
             )}
           </Fact>
           <Fact
@@ -637,7 +645,7 @@ function Salaries({ salary }: { salary: HiringSalaryData | null }) {
         <p className="text-sm text-muted-foreground">
           {disclosure.disclosed > 0
             ? "Pay is published, but not in a form that can be compared — hourly rates, or amounts with no currency stated."
-            : "Not one of their open roles states a salary."}
+            : "No pay figure was read on any of their open roles."}
         </p>
       ) : (
         <div className="flex flex-col gap-5">

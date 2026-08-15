@@ -2,71 +2,81 @@
 
 import { useEffect, useState } from "react";
 
-// TEMPORARY (OUT-227) — hero text color switcher. Five candidate palettes for
-// the h1 / cycling verb / "Monday" / sub, applied as CSS vars on <html> so the
-// hero re-colors live. Pick one, then hardcode it in .lp-h1 & friends and
-// delete this component along with the vars' fallback chain.
+// TEMPORARY (OUT-227) — hero color switcher. What is actually undecided is the
+// CTA button and the supporting copy, so each preset moves the accent button
+// (background, hover, label), the h1, the sub, the lane legend and the sample
+// link. Applied as CSS vars on <html> so the fold re-colors live. Pick one,
+// inline it in the .lp- rules and delete this component.
 type Palette = {
   id: string;
   label: string;
-  /** h1, cycling verb, "Monday" italic, caret, sub */
   vars: Record<string, string>;
 };
 
 const PALETTES: Palette[] = [
   {
     id: "ink",
-    label: "Ink (current)",
+    label: "Ink button",
     vars: {
-      "--lp-h1-color": "oklch(0.22 0.01 260)",
-      "--lp-cycle-color": "oklch(0.22 0.01 260)",
-      "--lp-monday-color": "oklch(0.22 0.01 260)",
-      "--lp-caret-color": "oklch(0.53 0.14 200)",
-      "--lp-sub-color": "oklch(0.4 0.015 260)",
+      "--lp-btn-bg": "oklch(0.22 0.01 260)",
+      "--lp-btn-bg-hover": "oklch(0.3 0.01 260)",
+      "--lp-btn-fg": "#faf8f3",
+      "--lp-h1-color": "oklch(0.2 0.01 260)",
+      "--lp-sub-color": "oklch(0.38 0.014 260)",
+      "--lp-legend-color": "oklch(0.42 0.014 260)",
+      "--lp-link-color": "oklch(0.22 0.01 260)",
     },
   },
   {
-    id: "contrast",
-    label: "High contrast",
+    id: "deep-cyan",
+    label: "Deep cyan",
     vars: {
-      "--lp-h1-color": "oklch(0.14 0.008 260)",
-      "--lp-cycle-color": "oklch(0.14 0.008 260)",
-      "--lp-monday-color": "oklch(0.47 0.15 200)",
-      "--lp-caret-color": "oklch(0.47 0.15 200)",
-      "--lp-sub-color": "oklch(0.36 0.014 260)",
+      "--lp-btn-bg": "oklch(0.44 0.12 205)",
+      "--lp-btn-bg-hover": "oklch(0.38 0.12 205)",
+      "--lp-btn-fg": "#ffffff",
+      "--lp-h1-color": "oklch(0.21 0.012 240)",
+      "--lp-sub-color": "oklch(0.39 0.02 240)",
+      "--lp-legend-color": "oklch(0.43 0.02 240)",
+      "--lp-link-color": "oklch(0.42 0.12 205)",
     },
   },
   {
     id: "iris",
-    label: "Iris accent",
+    label: "Iris",
     vars: {
-      "--lp-h1-color": "oklch(0.24 0.02 275)",
-      "--lp-cycle-color": "#5a49f0",
-      "--lp-monday-color": "#5a49f0",
-      "--lp-caret-color": "#5a49f0",
-      "--lp-sub-color": "oklch(0.44 0.03 275)",
+      "--lp-btn-bg": "#4b3ce0",
+      "--lp-btn-bg-hover": "#3d2fd0",
+      "--lp-btn-fg": "#ffffff",
+      "--lp-h1-color": "oklch(0.23 0.02 275)",
+      "--lp-sub-color": "oklch(0.41 0.03 275)",
+      "--lp-legend-color": "oklch(0.45 0.025 275)",
+      "--lp-link-color": "#4b3ce0",
     },
   },
   {
-    id: "warm",
-    label: "Warm bordeaux",
+    id: "bordeaux",
+    label: "Bordeaux",
     vars: {
-      "--lp-h1-color": "oklch(0.23 0.02 45)",
-      "--lp-cycle-color": "#a8380f",
-      "--lp-monday-color": "#6d270c",
-      "--lp-caret-color": "#a8380f",
-      "--lp-sub-color": "oklch(0.43 0.025 50)",
+      "--lp-btn-bg": "#8f2f10",
+      "--lp-btn-bg-hover": "#7a2609",
+      "--lp-btn-fg": "#fff6ef",
+      "--lp-h1-color": "oklch(0.22 0.02 45)",
+      "--lp-sub-color": "oklch(0.4 0.025 45)",
+      "--lp-legend-color": "oklch(0.44 0.02 45)",
+      "--lp-link-color": "#8f2f10",
     },
   },
   {
-    id: "cool",
-    label: "Cool slate",
+    id: "shipped",
+    label: "Shipped cyan",
     vars: {
-      "--lp-h1-color": "oklch(0.26 0.035 250)",
-      "--lp-cycle-color": "oklch(0.5 0.13 200)",
-      "--lp-monday-color": "oklch(0.36 0.06 250)",
-      "--lp-caret-color": "oklch(0.53 0.14 200)",
-      "--lp-sub-color": "oklch(0.46 0.03 250)",
+      "--lp-btn-bg": "oklch(0.53 0.14 200)",
+      "--lp-btn-bg-hover": "oklch(0.49 0.15 200)",
+      "--lp-btn-fg": "#ffffff",
+      "--lp-h1-color": "oklch(0.22 0.01 260)",
+      "--lp-sub-color": "oklch(0.4 0.015 260)",
+      "--lp-legend-color": "oklch(0.5 0.014 260)",
+      "--lp-link-color": "oklch(0.22 0.01 260)",
     },
   },
 ];
@@ -98,7 +108,7 @@ export function HeroPalette() {
 
   return (
     <div className="lp-palette">
-      <label htmlFor="lp-palette-select">Hero palette</label>
+      <label htmlFor="lp-palette-select">Palette</label>
       <select
         id="lp-palette-select"
         value={id}

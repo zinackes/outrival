@@ -1070,9 +1070,9 @@ html:has(.landing-canvas) {
   text-align: center;
   padding: 2.5rem 1.25rem 1.5rem;
 }
-/* The four hero text colors run through vars so <HeroPalette> can swap them
-   live while we settle on one. Fallbacks = the shipped palette; once a preset
-   is chosen, inline it here and drop the var indirection. */
+/* The undecided colors — accent button, h1, sub, lane legend, sample link —
+   run through vars so <HeroPalette> can swap them live. Fallbacks = the
+   shipped palette; once a preset is chosen, inline it and drop the vars. */
 .lp-h1 {
   font-family: var(--font-sans);
   font-weight: 500;
@@ -1090,11 +1090,9 @@ html:has(.landing-canvas) {
   font-weight: 700;
   letter-spacing: -0.01em;
   font-size: 1.04em;
-  color: var(--lp-monday-color, var(--lp-ink));
 }
 .lp-cycle {
   white-space: nowrap;
-  color: var(--lp-cycle-color, var(--lp-ink));
 }
 /* Thin instrument caret — signal cyan, not a terminal block. */
 .lp-caret {
@@ -1103,7 +1101,7 @@ html:has(.landing-canvas) {
   height: 0.78em;
   margin-left: 3px;
   vertical-align: -0.04em;
-  background: var(--lp-caret-color, var(--lp-accent));
+  background: var(--lp-accent);
   border-radius: 1.5px;
 }
 .lp-caret.blink {
@@ -1160,8 +1158,8 @@ html:has(.landing-canvas) {
 .lp-btn-accent {
   display: inline-block;
   text-decoration: none;
-  background: var(--lp-accent);
-  color: #fff;
+  background: var(--lp-btn-bg, var(--lp-accent));
+  color: var(--lp-btn-fg, #fff);
   font-size: var(--text-content);
   font-weight: 500;
   line-height: 1;
@@ -1170,7 +1168,7 @@ html:has(.landing-canvas) {
   transition: background-color 150ms var(--lp-ease);
 }
 .lp-btn-accent:hover {
-  background: var(--lp-accent-hover);
+  background: var(--lp-btn-bg-hover, var(--lp-accent-hover));
 }
 .lp-btn-hero {
   padding: 0.95rem 1.5rem;
@@ -1180,6 +1178,7 @@ html:has(.landing-canvas) {
   text-decoration: none;
   font-size: var(--text-base);
   font-weight: 500;
+  color: var(--lp-link-color, var(--lp-ink));
   border-bottom: 1.5px solid var(--lp-line);
   padding-bottom: 2px;
   transition: border-color 150ms var(--lp-ease);
@@ -1261,11 +1260,14 @@ html:has(.landing-canvas) {
 .lp-chip.signal .what {
   color: var(--lp-ink-muted);
 }
+/* Reads over the fog's lightest band, so it takes the muted ink, not subtle:
+   at 0.5 lightness the caption disappeared into the paper. */
 .lp-lane-legend {
   margin-top: 0.8rem;
   text-align: center;
   font-size: var(--text-dense);
-  color: var(--lp-ink-subtle);
+  font-weight: 500;
+  color: var(--lp-legend-color, var(--lp-ink-muted));
 }
 
 /* ---- The cut — paper ends, graphite begins. No gradient, no seam. ---- */

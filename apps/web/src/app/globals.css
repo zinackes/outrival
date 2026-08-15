@@ -1252,9 +1252,6 @@ html:has(.landing-canvas) {
 .lp-bento-wide {
   max-width: 88rem;
 }
-.lp-bento-wide .lp-card {
-  padding: 2rem 2rem 0;
-}
 /* Split section header: statement left, support right. */
 .lp-dark-head {
   display: grid;
@@ -1304,50 +1301,55 @@ html:has(.landing-canvas) {
   gap: 1rem;
   margin-top: 2.6rem;
 }
-.lp-card-marine,
-.lp-card-bordeaux {
-  grid-column: span 8;
+.lp-card-overview,
+.lp-card-battle {
+  grid-column: span 7;
 }
-.lp-card-teal,
-.lp-card-iris {
-  grid-column: span 4;
+.lp-card-signal,
+.lp-card-digest {
+  grid-column: span 5;
 }
-.lp-card-marine,
-.lp-card-teal {
-  min-height: 28rem;
+.lp-card-overview,
+.lp-card-signal {
+  min-height: 26rem;
 }
-.lp-card-iris,
-.lp-card-bordeaux {
-  min-height: 21.5rem;
+.lp-card-digest,
+.lp-card-battle {
+  min-height: 22rem;
 }
 @media (max-width: 860px) {
-  .lp-card-marine,
-  .lp-card-teal,
-  .lp-card-iris,
-  .lp-card-bordeaux {
+  .lp-card-overview,
+  .lp-card-signal,
+  .lp-card-digest,
+  .lp-card-battle {
     grid-column: span 12;
   }
 }
+/* One graphite plate for all four, no shader, no per-card tint: the screen is
+   the colour. The cell is a frame — chrome, screen, then the sentence as a
+   caption under it. Nothing floats inside a bigger box. */
 .lp-card {
   position: relative;
   overflow: hidden;
-  border-radius: 8px;
-  background: color-mix(in oklab, var(--tint) 19%, #111114);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
-  padding: 1.7rem 1.7rem 0;
+  border-radius: 10px;
+  background: #0e0e10;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   display: flex;
   flex-direction: column;
 }
-/* Card fill: the React Bits Silk canvas (tinted per card) over a soft corner
-   glow in the same tint — the glow doubles as the reduced-motion/no-JS fill. */
-.lp-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(30rem 22rem at 92% -14%, color-mix(in oklab, var(--tint-b) 20%, transparent), transparent 62%);
+.lp-card-view {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #161618;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
-.lp-card,
+.lp-card-foot {
+  padding: 1rem 1.2rem 1.15rem;
+}
 .lp-pstep {
   isolation: isolate;
 }
@@ -1369,98 +1371,76 @@ html:has(.landing-canvas) {
 .lp-silk.is-lit canvas {
   opacity: 1;
 }
-.lp-card .lp-silk {
-  opacity: 0.9;
-}
 .lp-pstep .lp-silk {
   opacity: 0.55;
 }
-.lp-card-marine {
-  --tint: oklch(0.5 0.15 247);
-  --tint-b: oklch(0.74 0.12 247);
-}
-.lp-card-teal {
-  --tint: oklch(0.5 0.12 175);
-  --tint-b: oklch(0.76 0.1 175);
-}
-.lp-card-iris {
-  --tint: #6c5dfd;
-  --tint-b: #a89dff;
-  background: color-mix(in oklab, var(--tint) 25%, #111114);
-}
-.lp-card-bordeaux {
-  --tint: oklch(0.52 0.15 355);
-  --tint-b: oklch(0.75 0.12 355);
-  background: color-mix(in oklab, var(--tint) 25%, #111114);
-}
-.lp-card .eyebrow {
+.lp-card-foot .eyebrow,
+.aw-cap .eyebrow {
+  display: block;
   font-size: var(--text-meta);
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: color-mix(in oklab, var(--tint-b) 88%, white);
+  color: color-mix(in oklab, var(--lp-teal) 88%, white);
 }
-.lp-card h3 {
-  margin-top: 0.6rem;
+.lp-card-foot h3 {
+  margin-top: 0.45rem;
   font-family: var(--font-sans);
-  font-size: 1.375rem; /* between text-xl and text-2xl — kept raw */
+  font-size: 1.125rem; /* caption under a screen, not a section title */
   font-weight: 500;
-  letter-spacing: -0.015em;
-  line-height: 1.3;
-  max-width: 26ch;
+  letter-spacing: -0.012em;
+  line-height: 1.35;
+  max-width: 30ch;
   text-wrap: balance;
 }
-/* Every replica sits on the same plate: bled left out of the card, cropped by
-   the card's own overflow, one hairline and one deep shadow so it reads as a
-   pane floating over the tint rather than as a hole cut in it. */
-.lp-overview,
-.lp-sigdet,
-.lp-digest,
-.lp-battle {
+/* Every replica fills its frame edge to edge — no inset margin, no floating
+   pane. The frame (bento cell or app window) owns the border; the screen owns
+   the pixels. */
+.lp-view {
   position: relative;
   flex: 1;
-  margin: 1.5rem 0 0 1.6rem;
-  background: #161616;
-  border-radius: 8px 0 0 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.14),
-    0 24px 48px -24px rgba(0, 0, 0, 0.8);
 }
-/* Chrome bar shared by the four replicas. A panel that opens straight on its
-   content reads as a slide; the bar, the path and the pill are what make it
-   read as a screen. */
-.lp-overview .ov-top,
-.lp-sigdet .sd-top,
-.lp-digest .dg-top,
-.lp-battle .bc-head {
+/* Chrome bar shared by the four replicas and by the app window. A panel that
+   opens straight on its content reads as a slide; the name, the path and the
+   state pill are what make it read as a screen. */
+.lp-chrome {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding: 0.7rem 0.9rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: #1d1d1d;
+  background: #1c1c1f;
   font-size: 0.75rem; /* replica miniature */
   white-space: nowrap;
 }
-.lp-overview .ov-top b,
-.lp-sigdet .sd-top b,
-.lp-digest .dg-top b,
-.lp-battle .bc-head b {
+.lp-chrome b {
   font-weight: 600;
 }
-.lp-overview .ov-top b i,
-.lp-digest .dg-top b i {
+.lp-chrome b i {
   font-style: normal;
   color: var(--lp-teal);
 }
-.lp-overview .ov-top .path,
-.lp-sigdet .sd-top .path,
-.lp-digest .dg-top .path,
-.lp-battle .bc-head .path {
+.lp-chrome .path {
   overflow: hidden;
   text-overflow: ellipsis;
   color: rgba(242, 245, 248, 0.45);
+}
+/* Traffic lights: graphite, not the OS red/amber/green — this is our window. */
+.lp-dots {
+  display: flex;
+  gap: 0.3rem;
+  margin-right: 0.3rem;
+}
+.lp-dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
 }
 /* Status pill: uppercase, tracked, and outlined in its own hue. The border is
    what does the work — a filled chip reads as a tag, an outlined one reads as
@@ -1491,15 +1471,64 @@ html:has(.landing-canvas) {
 
 /* ---- Overview replica (marine card) — a table, role="img" ------------- */
 .lp-overview {
-  min-height: 15rem;
   font-size: 0.75rem; /* replica miniature */
+}
+/* Toolbar and footer only fit at window scale; the bento cell drops them. */
+.lp-overview .ov-tools {
+  display: none;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.lp-overview .ov-search {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1;
+  max-width: 18rem;
+  padding: 0.34rem 0.6rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  color: rgba(242, 245, 248, 0.38);
+}
+.lp-overview .ov-seg {
+  margin-left: auto;
+  display: flex;
+  padding: 2px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+.lp-overview .ov-seg i {
+  padding: 0.24rem 0.6rem;
+  border-radius: 4px;
+  font-style: normal;
+  color: rgba(242, 245, 248, 0.45);
+}
+.lp-overview .ov-seg i.on {
+  background: rgba(255, 255, 255, 0.09);
+  color: #f2f5f8;
+}
+.lp-overview .ov-foot {
+  display: flex;
+  gap: 0.7rem;
+  margin-top: auto;
+  padding: 0.6rem 0.9rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 0.6875rem; /* replica miniature */
+  color: rgba(242, 245, 248, 0.38);
+}
+.lp-overview .ov-foot span:last-child {
+  margin-left: auto;
 }
 .lp-overview .ov-head,
 .lp-overview .ov-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 3.4rem 2.4rem 1.9rem;
+  grid-template-columns: minmax(0, 1fr) 3.4rem 2.9rem 2.2rem;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.7rem;
   padding: 0.5rem 0.9rem;
 }
 .lp-overview .ov-head {
@@ -1562,12 +1591,96 @@ html:has(.landing-canvas) {
 
 /* ---- Signal detail replica (teal card) — miniature type, role="img" --- */
 .lp-sigdet {
-  min-height: 15rem;
   font-size: var(--text-dense);
   line-height: 1.5;
 }
+.lp-sigdet .sd-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
 .lp-sigdet .sd-body {
+  flex: 1;
+  min-width: 0;
   padding: 0.85rem 1rem;
+}
+/* Facts column. Hidden in the bento cell, which has no width to spare. */
+.lp-sigdet .sd-rail {
+  display: none;
+  flex-direction: column;
+  gap: 0.85rem;
+  width: 13rem;
+  flex-shrink: 0;
+  padding: 1.2rem 1.2rem 1rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.014);
+}
+.lp-sigdet .sd-fact i {
+  display: block;
+  font-style: normal;
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.4);
+}
+.lp-sigdet .sd-fact b {
+  font-size: var(--text-dense);
+  font-weight: 500;
+  color: rgba(242, 245, 248, 0.9);
+}
+.lp-sigdet .sd-rail-lbl {
+  margin-top: auto;
+  font-size: 0.625rem; /* replica miniature */
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(242, 245, 248, 0.4);
+}
+.lp-sigdet .sd-rel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: -0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.6);
+}
+.lp-sigdet .sd-rel li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lp-sigdet .sd-rel i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+/* The two things you can do with a signal, where a real screen puts them. */
+.lp-sigdet .sd-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: var(--text-meta);
+  white-space: nowrap;
+}
+.lp-sigdet .sd-btn {
+  padding: 0.28rem 0.6rem;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+  color: rgba(242, 245, 248, 0.78);
+}
+.lp-sigdet .sd-src {
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  color: rgba(242, 245, 248, 0.35);
 }
 .lp-sigdet .sd-meta {
   display: flex;
@@ -1634,8 +1747,14 @@ html:has(.landing-canvas) {
 
 /* ---- Digest replica (iris card) --------------------------------------- */
 .lp-digest {
-  min-height: 15rem;
   font-size: 0.75rem; /* replica miniature */
+}
+.lp-digest .dg-foot {
+  margin-top: auto;
+  padding: 0.6rem 0.9rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 0.6875rem; /* replica miniature */
+  color: rgba(242, 245, 248, 0.4);
 }
 .lp-digest .dg-stats {
   display: grid;
@@ -1699,7 +1818,7 @@ html:has(.landing-canvas) {
   font-weight: 500;
 }
 /* Narrow bento cell: drop the category chips so the sentences fit whole. */
-.lp-card-iris .dg-row .chip-cat {
+.lp-card-digest .dg-row .chip-cat {
   display: none;
 }
 /* Severity dots — system tokens; the .dark region resolves the dark set. */
@@ -1717,14 +1836,12 @@ html:has(.landing-canvas) {
 }
 
 /* ---- Battle card excerpt (bordeaux card) ------------------------------ */
-.lp-battle {
-  min-height: 13rem;
-}
 .lp-battle .bc-grid {
+  flex: 1;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 0.6rem;
-  padding: 0.9rem 1rem 0;
+  padding: 0.9rem 1rem;
 }
 @media (max-width: 860px) {
   .lp-battle .bc-grid {
@@ -1732,6 +1849,8 @@ html:has(.landing-canvas) {
   }
 }
 .lp-battle .bc-sec {
+  display: flex;
+  flex-direction: column;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
   padding: 0.6rem 0.7rem 0.7rem;
@@ -1754,12 +1873,235 @@ html:has(.landing-canvas) {
   font-weight: 500;
   color: #f2f5f8;
 }
+/* Per-section freshness, pinned to the bottom of its box. It is the real thing
+   a battle card carries, and it stops a tall cell from ending in dead space. */
+.lp-battle .bc-age {
+  margin-top: auto;
+  padding-top: 0.55rem;
+  font-size: 0.625rem; /* replica miniature */
+  color: rgba(242, 245, 248, 0.34);
+}
+.lp-battle .bc-sec.live .bc-age {
+  color: color-mix(in oklab, var(--lp-teal) 78%, white);
+}
 /* The section a fresh signal just rewrote. */
 .lp-battle .bc-sec.live {
-  border-color: color-mix(in oklab, var(--tint-b) 55%, transparent);
+  border-color: color-mix(in oklab, var(--lp-teal) 45%, transparent);
+  background: color-mix(in oklab, var(--lp-teal) 7%, transparent);
 }
 .lp-battle .bc-sec.live .bc-t {
-  color: color-mix(in oklab, var(--tint-b) 85%, white);
+  color: color-mix(in oklab, var(--lp-teal) 85%, white);
+}
+
+/* ---- Layout A under test: one app window ------------------------------ */
+/* Four screens of one product instead of four floating panels: a single frame,
+   a single chrome bar, and a nav that carries the "this is software" claim the
+   separate cards each had to re-assert on their own. */
+.lp-winwrap {
+  margin-top: 2.6rem;
+}
+.lp-appwin {
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0e0e10;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 40px 90px -40px rgba(0, 0, 0, 0.95);
+}
+.lp-appwin > .lp-chrome {
+  padding: 0.8rem 1rem;
+  font-size: var(--text-dense);
+}
+.aw-body {
+  display: grid;
+  grid-template-columns: 13.5rem minmax(0, 1fr);
+  min-height: 26rem;
+}
+.aw-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.8rem 0.6rem;
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  background: #121214;
+}
+.aw-grp {
+  padding: 0.55rem 0.6rem 0.3rem;
+  font-size: 0.625rem; /* replica miniature */
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(242, 245, 248, 0.32);
+}
+.aw-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.42rem 0.6rem;
+  border-radius: 6px;
+  text-align: left;
+  font-size: var(--text-dense);
+  color: rgba(242, 245, 248, 0.6);
+  cursor: pointer;
+  transition:
+    background 140ms var(--lp-ease),
+    color 140ms var(--lp-ease);
+}
+.aw-nav svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.aw-nav:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #f2f5f8;
+}
+.aw-nav[aria-current="page"] {
+  background: color-mix(in oklab, var(--lp-teal) 15%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--lp-teal) 26%, transparent);
+  color: #f2f5f8;
+}
+.aw-nav[aria-current="page"] svg {
+  opacity: 1;
+  color: var(--lp-teal);
+}
+.aw-comp {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  list-style: none;
+}
+.aw-comp li {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.34rem 0.6rem;
+  font-size: 0.75rem; /* replica miniature */
+  color: rgba(242, 245, 248, 0.5);
+}
+.aw-comp i {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.aw-comp b {
+  margin-left: auto;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: rgba(242, 245, 248, 0.32);
+}
+.aw-main {
+  display: flex;
+  min-width: 0;
+  background: #161618;
+}
+/* At window scale the replicas get their real type size and spacing back —
+   the miniature values exist for the bento cell, not for this. */
+.lp-appwin .lp-overview,
+.lp-appwin .lp-digest {
+  font-size: var(--text-dense);
+}
+.lp-appwin .lp-overview .ov-tools {
+  display: flex;
+}
+.lp-appwin .lp-overview .ov-head,
+.lp-appwin .lp-overview .ov-row {
+  grid-template-columns: minmax(0, 1fr) 8rem 4rem 3rem;
+  padding: 0.68rem 1.1rem;
+}
+.lp-appwin .lp-overview .ov-foot,
+.lp-appwin .lp-digest .dg-foot {
+  padding: 0.7rem 1.1rem;
+}
+.lp-appwin .lp-digest .dg-row,
+.lp-appwin .lp-digest .dg-stats > div {
+  padding: 0.7rem 1.1rem;
+}
+/* Five rows in a window this tall would leave a hole above the footer, so they
+   share the leftover height instead of stacking at the top. */
+.lp-appwin .lp-digest > .dg-row {
+  flex: 1 1 0;
+}
+.lp-appwin .lp-sigdet .sd-body {
+  padding: 1.2rem 1.3rem;
+}
+/* The rail only earns its width in the window. */
+.lp-appwin .lp-sigdet .sd-rail {
+  display: flex;
+}
+.lp-appwin .lp-sigdet .sd-foot {
+  padding: 0.7rem 1.3rem;
+}
+.lp-appwin .lp-battle .bc-grid {
+  gap: 0.8rem;
+  padding: 1.1rem 1.2rem;
+}
+/* The sentence the screen proves, read after it rather than before it. */
+.aw-cap {
+  margin-top: 1.4rem;
+  max-width: 36rem;
+  font-size: 1.25rem;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+  text-wrap: balance;
+}
+.aw-cap .eyebrow {
+  margin-bottom: 0.4rem;
+}
+@media (max-width: 860px) {
+  .aw-body {
+    grid-template-columns: 1fr;
+  }
+  .aw-side {
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  }
+  .aw-grp,
+  .aw-comp {
+    display: none;
+  }
+  .aw-nav {
+    white-space: nowrap;
+  }
+}
+
+/* TEMP — A/B switch between the two showcase layouts. Goes out with whichever
+   layout loses. */
+.lp-ab {
+  grid-column: 2;
+  justify-self: end;
+  margin-top: 1rem;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+.lp-ab button {
+  padding: 0.34rem 0.75rem;
+  border-radius: 6px;
+  font-size: var(--text-dense);
+  color: rgba(242, 245, 248, 0.55);
+  cursor: pointer;
+}
+.lp-ab button[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f2f5f8;
+}
+.lp-ab button:focus-visible,
+.aw-nav:focus-visible {
+  outline: 2px solid var(--lp-teal);
+  outline-offset: 1px;
+}
+@media (max-width: 860px) {
+  .lp-ab {
+    grid-column: 1;
+    justify-self: start;
+  }
 }
 
 /* ---- Stats strip ------------------------------------------------------- */

@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { CheckIcon } from "@/components/icons";
-import { TabCard, TabSection } from "./tab-shell";
+import { TabAbsence, TabCard, TabSection } from "./tab-shell";
 import { FreshnessDot } from "./freshness-dot";
 import { ConfidenceDot, type Confidence } from "./confidence-dot";
 import type { TechStackData, TechStackEntry, PlatformField } from "@/lib/api";
@@ -98,6 +98,12 @@ export function CompetitorTechStack({ techStack }: { techStack: TechStackData })
 
   const platformRows = buildPlatformRows(techStack.platformProfile);
 
+  // Nothing on either axis: no card at all. A framed card whose entire content is
+  // "we found nothing" is the empty block this page had too many of. The scan
+  // cadence is not worth a card of its own — it rides the absence line below when
+  // there is a platform read to hold the card up.
+  if (entries.length === 0 && platformRows.length === 0) return null;
+
   return (
     <TabCard>
       {platformRows.length > 0 && (
@@ -116,28 +122,28 @@ export function CompetitorTechStack({ techStack }: { techStack: TechStackData })
         </TabSection>
       )}
 
-      <TabSection
-        title="Detected tech stack"
-        action={
-          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            {lastScrapedAt && (
-              <FreshnessDot
-                lastScrapedAt={lastScrapedAt}
-                status="success"
-                nextRunAt={nextScanAt}
-              />
-            )}
-            <span>{scanCadenceLabel(lastScrapedAt, nextScanAt)}</span>
-          </span>
-        }
-      >
-        {entries.length === 0 ? (
-          <p className="text-dense text-muted-foreground">
-            {lastScrapedAt
-              ? "No recognizable third-party tech detected yet."
-              : "Tech stack is scanned monthly. The first scan runs within a day, then results appear here."}
-          </p>
-        ) : (
+      {entries.length === 0 ? (
+        <TabAbsence title="Detected tech stack">
+          {lastScrapedAt
+            ? `Nothing recognizable in the last scan. ${scanCadenceLabel(lastScrapedAt, nextScanAt)}.`
+            : "Scanned monthly. The first scan runs within a day, then results appear here."}
+        </TabAbsence>
+      ) : (
+        <TabSection
+          title="Detected tech stack"
+          action={
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              {lastScrapedAt && (
+                <FreshnessDot
+                  lastScrapedAt={lastScrapedAt}
+                  status="success"
+                  nextRunAt={nextScanAt}
+                />
+              )}
+              <span>{scanCadenceLabel(lastScrapedAt, nextScanAt)}</span>
+            </span>
+          }
+        >
           <div className="space-y-3">
             {orderedCategories.map((cat) => (
               <div key={cat}>
@@ -163,8 +169,8 @@ export function CompetitorTechStack({ techStack }: { techStack: TechStackData })
               </div>
             ))}
           </div>
-        )}
-      </TabSection>
+        </TabSection>
+      )}
     </TabCard>
   );
 }

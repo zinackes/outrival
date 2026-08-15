@@ -165,7 +165,10 @@ function MoverTile({ tile }: { tile: Tile }) {
           <span className="text-meta text-muted-foreground">
             {lastSignalAt ? (
               <>
-                quiet <span className="tabular-nums">{shortAge(lastSignalAt)}</span>
+                quiet{" "}
+                <span className="tabular-nums" suppressHydrationWarning>
+                  {shortAge(lastSignalAt)}
+                </span>
               </>
             ) : (
               "never moved"
@@ -192,7 +195,7 @@ function MoverTile({ tile }: { tile: Tile }) {
           ) : c.freshness?.lastScrapedAt ? (
             <>
               checked{" "}
-              <span className="tabular-nums">
+              <span className="tabular-nums" suppressHydrationWarning>
                 {shortAge(c.freshness.lastScrapedAt)}
               </span>{" "}
               ago
@@ -222,7 +225,10 @@ function MoverTile({ tile }: { tile: Tile }) {
           <span className="truncate text-meta text-text-subtle">
             {lastSignalAt ? (
               <>
-                last move <span className="tabular-nums">{shortAge(lastSignalAt)}</span>{" "}
+                last move{" "}
+                <span className="tabular-nums" suppressHydrationWarning>
+                  {shortAge(lastSignalAt)}
+                </span>{" "}
                 ago
               </>
             ) : (

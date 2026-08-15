@@ -65,7 +65,11 @@ export function AiStatusBanner() {
   return (
     <div className="mb-4 flex items-center gap-3 rounded-lg border border-critical/25 bg-critical/8 px-4 py-3">
       <WarningIcon size={16} className="text-critical shrink-0" />
-      <p className="flex-1 text-sm text-foreground">
+      {/* The recovery time renders on the viewer's clock, and the hour cycle is read
+          from `navigator`: the server has none and falls back to 12h, so a 24h viewer
+          hydrates "21:08" over a server-rendered "9:08 PM". This banner sits in the
+          dashboard layout, so that mismatch would land on every page at once. */}
+      <p className="flex-1 text-sm text-foreground" suppressHydrationWarning>
         {down
           ? `AI is temporarily unavailable: all providers are catching up. Monitoring continues; new insights are paused and will resume automatically.${recoveryText}`
           : "AI insights are delayed: the model is rate-limited right now. Summaries and signals will catch up automatically once it clears."}

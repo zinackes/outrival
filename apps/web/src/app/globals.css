@@ -935,18 +935,21 @@ html:has(.landing-canvas) {
 /* the miniature product replicas) stay raw and are commented as such.  */
 /* ==================================================================== */
 
-/* ---- Announcement banner — quiet instrument strip ------------------- */
+/* ---- Announcement strip — inside the hero, over the fog --------------- */
+/* No band, no rule: an opaque strip above the section severed the hero from
+   its own background. It floats in the fog stack, one notch above the nav. */
 .lp-banner {
-  background: var(--lp-paper);
-  border-bottom: 1px solid var(--lp-line);
-  color: var(--lp-ink-muted);
+  position: relative;
+  z-index: 10;
+  background: transparent;
+  color: var(--lp-ink-subtle);
   text-align: center;
   font-size: var(--text-dense);
   font-weight: 500;
-  padding: 0.55rem 1rem;
+  padding: 0.9rem 1rem 0.15rem;
 }
 .lp-banner b {
-  color: var(--lp-ink);
+  color: var(--lp-ink-muted);
   font-weight: 500;
 }
 
@@ -955,7 +958,7 @@ html:has(.landing-canvas) {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  min-height: calc(100dvh - 2.5rem);
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--lp-paper);
@@ -1067,6 +1070,9 @@ html:has(.landing-canvas) {
   text-align: center;
   padding: 2.5rem 1.25rem 1.5rem;
 }
+/* The four hero text colors run through vars so <HeroPalette> can swap them
+   live while we settle on one. Fallbacks = the shipped palette; once a preset
+   is chosen, inline it here and drop the var indirection. */
 .lp-h1 {
   font-family: var(--font-sans);
   font-weight: 500;
@@ -1075,6 +1081,7 @@ html:has(.landing-canvas) {
   letter-spacing: -0.032em;
   max-width: 22ch;
   text-wrap: balance;
+  color: var(--lp-h1-color, var(--lp-ink));
 }
 /* The one editorial grace note — Zodiak italic. */
 .lp-monday {
@@ -1083,9 +1090,11 @@ html:has(.landing-canvas) {
   font-weight: 700;
   letter-spacing: -0.01em;
   font-size: 1.04em;
+  color: var(--lp-monday-color, var(--lp-ink));
 }
 .lp-cycle {
   white-space: nowrap;
+  color: var(--lp-cycle-color, var(--lp-ink));
 }
 /* Thin instrument caret — signal cyan, not a terminal block. */
 .lp-caret {
@@ -1094,7 +1103,7 @@ html:has(.landing-canvas) {
   height: 0.78em;
   margin-left: 3px;
   vertical-align: -0.04em;
-  background: var(--lp-accent);
+  background: var(--lp-caret-color, var(--lp-accent));
   border-radius: 1.5px;
 }
 .lp-caret.blink {
@@ -1110,8 +1119,35 @@ html:has(.landing-canvas) {
   max-width: 44rem;
   font-size: var(--text-lead);
   line-height: 1.6;
-  color: var(--lp-ink-muted);
+  color: var(--lp-sub-color, var(--lp-ink-muted));
   text-wrap: pretty;
+}
+
+/* Temporary hero palette switcher (OUT-227) — delete with the component. */
+.lp-palette {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 999px;
+  background: var(--lp-surface);
+  box-shadow:
+    0 1px 2px rgba(20, 24, 30, 0.08),
+    0 8px 24px rgba(20, 24, 30, 0.1);
+  font-size: var(--text-meta);
+  color: var(--lp-ink-subtle);
+}
+.lp-palette select {
+  font-size: var(--text-meta);
+  color: var(--lp-ink);
+  background: transparent;
+  border: 0;
+  outline: none;
+  cursor: pointer;
 }
 .lp-ctas {
   margin-top: 2.1rem;
@@ -2090,6 +2126,8 @@ html:has(.landing-canvas) {
 .lp-ht-grid .ht-mid {
   color: rgba(250, 248, 243, 0.68);
 }
+/* The Outrival column reads as one highlighted strip: the tint is rounded at
+   both ends rather than butting into the card's edges like a table rule. */
 .lp-ht-grid .ht-us {
   background: rgba(250, 248, 243, 0.09);
   color: #fff;
@@ -2097,6 +2135,12 @@ html:has(.landing-canvas) {
 }
 .lp-ht-grid .ht-h.ht-us {
   color: #ffd6b2;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+.lp-ht-grid > div.ht-us:last-child {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
 }
 
 /* ---- Pricing, dark ------------------------------------------------------ */
@@ -2122,6 +2166,7 @@ html:has(.landing-canvas) {
 }
 .lp-plan {
   position: relative;
+  isolation: isolate; /* lets the z -1 Silk paint over the card's own background */
   display: flex;
   flex-direction: column;
   border-radius: 8px;
@@ -2135,8 +2180,11 @@ html:has(.landing-canvas) {
   isolation: isolate;
   --tint-b: #a89dff;
 }
+.lp-plan .lp-silk {
+  opacity: 0.28;
+}
 .lp-plan-featured .lp-silk {
-  opacity: 0.4;
+  opacity: 0.42;
 }
 .lp-plan .plan-pop {
   position: absolute;

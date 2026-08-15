@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Silk from "./silk";
 
-// WebGL budget guard for the Silk fills: up to ~10 of them live on the landing
-// (4 bento cards, 5 pipeline steps, the featured plan) next to the hero's
+// WebGL budget guard for the Silk fills: up to ~13 of them live on the landing
+// (4 bento cards, 5 pipeline steps, 4 plans) next to the hero's
 // Vanta instance, so each canvas mounts only near the viewport (±200px) and
 // unmounts again when far. Under prefers-reduced-motion the canvas never
 // mounts — the host card keeps its CSS tint glow as the still fill.
@@ -12,7 +12,7 @@ export function SilkFill({
   color,
   speed = 2.2,
   scale = 1,
-  noiseIntensity = 1.5,
+  noiseIntensity = 0.5,
   rotation = 0,
 }: {
   /** Silk needs a literal hex — pass the precomputed dark mix of the card's

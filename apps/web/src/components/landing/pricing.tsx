@@ -1,10 +1,19 @@
-import { PLAN_LABELS, PLANS } from "@outrival/shared";
+import { PLAN_LABELS, PLANS, type Plan } from "@outrival/shared";
 import { PLAN_CARDS, planPrice } from "@/lib/plan-catalog";
 import { SilkFill } from "./silk-fill";
 
+// Every card carries a Silk fill, but zoomed in (scale well under 1) and rotated
+// per plan: one slow fold each instead of the ripple field the bento cards run,
+// so the row reads as one material without competing with them.
+const PLAN_SILK: Record<Plan, { color: string; rotation: number }> = {
+  free: { color: "#1a1d24", rotation: 0.4 },
+  starter: { color: "#16231f", rotation: 1.5 },
+  pro: { color: "#252143", rotation: 2.6 },
+  business: { color: "#2a1d23", rotation: 3.7 },
+};
+
 // Dark pricing, still wired to the one plan table: copy from PLAN_CARDS,
 // prices derived from PLAN_PRICING via planPrice — nothing hand-written here.
-// Only the featured plan gets a Silk fill; the other cards stay quiet.
 export function Pricing() {
   return (
     <div className="lp-dark-inner lp-pricing" id="pricing">
@@ -26,7 +35,12 @@ export function Pricing() {
               key={plan}
               className={card.featured ? "lp-plan lp-plan-featured" : "lp-plan"}
             >
-              {card.featured && <SilkFill color="#2d2b3f" />}
+              <SilkFill
+                color={PLAN_SILK[plan].color}
+                rotation={PLAN_SILK[plan].rotation}
+                scale={0.42}
+                speed={1.4}
+              />
               {card.featured && <span className="plan-pop">Most popular</span>}
               <h3>{PLAN_LABELS[plan]}</h3>
               <div className="plan-price">

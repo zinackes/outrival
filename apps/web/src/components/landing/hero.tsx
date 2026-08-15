@@ -1,3 +1,4 @@
+import { HeroPalette } from "./hero-palette";
 import { Nav } from "./nav";
 import { SignalLane } from "./signal-lane";
 import { Typewriter } from "./typewriter";
@@ -11,14 +12,16 @@ import { VantaFog } from "./vanta-fog";
 export function Hero() {
   return (
     <>
-      <div className="lp-banner">
-        <b>Free forever on 2 competitors</b> · No credit card · Cancel in one
-        click
-      </div>
       <section className="lp-hero">
         <div className="lp-glow-red" aria-hidden />
         <VantaFog />
         <div className="lp-fog-grain" aria-hidden />
+        {/* The strip rides inside the fog stack, transparent: an opaque band
+            above the section cut the hero off from its own background. */}
+        <div className="lp-banner">
+          <b>Free forever on 2 competitors</b> · No credit card · Cancel in one
+          click
+        </div>
         <Nav tone="landing" />
         <div className="lp-center">
           <h1 className="lp-h1">
@@ -46,6 +49,7 @@ export function Hero() {
             A week of monitoring, replayed. The bright ones become signals.
           </p>
         </div>
+        <HeroPalette />
       </section>
     </>
   );

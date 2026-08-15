@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactElement } from "react";
 import { MagnifyingGlassIcon } from "@/components/icons";
+import { BrandMark } from "./brand-marks";
 import {
   SigilAiv,
   SigilAsk,
@@ -64,6 +65,8 @@ function SignalCard() {
   return (
     <div className="pb-sig">
       <div className="pb-sig-top">
+        <BrandMark name="Vantage" size={18} />
+        <b>Vantage</b>
         <span className="pb-sev">Critical</span>
         <span className="pb-cat">pricing</span>
         <em>2h ago</em>
@@ -96,15 +99,15 @@ function SignalCard() {
 }
 
 // The board: who moved, what they did, how long ago. The severity lives in the
-// mark, so the eye ranks the list before it reads a word of it.
+// mark, so the eye ranks the list before it reads a word of it — and now the
+// mark is the company's own, which means one glyph answers who and how bad at
+// the same time, for the width of an icon.
 function MarketBoard() {
   return (
     <div className="pb-board">
       {BOARD.map((row) => (
-        <div key={row.name} className="pb-brow">
-          <i className="mark" style={{ "--c": row.sev } as CSSProperties}>
-            {row.name.slice(0, 1)}
-          </i>
+        <div key={row.name} className="pb-brow" style={{ "--c": row.sev } as CSSProperties}>
+          <BrandMark name={row.name} size={18} />
           <b>{row.name}</b>
           <em>{row.ago}</em>
           <span>{row.move}</span>
@@ -119,7 +122,10 @@ function MarketBoard() {
 function BattleCard() {
   return (
     <div className="pb-bc">
-      <i>Vantage · Pricing</i>
+      <i>
+        <BrandMark name="Vantage" size={15} />
+        Vantage · Pricing
+      </i>
       <p>
         Pro <b>$49/mo</b>, was <s>$69</s>. Seat minimum dropped.
       </p>
@@ -140,13 +146,22 @@ function AskScreen() {
         <p>Three of seven, in 90 days.</p>
         <ul>
           <li>
-            <b>Vantage</b> cut Pro 30%
+            <BrandMark name="Vantage" size={15} />
+            <span>
+              <b>Vantage</b> cut Pro 30%
+            </span>
           </li>
           <li>
-            <b>Meridian</b> moved to usage-based
+            <BrandMark name="Meridian" size={15} />
+            <span>
+              <b>Meridian</b> moved to usage-based
+            </span>
           </li>
           <li>
-            <b>Cobalt</b> added a free tier
+            <BrandMark name="Cobalt" size={15} />
+            <span>
+              <b>Cobalt</b> added a free tier
+            </span>
           </li>
         </ul>
       </div>
@@ -163,6 +178,7 @@ function RankLadder() {
       {LADDER.map((row) => (
         <div key={row.name} className={row.self ? "pb-lrow is-self" : "pb-lrow"}>
           <u>{row.rank}</u>
+          <BrandMark name={row.name} size={16} />
           <b>{row.name}</b>
           <em>{row.pct}%</em>
           <i style={{ width: `${row.pct}%` }} />

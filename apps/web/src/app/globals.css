@@ -3529,6 +3529,14 @@ html:has(.landing-canvas) {
   color: color-mix(in oklab, currentColor 64%, transparent);
   text-wrap: pretty;
 }
+.lp-tool-line {
+  display: flex;
+  gap: 0.6rem;
+}
+.lp-tool-line svg {
+  margin-top: 0.25rem;
+  flex: none;
+}
 .lp-tool-body .lp-tool-trade {
   color: color-mix(in oklab, currentColor 48%, transparent);
 }

@@ -246,6 +246,11 @@ type TranslatedFacts = {
 const translationStorageKey = (id: string) => `outrival.overview-translation.${id}`;
 type PersistedTranslation = { translated: TranslatedFacts; showOriginal: boolean };
 
+// How much of the memory the overview shows before the reader asks for the rest.
+// Twelve dated facts is a journal, and the overview is meant to be read above one:
+// three says what moved lately, and the older ones are one click away (OUT-213).
+const MEMORY_FACTS_SHOWN = 3;
+
 export function OverviewTab({
   competitorId,
   competitorName,
@@ -339,6 +344,7 @@ export function OverviewTab({
   const [translated, setTranslated] = useState<TranslatedFacts | null>(null);
   const [translating, setTranslating] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
+  const [memoryExpanded, setMemoryExpanded] = useState(false);
 
   // Restore the persisted translation + toggle after mount (read post-mount to dodge
   // an SSR/hydration mismatch). Keyed by competitor, so switching competitors reloads
@@ -451,6 +457,10 @@ export function OverviewTab({
     // A competitor we have watched change has something to say even if the homepage
     // capture came back thin — that history is the point of the page.
     (memory?.facts.length ?? 0) > 0;
+
+  // Facts the compact rail leaves out. The cap itself is the API's (12); this only
+  // decides how many of them are on screen before the reader asks for the rest.
+  const memoryHidden = Math.max(0, (memory?.facts.length ?? 0) - MEMORY_FACTS_SHOWN);
 
   if (!hasAnything) {
     const homepageMonitor = monitors.find((m) => m.sourceType === "homepage");
@@ -620,8 +630,24 @@ export function OverviewTab({
               </span>
             }
           >
-            <MemoryTimeline story={memory} className="mt-0" />
-            {memory.total > memory.facts.length && (
+            <MemoryTimeline
+              story={memory}
+              className="mt-0"
+              max={memoryExpanded ? undefined : MEMORY_FACTS_SHOWN}
+            />
+            {memoryHidden > 0 && (
+              <button
+                type="button"
+                aria-expanded={memoryExpanded}
+                onClick={() => setMemoryExpanded((open) => !open)}
+                className="self-start rounded-sm text-xs text-link hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {memoryExpanded
+                  ? "Show fewer"
+                  : `Show ${memoryHidden} earlier change${memoryHidden === 1 ? "" : "s"}`}
+              </button>
+            )}
+            {memoryExpanded && memory.total > memory.facts.length && (
               <p className="m-0 text-xs text-muted-foreground">
                 Showing the {memory.facts.length} most recent of {memory.total} changes.
               </p>

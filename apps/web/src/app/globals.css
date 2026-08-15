@@ -796,8 +796,12 @@
 html:has(.landing-canvas) {
   scroll-behavior: smooth;
 }
-.landing-canvas section[id] {
-  scroll-margin-top: 5rem;
+/* In-page anchors. Every landing target is a div, so the section-only rule this
+   replaces never fired, and past the hero the nav's floating pill covers the
+   top 4.35rem of the viewport. */
+.landing-canvas section[id],
+.landing-canvas div[id] {
+  scroll-margin-top: 5.5rem;
 }
 @media (prefers-reduced-motion: reduce) {
   html:has(.landing-canvas) {
@@ -938,6 +942,10 @@ html:has(.landing-canvas) {
 /* ---- Hero shell ------------------------------------------------------ */
 .lp-hero {
   position: relative;
+  /* Above the sections that follow it. The hero never overlaps them, but the
+     landing nav's floating pill lives in here and would otherwise paint under
+     the positioned cards further down the page. */
+  z-index: 1;
   isolation: isolate;
   overflow: hidden;
   min-height: 100dvh;
@@ -1154,6 +1162,79 @@ html:has(.landing-canvas) {
 }
 .lp-link-sample:hover {
   color: var(--lp-ink);
+}
+
+/* ---- Landing nav: in flow on the hero, a floating pill after it -------
+   The bar keeps the same DOM in both states: at the top it is the hero's own
+   header, transparent over the fog; past the hero it detaches into a centered
+   pill so the sections below scroll under paper instead of behind a full-width
+   bar. The <nav> around it holds the 4rem back, so nothing reflows on the
+   switch, and .lp-hero carries a z-index (below) so the fixed pill paints over
+   the positioned cards of the dark section. */
+.lp-nav {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 88rem;
+  height: 4rem;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  transition:
+    max-width 280ms var(--lp-ease),
+    height 280ms var(--lp-ease),
+    padding 280ms var(--lp-ease),
+    background-color 280ms var(--lp-ease),
+    border-color 280ms var(--lp-ease),
+    box-shadow 280ms var(--lp-ease);
+}
+.lp-nav.is-stuck {
+  position: fixed;
+  top: 0.85rem;
+  left: 50%;
+  z-index: 60;
+  transform: translateX(-50%);
+  width: calc(100% - 1.5rem);
+  max-width: 58rem;
+  height: 3.5rem;
+  padding: 0 0.5rem 0 1.15rem;
+  background: color-mix(in oklab, var(--lp-paper) 82%, transparent);
+  border-color: color-mix(in oklab, var(--lp-line) 70%, transparent);
+  box-shadow: 0 14px 34px -16px rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(14px) saturate(1.4);
+  /* The position swap itself cannot tween, so the pill arrives on its own
+     drop instead of appearing mid-page. translateX(-50%) has to live in every
+     frame — it is what centers it. */
+  animation: lp-nav-drop 280ms var(--lp-ease) both;
+}
+@keyframes lp-nav-drop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -0.6rem) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+.lp-nav.is-stuck .lp-btn-accent {
+  padding: 0.6rem 1rem;
+  font-size: var(--text-dense);
+  border-radius: 999px;
+}
+/* Mobile menu while the pill is floating: hung off the pill, not the hero. */
+.lp-mnav-float {
+  position: fixed;
+  top: 4.95rem;
+  left: 0.75rem;
+  right: 0.75rem;
+  border: 1px solid var(--lp-line);
+  border-radius: 1rem;
+  box-shadow: 0 16px 40px -18px rgb(0 0 0 / 0.35);
 }
 
 /* ---- Signal lane — noise in, signals out ------------------------------ */
@@ -2891,6 +2972,29 @@ html:has(.landing-canvas) {
   line-height: 1.6;
   color: var(--lp-ink-muted);
 }
+/* The fold's own ask. Arrow in its own span so only it slides on hover. */
+.lp-fold-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 1rem;
+  font-size: var(--text-content);
+  font-weight: 500;
+  color: var(--lp-ink);
+  text-decoration: none;
+  border-bottom: 1.5px solid var(--lp-line);
+  padding-bottom: 2px;
+  transition: border-color 150ms var(--lp-ease);
+}
+.lp-fold-cta:hover {
+  border-color: var(--lp-ink);
+}
+.lp-fold-cta span {
+  transition: transform 150ms var(--lp-ease);
+}
+.lp-fold-cta:hover span {
+  transform: translateX(3px);
+}
 .lp-final-micro {
   margin-top: 2.2rem;
   font-size: var(--text-dense);
@@ -2915,8 +3019,17 @@ html:has(.landing-canvas) {
     -webkit-mask-image: none;
   }
   .lp-btn-accent,
-  .lp-link-sample {
+  .lp-link-sample,
+  .lp-fold-cta,
+  .lp-fold-cta span {
     transition: none;
+  }
+  /* The pill still docks and still reads as a pill — it just stops sliding. */
+  .lp-nav {
+    transition: none;
+  }
+  .lp-nav.is-stuck {
+    animation: none;
   }
   .lp-pstep .src-row .dot {
     animation: none;

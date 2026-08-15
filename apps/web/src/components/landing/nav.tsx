@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ListIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -29,11 +29,15 @@ const LANDING_LINKS = [
 // tone="app" (default) is the fixed, blurred, theme-aware bar used on /sample
 // and the doc pages. tone="landing" sits in flow inside the hero — transparent
 // so the fog shows through, ink logo (the hero is pinned light), no theme
-// toggle (the landing's rhythm is fixed, not a preference).
+// toggle (the landing's rhythm is fixed, not a preference). Once the hero is
+// off screen the landing bar detaches into a floating pill (.lp-nav.is-stuck);
+// the <nav> keeps its own height so nothing under it moves when that happens.
 export function Nav({ tone = "app" }: { tone?: "app" | "landing" }) {
   const landing = tone === "landing";
   const links = landing ? LANDING_LINKS : APP_LINKS;
   const [open, setOpen] = useState(false);
+  const [stuck, setStuck] = useState(false);
+  const ref = useRef<HTMLElement>(null);
   const { data: session } = useSession();
   // While the session is still resolving, keep the signed-out CTAs (matches SSR)
   // so the bar doesn't flash; swap to "Go to dashboard" once we know there's a user.
@@ -53,18 +57,36 @@ export function Nav({ tone = "app" }: { tone?: "app" | "landing" }) {
     };
   }, [open]);
 
+  // The pill turns on when the hero has left the viewport, so the bar is only
+  // ever floating over the sections that follow it. An observer on the hero
+  // rather than a scroll listener: no work on frames where nothing crosses.
+  useEffect(() => {
+    if (!landing) return;
+    const hero = ref.current?.closest("section");
+    if (!hero) return;
+    const io = new IntersectionObserver(
+      ([entry]) => setStuck(!!entry && !entry.isIntersecting),
+      { threshold: 0 },
+    );
+    io.observe(hero);
+    return () => io.disconnect();
+  }, [landing]);
+
   return (
     <nav
+      ref={ref}
       className={
         landing
-          ? "relative z-10"
+          ? "relative z-10 h-16"
           : "fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/85 backdrop-blur-sm"
       }
     >
       <div
-        className={`mx-auto flex h-16 w-full items-center justify-between px-6 ${
-          landing ? "max-w-[88rem]" : "max-w-6xl"
-        }`}
+        className={
+          landing
+            ? `lp-nav${stuck ? " is-stuck" : ""}`
+            : "mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6"
+        }
       >
         <a
           href="/"
@@ -153,10 +175,12 @@ export function Nav({ tone = "app" }: { tone?: "app" | "landing" }) {
               landing ? "" : "top-16"
             }`}
           />
+          {/* Anchored to the bar it belongs to: under the <nav> in flow, and
+              under the pill once the pill has left the flow. */}
           <div
             id="mobile-nav"
             className={`absolute inset-x-0 z-50 border-b border-border bg-background px-6 py-4 md:hidden ${
-              landing ? "top-full" : "top-16"
+              landing ? (stuck ? "lp-mnav-float" : "top-full") : "top-16"
             }`}
           >
             <div className="flex flex-col">

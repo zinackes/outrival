@@ -1,6 +1,8 @@
 // Final CTA on paper. The sample-fold replaces the old SampleOffer section:
 // the hand-written digest offer lives behind a <details> so the closing ask
-// stays a single button.
+// stays a single button. The fold ends on its own link — an offer with no way
+// to take it is a dead end, and /demo?intent=sample is the form that answers
+// this exact sentence back.
 export function CTA() {
   return (
     <div className="lp-final" id="cta">
@@ -21,6 +23,10 @@ export function CTA() {
           Tell us your product and two competitors. We&rsquo;ll write a real
           digest for your market, by hand. No account, no card.
         </p>
+        <a className="lp-fold-cta" href="/demo?intent=sample">
+          Get a sample digest
+          <span aria-hidden>&rarr;</span>
+        </a>
       </details>
       <p className="lp-final-micro">
         Your data stays in the EU · DPA available on request

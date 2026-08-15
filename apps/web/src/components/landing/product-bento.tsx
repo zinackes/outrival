@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactElement } from "react";
 import { MagnifyingGlassIcon } from "@/components/icons";
+import { SilkFill } from "./silk-fill";
 
 // "This is the product" = the surfaces, six screens you actually open. The
 // mechanism behind them is the Pipeline section right below, so nothing here
@@ -10,9 +11,10 @@ import { MagnifyingGlassIcon } from "@/components/icons";
 // atomic object of the product: a diff you can check. The five others each hold
 // ONE idea, cropped to the smallest object that still reads as itself.
 //
-// No shader fill behind any of it: depth is luminance, never a gradient or a
-// glow. The price of a flat plate is that an object floating in the middle of a
-// card reads as a hole, so every fragment runs edge to edge instead.
+// Every card carries a Silk fill, like the pipeline steps and the plans: it is
+// the material the dark body is made of, and a flat plate here made this
+// section the one hole in the page. The tint is per card and stays under the
+// content — the fragments still run edge to edge, so nothing floats on it.
 //
 // Hand-built DOM, never a raster: a screenshot carries none of the page's own
 // type and goes stale the day the product moves. Each one is aria-hidden — the
@@ -180,9 +182,13 @@ function QuarterHeat() {
 // The anchor is the only cell that keeps a sentence under its title. The five
 // others hold an object that says the same thing faster than a line of text
 // would, so the line is gone.
+// `tint` is the Silk colour, a literal hex (the shader cannot read a var).
+// Each one is the card's subject desaturated into the plate: pricing red on the
+// signal, teal on the board, ink blue on the ask, amber on the battle card.
 type Cell = {
   key: string;
   title: string;
+  tint: string;
   text?: string;
   Viz: () => ReactElement;
 };
@@ -192,31 +198,37 @@ const CARDS: Cell[] = [
     key: "signal",
     title: "What changed, why it matters, what to do.",
     text: "Every signal carries the diff it came from and the read on it.",
+    tint: "#2e2024",
     Viz: SignalCard,
   },
   {
     key: "overview",
     title: "Every competitor, ranked by what moved.",
+    tint: "#1f2a29",
     Viz: MarketBoard,
   },
   {
     key: "ask",
     title: "Ask your market a question.",
+    tint: "#1e2533",
     Viz: AskScreen,
   },
   {
     key: "battle",
     title: "Battle cards that rewrite themselves.",
+    tint: "#302921",
     Viz: BattleCard,
   },
   {
     key: "aiv",
     title: "See where you stand in AI answers.",
+    tint: "#262533",
     Viz: RankLadder,
   },
   {
     key: "recap",
     title: "Your quarter, at a glance.",
+    tint: "#202a29",
     Viz: QuarterHeat,
   },
 ];
@@ -226,6 +238,7 @@ export function ProductBento() {
     <div className="pb-grid">
       {CARDS.map((card) => (
         <article key={card.key} className={`pb-card pb-${card.key}`}>
+          <SilkFill color={card.tint} />
           <div className="pb-head">
             <h3>{card.title}</h3>
             {card.text ? <p>{card.text}</p> : null}

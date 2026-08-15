@@ -32,7 +32,10 @@ export default function HomePage() {
       <JsonLd />
       <main id="main-content" tabIndex={-1}>
         <Hero />
-        <section className="lp-body-dark dark">
+        {/* data-lp-tone marks the regions the floating nav pill has to go dark
+            over: the pill is fixed, it crosses paper and ink alike, and it
+            samples these boxes at its own height (see landing/nav.tsx). */}
+        <section className="lp-body-dark dark" data-lp-tone="dark">
           <ProductShowcase />
           <Pipeline />
           <Categories />
@@ -47,7 +50,7 @@ export default function HomePage() {
           </div>
         </section>
       </main>
-      <div className="dark">
+      <div className="dark" data-lp-tone="dark">
         <Footer />
       </div>
     </div>

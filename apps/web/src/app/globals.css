@@ -1190,6 +1190,7 @@ html:has(.landing-canvas) {
     padding 280ms var(--lp-ease),
     background-color 280ms var(--lp-ease),
     border-color 280ms var(--lp-ease),
+    color 280ms var(--lp-ease),
     box-shadow 280ms var(--lp-ease);
 }
 .lp-nav.is-stuck {
@@ -1225,6 +1226,38 @@ html:has(.landing-canvas) {
   padding: 0.6rem 1rem;
   font-size: var(--text-dense);
   border-radius: 999px;
+}
+/* ---- Tone-adaptive pill ------------------------------------------------
+   The landing runs paper hero, dark body, paper again, dark footer, and the
+   pill crosses all four. Paper over the dark body reads as a hole; ink over
+   paper reads as a bar. So the pill takes the tone of what is under it —
+   .is-dark is set from a 1px band at the pill's own centre (landing/nav.tsx).
+   These colours are literal, not tokens: the pill lives inside the pinned-light
+   hero subtree, where every token is still the light one. */
+.lp-nav.is-stuck.is-dark {
+  background: color-mix(in oklab, #0b0b0e 78%, transparent);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 14px 34px -16px rgb(0 0 0 / 0.55);
+  color: #f2f5f8;
+}
+.lp-nav.is-stuck.is-dark a,
+.lp-nav.is-stuck.is-dark button {
+  color: rgba(242, 245, 248, 0.66);
+}
+.lp-nav.is-stuck.is-dark a:hover,
+.lp-nav.is-stuck.is-dark button:hover {
+  color: #f2f5f8;
+}
+/* The wordmark is the one link that is never secondary. */
+.lp-nav.is-stuck.is-dark > a:first-child {
+  color: #f2f5f8;
+}
+.lp-nav.is-stuck.is-dark .lp-btn-accent {
+  background: #f2f5f8;
+  color: #0b0b0e;
+}
+.lp-nav.is-stuck.is-dark .lp-btn-accent:hover {
+  background: #ffffff;
 }
 /* Mobile menu while the pill is floating: hung off the pill, not the hero. */
 .lp-mnav-float {
@@ -1379,10 +1412,11 @@ html:has(.landing-canvas) {
    can check, so it takes two thirds of the width and both of the first two
    rows. The five supports are a quarter of a row each and hold one idea apiece.
    The anchor is first in the DOM as well as in the grid. */
-/* No shader fill any more, no gradient, no drop shadow: depth is luminance
-   alone, a flat plate and one hairline. The price of that is that an object
-   floating in the middle of a card reads as a hole rather than as a crop, so
-   every fragment runs edge to edge instead of sitting inside a padded box. */
+/* The plate is a Silk fill over #0e0e10, the same material as the pipeline
+   steps and the plans — a flat card here was the one dead surface of the dark
+   body. Still no gradient and no drop shadow: the depth is in the fill and one
+   hairline. Fragments run edge to edge rather than sitting in a padded box, so
+   nothing floats on top of the shader. */
 .pb-grid {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
@@ -1443,12 +1477,21 @@ html:has(.landing-canvas) {
 }
 .pb-card {
   position: relative;
+  /* The Silk canvas sits at z-index -1; without a stacking context of its own
+     the card would paint its background over it. */
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   border-radius: 12px;
   background: #0e0e10;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+/* Under the pipeline's 0.55: these cards carry dense fragments, and the fill is
+   the ground they read on, not the subject. The tint per card is passed to the
+   shader from product-bento.tsx, which needs a literal hex. */
+.pb-card .lp-silk {
+  opacity: 0.5;
 }
 .pb-head {
   flex-shrink: 0;

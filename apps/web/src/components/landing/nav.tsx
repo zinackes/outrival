@@ -26,6 +26,10 @@ const LANDING_LINKS = [
   { href: "/blog", label: "Blog" },
 ] as const;
 
+// Vertical centre of the floating pill, in px: .lp-nav.is-stuck sits at
+// top: 0.85rem and is 3.5rem tall, so 13.6 + 28. Keep the two in step.
+const PILL_CENTER = 42;
+
 // tone="app" (default) is the fixed, blurred, theme-aware bar used on /sample
 // and the doc pages. tone="landing" sits in flow inside the hero — transparent
 // so the fog shows through, ink logo (the hero is pinned light), no theme
@@ -37,6 +41,7 @@ export function Nav({ tone = "app" }: { tone?: "app" | "landing" }) {
   const links = landing ? LANDING_LINKS : APP_LINKS;
   const [open, setOpen] = useState(false);
   const [stuck, setStuck] = useState(false);
+  const [onDark, setOnDark] = useState(false);
   const ref = useRef<HTMLElement>(null);
   const { data: session } = useSession();
   // While the session is still resolving, keep the signed-out CTAs (matches SSR)
@@ -74,6 +79,46 @@ export function Nav({ tone = "app" }: { tone?: "app" | "landing" }) {
     return () => io.disconnect();
   }, [landing]);
 
+  // The pill is fixed and the page is not one colour: paper hero, dark body,
+  // paper again, dark footer. A paper pill over the dark body reads as a hole
+  // and a dark one over paper reads as a bar, so the pill takes the tone of
+  // whatever is under it. What it observes is the regions marked
+  // data-lp-tone="dark" (see app/page.tsx), through a root shrunk to a 1px band
+  // at the pill's own centre: the tone flips exactly when the boundary passes
+  // behind the pill, not when the section enters the viewport.
+  useEffect(() => {
+    if (!landing || !stuck) return;
+    const regions = document.querySelectorAll<HTMLElement>('[data-lp-tone="dark"]');
+    if (regions.length === 0) return;
+    const hits = new Set<Element>();
+    let io: IntersectionObserver | undefined;
+    // The band is viewport-relative, so it has to be rebuilt on resize —
+    // rootMargin is fixed at construction time.
+    function watch() {
+      io?.disconnect();
+      hits.clear();
+      io = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) hits.add(entry.target);
+            else hits.delete(entry.target);
+          }
+          setOnDark(hits.size > 0);
+        },
+        {
+          rootMargin: `-${PILL_CENTER}px 0px -${Math.max(0, window.innerHeight - PILL_CENTER - 1)}px 0px`,
+        },
+      );
+      for (const region of regions) io.observe(region);
+    }
+    watch();
+    window.addEventListener("resize", watch);
+    return () => {
+      io?.disconnect();
+      window.removeEventListener("resize", watch);
+    };
+  }, [landing, stuck]);
+
   return (
     <nav
       ref={ref}
@@ -86,7 +131,7 @@ export function Nav({ tone = "app" }: { tone?: "app" | "landing" }) {
       <div
         className={
           landing
-            ? `lp-nav${stuck ? " is-stuck" : ""}`
+            ? `lp-nav${stuck ? " is-stuck" : ""}${stuck && onDark ? " is-dark" : ""}`
             : "mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6"
         }
       >
@@ -94,7 +139,7 @@ export function Nav({ tone = "app" }: { tone?: "app" | "landing" }) {
           href="/"
           className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight"
         >
-          <LogoMark size={26} ink={landing} />
+          <LogoMark size={26} ink={landing && stuck && onDark ? "light" : landing} />
           {/* On the landing the wordmark is one ink text node: split across two
               spans it became two items of this gap-2 flex row, which opened a
               hole inside the word. */}

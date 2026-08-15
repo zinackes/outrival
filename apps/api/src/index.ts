@@ -45,6 +45,7 @@ import { askRouter } from "./routes/ask";
 import { standingQueriesRouter } from "./routes/standing-queries";
 import { internalRouter } from "./routes/internal";
 import { savedViewsRouter } from "./routes/saved-views";
+import { alertConditionsRouter } from "./routes/alert-conditions";
 import { crmDestinationsRouter } from "./routes/crm-destinations";
 import { oauthRouter } from "./routes/oauth";
 import { systemRouter } from "./routes/system";
@@ -160,6 +161,7 @@ app.route("/api/standing-queries", standingQueriesRouter);
 // answers 404 across the board when INTERNAL_API_SECRET is unset.
 app.route("/api/internal", internalRouter);
 app.route("/api/saved-views", savedViewsRouter);
+app.route("/api/alert-conditions", alertConditionsRouter);
 app.route("/api/crm-destinations", crmDestinationsRouter);
 app.route("/api/oauth", oauthRouter);
 app.route("/api/system", systemRouter);

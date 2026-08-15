@@ -490,6 +490,14 @@ export function planQuery() {
 }
 
 // Notification moderation preferences (channels by severity, quiet hours, cap…).
+// Alert conditions (OUT-192) — the org's own rules for what counts as important.
+export function alertConditionsQuery() {
+  return queryOptions({
+    queryKey: ["alertConditions"] as const,
+    queryFn: () => api.listAlertConditions().then((r) => r.data),
+  });
+}
+
 export function notificationPreferencesQuery() {
   return queryOptions({
     queryKey: ["notificationPreferences"] as const,

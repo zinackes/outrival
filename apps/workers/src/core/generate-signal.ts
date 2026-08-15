@@ -44,6 +44,7 @@ import {
   formatDiffForPrompt,
   renderCelebrationEmail,
 } from "@outrival/shared";
+import { evaluateAlertConditions } from "../lib/alert-conditions";
 import { insertSignalFeed, loggedAi } from "../lib/analytics";
 import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
 import { sendEmail, ALERT_FROM } from "../lib/resend";
@@ -615,6 +616,23 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
         }))
       : [];
 
+    // The org's own alert conditions, checked against the signal that is about to
+    // exist (OUT-192). Costs one fast call, and only for orgs that wrote a rule.
+    // Skipped on backfill: reconstructing 2023 must not fire today's alerts.
+    const conditions = isBackfill
+      ? { matchedIds: [], matchedTexts: [] }
+      : await evaluateAlertConditions({
+          orgId: competitor.orgId,
+          competitorId: competitor.id,
+          competitorName: competitor.name,
+          category,
+          severity,
+          insight: published.insight,
+          soWhat: published.soWhat ?? null,
+          changeBefore: humanChangeBefore,
+          changeAfter: humanChangeAfter,
+        });
+
     // Important / not important + the one-line reason the feed badges (OUT-192).
     // Deterministic over numbers this run already produced, so it adds no call and no
     // second opinion: the reason can be checked against the row it sits on.
@@ -625,6 +643,7 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
       severity,
       materiality: materialityScores,
       relevanceScore: change.relevanceScore,
+      matchedConditions: conditions.matchedTexts,
       isBackfill,
     });
 
@@ -665,6 +684,7 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
           : null,
         isImportant: importance.important,
         importanceReason: importance.reason,
+        matchedConditionIds: conditions.matchedIds,
         faithfulness,
       })
       .onConflictDoNothing({ target: signals.changeId })

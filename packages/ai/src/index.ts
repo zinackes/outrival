@@ -117,6 +117,16 @@ export type {
   StandingQueryJudgement,
   StandingQueryJudgeInput,
 } from "./tasks/standing-query-judge";
+export {
+  matchAlertConditions,
+  buildMatchAlertConditionsPrompt,
+  AlertConditionMatchSchema,
+} from "./tasks/match-alert-conditions";
+export type {
+  AlertConditionMatch,
+  AlertConditionCandidate,
+  MatchAlertConditionsInput,
+} from "./tasks/match-alert-conditions";
 export { generateRepositioningInsight } from "./tasks/pricing-repositioning";
 export type { RepositioningInput } from "./tasks/pricing-repositioning";
 export {

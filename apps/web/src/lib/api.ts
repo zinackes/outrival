@@ -556,6 +556,20 @@ export interface Signal {
   oscillation: SignalOscillation | null;
 }
 
+/**
+ * An alert condition (OUT-192): what the user wants flagged, in their own words.
+ * `matchCount` and `lastMatchedAt` are there to answer the only question a saved rule
+ * ever raises — is this thing firing?
+ */
+export interface AlertCondition {
+  id: string;
+  condition: string;
+  isActive: boolean;
+  matchCount: number;
+  lastMatchedAt: string | null;
+  createdAt: string;
+}
+
 /** The folded back-and-forth behind an oscillating signal. */
 export interface SignalOscillation {
   /** Distinct readings of the flip, this signal's own included (so it starts at 2). */
@@ -4209,6 +4223,21 @@ export const api = {
     request<{ ranking: Record<string, number> }>("/api/compare/ranking"),
   getOnboardingChecklist: () =>
     request<OnboardingChecklist>("/api/onboarding/checklist"),
+  // Alert conditions (OUT-192) — the sentences that decide what gets flagged.
+  listAlertConditions: () =>
+    request<{ data: { conditions: AlertCondition[]; max: number } }>("/api/alert-conditions"),
+  createAlertCondition: (condition: string) =>
+    request<{ data: { condition: AlertCondition } }>("/api/alert-conditions", {
+      method: "POST",
+      body: JSON.stringify({ condition }),
+    }),
+  updateAlertCondition: (id: string, patch: { condition?: string; isActive?: boolean }) =>
+    request<{ data: { condition: AlertCondition } }>(`/api/alert-conditions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteAlertCondition: (id: string) =>
+    request<{ data: { ok: true } }>(`/api/alert-conditions/${id}`, { method: "DELETE" }),
   listSavedViews: () => request<{ views: SavedView[] }>("/api/saved-views"),
   createSavedView: (name: string, filters: SavedViewFilters) =>
     request<{ view: SavedView }>("/api/saved-views", {

@@ -1,4 +1,3 @@
-import { HeroPalette } from "./hero-palette";
 import { Nav } from "./nav";
 import { SignalLane } from "./signal-lane";
 import { Typewriter } from "./typewriter";
@@ -49,7 +48,6 @@ export function Hero() {
             A week of monitoring, replayed. The bright ones become signals.
           </p>
         </div>
-        <HeroPalette />
       </section>
     </>
   );

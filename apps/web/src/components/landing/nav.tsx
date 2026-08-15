@@ -71,12 +71,16 @@ export function Nav({ tone = "app" }: { tone?: "app" | "landing" }) {
           className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight"
         >
           <LogoMark size={26} ink={landing} />
-          {/* One flex item, or the row's gap-2 opens a hole inside the word.
-              On the landing the wordmark stays ink: the primary cyan sits too
-              close to the paper background to read at 18px. */}
-          <span>
-            Out<span className={landing ? undefined : "text-primary"}>rival</span>
-          </span>
+          {/* On the landing the wordmark is one ink text node: split across two
+              spans it became two items of this gap-2 flex row, which opened a
+              hole inside the word. */}
+          {landing ? (
+            <span>Outrival</span>
+          ) : (
+            <span>
+              Out<span className="text-primary">rival</span>
+            </span>
+          )}
         </a>
         <div className="hidden items-center gap-7 text-sm text-text-muted md:flex">
           {links.map((l) => (

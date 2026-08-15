@@ -1010,8 +1010,8 @@ html:has(.landing-canvas) {
   left: 50%;
   margin-left: -22rem;
   background:
-    radial-gradient(42% 44% at 46% 46%, color-mix(in oklab, #ff5c72 12%, transparent), transparent 72%),
-    radial-gradient(26% 30% at 64% 58%, color-mix(in oklab, #ff5c72 7%, transparent), transparent 70%);
+    radial-gradient(42% 44% at 46% 46%, color-mix(in oklab, #ff5c72 8%, transparent), transparent 72%),
+    radial-gradient(26% 30% at 64% 58%, color-mix(in oklab, #ff5c72 5%, transparent), transparent 70%);
   filter: blur(20px);
   animation: lp-fog-c 21s ease-in-out infinite alternate;
 }
@@ -1027,7 +1027,8 @@ html:has(.landing-canvas) {
   pointer-events: none;
   inset: -6rem -6rem auto -6rem;
   height: 44rem;
-  opacity: 0.2;
+  /* light enough that the hero copy keeps its contrast against it */
+  opacity: 0.13;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='480'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012' numOctaves='4' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.36 0 0 0 0 0.42 0 0 0 0 0.47 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='480' height='480' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 480px 480px;
   -webkit-mask-image: linear-gradient(black 25%, transparent 90%);
@@ -1070,9 +1071,6 @@ html:has(.landing-canvas) {
   text-align: center;
   padding: 2.5rem 1.25rem 1.5rem;
 }
-/* The undecided colors — accent button, h1, sub, lane legend, sample link —
-   run through vars so <HeroPalette> can swap them live. Fallbacks = the
-   shipped palette; once a preset is chosen, inline it and drop the vars. */
 .lp-h1 {
   font-family: var(--font-sans);
   font-weight: 500;
@@ -1081,7 +1079,7 @@ html:has(.landing-canvas) {
   letter-spacing: -0.032em;
   max-width: 22ch;
   text-wrap: balance;
-  color: var(--lp-h1-color, var(--lp-ink));
+  color: var(--lp-ink);
 }
 /* The one editorial grace note — Zodiak italic. */
 .lp-monday {
@@ -1112,40 +1110,16 @@ html:has(.landing-canvas) {
     opacity: 0;
   }
 }
+/* Both hero captions sit over the fog's colored banks, where a muted gray on
+   paper loses most of its contrast. They run near-ink instead — the size and
+   weight carry the hierarchy, not the lightness. */
 .lp-sub {
   margin-top: 1.6rem;
   max-width: 44rem;
   font-size: var(--text-lead);
   line-height: 1.6;
-  color: var(--lp-sub-color, var(--lp-ink-muted));
+  color: oklch(0.3 0.014 260);
   text-wrap: pretty;
-}
-
-/* Temporary hero palette switcher (OUT-227) — delete with the component. */
-.lp-palette {
-  position: fixed;
-  right: 1rem;
-  bottom: 1rem;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.6rem;
-  border-radius: 999px;
-  background: var(--lp-surface);
-  box-shadow:
-    0 1px 2px rgba(20, 24, 30, 0.08),
-    0 8px 24px rgba(20, 24, 30, 0.1);
-  font-size: var(--text-meta);
-  color: var(--lp-ink-subtle);
-}
-.lp-palette select {
-  font-size: var(--text-meta);
-  color: var(--lp-ink);
-  background: transparent;
-  border: 0;
-  outline: none;
-  cursor: pointer;
 }
 .lp-ctas {
   margin-top: 2.1rem;
@@ -1155,11 +1129,13 @@ html:has(.landing-canvas) {
   justify-content: center;
   gap: 1.5rem;
 }
+/* Ink, not the cyan accent: white on --lp-accent came out at 3.4:1, and the
+   landing already spends its color on the signal chips. */
 .lp-btn-accent {
   display: inline-block;
   text-decoration: none;
-  background: var(--lp-btn-bg, var(--lp-accent));
-  color: var(--lp-btn-fg, #fff);
+  background: var(--lp-ink);
+  color: var(--lp-paper);
   font-size: var(--text-content);
   font-weight: 500;
   line-height: 1;
@@ -1168,23 +1144,27 @@ html:has(.landing-canvas) {
   transition: background-color 150ms var(--lp-ease);
 }
 .lp-btn-accent:hover {
-  background: var(--lp-btn-bg-hover, var(--lp-accent-hover));
+  background: var(--lp-ink-hover);
 }
 .lp-btn-hero {
   padding: 0.95rem 1.5rem;
   font-size: var(--text-base);
 }
+/* One notch off the button's ink so the pair reads as primary + secondary,
+   with the rule taking the text's own color instead of the generic hairline. */
 .lp-link-sample {
   text-decoration: none;
   font-size: var(--text-base);
   font-weight: 500;
-  color: var(--lp-link-color, var(--lp-ink));
-  border-bottom: 1.5px solid var(--lp-line);
+  color: oklch(0.36 0.012 260);
+  border-bottom: 1.5px solid currentColor;
   padding-bottom: 2px;
-  transition: border-color 150ms var(--lp-ease);
+  transition:
+    color 150ms var(--lp-ease),
+    border-color 150ms var(--lp-ease);
 }
 .lp-link-sample:hover {
-  border-color: var(--lp-ink);
+  color: var(--lp-ink);
 }
 
 /* ---- Signal lane — noise in, signals out ------------------------------ */
@@ -1260,14 +1240,12 @@ html:has(.landing-canvas) {
 .lp-chip.signal .what {
   color: var(--lp-ink-muted);
 }
-/* Reads over the fog's lightest band, so it takes the muted ink, not subtle:
-   at 0.5 lightness the caption disappeared into the paper. */
 .lp-lane-legend {
   margin-top: 0.8rem;
   text-align: center;
   font-size: var(--text-dense);
   font-weight: 500;
-  color: var(--lp-legend-color, var(--lp-ink-muted));
+  color: oklch(0.34 0.014 260);
 }
 
 /* ---- The cut — paper ends, graphite begins. No gradient, no seam. ---- */

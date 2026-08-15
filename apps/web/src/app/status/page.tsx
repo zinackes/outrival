@@ -76,7 +76,11 @@ export default async function StatusPage() {
 
   return (
     <DocPage
-      title="System status"
+      title={
+        <>
+          System <span className="lp-serif-accent">status</span>
+        </>
+      }
       intro="Live health of the core systems behind Outrival, checked when you load this page. Incidents and scheduled maintenance are posted here."
     >
       <div className="flex items-center gap-2.5 rounded-md border border-border bg-background-2 px-4 py-3">

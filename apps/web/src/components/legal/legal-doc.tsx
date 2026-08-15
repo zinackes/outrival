@@ -7,24 +7,6 @@ import { LEGAL_VERSION } from "@/lib/legal/entity";
 type Lang = "en" | "fr";
 const STORAGE_KEY = "outrival.legal.lang";
 
-/** Prose styling for legal bodies — richer than DocPage's base (adds h3, lists,
- * tables, strong, hr). Type scale via tokens only (no arbitrary px). */
-const PROSE = [
-  "flex flex-col gap-4 text-sm leading-relaxed text-text-muted",
-  "[&_h2]:mt-8 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-foreground",
-  "[&_h3]:mt-4 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-foreground",
-  "[&_strong]:font-semibold [&_strong]:text-foreground",
-  "[&_a]:text-primary [&_a]:underline-offset-2 hover:[&_a]:underline",
-  "[&_ul]:flex [&_ul]:list-disc [&_ul]:flex-col [&_ul]:gap-1.5 [&_ul]:pl-5",
-  "[&_ol]:flex [&_ol]:list-decimal [&_ol]:flex-col [&_ol]:gap-1.5 [&_ol]:pl-5",
-  "[&_li]:leading-relaxed [&_li>ul]:mt-1.5",
-  "[&_hr]:my-2 [&_hr]:border-border",
-  "[&_table]:w-full [&_table]:border-collapse [&_table]:text-dense",
-  "[&_th]:border [&_th]:border-border [&_th]:bg-background-2 [&_th]:p-2 [&_th]:text-left [&_th]:font-medium [&_th]:text-foreground",
-  "[&_td]:border [&_td]:border-border [&_td]:p-2 [&_td]:align-top",
-  "[&_.fine]:text-xs [&_.fine]:text-text-subtle",
-].join(" ");
-
 function LangToggle({
   lang,
   onChange,
@@ -99,7 +81,10 @@ export function LegalDoc({
           {updated} · v{LEGAL_VERSION.version}
         </p>
       </div>
-      <div lang={lang} className={PROSE}>
+      {/* .lp-doc-body again, nested: the toggle row above is the shell's first
+          child, so the document needs its own column to stack its paragraphs
+          in. Every rule is a descendant selector, so nesting costs nothing. */}
+      <div lang={lang} className="lp-doc-body">
         {lang === "en" ? en : fr}
       </div>
     </DocPage>

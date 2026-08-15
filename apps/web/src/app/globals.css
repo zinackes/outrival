@@ -3682,6 +3682,127 @@ html:has(.landing-canvas) {
   color: var(--lp-ink);
 }
 
+/* Doc + legal bodies. /bot, /security and every legal page each carried their
+   own copy of the same arbitrary-variant prose string, so the four of them
+   drifted apart one edit at a time; one class now serves all of them, in the
+   landing's register rather than the dashboard's. Element selectors stay
+   unscoped so a page can drop a plain <h2>/<p>/<ul> in and get the right thing,
+   but the list rules skip any list carrying a class — /status and /changelog
+   build their own and must not sprout bullets. */
+.lp-doc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  font-size: var(--text-content);
+  line-height: 1.7;
+  color: var(--lp-ink-muted);
+}
+/* Only the outermost one clears the page head — a page that nests a second
+   column inside (the legal shell, under its language toggle) must not add the
+   gap twice. */
+.lp-article > .lp-doc-body {
+  margin-top: 2.5rem;
+}
+/* The head already spaced the column; a leading heading must not space it
+   again. */
+.lp-doc-body > :first-child {
+  margin-top: 0;
+}
+.lp-doc-body h2 {
+  margin-top: 2rem;
+  font-family: var(--font-sans);
+  font-size: var(--text-lead);
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  color: var(--lp-ink);
+}
+.lp-doc-body h3 {
+  margin-top: 1.25rem;
+  font-family: var(--font-sans);
+  font-size: var(--text-content);
+  font-weight: 500;
+  color: var(--lp-ink);
+}
+.lp-doc-body strong {
+  font-weight: 500;
+  color: var(--lp-ink);
+}
+.lp-doc-body a {
+  color: var(--lp-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in oklab, currentColor 35%, transparent);
+  transition: text-decoration-color 150ms var(--lp-ease);
+}
+.lp-doc-body a:hover {
+  text-decoration-color: currentColor;
+}
+.lp-doc-body ul:not([class]),
+.lp-doc-body ol:not([class]) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-left: 1.25rem;
+}
+.lp-doc-body ul:not([class]) {
+  list-style: disc;
+}
+.lp-doc-body ol:not([class]) {
+  list-style: decimal;
+}
+.lp-doc-body li::marker {
+  color: var(--lp-ink-subtle);
+}
+.lp-doc-body hr {
+  border: 0;
+  border-top: 1px solid var(--lp-line);
+  margin: 1rem 0;
+}
+.lp-doc-body :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+  background: color-mix(in oklab, currentColor 7%, transparent);
+}
+.lp-doc-body pre {
+  overflow-x: auto;
+  padding: 1rem;
+  border: 1px solid var(--lp-line);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklab, currentColor 4%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-dense);
+  line-height: 1.6;
+}
+/* The legal annexes ship real tables (subprocessors, retention windows). */
+.lp-doc-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-dense);
+}
+.lp-doc-body th,
+.lp-doc-body td {
+  border: 1px solid var(--lp-line);
+  padding: 0.5rem;
+  text-align: left;
+  vertical-align: top;
+  /* Four columns of legal prose do not fit 350px at their min-content width,
+     and the canvas clips rather than scrolls — so the retention column was
+     simply unreachable on a phone. Breaking mid-word is the lesser loss. */
+  overflow-wrap: anywhere;
+}
+.lp-doc-body th {
+  font-weight: 500;
+  color: var(--lp-ink);
+  background: color-mix(in oklab, currentColor 4%, transparent);
+}
+.lp-doc-body .fine {
+  font-size: var(--text-meta);
+  color: var(--lp-ink-subtle);
+}
+
 /* Cross-links: the neighbouring comparisons, as a row of quiet links rather
    than a card grid — they are the page's exits, not its content. */
 .lp-xlinks {

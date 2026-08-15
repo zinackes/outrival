@@ -49,7 +49,11 @@ const PRINCIPLES = [
 export default function AboutPage() {
   return (
     <DocPage
-      title="About Outrival"
+      title={
+        <>
+          About <span className="lp-serif-accent">Outrival</span>
+        </>
+      }
       intro="Competitive intelligence that reads the noise so you don't have to. Here's why it exists, who's behind it, and what it will and won't do."
     >
       <div className="flex flex-col gap-10">

@@ -112,6 +112,9 @@ const PatchSchema = z.object({
   stage: StageSchema.optional(),
   mode: ModeSchema.optional(),
   productUrl: z.string().url().nullish(),
+  // Draft of the "Product name" field, saved while the user types on the profile
+  // step. Same 80-char cap the field enforces; null clears it.
+  productName: z.string().max(80).nullish(),
   productProfile: ProfileSchema.optional(),
   discoverySuggestions: z.array(z.unknown()).optional(),
   addedCompetitorIds: z.array(z.string()).optional(),
@@ -144,6 +147,7 @@ onboardingSessionRouter.patch("/:id", async (c) => {
       ...(d.stage !== undefined && { stage: d.stage }),
       ...(d.mode !== undefined && { mode: d.mode }),
       ...(d.productUrl !== undefined && { productUrl: d.productUrl }),
+      ...(d.productName !== undefined && { productName: d.productName }),
       ...(d.productProfile !== undefined && { productProfile: d.productProfile }),
       ...(d.discoverySuggestions !== undefined && {
         discoverySuggestions: d.discoverySuggestions,

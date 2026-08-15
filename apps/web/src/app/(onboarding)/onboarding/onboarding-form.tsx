@@ -223,9 +223,14 @@ const PARALLEL_DISCOVERY = process.env.NEXT_PUBLIC_ONBOARDING_PARALLEL_DISCOVERY
 const DISCOVERY_DEBOUNCE_MS =
   Number(process.env.NEXT_PUBLIC_ONBOARDING_DISCOVERY_DEBOUNCE_MS ?? 3000) || 3000;
 
-// Identity of a discovery input — a prefetch is reusable only for the exact same
-// profile + URL, so editing any field invalidates it (and re-bills, debounced).
-function profileKey(p: ProductProfile, url: string | null, region: string | null): string {
+// Drafts are one row update, not a billed search, so they are written back on a
+// short pause: the point is to be ahead of the user leaving the screen, not to
+// batch keystrokes.
+const DRAFT_SAVE_DEBOUNCE_MS = 800;
+
+// Identity of the profile the user has on screen, independent of where discovery
+// would search with it.
+function profileDraftKey(p: ProductProfile): string {
   return JSON.stringify([
     p.category,
     p.audience,
@@ -233,9 +238,13 @@ function profileKey(p: ProductProfile, url: string | null, region: string | null
     p.pricingModel,
     p.whatItDoes ?? "",
     (p.keywords ?? []).join("|"),
-    url,
-    region,
   ]);
+}
+
+// Identity of a discovery input — a prefetch is reusable only for the exact same
+// profile + URL, so editing any field invalidates it (and re-bills, debounced).
+function profileKey(p: ProductProfile, url: string | null, region: string | null): string {
+  return JSON.stringify([profileDraftKey(p), url, region]);
 }
 
 function extractMessage(err: unknown): string {
@@ -354,6 +363,27 @@ export function OnboardingForm({
     }
   }, [session?.mode]);
 
+  // The profile step used to hold everything typed on it in React state until
+  // "Looks right": leaving the screen — and the dashboard sends the user straight
+  // back here while the gate is on — restored the step and the analysed profile but
+  // dropped the edits and the typed name. Both are now written back while the user
+  // types, through the endpoints the confirm already uses. These two refs hold what
+  // is known to be saved, so an unchanged draft is never re-sent.
+  const savedProfile = useRef<string | null>(
+    initialProfile ? profileDraftKey(initialProfile) : null,
+  );
+  const savedName = useRef("");
+  // The session loads after the field is already live, so the saved name is adopted
+  // once and never over something the user has started typing.
+  const nameAdopted = useRef(false);
+  useEffect(() => {
+    if (nameAdopted.current || !session) return;
+    nameAdopted.current = true;
+    const saved = session.productName ?? "";
+    savedName.current = saved;
+    if (saved) setProductName((v) => v || saved);
+  }, [session]);
+
   // Fire onboarding_started once the session id is known (so every funnel event
   // shares it). The session loads async; this waits for it.
   const startedFired = useRef(false);
@@ -441,6 +471,9 @@ export function OnboardingForm({
       pricingModel: p.pricingModel?.trim() ?? "",
     };
     setProfile(normalized);
+    // The analysis route stored this exact profile on the org, so the draft save
+    // has nothing to do until the user edits a field.
+    savedProfile.current = profileDraftKey(normalized);
     setCommittedUrl(url);
     setCompetitors([]);
     setRemoved([]);
@@ -628,6 +661,31 @@ export function OnboardingForm({
     };
   }, [screen, profile, committedUrl, region, discoveryDisabled, sessionId]);
 
+  // Draft saves for the profile step (see the refs above). Best-effort and silent:
+  // a failed background write must not take the notice slot from the screen the user
+  // is on, and confirming saves the same thing again anyway.
+  useEffect(() => {
+    if (screen !== "profile" || !profile) return;
+    const key = profileDraftKey(profile);
+    if (key === savedProfile.current) return;
+    const timer = setTimeout(() => {
+      savedProfile.current = key;
+      void api.patchProductProfile(profile).catch(() => {});
+    }, DRAFT_SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [screen, profile]);
+
+  // The name has no org column of its own — it is a per-attempt answer, and it rides
+  // the session row that already carries the URL and the profile for resume.
+  useEffect(() => {
+    if (screen !== "profile" || !sessionId || productName === savedName.current) return;
+    const timer = setTimeout(() => {
+      savedName.current = productName;
+      void updateSession({ productName: productName.trim() || null });
+    }, DRAFT_SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [screen, sessionId, productName, updateSession]);
+
   async function handleProfileConfirm() {
     if (!profile) return;
     setError(null);
@@ -650,6 +708,7 @@ export function OnboardingForm({
     // state, and a save that fails still surfaces there — goTo clears the notice
     // slot on the way in, so a later rejection lands on the step the user is on.
     goTo("discover");
+    savedProfile.current = profileDraftKey(profile);
     void api.patchProductProfile(profile).catch((e) => setError(extractMessage(e)));
     // runDiscovery replays the background prefetch when it already resolved for
     // this exact input (instant), and searches otherwise.

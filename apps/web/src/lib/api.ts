@@ -2118,6 +2118,7 @@ export interface OnboardingSession {
   stage: OnboardingSessionStage;
   mode: OnboardingMode;
   productUrl: string | null;
+  productName: string | null;
   productProfile: ProductProfile | null;
   discoverySuggestions: DiscoveredCompetitor[] | null;
   addedCompetitorIds: string[] | null;
@@ -2131,6 +2132,7 @@ export interface OnboardingSessionPatch {
   stage?: OnboardingSessionStage;
   mode?: OnboardingMode;
   productUrl?: string | null;
+  productName?: string | null;
   productProfile?: ProductProfile;
   discoverySuggestions?: DiscoveredCompetitor[];
   addedCompetitorIds?: string[];

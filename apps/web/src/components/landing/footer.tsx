@@ -52,7 +52,6 @@ export function Footer() {
             <FooterCol
               head="Product"
               links={[
-                { label: "Sources", href: "/#sources" },
                 { label: "Product", href: "/#product" },
                 { label: "Signals", href: "/#signals" },
                 { label: "Compare", href: "/#compare" },

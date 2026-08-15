@@ -805,33 +805,6 @@ html:has(.landing-canvas) {
   }
 }
 
-/* Scroll reveal — a light fade + rise as a section enters the viewport. The
-   hidden start state is added by the <ScrollReveal> client only to below-the-fold
-   sections (so there is no flash and no-JS renders everything). Reduced-motion
-   users get the content with no transform. */
-[data-reveal].reveal-init {
-  opacity: 0;
-  transform: translateY(14px);
-  transition:
-    opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: opacity, transform;
-}
-[data-reveal].reveal-init.reveal-in {
-  opacity: 1;
-  transform: none;
-  /* Release the promoted compositor layer once the section has landed — leaving
-     will-change set keeps every revealed section permanently layer-promoted. */
-  will-change: auto;
-}
-@media (prefers-reduced-motion: reduce) {
-  [data-reveal].reveal-init {
-    opacity: 1;
-    transform: none;
-    transition: none;
-  }
-}
-
 /* Blog article prose — long-form editorial styling for MDX-rendered posts.
    Body runs on the muted text tier (same register as the About / legal pages);
    headings, strong and links lift to foreground / accent. Code blocks come from

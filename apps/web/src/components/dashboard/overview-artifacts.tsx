@@ -58,7 +58,9 @@ export function OverviewArtifacts() {
             <>
               <Num>{cards.length}</Num> {cards.length === 1 ? "card" : "cards"},{" "}
               {cards.length === 1 ? "built" : "oldest built"}{" "}
-              <Num>{shortAge(oldest.updatedAt)}</Num> ago
+              {/* Clock-relative: the server's string and the browser's, a second
+                  later, can land either side of a bucket boundary. */}
+              <Num suppressHydrationWarning>{shortAge(oldest.updatedAt)}</Num> ago
             </>
           }
         />
@@ -70,7 +72,16 @@ export function OverviewArtifacts() {
           label="Weekly brief"
           meta={
             <>
-              Week of {formatDate(brief.weekStart, { month: "short", day: "numeric" })}
+              {/* A week start is a date, not an instant: it arrives as UTC midnight,
+                  which renders as the day before for any viewer west of Greenwich —
+                  a different label than the UTC server's. Read it in UTC, like
+                  `formatMonth` does with its month keys. */}
+              Week of{" "}
+              {formatDate(brief.weekStart, {
+                month: "short",
+                day: "numeric",
+                timeZone: "UTC",
+              })}
               {takeaways > 0 && (
                 <>
                   {" · "}
@@ -85,8 +96,18 @@ export function OverviewArtifacts() {
   );
 }
 
-function Num({ children }: { children: ReactNode }) {
-  return <span className="tabular-nums">{children}</span>;
+function Num({
+  children,
+  suppressHydrationWarning,
+}: {
+  children: ReactNode;
+  suppressHydrationWarning?: boolean;
+}) {
+  return (
+    <span className="tabular-nums" suppressHydrationWarning={suppressHydrationWarning}>
+      {children}
+    </span>
+  );
 }
 
 function Shelf({

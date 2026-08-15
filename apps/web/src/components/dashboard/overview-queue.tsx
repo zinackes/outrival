@@ -75,7 +75,9 @@ export function OverviewQueue({
           </span>
           <span>
             <span className="block text-sm font-semibold">Nothing waiting.</span>
-            <span className="text-sm text-muted-foreground">
+            {/* `nextRunLabel` is clock-relative, so it can differ between the server
+                render and hydration a second later. */}
+            <span className="text-sm text-muted-foreground" suppressHydrationWarning>
               {/* Precise on purpose: "you handled everything" would be a claim even
                   when the window only ever held mediums. */}
               {windowCount > 0
@@ -140,6 +142,7 @@ export function OverviewQueue({
               <time
                 className="w-8 shrink-0 text-right text-meta text-muted-foreground tabular-nums"
                 dateTime={s.createdAt}
+                suppressHydrationWarning
               >
                 {shortAge(s.createdAt)}
               </time>

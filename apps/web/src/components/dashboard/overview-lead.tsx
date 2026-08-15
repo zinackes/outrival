@@ -86,7 +86,10 @@ export function OverviewLead({
             </>
           )}
           <span aria-hidden>·</span>
-          <time className="tabular-nums" dateTime={signal.createdAt}>
+          {/* An age is measured against the clock at render time, so the server's
+              string is already stale when the browser recomputes it and a bucket
+              boundary in between makes them differ. `dateTime` carries the instant. */}
+          <time className="tabular-nums" dateTime={signal.createdAt} suppressHydrationWarning>
             {shortAge(signal.createdAt)}
           </time>
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
@@ -15,10 +15,11 @@ import {
   adjustCompetitorUnread,
 } from "@/lib/queries";
 import { toCsv, downloadCsv } from "@/lib/csv";
-import { formatDate } from "@/lib/format-date";
+import { bucketLabels, lastNUtcDays, trendBuckets, UTC_PRESETS } from "@/lib/overview-window";
 import { Button } from "@/components/ui/button";
 import {
   DateRangePicker,
+  DEFAULT_PRESETS,
   lastNDays,
   type DateRange,
 } from "@/components/ui/date-range-picker";
@@ -53,39 +54,6 @@ const SEV_RANK: Record<Signal["severity"], number> = {
 // readable in a 264px column (a 90 day range buckets into 14, not 90 slivers).
 const MAX_BARS = 14;
 
-// Buckets signals across the selected [from, to] window into `buckets` equal
-// slices, so the bars span the picked range rather than a fixed tail.
-function trendBuckets(
-  signals: Signal[],
-  fromMs: number,
-  toMs: number,
-  buckets: number,
-): number[] {
-  const span = Math.max(1, toMs - fromMs);
-  const slice = span / buckets;
-  const out = new Array<number>(buckets).fill(0);
-  for (const s of signals) {
-    const t = new Date(s.createdAt).getTime();
-    if (t < fromMs || t > toMs) continue;
-    const i = Math.min(buckets - 1, Math.floor((t - fromMs) / slice));
-    out[i]!++;
-  }
-  return out;
-}
-
-// One label per bucket for the bars' hover. A bucket is a single day while the range
-// fits in MAX_BARS; past that it spans several, and the label says so rather than
-// naming only its first day.
-function bucketLabels(fromMs: number, toMs: number, buckets: number): string[] {
-  const day = (ms: number) => formatDate(new Date(ms), { month: "short", day: "numeric" });
-  const slice = Math.max(1, toMs - fromMs) / buckets;
-  const wide = slice > 1.5 * 86_400_000;
-  return Array.from({ length: buckets }, (_, i) => {
-    const start = fromMs + i * slice;
-    return wide ? `${day(start)} to ${day(start + slice - 86_400_000)}` : day(start);
-  });
-}
-
 export function OverviewView() {
   useSetAskContext({ kind: "view", label: "Overview dashboard" });
   const queryClient = useQueryClient();
@@ -117,7 +85,19 @@ export function OverviewView() {
   const signals = signalsQ.data ?? null;
   const competitors = competitorsQ.data ?? null;
   const err = signalsQ.error ?? competitorsQ.error;
-  const [range, setRange] = useState<DateRange>(() => lastNDays(7));
+  // OUT-185 — every number below is windowed, and "the last 7 days" means the
+  // viewer's 7 calendar days, which the server cannot know while it renders. Seeding
+  // the first render with the local window gave the UTC server and the browser two
+  // grids offset by the viewer's UTC offset: signals fell in different bars, the
+  // period count moved, and React threw a hydration mismatch (#418) on every load.
+  // First paint runs on a UTC window both sides derive identically; the viewer's own
+  // days are adopted on mount, before anything here is interactive.
+  const [range, setRange] = useState<DateRange>(() => lastNUtcDays(7));
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setRange(lastNDays(7));
+    setMounted(true);
+  }, []);
   const rangeFrom = range.from.getTime();
   const rangeTo = range.to.getTime();
   const rangeDays = Math.max(1, Math.round((rangeTo - rangeFrom) / 86_400_000));
@@ -259,9 +239,11 @@ export function OverviewView() {
       moverCount: movers.size,
       dominant,
       bars: trendBuckets(inWindow, rangeFrom, rangeTo, buckets),
-      barLabels: bucketLabels(rangeFrom, rangeTo, buckets),
+      // Pre-mount the bounds are UTC midnights, so the labels have to be read in UTC
+      // too — a viewer west of Greenwich would otherwise name the day before.
+      barLabels: bucketLabels(rangeFrom, rangeTo, buckets, mounted ? undefined : "UTC"),
     };
-  }, [dsSignals, dsCompetitors, rangeFrom, rangeTo, rangeDays]);
+  }, [dsSignals, dsCompetitors, rangeFrom, rangeTo, rangeDays, mounted]);
 
   function exportCsv() {
     const rows = derived.inWindow;
@@ -398,7 +380,11 @@ export function OverviewView() {
                   {derived.dominant ? `, mostly on ${catLabel(derived.dominant)}` : ""}.
                 </>
               )}{" "}
-              <span className="text-muted-foreground">
+              {/* "Next scan in 3 hours" is measured against the clock at render
+                  time, so the server's copy is already a second stale when the
+                  browser recomputes it — a bucket boundary in between makes the two
+                  strings differ. The value is cosmetic; the warning is not. */}
+              <span className="text-muted-foreground" suppressHydrationWarning>
                 {derived.criticals.length > 0
                   ? `${derived.criticals.length} critical still open.`
                   : derived.inWindow.length > 0
@@ -412,7 +398,14 @@ export function OverviewView() {
         }
         actions={
           <>
-            <DateRangePicker value={range} onChange={setRange} />
+            {/* The trigger names the preset the value matches, recomputing each
+                preset as it renders — so the presets have to sit on the same clock
+                as the value, or the label alone would diverge. */}
+            <DateRangePicker
+              value={range}
+              onChange={setRange}
+              presets={mounted ? DEFAULT_PRESETS : UTC_PRESETS}
+            />
             <Button
               variant="outline"
               size="sm"
@@ -460,7 +453,10 @@ export function OverviewView() {
             }
           />
 
-          {!sample && <OverviewMeasured range={range} productId={productId} />}
+          {/* Mounted-only: its query is keyed on the range, and mounting it before
+              the local window is adopted would fetch the UTC window first, then the
+              real one. It renders nothing without data, so the server loses no HTML. */}
+          {!sample && mounted && <OverviewMeasured range={range} productId={productId} />}
 
           {!sample && <OverviewArtifacts />}
         </>

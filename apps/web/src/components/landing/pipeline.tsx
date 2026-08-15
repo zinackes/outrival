@@ -28,17 +28,15 @@ const SCAN_SOURCES = [
   "integrations",
 ];
 
-// Classify is the sentence above it, drawn: sixty raw changes, five of them
-// lit. A list of example rows made the reader read; a field of cells makes the
-// ratio visible before anything is read.
-const CLASSIFY_CELLS = 60;
-const CLASSIFY_HITS: Record<number, string> = {
-  4: "var(--cat-pricing)",
-  17: "var(--cat-product)",
-  26: "var(--cat-hiring)",
-  41: "var(--cat-reviews)",
-  53: "var(--cat-funding)",
-};
+// Classify keeps the same 5-in-61 ratio the copy claims, but says out loud
+// what is being counted. The bare grid of cells that stood here carried the
+// ratio and nothing else, so it read as texture rather than as a result.
+const CLASSIFY_KEPT = [
+  { label: "pricing", n: 2, c: "var(--cat-pricing)" },
+  { label: "product", n: 1, c: "var(--cat-product)" },
+  { label: "funding", n: 1, c: "var(--cat-funding)" },
+  { label: "hiring", n: 1, c: "var(--cat-hiring)" },
+];
 
 // The five-step pipeline, raw change → decision. Each step's accent (--pc)
 // and Silk fill echo the stage's signal hue: teal scan, medium-amber classify,
@@ -92,17 +90,34 @@ export function Pipeline() {
             your time.
           </p>
           <div className="pstep-viz viz-bleed" aria-hidden>
-            <div className="cls-grid">
-              {Array.from({ length: CLASSIFY_CELLS }, (_, i) => {
-                const hit = CLASSIFY_HITS[i];
-                return (
+            <div className="cls-panel">
+              <div className="cls-top">
+                <span className="cls-n">61</span>
+                <span className="cls-l">changes seen</span>
+                <span className="cls-arw">→</span>
+                <span className="cls-n is-keep">5</span>
+                <span className="cls-l">worth reading</span>
+              </div>
+              <div className="cls-bar">
+                <span className="seg is-keep" />
+                <span className="seg is-drop" />
+              </div>
+              <div className="cls-legend">
+                {CLASSIFY_KEPT.map((cat) => (
                   <span
-                    key={i}
-                    className={hit ? "cell is-hit" : "cell"}
-                    style={hit ? ({ "--c": hit } as CSSProperties) : undefined}
-                  />
-                );
-              })}
+                    key={cat.label}
+                    className="cls-tag"
+                    style={{ "--c": cat.c } as CSSProperties}
+                  >
+                    <span className="d" />
+                    {cat.label}
+                    <b>{cat.n}</b>
+                  </span>
+                ))}
+              </div>
+              <span className="cls-rest">
+                56 filed as noise, still searchable
+              </span>
             </div>
           </div>
         </div>

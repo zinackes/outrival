@@ -1410,51 +1410,169 @@ html:has(.landing-canvas) {
   max-width: 26ch;
   text-wrap: balance;
 }
-/* Screenshot bleeding out of the card's bottom-right corner. max-width: none
-   counters the preflight img { max-width: 100% } — the 112% bleed is the point. */
-.lp-card .shot {
-  position: relative;
-  flex: 1;
-  margin-top: 1.5rem;
-  min-height: 15rem;
-}
-.lp-card .shot img {
-  position: absolute;
-  top: 0;
-  left: 1.6rem;
-  width: 112%;
-  max-width: none;
-  display: block;
-  border-radius: 8px 0 0 0;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.14),
-    0 24px 48px -24px rgba(0, 0, 0, 0.8);
-}
-
-/* ---- Signal detail replica (teal card) — miniature type, role="img" --- */
-.lp-sigdet {
+/* Every replica sits on the same plate: bled left out of the card, cropped by
+   the card's own overflow, one hairline and one deep shadow so it reads as a
+   pane floating over the tint rather than as a hole cut in it. */
+.lp-overview,
+.lp-sigdet,
+.lp-digest,
+.lp-battle {
   position: relative;
   flex: 1;
   margin: 1.5rem 0 0 1.6rem;
-  min-height: 15rem;
   background: #161616;
   border-radius: 8px 0 0 0;
   overflow: hidden;
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.14),
     0 24px 48px -24px rgba(0, 0, 0, 0.8);
-  padding: 1rem 1.1rem;
-  font-size: var(--text-dense);
-  line-height: 1.5;
 }
-.lp-sigdet .sd-top {
+/* Chrome bar shared by the four replicas. A panel that opens straight on its
+   content reads as a slide; the bar, the path and the pill are what make it
+   read as a screen. */
+.lp-overview .ov-top,
+.lp-sigdet .sd-top,
+.lp-digest .dg-top,
+.lp-battle .bc-head {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #1d1d1d;
+  font-size: 0.75rem; /* replica miniature */
+  white-space: nowrap;
 }
-.lp-sigdet .sd-top b {
+.lp-overview .ov-top b,
+.lp-sigdet .sd-top b,
+.lp-digest .dg-top b,
+.lp-battle .bc-head b {
   font-weight: 600;
-  margin-left: 0.15rem;
+}
+.lp-overview .ov-top b i,
+.lp-digest .dg-top b i {
+  font-style: normal;
+  color: var(--lp-teal);
+}
+.lp-overview .ov-top .path,
+.lp-sigdet .sd-top .path,
+.lp-digest .dg-top .path,
+.lp-battle .bc-head .path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: rgba(242, 245, 248, 0.45);
+}
+/* Status pill: uppercase, tracked, and outlined in its own hue. The border is
+   what does the work — a filled chip reads as a tag, an outlined one reads as
+   a state the screen is currently in. Sans, per the numbers-in-sans rule. */
+.lp-pill {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.16rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.625rem; /* replica miniature */
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--pill) 82%, white);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--pill) 42%, transparent);
+}
+.lp-pill.has-dot::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--pill);
+  animation: lp-pulse 2.2s var(--lp-ease) infinite;
+}
+
+/* ---- Overview replica (marine card) — a table, role="img" ------------- */
+.lp-overview {
+  min-height: 15rem;
+  font-size: 0.75rem; /* replica miniature */
+}
+.lp-overview .ov-head,
+.lp-overview .ov-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3.4rem 2.4rem 1.9rem;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.9rem;
+}
+.lp-overview .ov-head {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.625rem; /* replica miniature */
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: rgba(242, 245, 248, 0.4);
+}
+.lp-overview .ov-head span:nth-child(n + 3) {
+  text-align: right;
+}
+.lp-overview .ov-row {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.lp-overview .ov-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  overflow: hidden;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.lp-overview .av {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  font-style: normal;
+  font-size: 0.625rem; /* replica miniature */
+  font-weight: 600;
+  color: rgba(242, 245, 248, 0.7);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+.lp-overview .ov-act {
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+.lp-overview .ov-act i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+.lp-overview .ov-n {
+  text-align: right;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.lp-overview .ov-t {
+  text-align: right;
+  color: rgba(242, 245, 248, 0.4);
+}
+
+/* ---- Signal detail replica (teal card) — miniature type, role="img" --- */
+.lp-sigdet {
+  min-height: 15rem;
+  font-size: var(--text-dense);
+  line-height: 1.5;
+}
+.lp-sigdet .sd-body {
+  padding: 0.85rem 1rem;
+}
+.lp-sigdet .sd-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 .lp-sigdet .sd-time {
   margin-left: auto;
@@ -1462,13 +1580,13 @@ html:has(.landing-canvas) {
   color: rgba(242, 245, 248, 0.45);
 }
 .lp-sigdet .sd-title {
-  margin-top: 0.85rem;
+  margin-top: 0.7rem;
   font-size: var(--text-content);
   font-weight: 500;
   line-height: 1.4;
 }
 .lp-sigdet .sd-sec {
-  margin-top: 0.95rem;
+  margin-top: 0.9rem;
 }
 .lp-sigdet .sd-lbl {
   display: block;
@@ -1482,63 +1600,42 @@ html:has(.landing-canvas) {
 .lp-sigdet .sd-sec p {
   color: rgba(242, 245, 248, 0.72);
 }
+/* A real two-line diff in a bordered sub-panel. Mono is earned here — this is
+   the one thing on the card read glyph by glyph. */
 .lp-sigdet .sd-diff {
   display: grid;
-  gap: 0.35rem;
-  font-size: var(--text-dense);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem; /* replica miniature */
+  white-space: nowrap;
+}
+.lp-sigdet .sd-was,
+.lp-sigdet .sd-now {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0.34rem 0.55rem;
 }
 .lp-sigdet .sd-was {
-  color: rgba(242, 245, 248, 0.45);
-  text-decoration: line-through;
-  text-decoration-color: rgba(255, 92, 114, 0.55);
+  color: color-mix(in oklab, var(--critical) 55%, white);
+  background: color-mix(in oklab, var(--critical) 11%, transparent);
 }
 .lp-sigdet .sd-now {
-  color: #f2f5f8;
+  color: color-mix(in oklab, var(--lp-teal) 55%, white);
+  background: color-mix(in oklab, var(--lp-teal) 11%, transparent);
+}
+.lp-sigdet .sd-was::before {
+  content: "- ";
 }
 .lp-sigdet .sd-now::before {
-  content: "→ ";
-  color: var(--tint-b);
+  content: "+ ";
 }
 
 /* ---- Digest replica (iris card) --------------------------------------- */
 .lp-digest {
-  position: relative;
-  flex: 1;
-  margin: 1.5rem 0 0 1.6rem;
   min-height: 15rem;
-  background: #161616;
-  border-radius: 8px 0 0 0;
-  overflow: hidden;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.14),
-    0 24px 48px -24px rgba(0, 0, 0, 0.8);
   font-size: 0.75rem; /* replica miniature */
-}
-.lp-digest .dg-top {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.7rem 0.9rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: #1d1d1d;
-  white-space: nowrap;
-}
-.lp-digest .dg-top b {
-  font-weight: 600;
-}
-.lp-digest .dg-top b i {
-  font-style: normal;
-  color: var(--lp-teal);
-}
-.lp-digest .dg-top .path {
-  color: rgba(242, 245, 248, 0.45);
-}
-.lp-digest .dg-top .tab {
-  margin-left: auto;
-  padding: 0.2rem 0.55rem;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  font-weight: 500;
 }
 .lp-digest .dg-stats {
   display: grid;
@@ -1621,51 +1718,13 @@ html:has(.landing-canvas) {
 
 /* ---- Battle card excerpt (bordeaux card) ------------------------------ */
 .lp-battle {
-  position: relative;
-  flex: 1;
-  margin: 1.5rem 0 0 1.6rem;
   min-height: 13rem;
-  background: #161616;
-  border-radius: 8px 0 0 0;
-  overflow: hidden;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.14),
-    0 24px 48px -24px rgba(0, 0, 0, 0.8);
-  padding: 1rem 1rem 0;
-}
-.lp-battle .bc-head {
-  display: flex;
-  align-items: baseline;
-  gap: 0.55rem;
-  padding-bottom: 0.8rem;
-  font-size: var(--text-dense);
-}
-.lp-battle .bc-head b {
-  font-weight: 600;
-}
-.lp-battle .bc-head .path {
-  color: rgba(242, 245, 248, 0.45);
-}
-.lp-battle .bc-head .fresh {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: var(--text-meta);
-  color: color-mix(in oklab, var(--tint-b) 85%, white);
-}
-.lp-battle .bc-head .fresh::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--critical);
-  animation: lp-pulse 2.2s var(--lp-ease) infinite;
 }
 .lp-battle .bc-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 0.6rem;
+  padding: 0.9rem 1rem 0;
 }
 @media (max-width: 860px) {
   .lp-battle .bc-grid {
@@ -1870,33 +1929,92 @@ html:has(.landing-canvas) {
 .lp-pstep .src-chip:nth-child(8n + 5) .dot {
   animation-delay: 1.1s;
 }
-/* Classify: a field of raw changes, one in twelve lit with its category. The
-   grid is the claim in the copy above, so it needs no labels of its own. */
-.lp-pstep .cls-grid {
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 5px;
-  width: 114%;
+/* Classify: the ratio stated, then drawn. A bare field of squares carried the
+   same 5-in-61 but nothing said what the squares were, so it read as texture.
+   The count leads, the bar proves it, the chips say which five. */
+.lp-pstep .cls-panel {
+  width: 112%;
+  padding: 0.8rem 0.9rem 0.85rem;
+  border-radius: 10px;
+  background: linear-gradient(rgba(255, 255, 255, 0.03), transparent);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
 }
-.lp-pstep .cls-grid .cell {
-  aspect-ratio: 1;
-  border-radius: 3px;
+.lp-pstep .cls-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+.lp-pstep .cls-n {
+  font-size: var(--text-lead);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgba(242, 245, 248, 0.55);
+}
+.lp-pstep .cls-n.is-keep {
+  color: var(--pc);
+}
+.lp-pstep .cls-l {
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.5);
+}
+.lp-pstep .cls-arw {
+  margin: 0 0.15rem;
+  font-size: var(--text-dense);
+  color: rgba(242, 245, 248, 0.32);
+}
+/* 5 of 61 as a single rule: the kept slice is the accent, the rest runs off
+   under the mask, which is what "the other 56" looks like. */
+.lp-pstep .cls-bar {
+  display: flex;
+  gap: 3px;
+  margin: 0.65rem 0 0.7rem;
+  height: 5px;
+}
+.lp-pstep .cls-bar .seg {
+  border-radius: 999px;
   background: rgba(255, 255, 255, 0.11);
 }
-.lp-pstep .cls-grid .is-hit {
+.lp-pstep .cls-bar .is-keep {
+  flex: 5;
+  background: var(--pc);
+}
+.lp-pstep .cls-bar .is-drop {
+  flex: 56;
+}
+.lp-pstep .cls-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.lp-pstep .cls-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.82);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+.lp-pstep .cls-tag .d {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
   background: var(--c);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--c) 22%, transparent);
-  animation: lp-cell-lit 3.4s var(--lp-ease) infinite;
 }
-.lp-pstep .cls-grid .is-hit:nth-of-type(2n) {
-  animation-delay: 1.7s;
+.lp-pstep .cls-tag b {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgba(242, 245, 248, 0.5);
 }
-/* A shallower dip than lp-pulse: five squares falling to 0.3 in a static grid
-   read as a rendering glitch, not as activity. */
-@keyframes lp-cell-lit {
-  50% {
-    opacity: 0.6;
-  }
+.lp-pstep .cls-rest {
+  display: block;
+  margin-top: 0.6rem;
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.42);
 }
 /* Write: the sentence first, then the raw diff it was written from — the
    receipt, not a second paragraph of prose. */
@@ -1974,14 +2092,10 @@ html:has(.landing-canvas) {
   display: flex;
   gap: 0.6rem;
 }
-/* The real Outrival mark on a plate — a tinted square read as a placeholder
-   for a logo we already ship. LogoMark sets its own box, so only the plate
-   belongs here. */
+/* The mark stands bare: LogoMark already sets its own box, and the plate that
+   used to sit behind it made a shipped logo look like a placeholder tile. */
 .lp-pstep .act-msg .ava {
-  padding: 3px;
-  border-radius: 5px;
-  background: rgba(255, 255, 255, 0.07);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.11);
+  margin-top: 1px;
 }
 .lp-pstep .act-meta {
   display: flex;
@@ -2049,27 +2163,6 @@ html:has(.landing-canvas) {
 .lp-sig-card .sig-chips b {
   font-weight: 500;
   margin-left: 0.2rem;
-}
-/* Severity: neutral pill, the color lives in the dot. */
-.lp-chip-sev {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.2rem 0.6rem 0.2rem 0.55rem;
-  border-radius: 999px;
-  font-size: var(--text-meta);
-  font-weight: 500;
-  color: #f2f5f8;
-  background: rgba(255, 255, 255, 0.06);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
-}
-.lp-chip-sev::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--sev, var(--critical));
 }
 .lp-sig-card .lbl {
   display: block;
@@ -2232,12 +2325,40 @@ html:has(.landing-canvas) {
   color: rgba(250, 248, 243, 0.82);
   text-wrap: pretty;
 }
-.lp-hot-note {
-  margin-top: 0.8rem;
+/* The sourcing rides on the figures it sources. As a standing line under the
+   paragraph it read as a legal disclaimer on the whole claim. */
+.lp-cite {
+  position: relative;
+  cursor: help;
+  text-decoration: underline dotted currentColor;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
 }
-.lp-hot-copy p.lp-hot-note {
-  font-size: var(--text-dense);
-  color: rgba(250, 248, 243, 0.55);
+.lp-cite::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 50%;
+  z-index: 2;
+  translate: -50% 3px;
+  padding: 0.4rem 0.65rem;
+  border-radius: 7px;
+  white-space: nowrap;
+  font-size: var(--text-meta);
+  line-height: 1;
+  color: rgba(250, 248, 243, 0.86);
+  background: #201013;
+  box-shadow: inset 0 0 0 1px rgba(250, 248, 243, 0.16);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.16s var(--lp-ease),
+    translate 0.16s var(--lp-ease);
+}
+.lp-cite:hover::after,
+.lp-cite:focus-visible::after {
+  opacity: 1;
+  translate: -50% 0;
 }
 .lp-hot-links {
   margin-top: 1.3rem;

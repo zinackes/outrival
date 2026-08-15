@@ -1,11 +1,25 @@
 import type { CSSProperties } from "react";
 import { SilkFill } from "./silk-fill";
 
+// The overview card carried a real screenshot. A raster of the app reads as a
+// screenshot rather than as the app: it carries none of the card's own type,
+// and it goes stale the day the product moves. Rebuilt in DOM like its three
+// neighbours, from the same numbers the digest below it shows.
+const OVERVIEW_ROWS = [
+  { name: "Meridian", n: 9, ago: "2h", act: "100%", sev: "var(--critical)" },
+  { name: "Vantage", n: 7, ago: "4h", act: "78%", sev: "var(--high)" },
+  { name: "Beacon", n: 4, ago: "1d", act: "44%", sev: "var(--high)" },
+  { name: "Lumen", n: 3, ago: "1d", act: "31%", sev: "var(--medium)" },
+  { name: "Cobalt", n: 1, ago: "2d", act: "12%", sev: "var(--low)" },
+];
+
 // Dark-body opening: the bento proof ("this is the product") and the stats
-// strip. The signal-detail, digest, and battle-card minis are hand-built
-// replicas of the real screens — role="img" with an aria-label so screen
-// readers get one sentence instead of a pile of fake UI. Each card's Silk fill
-// gets the precomputed dark mix of its tint (the shader is opaque).
+// strip. All four minis are hand-built replicas of the real screens —
+// role="img" with an aria-label so screen readers get one sentence instead of
+// a pile of fake UI. Each replica opens on a chrome bar with a bordered status
+// pill: without one, a panel of text on a dark rectangle read as a slide, not
+// as software. Each card's Silk fill gets the precomputed dark mix of its tint
+// (the shader is opaque).
 export function ProductShowcase() {
   return (
     <>
@@ -25,11 +39,42 @@ export function ProductShowcase() {
             <SilkFill color="#14202e" />
             <span className="eyebrow">Overview</span>
             <h3>Every competitor, ranked by what moved.</h3>
-            <div className="shot">
-              <img
-                src="/product/overview.webp"
-                alt="Outrival overview: competitors ranked by activity"
-              />
+            <div
+              className="lp-overview"
+              role="img"
+              aria-label="Outrival overview: five competitors ranked by how much they moved this week, Meridian first with 9 signals"
+            >
+              <div className="ov-top">
+                <b>
+                  Out<i>rival</i>
+                </b>
+                <span className="path">/ overview</span>
+                <span
+                  className="lp-pill has-dot"
+                  style={{ "--pill": "var(--lp-teal)" } as CSSProperties}
+                >
+                  Live
+                </span>
+              </div>
+              <div className="ov-head">
+                <span>Competitor</span>
+                <span>Activity</span>
+                <span>Signals</span>
+                <span>Last</span>
+              </div>
+              {OVERVIEW_ROWS.map((row) => (
+                <div key={row.name} className="ov-row">
+                  <span className="ov-name">
+                    <i className="av">{row.name.slice(0, 1)}</i>
+                    {row.name}
+                  </span>
+                  <span className="ov-act">
+                    <i style={{ width: row.act, background: row.sev }} />
+                  </span>
+                  <span className="ov-n">{row.n}</span>
+                  <span className="ov-t">{row.ago}</span>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -43,39 +88,51 @@ export function ProductShowcase() {
               aria-label="Signal detail: Vantage pricing change, critical severity"
             >
               <div className="sd-top">
-                <span className="lp-chip-sev">Critical</span>
-                <span
-                  className="lp-chip-cat-c"
-                  style={{ "--c": "var(--cat-pricing)" } as CSSProperties}
-                >
-                  pricing
-                </span>
                 <b>Vantage</b>
-                <span className="sd-time">2h ago</span>
+                <span className="path">/ signal</span>
+                <span
+                  className="lp-pill has-dot"
+                  style={{ "--pill": "var(--critical)" } as CSSProperties}
+                >
+                  Critical
+                </span>
               </div>
-              <p className="sd-title">
-                Pro plan cut 30% to $49/mo, seat minimum dropped.
-              </p>
-              <div className="sd-sec">
-                <span className="sd-lbl">What changed</span>
-                <div className="sd-diff">
-                  <div className="sd-was">Pro plan · $69/user/mo · 5-seat minimum</div>
-                  <div className="sd-now">Pro plan · $49/user/mo · no seat minimum</div>
+              <div className="sd-body">
+                <div className="sd-meta">
+                  <span
+                    className="lp-chip-cat-c"
+                    style={{ "--c": "var(--cat-pricing)" } as CSSProperties}
+                  >
+                    pricing
+                  </span>
+                  <span className="sd-time">2h ago · pricing page</span>
                 </div>
-              </div>
-              <div className="sd-sec">
-                <span className="sd-lbl">So what</span>
-                <p>
-                  Undercuts your $69 Pro tier on the exact mid-market deals
-                  you&rsquo;re closing this quarter.
+                <p className="sd-title">
+                  Pro plan cut 30% to $49/mo, seat minimum dropped.
                 </p>
-              </div>
-              <div className="sd-sec">
-                <span className="sd-lbl">Action</span>
-                <p>
-                  Brief sales on the gap today; weigh a value-add bundle before
-                  renewals.
-                </p>
+                <div className="sd-sec">
+                  <span className="sd-lbl">What changed</span>
+                  {/* The diff in a bordered sub-panel: a nested frame is what
+                      separates a product screen from a paragraph in a box. */}
+                  <div className="sd-diff">
+                    <div className="sd-was">Pro · $69/user/mo · 5-seat minimum</div>
+                    <div className="sd-now">Pro · $49/user/mo · no seat minimum</div>
+                  </div>
+                </div>
+                <div className="sd-sec">
+                  <span className="sd-lbl">So what</span>
+                  <p>
+                    Undercuts your $69 Pro tier on the exact mid-market deals
+                    you&rsquo;re closing this quarter.
+                  </p>
+                </div>
+                <div className="sd-sec">
+                  <span className="sd-lbl">Action</span>
+                  <p>
+                    Brief sales on the gap today; weigh a value-add bundle before
+                    renewals.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -94,7 +151,12 @@ export function ProductShowcase() {
                   Out<i>rival</i>
                 </b>
                 <span className="path">/ weekly digest</span>
-                <span className="tab">This week</span>
+                <span
+                  className="lp-pill"
+                  style={{ "--pill": "var(--tint-b)" } as CSSProperties}
+                >
+                  Mon 07:00
+                </span>
               </div>
               <div className="dg-stats">
                 <div>
@@ -156,7 +218,12 @@ export function ProductShowcase() {
               <div className="bc-head">
                 <b>Vantage</b>
                 <span className="path">/ battle card</span>
-                <span className="fresh">Pricing refreshed 2h ago</span>
+                <span
+                  className="lp-pill has-dot"
+                  style={{ "--pill": "var(--critical)" } as CSSProperties}
+                >
+                  Pricing refreshed 2h ago
+                </span>
               </div>
               <div className="bc-grid">
                 <div className="bc-sec">

@@ -1497,6 +1497,31 @@ html:has(.landing-canvas) {
   flex-shrink: 0;
   padding: 1.35rem 1.4rem 0;
 }
+/* The sigil above the title: the card's idea as geometry (landing/bento-sigils
+   .tsx). One weight of white for the drawing, `.hit` for the single stroke that
+   carries the meaning — red only on the anchor, where red is a fact, brighter
+   white everywhere else. */
+.pb-sigil {
+  display: block;
+  margin-bottom: 0.9rem;
+  color: rgba(242, 245, 248, 0.42);
+}
+/* fill lands on the two closed shapes that read better solid at 40px — the
+   board's mark and the quarter's day. On a stroke-only path it is a no-op. */
+.pb-sigil .hit {
+  stroke: rgba(242, 245, 248, 0.85);
+  fill: rgba(242, 245, 248, 0.85);
+}
+.pb-signal .pb-sigil .hit {
+  stroke: color-mix(in oklab, var(--critical) 70%, white);
+  fill: color-mix(in oklab, var(--critical) 70%, white);
+}
+/* The anchor's title is a notch up, so its mark is too. */
+.pb-signal .pb-sigil {
+  width: 46px;
+  height: 46px;
+  margin-bottom: 1rem;
+}
 .pb-head h3 {
   font-family: var(--font-sans);
   font-size: 1.0625rem;

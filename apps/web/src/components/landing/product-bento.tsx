@@ -1,5 +1,13 @@
 import type { CSSProperties, ReactElement } from "react";
 import { MagnifyingGlassIcon } from "@/components/icons";
+import {
+  SigilAiv,
+  SigilAsk,
+  SigilBattle,
+  SigilOverview,
+  SigilRecap,
+  SigilSignal,
+} from "./bento-sigils";
 import { SilkFill } from "./silk-fill";
 
 // "This is the product" = the surfaces, six screens you actually open. The
@@ -190,6 +198,8 @@ type Cell = {
   title: string;
   tint: string;
   text?: string;
+  /** The mark above the title — the card's idea as geometry, not an icon. */
+  Sigil: () => ReactElement;
   Viz: () => ReactElement;
 };
 
@@ -199,36 +209,42 @@ const CARDS: Cell[] = [
     title: "What changed, why it matters, what to do.",
     text: "Every signal carries the diff it came from and the read on it.",
     tint: "#2e2024",
+    Sigil: SigilSignal,
     Viz: SignalCard,
   },
   {
     key: "overview",
     title: "Every competitor, ranked by what moved.",
     tint: "#1f2a29",
+    Sigil: SigilOverview,
     Viz: MarketBoard,
   },
   {
     key: "ask",
     title: "Ask your market a question.",
     tint: "#1e2533",
+    Sigil: SigilAsk,
     Viz: AskScreen,
   },
   {
     key: "battle",
     title: "Battle cards that rewrite themselves.",
     tint: "#302921",
+    Sigil: SigilBattle,
     Viz: BattleCard,
   },
   {
     key: "aiv",
     title: "See where you stand in AI answers.",
     tint: "#262533",
+    Sigil: SigilAiv,
     Viz: RankLadder,
   },
   {
     key: "recap",
     title: "Your quarter, at a glance.",
     tint: "#202a29",
+    Sigil: SigilRecap,
     Viz: QuarterHeat,
   },
 ];
@@ -240,6 +256,7 @@ export function ProductBento() {
         <article key={card.key} className={`pb-card pb-${card.key}`}>
           <SilkFill color={card.tint} />
           <div className="pb-head">
+            <card.Sigil />
             <h3>{card.title}</h3>
             {card.text ? <p>{card.text}</p> : null}
           </div>

@@ -1,99 +1,52 @@
-import { Button } from "@/components/ui/button";
+import { Nav } from "./nav";
+import { SignalLane } from "./signal-lane";
+import { Typewriter } from "./typewriter";
+import { VantaFog } from "./vanta-fog";
 
-// The signature is an activity timeline: each bar is a week of monitoring, its
-// height the volume of changes scanned. A handful ran hot — they became signals,
-// surfaced on hover. Real product behaviour, not decoration.
-const SPECTRUM = [
-  20, 34, 28, 46, 30, 58, 40, 70, 52, 90, 64, 110, 78, 140, 96, 170, 120, 150,
-  88, 130, 72, 108, 60, 84, 150, 200, 160, 120, 180, 130, 96, 150, 108, 76, 120,
-  64, 100, 52, 84, 44, 70, 36, 58, 30, 46, 26, 38, 22, 30, 18,
-];
-// Hot weeks → the detection shown on hover. Kept to the central bars so the
-// tooltip never collides with the section's edges.
-const SIGNALS: Record<
-  number,
-  { competitor: string; category: string; detail: string }
-> = {
-  13: { competitor: "Lumen", category: "hiring", detail: "opens 3 AI Research roles, first EU team" },
-  15: { competitor: "Vantage", category: "pricing", detail: "Business plan $16 → $14/seat" },
-  24: { competitor: "Cobalt", category: "reviews", detail: "Trustpilot score slips 4.4 → 4.2" },
-  28: { competitor: "Meridian", category: "product", detail: "launches usage-based billing" },
-  31: { competitor: "Beacon", category: "funding", detail: "raises Series E, $200M" },
-};
-
+// The paper opening of the landing's light → dark → light rhythm. The layered
+// background: CSS fog fallback painted by .lp-hero's pseudo-elements (z -3),
+// Vanta's fog canvas over it once loaded (z -2), SVG grain on top (z -1). The
+// nav sits in flow inside the hero so the fog runs behind it, and the signal
+// lane closes the fold by replaying a week of monitoring as one conveyor.
 export function Hero() {
   return (
-    <section className="relative isolate overflow-hidden pb-12">
-      {/* One restrained glow behind the statement; no dot grid, no gradient text. */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div
-          className="absolute left-1/2 top-24 h-[34rem] w-[60rem] max-w-[120vw] -translate-x-1/2 rounded-full opacity-50 blur-3xl"
-          style={{
-            background:
-              "radial-gradient(circle, color-mix(in srgb, var(--accent) 11%, transparent) 0%, transparent 65%)",
-          }}
-        />
+    <>
+      <div className="lp-banner">
+        <b>Free forever on 2 competitors</b> · No credit card · Cancel in one
+        click
       </div>
-
-      {/* Statement, then the timeline right below it — one composition, sized to
-          the content so the signature stays in view instead of half off-screen. */}
-      <div className="mx-auto w-full max-w-3xl px-6 pt-24 text-center sm:pt-28">
-        <h1 className="text-[clamp(3rem,6vw,5rem)] font-semibold leading-[1.02] tracking-[-0.02em] text-balance">
-          Competitive intelligence,
-          <br className="hidden sm:block" /> written by AI.
-        </h1>
-
-        <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-text-muted text-pretty">
-          Outrival watches every public move your competitors make and tells you
-          the one thing that matters, every Monday.
-        </p>
-
-        <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-          <Button asChild size="lg">
-            <a href="/auth">Start monitoring free</a>
-          </Button>
-          <Button asChild size="lg" variant="outline">
-            <a href="/sample">See a sample digest</a>
-          </Button>
+      <section className="lp-hero">
+        <div className="lp-glow-red" aria-hidden />
+        <VantaFog />
+        <div className="lp-fog-grain" aria-hidden />
+        <Nav tone="landing" />
+        <div className="lp-center">
+          <h1 className="lp-h1">
+            Your competitors <Typewriter /> again.
+            <br />
+            You&rsquo;ll know by <em className="lp-monday">Monday</em>.
+          </h1>
+          <p className="lp-sub">
+            Outrival watches every public move your competitors make, and
+            surfaces the handful that matter. For solo founders and small teams.
+            No analyst, no $20k tool.
+          </p>
+          <div className="lp-ctas">
+            <a href="/auth" className="lp-btn-accent lp-btn-hero">
+              Start monitoring free
+            </a>
+            <a href="/sample" className="lp-link-sample">
+              See a sample digest
+            </a>
+          </div>
         </div>
-      </div>
-
-      {/* The timeline, sitting just below the statement. */}
-      <div className="mt-16 px-6">
-        <p className="mb-5 text-center text-xs text-text-subtle">
-          A year of monitoring · each bar a week · the bright ones became signals
-        </p>
-        <div aria-hidden className="flex h-56 items-end justify-center gap-[3px] sm:gap-[5px]">
-          {SPECTRUM.map((h, i) => {
-            const sig = SIGNALS[i];
-            return (
-              <div
-                key={i}
-                style={{ height: `${h}px` }}
-                className={`group relative w-[3px] sm:w-[5px] shrink-0 rounded-[3px] transition-opacity duration-150 ${
-                  sig
-                    ? "z-20 bg-primary opacity-90 hover:z-[100] hover:opacity-100"
-                    : "bg-text-muted opacity-25 hover:opacity-60"
-                }`}
-              >
-                {sig && (
-                  <>
-                    {/* Hit area wider than the 5px bar so the signal is easy to
-                        hover without enlarging the visual. */}
-                    <span className="absolute inset-y-0 -left-2.5 -right-2.5 cursor-default" />
-                    <span className="pointer-events-none absolute bottom-full left-1/2 z-[100] mb-3 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-3 py-1.5 text-xs opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
-                      <span className="text-text-subtle">{sig.category}</span>
-                      {" · "}
-                      <span className="font-semibold">{sig.competitor}</span>{" "}
-                      <span className="text-text-muted">{sig.detail}</span>
-                    </span>
-                  </>
-                )}
-              </div>
-            );
-          })}
+        <div className="lp-machine" aria-hidden>
+          <SignalLane />
+          <p className="lp-lane-legend">
+            A week of monitoring, replayed. The bright ones become signals.
+          </p>
         </div>
-      </div>
-    </section>
+      </section>
+    </>
   );
 }

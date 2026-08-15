@@ -1,77 +1,51 @@
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-
 type Faq = { q: string; a: string };
 
+// Five questions, native <details> so the page needs no client JS here. The
+// first one ships open: the anti-bot answer doubles as the ethics statement
+// (we stop on refusal), which is worth showing before anyone clicks.
 const FAQS: Faq[] = [
   {
     q: "How do you monitor sites with anti-bot protection?",
-    a: "A browser renders the majority of sources directly. We respect robots.txt, identify our crawler (OutrivalBot), and collect only what a site publishes openly. We never bypass a block, login, or paywall. If a site declines automated access we stop and tell you honestly. No source needs manual setup on your side.",
+    a: "A browser renders most sources directly. We respect robots.txt, identify our crawler (OutrivalBot), and only collect what a site publishes openly. We never bypass a block, login, or paywall; if a site declines automated access, we stop and tell you.",
   },
   {
     q: "What qualifies a change as a signal?",
-    a: "A fast AI classifier runs on every diff and tags category, severity, and a 'significant' boolean. Only significant changes go on to a second AI pass that writes the strategic insight. Measured on production in July 2026: about 1 action-grade signal (high or critical) for every 12 changes detected.",
+    a: "A fast AI classifier tags every diff with category, severity, and a “significant” flag. Only significant changes get a second AI pass that writes the strategic insight. Measured on production: about 1 action-grade signal for every 12 changes.",
   },
   {
     q: "Where is the data stored?",
-    a: "All in the EU. Application server on OVHcloud in France, background workers and job queue on netcup in Austria, PostgreSQL on Neon (EU region), HTML snapshots and screenshots on Cloudflare R2, so your stored data never leaves the EU.",
+    a: "All in the EU. Application server on OVHcloud in France, workers on netcup in Austria, PostgreSQL on Neon (EU region), snapshots on Cloudflare R2. Your stored data never leaves the EU.",
   },
   {
     q: "Can I track my own product too?",
-    a: "Yes, on every plan. Point Outrival at your live site and pricing (or a GitHub repo while you're still building) and your own changes run through the same classification pipeline, so the digest reads your moves alongside your competitors'.",
-  },
-  {
-    q: "How often is a competitor scanned?",
-    a: "Defaults: homepage and pricing daily, blog and changelog weekly, jobs daily, reviews weekly. Your plan sets the floor (weekly on Free, daily on Starter, real-time on Pro and up) and stable monitors automatically slow down to save scrapes.",
+    a: "Yes, on every plan. Point Outrival at your live site and pricing, and your own changes run through the same pipeline, so the digest reads your moves alongside your competitors’.",
   },
   {
     q: "How do I cancel?",
-    a: "One click from your dashboard, no sales call. No penalty, no forced annual commitment. You keep access until the end of your current billing cycle.",
+    a: "One click from your dashboard, no sales call, no penalty, no forced annual commitment. You keep access until the end of your billing cycle.",
   },
 ];
 
 export function FAQ() {
   return (
-    <section className="py-16 sm:py-24" id="faq" data-reveal>
-      <div className="mx-auto w-full max-w-6xl px-6">
-        <div className="grid gap-x-12 gap-y-8 lg:grid-cols-[1fr_1.6fr]">
-          <div>
-            <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
-              The questions we get asked.
-            </h2>
-            <p className="mt-4 text-text-muted leading-relaxed">
-              For anything else, write to{" "}
-              <a
-                href="mailto:hello@outrival.app"
-                className="text-primary hover:underline"
-              >
-                hello@outrival.app
-              </a>
-              .
-            </p>
-          </div>
-          <Accordion
-            type="single"
-            collapsible
-            className="border-t border-border-strong"
-          >
-            {FAQS.map((f, i) => (
-              <AccordionItem key={i} value={`item-${i}`}>
-                <AccordionTrigger className="text-base hover:no-underline">
-                  {f.q}
-                </AccordionTrigger>
-                <AccordionContent className="leading-relaxed text-text-muted">
-                  {f.a}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </div>
+    <div className="lp-faq" id="faq">
+      <div>
+        <h2 className="lp-light-h2">
+          The questions we get <span className="lp-serif-accent">asked</span>.
+        </h2>
+        <p className="lp-faq-lead">
+          For anything else, write to{" "}
+          <a href="mailto:hello@outrival.app">hello@outrival.app</a>.
+        </p>
       </div>
-    </section>
+      <div className="lp-faq-list">
+        {FAQS.map((f, i) => (
+          <details key={f.q} open={i === 0}>
+            <summary>{f.q}</summary>
+            <p>{f.a}</p>
+          </details>
+        ))}
+      </div>
+    </div>
   );
 }

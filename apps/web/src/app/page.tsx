@@ -1,21 +1,15 @@
 import type { Metadata } from "next";
-import { Capabilities } from "@/components/landing/capabilities";
 import { Categories } from "@/components/landing/categories";
-import { Comparison } from "@/components/landing/comparison";
 import { CTA } from "@/components/landing/cta";
-import { DigestFeature } from "@/components/landing/digest-feature";
 import { FAQ } from "@/components/landing/faq";
 import { Footer } from "@/components/landing/footer";
 import { FounderNote } from "@/components/landing/founder-note";
 import { Hero } from "@/components/landing/hero";
+import { HotCard } from "@/components/landing/hot-card";
 import { JsonLd } from "@/components/landing/json-ld";
-import { Nav } from "@/components/landing/nav";
+import { Pipeline } from "@/components/landing/pipeline";
 import { Pricing } from "@/components/landing/pricing";
 import { ProductShowcase } from "@/components/landing/product-showcase";
-import { SampleOffer } from "@/components/landing/sample-offer";
-import { ScrollReveal } from "@/components/landing/scroll-reveal";
-import { Sources } from "@/components/landing/sources";
-import { Trust } from "@/components/landing/trust";
 
 export const metadata: Metadata = {
   title: {
@@ -26,28 +20,36 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
 };
 
+// The landing's rhythm is region-based: paper hero (root pins .lp-light so the
+// page ignores html.dark), one dark body carrying the whole product argument,
+// a paper return for the human part, then the footer back in dark. The `dark`
+// class on a region flips every system token (severities, categories, text)
+// for its subtree — components inside never theme themselves. Hero renders its
+// own <Nav tone="landing" /> so the nav sits inside the fog stack.
 export default function HomePage() {
   return (
-    <div className="landing-canvas min-h-dvh bg-background font-sans text-foreground antialiased">
+    <div className="landing-canvas lp-light min-h-dvh bg-background font-sans text-foreground antialiased">
       <JsonLd />
-      <ScrollReveal />
-      <Nav />
       <main id="main-content" tabIndex={-1}>
         <Hero />
-        <Trust />
-        <Sources />
-        <ProductShowcase />
-        <Categories />
-        <DigestFeature />
-        <Capabilities />
-        <Comparison />
-        <SampleOffer />
-        <Pricing />
-        <FAQ />
-        <FounderNote />
-        <CTA />
+        <section className="lp-body-dark dark">
+          <ProductShowcase />
+          <Pipeline />
+          <Categories />
+          <HotCard />
+          <Pricing />
+        </section>
+        <section className="lp-body-light">
+          <div className="lp-light-inner">
+            <FounderNote />
+            <FAQ />
+            <CTA />
+          </div>
+        </section>
       </main>
-      <Footer />
+      <div className="dark">
+        <Footer />
+      </div>
     </div>
   );
 }

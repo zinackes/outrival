@@ -3549,6 +3549,10 @@ export interface SignalsFacets {
     critical: number;
     actions: number;
   };
+  // This week's funnel (OUT-192): changes detected, and how many of them became
+  // signals. Both over the same window as `counts.week`. The gap is what
+  // suppression, the relevance threshold and oscillation folding removed.
+  funnel: { detected: number; surfaced: number };
   categories: string[];
   // `url` drives the favicon in the competitor filter list (null → initial letter).
   competitors: { id: string; name: string; url?: string | null }[];

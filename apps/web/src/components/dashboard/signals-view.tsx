@@ -1107,6 +1107,11 @@ export function SignalsView() {
     return { all: sampleData.signals.length, alerts, unread, week, critical, actions };
   }, [sample, facetsQ.data, sampleData]);
 
+  // This week's funnel, straight from the server (OUT-192). Sample mode has no
+  // change history behind its fixtures, so it shows nothing rather than a made-up
+  // ratio.
+  const funnel = sample ? null : (facetsQ.data?.funnel ?? null);
+
   // Filter dropdowns from facets (whole set); sample derives from its fixtures.
   const allCategories = useMemo(() => {
     if (!sample) return facetsQ.data?.categories ?? [];
@@ -1317,6 +1322,7 @@ export function SignalsView() {
             loading={signals === null}
             total={total}
             unreadCount={quickCounts.unread}
+            funnel={funnel}
             quickView={quickView}
             quickCounts={quickCounts}
             sort={sort}

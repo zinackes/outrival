@@ -23,6 +23,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { SavedViewsMenu } from "./saved-views-menu";
 import { CatText } from "./cat-pill";
@@ -90,6 +91,7 @@ export function SignalsListHeader({
   loading,
   total,
   unreadCount,
+  funnel,
   quickView,
   quickCounts,
   sort,
@@ -114,6 +116,9 @@ export function SignalsListHeader({
   loading: boolean;
   total: number;
   unreadCount: number;
+  // This week's funnel: changes detected, signals kept. Null when there is nothing
+  // honest to show (sample mode, or facets not loaded yet).
+  funnel: { detected: number; surfaced: number } | null;
   quickView: QuickView;
   quickCounts: Record<QuickView, number>;
   sort: "threat" | "recent";
@@ -161,6 +166,26 @@ export function SignalsListHeader({
                     {" · "}
                     <span className="tabular-nums">{unreadCount}</span> unread
                   </>
+                )}
+                {/* The funnel (OUT-192). A feed that only ever shows what survived
+                    filtering reads as the whole truth, and the reader's real
+                    question is how much was cut. Both numbers cover this week, not
+                    the filtered list next to them, so the segment says so. */}
+                {funnel && funnel.detected > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help">
+                        {" · "}
+                        <span className="tabular-nums">{funnel.detected}</span> →{" "}
+                        <span className="tabular-nums">{funnel.surfaced}</span> this week
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[280px]">
+                      {funnel.detected} changes detected this week, {funnel.surfaced}{" "}
+                      kept as signals. The rest were cosmetic, below your relevance
+                      threshold, or folded into a signal you already have.
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </>
             )}

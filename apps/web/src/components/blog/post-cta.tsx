@@ -1,33 +1,28 @@
 import Link from "next/link";
-import { ArrowRightIcon } from "@/components/icons";
-import { Button } from "@/components/ui/button";
 
-// End-of-article call to action. Mirrors the landing CTA band (rounded-2xl,
-// surface→background-2 gradient) but scoped to the reading column and pointed at
-// the sample-digest lead form rather than signup. ?intent=sample matters: the
-// generic /demo never repeated this offer, so the click used to land somewhere
-// that asked for a team size instead of the two competitors just promised.
+// End-of-article call to action, on the landing's closing block rather than a
+// bordered card: an article ends, it does not need a second surface stacked on
+// the reading column to say so. ?intent=sample matters — the generic /demo
+// never repeated this offer, so the click used to land somewhere that asked for
+// a team size instead of the two competitors just promised.
 export function PostCta() {
   return (
-    <aside className="mt-14 rounded-2xl border border-border bg-gradient-to-b from-surface to-background-2 p-8">
-      <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-        Get a sample digest for your market
+    <aside className="lp-final">
+      <h2>
+        Get a sample digest for your{" "}
+        <span className="lp-serif-accent">market</span>.
       </h2>
-      <p className="mt-3 leading-relaxed text-text-muted">
-        Tell us your product and two competitors. We&apos;ll scrape them and send
-        you a real Outrival brief (the same one you&apos;d get every Monday) so
-        you can see the signal before you sign up for anything.
+      <p className="sub-f">
+        Tell us your product and two competitors. We&apos;ll scrape them and
+        send you a real Outrival brief (the same one you&apos;d get every
+        Monday) so you can see the signal before you sign up for anything.
       </p>
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        <Button asChild size="lg">
-          <Link href="/demo?intent=sample">
-            Get a sample digest <ArrowRightIcon size={16} />
-          </Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link href="/auth">Start free</Link>
-        </Button>
-      </div>
+      <Link className="lp-btn-accent" href="/demo?intent=sample">
+        Get a sample digest
+      </Link>
+      <p className="lp-final-micro">
+        No credit card · <Link href="/auth">or start free</Link>
+      </p>
     </aside>
   );
 }

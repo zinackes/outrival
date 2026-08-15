@@ -3590,6 +3590,98 @@ html:has(.landing-canvas) {
   text-wrap: pretty;
 }
 
+/* A paper band straight under the page head is the same region continuing,
+   not a new one. Without this the two paddings stack into a gap that only
+   reads as breathing room when a colour change splits it. */
+.lp-page-head + .lp-band-paper {
+  padding-top: 0;
+}
+
+/* ---- Blog ------------------------------------------------------------
+   The index is an archive, so the date belongs in the gutter the way the
+   rank does on /alternatives — the eye scans one column, not a bordered
+   card per post. */
+.lp-posts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.lp-posts > li {
+  border-top: 1px solid color-mix(in oklab, currentColor 14%, transparent);
+}
+.lp-posts > li:last-child {
+  border-bottom: 1px solid color-mix(in oklab, currentColor 14%, transparent);
+}
+.lp-posts a {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 0 1.5rem;
+  padding: 2.25rem 0;
+  color: inherit;
+  text-decoration: none;
+}
+@media (max-width: 640px) {
+  .lp-posts a {
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
+  }
+}
+.lp-post-meta {
+  padding-top: 0.3rem;
+  font-size: var(--text-meta);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklab, currentColor 45%, transparent);
+}
+.lp-posts h2 {
+  font-family: var(--font-sans);
+  font-size: var(--text-lead);
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  text-wrap: pretty;
+  transition: color 150ms var(--lp-ease);
+}
+.lp-posts a:hover h2 {
+  color: var(--lp-accent);
+}
+.lp-posts p {
+  margin-top: 0.7rem;
+  font-size: var(--text-content);
+  line-height: 1.6;
+  color: color-mix(in oklab, currentColor 64%, transparent);
+  text-wrap: pretty;
+}
+.lp-post-tags {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+  font-size: var(--text-meta);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, currentColor 40%, transparent);
+}
+
+/* An article is read, not scanned: its column is measure-width, narrower
+   than the 66rem the comparison pages lay tables out in. */
+.lp-article {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: clamp(2.5rem, 5vw, 4rem) clamp(1.25rem, 3vw, 2.5rem)
+    clamp(4rem, 7vw, 6rem);
+}
+.lp-article > h1 {
+  margin-top: 1.75rem;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: clamp(2rem, 3.6vw, 2.9rem);
+  line-height: 1.12;
+  letter-spacing: -0.028em;
+  text-wrap: balance;
+  color: var(--lp-ink);
+}
+
 /* Cross-links: the neighbouring comparisons, as a row of quiet links rather
    than a card grid — they are the page's exits, not its content. */
 .lp-xlinks {
@@ -3643,3 +3735,4 @@ html:has(.landing-canvas) {
 .lp-final-micro a:hover {
   color: var(--lp-ink);
 }
+

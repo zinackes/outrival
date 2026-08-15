@@ -4,6 +4,8 @@ import { SilkFill } from "./silk-fill";
 // Scan's vignette is deliberately longer than its card: the cloud is cropped
 // mid-row and faded out, so the eye reads "there is more of this than fits"
 // without a number claiming it.
+// Real source types only (packages/db sourceTypeEnum) — the review aggregators
+// were retired for legal reasons, so no G2 and no Capterra.
 const SCAN_SOURCES = [
   "homepage",
   "pricing",
@@ -11,17 +13,17 @@ const SCAN_SOURCES = [
   "jobs",
   "blog",
   "docs",
-  "G2",
-  "Capterra",
-  "release notes",
-  "LinkedIn",
   "Trustpilot",
-  "news",
   "status page",
-  "case studies",
+  "roadmap",
   "App Store",
+  "LinkedIn",
+  "news",
   "sitemap",
-  "ads",
+  "GitHub",
+  "comparison pages",
+  "subdomains",
+  "Shopify reviews",
   "integrations",
 ];
 

@@ -1574,20 +1574,38 @@ html:has(.landing-canvas) {
   padding: 0.5rem 1.4rem;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
-.pb-brow .mark {
+/* A tracked company's mark, bare. It takes the icon slot at the head of a row
+   and nothing else: no tile, no ring, no rounding. Every reference that sets a
+   third-party mark at this scale does it this way, and a container here would
+   only add a second border to a card that is already a stack of hairlines.
+   Colour is inherited, never chosen — the board tints it by severity, the
+   ladder ghosts the rivals, so one glyph carries who as well as how bad. */
+.pb-mark {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: rgba(242, 245, 248, 0.72);
+}
+.pb-mark svg {
+  width: 100%;
+  height: 100%;
+}
+/* Fallback for a name we have no glyph for. It stays on the inherited sans:
+   the display face is a headline cut and rendered tofu at this size. */
+.pb-mark i {
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1;
+}
+.pb-brow .pb-mark {
+  /* Pinned, not auto-placed: the row's other children claim columns 2 and 3, so
+     without this the mark lands wherever the flow leaves a hole. */
+  grid-column: 1;
   grid-row: span 2;
   align-self: center;
-  display: grid;
-  place-items: center;
-  width: 1.35rem;
-  height: 1.35rem;
-  border-radius: 5px;
-  font-style: normal;
-  font-size: 0.6875rem; /* replica miniature */
-  font-weight: 600;
-  color: color-mix(in oklab, var(--c) 72%, white);
-  background: color-mix(in oklab, var(--c) 18%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c) 34%, transparent);
+  justify-self: center;
+  color: color-mix(in oklab, var(--c) 78%, white);
 }
 .pb-brow b {
   grid-column: 2;
@@ -1638,6 +1656,15 @@ html:has(.landing-canvas) {
   text-transform: uppercase;
   color: color-mix(in oklab, var(--critical) 74%, white);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--critical) 42%, transparent);
+}
+/* Whose price moved. The card showed a number falling and never said the
+   subject — the mark and the name are the shortest way to name it, and they
+   lead the meta line so the company is read before the severity. */
+.pb-sig-top b {
+  margin-right: 0.15rem;
+  font-size: var(--text-dense);
+  font-weight: 500;
+  color: rgba(242, 245, 248, 0.92);
 }
 /* A category is a label, not a severity, so it stays monochrome. */
 .pb-cat {
@@ -1785,13 +1812,21 @@ html:has(.landing-canvas) {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 .pb-bc i {
+  display: flex;
   flex-shrink: 0;
+  align-items: center;
+  gap: 0.4rem;
   font-style: normal;
   font-size: var(--text-meta);
   font-weight: 500;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: rgba(242, 245, 248, 0.45);
+}
+/* The eyebrow is dimmed to 0.45 and the mark would vanish with it, so it keeps
+   its own value: the card belongs to a company before it belongs to a topic. */
+.pb-bc i .pb-mark {
+  color: rgba(242, 245, 248, 0.68);
 }
 /* The sentence takes the middle, the same grammar the anchor uses: label on
    top, object in the middle, freshness on the bottom edge. Spaced by the column
@@ -1875,19 +1910,12 @@ html:has(.landing-canvas) {
   margin-top: 0.35rem;
   list-style: none;
 }
+/* The mark is the bullet. A dot said "this is a list", which the indent already
+   said; the mark says which company the line is about, for the same 4px. */
 .pb-ask-ans li {
-  position: relative;
-  padding-left: 0.85rem;
-}
-.pb-ask-ans li::before {
-  content: "";
-  position: absolute;
-  left: 0.1rem;
-  top: 0.62rem;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: rgba(242, 245, 248, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
 }
 .pb-ask-ans b {
   font-weight: 500;
@@ -1933,12 +1961,20 @@ html:has(.landing-canvas) {
 .pb-lrow b {
   font-weight: 500;
 }
+/* The rivals are ghosted and you are not. It is the one rhetorical move in the
+   card: the ladder is about where you sit, so your mark is the only one at full
+   contrast and the others recede to texture. */
+.pb-lrow .pb-mark {
+  color: rgba(242, 245, 248, 0.38);
+}
 .pb-lrow em {
   margin-left: auto;
   font-style: normal;
   color: rgba(242, 245, 248, 0.6);
 }
-.pb-lrow i {
+/* Direct child only: the letter fallback inside a mark is an <i> too, and it
+   would otherwise be turned into a second bar pinned to the row's floor. */
+.pb-lrow > i {
   position: absolute;
   left: 0;
   bottom: 0;
@@ -1951,10 +1987,11 @@ html:has(.landing-canvas) {
   background: rgba(255, 255, 255, 0.05);
 }
 .pb-lrow.is-self b,
-.pb-lrow.is-self em {
+.pb-lrow.is-self em,
+.pb-lrow.is-self .pb-mark {
   color: rgba(242, 245, 248, 0.98);
 }
-.pb-lrow.is-self i {
+.pb-lrow.is-self > i {
   background: rgba(255, 255, 255, 0.55);
 }
 /* The quarter as one object: thirteen weeks of weekdays, lit by what landed. */
@@ -3415,6 +3452,130 @@ html:has(.landing-canvas) {
    the breathing room between the arguments it holds. */
 .lp-block + .lp-block {
   margin-top: clamp(4rem, 7vw, 6.5rem);
+}
+
+/* ---- Ranked tool list — /alternatives and the category hub -----------
+   Not six cards: six entries on one hairline stack, so the page reads as one
+   survey instead of a shelf of competing offers. Colour appears once, on the
+   entry that is ours. Rules derive from currentColor so the block survives a
+   move to the graphite band. */
+.lp-tools {
+  list-style: none;
+  margin: 2.75rem 0 0;
+  padding: 0;
+}
+.lp-tools > li {
+  display: grid;
+  grid-template-columns: 3rem 1fr;
+  gap: 0 1.5rem;
+  padding: 2.25rem 0;
+  border-top: 1px solid color-mix(in oklab, currentColor 14%, transparent);
+}
+.lp-tools > li:last-child {
+  border-bottom: 1px solid color-mix(in oklab, currentColor 14%, transparent);
+}
+@media (max-width: 640px) {
+  .lp-tools > li {
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
+  }
+}
+.lp-tool-rank {
+  padding-top: 0.35rem;
+  font-size: var(--text-meta);
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklab, currentColor 45%, transparent);
+}
+.lp-tools > li.is-self .lp-tool-rank {
+  color: var(--lp-accent);
+}
+.lp-tool-body {
+  min-width: 0;
+}
+.lp-tool-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+}
+.lp-tool-head h3 {
+  font-family: var(--font-sans);
+  font-size: var(--text-lead);
+  font-weight: 500;
+  letter-spacing: -0.012em;
+}
+.lp-tool-pick,
+.lp-tool-best {
+  font-size: var(--text-meta);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.lp-tool-pick {
+  color: var(--lp-accent);
+}
+.lp-tool-best {
+  margin-left: auto;
+  color: color-mix(in oklab, currentColor 45%, transparent);
+}
+.lp-tool-body p {
+  margin-top: 0.9rem;
+  font-size: var(--text-content);
+  line-height: 1.6;
+  color: color-mix(in oklab, currentColor 64%, transparent);
+  text-wrap: pretty;
+}
+.lp-tool-body .lp-tool-trade {
+  color: color-mix(in oklab, currentColor 48%, transparent);
+}
+.lp-tool-body .lp-tool-trade b {
+  font-weight: 500;
+  color: color-mix(in oklab, currentColor 64%, transparent);
+}
+.lp-tool-foot {
+  margin-top: 1.15rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.5rem;
+  font-size: var(--text-dense);
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklab, currentColor 45%, transparent);
+}
+.lp-tool-foot a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: color-mix(in oklab, currentColor 64%, transparent);
+  text-decoration: none;
+  transition: color 150ms var(--lp-ease);
+}
+.lp-tool-foot a:hover {
+  color: currentColor;
+}
+.lp-tools > li.is-self .lp-tool-foot a {
+  color: var(--lp-accent);
+}
+
+/* The direct-answer block on the category hub: the paragraph a reader (or an
+   answer engine) can lift whole. Marked by a rule, not a box. */
+.lp-answer {
+  margin-top: 2.5rem;
+  padding-left: 1.5rem;
+  border-left: 2px solid var(--lp-accent);
+}
+.lp-answer > span {
+  font-size: var(--text-meta);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--lp-accent);
+}
+.lp-answer p {
+  margin-top: 0.6rem;
+  font-size: var(--text-lead);
+  line-height: 1.55;
+  color: color-mix(in oklab, currentColor 76%, transparent);
+  text-wrap: pretty;
 }
 
 /* Cross-links: the neighbouring comparisons, as a row of quiet links rather

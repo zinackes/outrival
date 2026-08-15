@@ -1294,70 +1294,71 @@ html:has(.landing-canvas) {
 }
 
 /* ---- Product bento — six product surfaces ----------------------------- */
-/* Asymmetric on purpose: one tall hero, two stacked beside it, three short
-   cards under. Every cell reads the same way — sentence at the top, the screen
-   bleeding off the bottom edge under a mask. Nothing is centred in an empty
-   box, which is what made the earlier pass read as a template. */
-/* Fixed row heights, not content heights: the crop is the point, so a cell that
-   sized itself to its screen would never bleed. */
+/* Asymmetric in the columns, not in the rows: 7/5, then 7/5, then 5/7. No cell
+   spans two rows any more — a double-height hero made the first card twice as
+   tall as everything beside it, so the grid read as one big card with five
+   footnotes instead of as a bento. */
+/* Fixed row heights, never content heights: the crop is the point, and a cell
+   that sized itself to its object would never bleed off the bottom. */
 .pb-grid {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
-  grid-template-rows: 26rem 20.5rem 18rem;
-  grid-auto-rows: 18rem;
+  grid-template-rows: 22rem 20rem 20rem;
+  grid-auto-rows: 20rem;
   gap: 1rem;
   margin-top: 2.6rem;
 }
-.pb-overview {
+.pb-overview,
+.pb-ask,
+.pb-recap {
   grid-column: span 7;
-  grid-row: span 2;
 }
 .pb-signal,
-.pb-battle {
+.pb-battle,
+.pb-aiv {
   grid-column: span 5;
 }
-.pb-ask,
-.pb-aiv,
-.pb-recap {
-  grid-column: span 4;
-}
-/* The hero keeps its two rows all the way down — it is the only cell whose
-   screen needs the height to still read as a table. */
+/* Pairs stay pairs down to 860: the DOM order (overview, signal, ask, battle,
+   aiv, recap) leaves no hole once the two 7-wide cells go full width. */
 @media (max-width: 1100px) {
-  .pb-grid {
-    grid-template-rows: none;
-    grid-auto-rows: 20rem;
-  }
-  .pb-overview {
+  .pb-overview,
+  .pb-recap {
     grid-column: span 12;
   }
   .pb-signal,
-  .pb-battle {
+  .pb-ask,
+  .pb-battle,
+  .pb-aiv {
     grid-column: span 6;
   }
 }
 @media (max-width: 860px) {
   .pb-grid {
+    grid-template-rows: none;
     grid-auto-rows: 19rem;
   }
   .pb-signal,
-  .pb-battle,
   .pb-ask,
-  .pb-aiv,
-  .pb-recap {
+  .pb-battle,
+  .pb-aiv {
     grid-column: span 12;
   }
 }
-/* One graphite plate for all six, no shader, no per-card tint: the screens are
-   the colour. */
 .pb-card {
   position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   border-radius: 12px;
   background: #0e0e10;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+/* The same shader fill the Pipeline steps use, one tint per card. Without it a
+   card whose object does not reach the edges is a flat graphite rectangle with
+   something small floating in it; the silk gives the object a floor. */
+.pb-card .lp-silk {
+  opacity: 0.5;
 }
 .pb-head {
   flex-shrink: 0;
@@ -1380,293 +1381,457 @@ html:has(.landing-canvas) {
   color: rgba(242, 245, 248, 0.55);
   text-wrap: pretty;
 }
-/* The hero cell carries the section's claim, so its title outranks the others. */
+/* The first cell carries the section's claim, so its title outranks the rest. */
 .pb-overview .pb-head h3 {
-  font-size: 1.35rem;
-  max-width: 22ch;
+  font-size: 1.25rem;
+  max-width: 24ch;
 }
-/* Where the bleed happens: the visual is taller than the room left for it and
+/* Where the bleed happens: the object is taller than the room left for it and
    the mask cuts it, instead of shrinking to fit and floating. */
 .pb-viz {
   position: relative;
   flex: 1;
-  min-height: 8rem;
-  margin-top: 1.3rem;
+  min-height: 6rem;
+  margin-top: 1rem;
+  padding: 0 1.4rem;
   overflow: hidden;
-  /* A short fade: enough to say the screen continues, not enough to swallow a
+  /* A short fade: enough to say the object continues, not enough to swallow a
      line of text into unreadable gray. */
   mask-image: linear-gradient(to bottom, #000 88%, transparent);
 }
-/* Two cells hold an object rather than a screen and are shorter than the room
-   they get; they sit on the bottom edge instead of floating with a hole under
-   them. */
+/* Three cells hold an object shorter than the room they get; they sit on the
+   bottom edge instead of floating with a hole under them. margin-top: auto
+   rather than justify-content: flex-end — when the cell narrows and the object
+   outgrows it, the margin collapses to 0 and it bleeds off the bottom like the
+   others, instead of overflowing the top and losing its first row. */
 .pb-ask .pb-viz,
-.pb-aiv .pb-viz {
+.pb-aiv .pb-viz,
+.pb-recap .pb-viz {
   display: flex;
   flex-direction: column;
-  padding-bottom: 1.6rem;
+  padding-bottom: 1.5rem;
+  /* Almost no fade on these three: their object ends inside the cell, so the
+     long fade only dimmed the last live line (the citations, the footnote) into
+     gray. It stays non-zero so a narrow cell still cuts softly. */
+  mask-image: linear-gradient(to bottom, #000 96%, transparent);
 }
-/* auto rather than justify-content: flex-end — when the cell is narrow and the
-   object outgrows it, the margin collapses to 0 and it bleeds off the bottom
-   like the others, instead of overflowing the top and losing its first row. */
 .pb-ask .pb-viz > :first-child,
-.pb-aiv .pb-viz > :first-child {
+.pb-aiv .pb-viz > :first-child,
+.pb-recap .pb-viz > :first-child {
   margin-top: auto;
 }
-/* The glow the references put behind the object. Teal for the whole grid: the
-   colour comes from the data inside the screens, never from the cell. */
-.pb-viz::before {
+
+/* Market board: who moved, what they did, how long ago. The severity lives in
+   the mark, so the eye ranks the list before it reads a word of it. */
+.pb-board {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.pb-brow {
+  display: grid;
+  grid-template-columns: 1.35rem minmax(0, 6.5rem) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  font-size: var(--text-dense);
+  white-space: nowrap;
+}
+.pb-brow .mark {
+  display: grid;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 5px;
+  font-style: normal;
+  font-size: 0.6875rem; /* replica miniature */
+  font-weight: 600;
+  color: color-mix(in oklab, var(--c) 72%, white);
+  background: color-mix(in oklab, var(--c) 18%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c) 34%, transparent);
+}
+.pb-brow b {
+  font-weight: 500;
+}
+.pb-brow span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: rgba(242, 245, 248, 0.55);
+}
+.pb-brow u {
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+  color: rgba(242, 245, 248, 0.75);
+}
+.pb-brow em {
+  min-width: 1.7rem;
+  text-align: right;
+  font-style: normal;
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.4);
+}
+
+/* One signal, opened. The diff is the whole point: a claim you can check, not a
+   sentence asserting that something changed. */
+.pb-sig {
+  position: relative;
+  padding: 0.95rem 1.05rem 1.1rem;
+  border-radius: 9px;
+  background: rgba(20, 20, 23, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.pb-sig::before {
   content: "";
   position: absolute;
-  inset: 8% 0 -12%;
-  pointer-events: none;
-  background: radial-gradient(
-    58% 62% at 50% 78%,
-    color-mix(in oklab, var(--lp-teal) 15%, transparent),
-    transparent 72%
-  );
+  left: 0;
+  top: 0.95rem;
+  bottom: 0.95rem;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--critical);
 }
-/* The two replicas that are literal screens get a frame; the other four are
-   objects lifted out of a screen and need none. */
-.pb-viz > .lp-view {
-  margin: 0 1.3rem;
-  border-radius: 8px 8px 0 0;
+.pb-sig-top {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: var(--text-meta);
+}
+.pb-sev {
+  padding: 0.14rem 0.4rem;
+  border-radius: 4px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--critical) 80%, white);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--critical) 42%, transparent);
+}
+.pb-cat {
+  padding: 0.14rem 0.4rem;
+  border-radius: 4px;
+  color: color-mix(in oklab, var(--cat-pricing) 78%, white);
+  background: color-mix(in oklab, var(--cat-pricing) 16%, transparent);
+}
+.pb-sig-top em {
+  margin-left: auto;
+  font-style: normal;
+  color: rgba(242, 245, 248, 0.4);
+}
+.pb-sig-title {
+  margin-top: 0.6rem;
+  font-size: var(--text-content);
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.008em;
+}
+/* Mono here is legitimate: it is a diff, read glyph by glyph. */
+.pb-diff {
+  margin-top: 0.7rem;
   overflow: hidden;
-  background: #161618;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  line-height: 1.75;
+}
+.pb-diff .was,
+.pb-diff .now {
+  padding: 0.16rem 0.55rem;
+}
+.pb-diff .was {
+  color: rgba(242, 245, 248, 0.42);
+  background: rgba(255, 255, 255, 0.04);
+  text-decoration: line-through;
+}
+.pb-diff .now {
+  color: color-mix(in oklab, var(--lp-teal) 68%, white);
+  background: color-mix(in oklab, var(--lp-teal) 11%, transparent);
+}
+.pb-diff .was::before {
+  content: "- ";
+}
+.pb-diff .now::before {
+  content: "+ ";
+}
+.pb-sig-so {
+  margin-top: 0.7rem;
+  font-size: var(--text-dense);
+  line-height: 1.5;
+  color: rgba(242, 245, 248, 0.6);
+}
+.pb-sig-so b {
+  margin-right: 0.35rem;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(242, 245, 248, 0.4);
 }
 
 /* Battle cards: a deck, because the point is there is one per competitor and
    they keep themselves current. */
-.pb-deck,
-.pb-slides {
+.pb-deck {
   position: relative;
   height: 100%;
 }
-.pb-sheet,
-.pb-slide {
+.pb-sheet {
   position: absolute;
-  left: 1.3rem;
-  right: 1.3rem;
-  border-radius: 8px;
-  background: #161618;
+  left: 0;
+  right: 0;
+  border-radius: 9px;
+  background: rgba(22, 22, 24, 0.85);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
 }
-.pb-sheet.s3,
-.pb-slide.s3 {
+.pb-sheet.s3 {
   top: 0;
   height: 3rem;
-  transform: scale(0.88);
+  transform: scale(0.9);
   opacity: 0.4;
 }
-.pb-sheet.s2,
-.pb-slide.s2 {
-  top: 0.6rem;
+.pb-sheet.s2 {
+  top: 0.55rem;
   height: 3rem;
-  transform: scale(0.94);
-  opacity: 0.65;
+  transform: scale(0.95);
+  opacity: 0.6;
 }
-.pb-sheet.s1,
-.pb-slide.s1 {
-  top: 1.4rem;
-  bottom: -2rem;
-  padding: 0.8rem 0.9rem;
-}
-.pb-sheet-top {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  padding-bottom: 0.6rem;
-  margin-bottom: 0.6rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 0.75rem; /* replica miniature */
-}
-.pb-sheet-top b {
-  font-weight: 600;
-}
-.pb-sheet-top span {
-  margin-left: auto;
-  font-size: 0.6875rem; /* replica miniature */
-  color: rgba(242, 245, 248, 0.38);
+.pb-sheet.s1 {
+  top: 1.15rem;
+  bottom: 0;
+  overflow: hidden;
 }
 .pb-bc {
-  padding: 0.55rem 0.65rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
+  padding: 0.75rem 0.95rem;
 }
 .pb-bc + .pb-bc {
-  margin-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 .pb-bc i {
   display: block;
   font-style: normal;
-  font-size: 0.625rem; /* replica miniature */
+  font-size: var(--text-meta);
   font-weight: 500;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: rgba(242, 245, 248, 0.45);
+  color: rgba(242, 245, 248, 0.42);
 }
 .pb-bc p {
   margin-top: 0.3rem;
-  font-size: 0.75rem; /* replica miniature */
+  font-size: var(--text-dense);
   line-height: 1.45;
-  color: rgba(242, 245, 248, 0.75);
 }
 .pb-bc p b {
   font-weight: 500;
-  color: #f2f5f8;
+  color: color-mix(in oklab, var(--lp-teal) 68%, white);
 }
 .pb-bc em {
   display: block;
-  margin-top: 0.4rem;
+  margin-top: 0.3rem;
   font-style: normal;
-  font-size: 0.625rem; /* replica miniature */
-  color: rgba(242, 245, 248, 0.34);
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.38);
 }
-/* The section a fresh signal just rewrote. */
-.pb-bc.live {
-  border-color: color-mix(in oklab, var(--lp-teal) 45%, transparent);
-  background: color-mix(in oklab, var(--lp-teal) 7%, transparent);
+/* The freshness dot is the whole promise of the card: this section was rewritten
+   while you were not looking. */
+.pb-bc.live i {
+  color: color-mix(in oklab, var(--lp-teal) 68%, white);
 }
-.pb-bc.live i,
-.pb-bc.live em {
-  color: color-mix(in oklab, var(--lp-teal) 80%, white);
+.pb-bc.live i::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  vertical-align: middle;
+  background: var(--lp-teal);
+  animation: lp-pulse 2.2s var(--lp-ease) infinite;
 }
 
-/* Ask: the prompt bar is the whole surface, so it gets the only lit border on
-   the page. */
+/* Ask: a prompt bar, an answer, the pages it came from. */
 .pb-ask {
-  padding: 0 1.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 .pb-ask-bar {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.62rem 0.75rem;
+  padding: 0.62rem 0.8rem;
   border-radius: 8px;
-  background: #161618;
+  background: rgba(22, 22, 24, 0.85);
   box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, var(--lp-teal) 32%, transparent),
-    0 0 26px -6px color-mix(in oklab, var(--lp-teal) 45%, transparent);
-  font-size: 0.75rem; /* replica miniature */
+    inset 0 0 0 1px color-mix(in oklab, var(--lp-teal) 30%, transparent),
+    0 0 0 4px color-mix(in oklab, var(--lp-teal) 7%, transparent);
+  font-size: var(--text-dense);
 }
 .pb-ask-bar svg {
   flex-shrink: 0;
-  color: color-mix(in oklab, var(--lp-teal) 80%, white);
+  color: color-mix(in oklab, var(--lp-teal) 62%, white);
 }
 .pb-caret {
-  width: 2px;
-  height: 0.85rem;
-  border-radius: 1px;
+  width: 1px;
+  height: 0.95rem;
   background: var(--lp-teal);
   animation: lp-blink 1.06s step-end infinite;
 }
+/* The answer is a list, not a paragraph: it is what the product actually
+   returns, and a wide cell would otherwise render it as one lonely line with a
+   hole above it. */
 .pb-ask-ans {
-  margin-top: 0.85rem;
-  font-size: 0.8125rem; /* replica miniature */
+  font-size: var(--text-dense);
   line-height: 1.55;
   color: rgba(242, 245, 248, 0.62);
 }
+.pb-ask-ans ul {
+  margin-top: 0.35rem;
+  list-style: none;
+}
+.pb-ask-ans li {
+  position: relative;
+  padding-left: 0.85rem;
+}
+.pb-ask-ans li::before {
+  content: "";
+  position: absolute;
+  left: 0.1rem;
+  top: 0.62rem;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--lp-teal) 55%, transparent);
+}
 .pb-ask-ans b {
   font-weight: 500;
-  color: #f2f5f8;
+  color: rgba(242, 245, 248, 0.92);
 }
-/* Citations, mono because they are URLs. */
 .pb-cites {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-top: 0.8rem;
+  gap: 0.35rem;
 }
+/* Mono on the citations: they are URLs. */
 .pb-cites span {
-  padding: 0.16rem 0.45rem;
+  padding: 0.16rem 0.42rem;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
   font-family: var(--font-mono);
-  font-size: 0.625rem; /* replica miniature */
-  color: rgba(242, 245, 248, 0.45);
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.5);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
-/* Share of model: four bars, yours the only one in teal — the rank is the
-   point, so nothing else is coloured. */
-.pb-bars {
+/* Rank ladder: the number people want is their rank, and the share is the
+   evidence under it — so the bar is the row's own floor, not a second chart. */
+.pb-ladder {
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
-  padding: 0 1.3rem;
+  gap: 0.3rem;
 }
-.pb-bar {
-  display: grid;
-  grid-template-columns: 4.6rem minmax(0, 1fr) 2.2rem;
-  align-items: center;
-  gap: 0.6rem;
-  font-size: 0.75rem; /* replica miniature */
-}
-.pb-bar i {
-  overflow: hidden;
-  font-style: normal;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: rgba(242, 245, 248, 0.55);
-}
-.pb-bar span {
-  height: 6px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.07);
-}
-.pb-bar b {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.22);
-}
-.pb-bar em {
-  font-style: normal;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+.pb-lq {
+  margin-bottom: 0.25rem;
+  font-size: var(--text-meta);
   color: rgba(242, 245, 248, 0.45);
 }
-.pb-bar.is-self i,
-.pb-bar.is-self em {
-  font-weight: 500;
-  color: #f2f5f8;
+.pb-lrow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  overflow: hidden;
+  padding: 0.34rem 0.6rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: var(--text-dense);
 }
-.pb-bar.is-self b {
+.pb-lrow u {
+  text-decoration: none;
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  color: rgba(242, 245, 248, 0.35);
+}
+.pb-lrow b {
+  font-weight: 500;
+}
+.pb-lrow em {
+  margin-left: auto;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  color: rgba(242, 245, 248, 0.55);
+}
+.pb-lrow i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.16);
+}
+.pb-lrow.is-self {
+  background: color-mix(in oklab, var(--lp-teal) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--lp-teal) 26%, transparent);
+}
+.pb-lrow.is-self b,
+.pb-lrow.is-self em {
+  color: color-mix(in oklab, var(--lp-teal) 65%, white);
+}
+.pb-lrow.is-self i {
   background: var(--lp-teal);
 }
 .pb-note {
-  margin-top: 0.9rem;
-  padding: 0 1.3rem;
-  font-size: 0.6875rem; /* replica miniature */
-  color: rgba(242, 245, 248, 0.35);
+  margin-top: 0.7rem;
+  font-size: var(--text-meta);
+  line-height: 1.5;
+  color: rgba(242, 245, 248, 0.4);
 }
 
-/* Recap: the deck of slides, front one carrying the quarter's number. */
-.pb-slide.s1 span {
-  font-size: 0.625rem; /* replica miniature */
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: color-mix(in oklab, var(--lp-teal) 80%, white);
+/* The quarter as one object: thirteen weeks of weekdays, lit by what landed. */
+/* Count on the left, calendar on the right: stacked, the grid had to stay
+   narrow to fit the height and left half the widest cell empty. */
+.pb-quarter {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
 }
-.pb-slide.s1 b {
+.pb-qstat {
+  flex-shrink: 0;
+  max-width: 8.5rem;
+}
+.pb-qstat b {
   display: block;
-  margin-top: 0.3rem;
-  font-size: 2.6rem;
+  font-size: 2.4rem;
   font-weight: 500;
-  letter-spacing: -0.03em;
   line-height: 1;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
-.pb-slide.s1 i {
+.pb-qstat span {
   display: block;
   margin-top: 0.4rem;
-  font-style: normal;
-  font-size: 0.75rem; /* replica miniature */
-  color: rgba(242, 245, 248, 0.5);
+  font-size: var(--text-meta);
+  line-height: 1.45;
+  color: rgba(242, 245, 248, 0.45);
 }
+.pb-weeks {
+  display: flex;
+  flex: 1;
+  gap: 0.3rem;
+  max-width: 21rem;
+}
+/* One column per week, one square per weekday of that week. */
+.pb-week {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+/* Square cells, capped by .pb-weeks' max-width: a quarter that stretched to the
+   card would be a wall of dots rather than a calendar. */
+.pb-week i {
+  aspect-ratio: 1;
+  border-radius: 2px;
+}
+
 .lp-pstep {
   isolation: isolate;
 }
@@ -1691,259 +1856,6 @@ html:has(.landing-canvas) {
 .lp-pstep .lp-silk {
   opacity: 0.55;
 }
-/* Every replica fills its frame edge to edge — no inset margin, no floating
-   pane. The frame owns the border, the screen owns the pixels. */
-.lp-view {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-/* Chrome bar shared by the four replicas and by the app window. A panel that
-   opens straight on its content reads as a slide; the name, the path and the
-   state pill are what make it read as a screen. */
-.lp-chrome {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.7rem 0.9rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: #1c1c1f;
-  font-size: 0.75rem; /* replica miniature */
-  white-space: nowrap;
-}
-.lp-chrome b {
-  font-weight: 600;
-}
-.lp-chrome b i {
-  font-style: normal;
-  color: var(--lp-teal);
-}
-.lp-chrome .path {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: rgba(242, 245, 248, 0.45);
-}
-/* Traffic lights: graphite, not the OS red/amber/green — this is our window. */
-.lp-dots {
-  display: flex;
-  gap: 0.3rem;
-  margin-right: 0.3rem;
-}
-.lp-dots i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.16);
-}
-/* Status pill: uppercase, tracked, and outlined in its own hue. The border is
-   what does the work — a filled chip reads as a tag, an outlined one reads as
-   a state the screen is currently in. Sans, per the numbers-in-sans rule. */
-.lp-pill {
-  margin-left: auto;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.16rem 0.45rem;
-  border-radius: 4px;
-  font-size: 0.625rem; /* replica miniature */
-  font-weight: 500;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: color-mix(in oklab, var(--pill) 82%, white);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--pill) 42%, transparent);
-}
-.lp-pill.has-dot::before {
-  content: "";
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--pill);
-  animation: lp-pulse 2.2s var(--lp-ease) infinite;
-}
-
-/* ---- Overview replica — the hero cell's table -------------------------- */
-.lp-overview {
-  font-size: var(--text-dense);
-}
-.lp-overview .ov-tools {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  padding: 0.7rem 0.9rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-}
-.lp-overview .ov-search {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  flex: 1;
-  max-width: 18rem;
-  padding: 0.34rem 0.6rem;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
-  color: rgba(242, 245, 248, 0.38);
-}
-.lp-overview .ov-seg {
-  margin-left: auto;
-  display: flex;
-  padding: 2px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
-}
-.lp-overview .ov-seg i {
-  padding: 0.24rem 0.6rem;
-  border-radius: 4px;
-  font-style: normal;
-  color: rgba(242, 245, 248, 0.45);
-}
-.lp-overview .ov-seg i.on {
-  background: rgba(255, 255, 255, 0.09);
-  color: #f2f5f8;
-}
-.lp-overview .ov-head,
-.lp-overview .ov-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 8rem 4rem 3rem;
-  align-items: center;
-  gap: 0.7rem;
-  padding: 0.62rem 1.1rem;
-}
-.lp-overview .ov-head {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 0.625rem; /* replica miniature */
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  color: rgba(242, 245, 248, 0.4);
-}
-.lp-overview .ov-head span:nth-child(n + 3) {
-  text-align: right;
-}
-.lp-overview .ov-row {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-.lp-overview .ov-name {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  overflow: hidden;
-  white-space: nowrap;
-  font-weight: 500;
-}
-.lp-overview .av {
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  border-radius: 4px;
-  font-style: normal;
-  font-size: 0.625rem; /* replica miniature */
-  font-weight: 600;
-  color: rgba(242, 245, 248, 0.7);
-  background: rgba(255, 255, 255, 0.07);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-}
-.lp-overview .ov-act {
-  height: 4px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.08);
-}
-.lp-overview .ov-act i {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-}
-.lp-overview .ov-n {
-  text-align: right;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-.lp-overview .ov-t {
-  text-align: right;
-  color: rgba(242, 245, 248, 0.4);
-}
-
-/* ---- Signal detail replica — the cell it bleeds out of ----------------- */
-.lp-sigdet {
-  font-size: var(--text-dense);
-  line-height: 1.5;
-}
-.lp-sigdet .sd-body {
-  padding: 1.05rem 1.2rem;
-}
-.lp-sigdet .sd-meta {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.lp-sigdet .sd-time {
-  margin-left: auto;
-  font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.45);
-}
-.lp-sigdet .sd-title {
-  margin-top: 0.7rem;
-  font-size: var(--text-content);
-  font-weight: 500;
-  line-height: 1.4;
-}
-.lp-sigdet .sd-sec {
-  margin-top: 0.9rem;
-}
-.lp-sigdet .sd-lbl {
-  display: block;
-  margin-bottom: 0.3rem;
-  font-size: 0.65625rem; /* replica miniature */
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: rgba(242, 245, 248, 0.4);
-}
-.lp-sigdet .sd-sec p {
-  color: rgba(242, 245, 248, 0.72);
-}
-/* A real two-line diff in a bordered sub-panel. Mono is earned here — this is
-   the one thing on the card read glyph by glyph. */
-.lp-sigdet .sd-diff {
-  display: grid;
-  border-radius: 6px;
-  overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem; /* replica miniature */
-  white-space: nowrap;
-}
-.lp-sigdet .sd-was,
-.lp-sigdet .sd-now {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding: 0.34rem 0.55rem;
-}
-.lp-sigdet .sd-was {
-  color: color-mix(in oklab, var(--critical) 55%, white);
-  background: color-mix(in oklab, var(--critical) 11%, transparent);
-}
-.lp-sigdet .sd-now {
-  color: color-mix(in oklab, var(--lp-teal) 55%, white);
-  background: color-mix(in oklab, var(--lp-teal) 11%, transparent);
-}
-.lp-sigdet .sd-was::before {
-  content: "- ";
-}
-.lp-sigdet .sd-now::before {
-  content: "+ ";
-}
-
 /* ---- Digest rows — the Pipeline's fourth step -------------------------- */
 .lp-pstep .dg-row {
   display: flex;

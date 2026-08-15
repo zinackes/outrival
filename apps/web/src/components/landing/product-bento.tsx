@@ -15,14 +15,15 @@ import { SilkFill } from "./silk-fill";
 // re-explains scanning, filtering or writing: this section is what the software
 // looks like, that one is what it does.
 //
-// One anchor and five supports. The signal is the anchor because it is the
-// atomic object of the product: a diff you can check. The five others each hold
-// ONE idea, cropped to the smallest object that still reads as itself.
+// The card is the object first and the sentence second. One short title with
+// its mark inline, then the thing itself, filling everything under it — no
+// sub-line, no note, no caption. A card that has to be read before it is
+// understood has already lost the two seconds it gets.
 //
-// Every card carries a Silk fill, like the pipeline steps and the plans: it is
-// the material the dark body is made of, and a flat plate here made this
-// section the one hole in the page. The tint is per card and stays under the
-// content — the fragments still run edge to edge, so nothing floats on it.
+// One anchor and five supports. The signal is the anchor because it is the
+// atomic object of the product: a price that was, a price that is, and what it
+// costs you. Every card carries a Silk fill, like the pipeline steps and the
+// plans — it is the material the dark body is made of.
 //
 // Hand-built DOM, never a raster: a screenshot carries none of the page's own
 // type and goes stale the day the product moves. Each one is aria-hidden — the
@@ -56,9 +57,9 @@ const HEAT: Record<string, string> = {
   "4": "var(--critical)",
 };
 
-// The anchor. The diff is the whole object: a competitive claim you can check,
-// not a sentence asserting that something changed. Critical is the only color
-// on the card, and it lands on the mark and on the new price.
+// The anchor. Two panes, the price that was and the price that is, each filling
+// half the card: the change is the picture, not a sentence about a change. The
+// severity strip above says how bad, the line below says what it costs you.
 function SignalCard() {
   return (
     <div className="pb-sig">
@@ -68,21 +69,34 @@ function SignalCard() {
         <em>2h ago</em>
       </div>
       <div className="pb-diff">
-        <div className="was">$69/user/mo</div>
-        <div className="now">$49/user/mo</div>
-        <div className="sub">5-seat minimum &rarr; no minimum</div>
+        <div className="pb-pane">
+          <i>Before</i>
+          <span>
+            <b>$69</b>
+            <em>per user / mo</em>
+          </span>
+          <u>5-seat minimum</u>
+        </div>
+        <div className="pb-pane is-now">
+          <i>After</i>
+          <span>
+            <b>
+              $49<mark>-29%</mark>
+            </b>
+            <em>per user / mo</em>
+          </span>
+          <u>No minimum</u>
+        </div>
       </div>
       <p className="pb-sig-so">
-        <b>So what</b> Undercuts your Pro tier on the mid-market deals you are
-        closing now.
+        <b>So what</b> Undercuts your Pro tier on the deals you are closing now.
       </p>
     </div>
   );
 }
 
 // The board: who moved, what they did, how long ago. The severity lives in the
-// mark, so the eye ranks the list before it reads a word of it. Three rows, not
-// six: the shape of the object is the point, the length of it is not.
+// mark, so the eye ranks the list before it reads a word of it.
 function MarketBoard() {
   return (
     <div className="pb-board">
@@ -119,20 +133,20 @@ function AskScreen() {
     <div className="pb-ask">
       <div className="pb-ask-bar">
         <MagnifyingGlassIcon size={14} />
-        Who moved on pricing this quarter?
+        Who moved on pricing?
         <i className="pb-caret" />
       </div>
       <div className="pb-ask-ans">
-        <p>Three of seven, in the last 90 days.</p>
+        <p>Three of seven, in 90 days.</p>
         <ul>
           <li>
-            <b>Vantage</b> cut Pro 30% to $49/mo
+            <b>Vantage</b> cut Pro 30%
           </li>
           <li>
-            <b>Meridian</b> moved to usage-based billing
+            <b>Meridian</b> moved to usage-based
           </li>
           <li>
-            <b>Cobalt</b> added a free tier in June
+            <b>Cobalt</b> added a free tier
           </li>
         </ul>
       </div>
@@ -144,22 +158,17 @@ function AskScreen() {
 // percentage is the evidence for it.
 function RankLadder() {
   return (
-    <>
-      <div className="pb-ladder">
-        <span className="pb-lq">&ldquo;Best competitive intelligence tool&rdquo;</span>
-        {LADDER.map((row) => (
-          <div key={row.name} className={row.self ? "pb-lrow is-self" : "pb-lrow"}>
-            <u>{row.rank}</u>
-            <b>{row.name}</b>
-            <em>{row.pct}%</em>
-            <i style={{ width: `${row.pct}%` }} />
-          </div>
-        ))}
-      </div>
-      <p className="pb-note">
-        Share of answer across 24 buying-intent prompts, asked weekly.
-      </p>
-    </>
+    <div className="pb-ladder">
+      <span className="pb-lq">&ldquo;Best competitive intelligence tool&rdquo;</span>
+      {LADDER.map((row) => (
+        <div key={row.name} className={row.self ? "pb-lrow is-self" : "pb-lrow"}>
+          <u>{row.rank}</u>
+          <b>{row.name}</b>
+          <em>{row.pct}%</em>
+          <i style={{ width: `${row.pct}%` }} />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -169,7 +178,7 @@ function QuarterHeat() {
     <div className="pb-quarter">
       <div className="pb-qstat">
         <b>127</b>
-        <span>moves tracked in Q2, 9 you acted on</span>
+        <span>moves in Q2</span>
       </div>
       <div className="pb-weeks">
         {QUARTER.map((week, w) => (
@@ -187,18 +196,14 @@ function QuarterHeat() {
   );
 }
 
-// The anchor is the only cell that keeps a sentence under its title. The five
-// others hold an object that says the same thing faster than a line of text
-// would, so the line is gone.
-// `tint` is the Silk colour, a literal hex (the shader cannot read a var).
-// Each one is the card's subject desaturated into the plate: pricing red on the
-// signal, teal on the board, ink blue on the ask, amber on the battle card.
+// Six words at most per title, and the mark sits inside it rather than above:
+// the object under it is what has to be seen first, and every line of chrome
+// pushes it further down the card.
 type Cell = {
   key: string;
   title: string;
+  /** Silk colour — a literal hex, the shader cannot read a var(). */
   tint: string;
-  text?: string;
-  /** The mark above the title — the card's idea as geometry, not an icon. */
   Sigil: () => ReactElement;
   Viz: () => ReactElement;
 };
@@ -206,43 +211,42 @@ type Cell = {
 const CARDS: Cell[] = [
   {
     key: "signal",
-    title: "What changed, why it matters, what to do.",
-    text: "Every signal carries the diff it came from and the read on it.",
+    title: "What changed, and what to do.",
     tint: "#2e2024",
     Sigil: SigilSignal,
     Viz: SignalCard,
   },
   {
     key: "overview",
-    title: "Every competitor, ranked by what moved.",
+    title: "Ranked by what moved.",
     tint: "#1f2a29",
     Sigil: SigilOverview,
     Viz: MarketBoard,
   },
   {
     key: "ask",
-    title: "Ask your market a question.",
+    title: "Ask your market.",
     tint: "#1e2533",
     Sigil: SigilAsk,
     Viz: AskScreen,
   },
   {
     key: "battle",
-    title: "Battle cards that rewrite themselves.",
+    title: "Battle cards, rewritten.",
     tint: "#302921",
     Sigil: SigilBattle,
     Viz: BattleCard,
   },
   {
     key: "aiv",
-    title: "See where you stand in AI answers.",
+    title: "Where you rank in AI answers.",
     tint: "#262533",
     Sigil: SigilAiv,
     Viz: RankLadder,
   },
   {
     key: "recap",
-    title: "Your quarter, at a glance.",
+    title: "Your quarter.",
     tint: "#202a29",
     Sigil: SigilRecap,
     Viz: QuarterHeat,
@@ -256,9 +260,10 @@ export function ProductBento() {
         <article key={card.key} className={`pb-card pb-${card.key}`}>
           <SilkFill color={card.tint} />
           <div className="pb-head">
-            <card.Sigil />
-            <h3>{card.title}</h3>
-            {card.text ? <p>{card.text}</p> : null}
+            <h3>
+              <card.Sigil />
+              {card.title}
+            </h3>
           </div>
           <div className="pb-viz" aria-hidden="true">
             <card.Viz />

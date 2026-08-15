@@ -1495,32 +1495,7 @@ html:has(.landing-canvas) {
 }
 .pb-head {
   flex-shrink: 0;
-  padding: 1.35rem 1.4rem 0;
-}
-/* The sigil above the title: the card's idea as geometry (landing/bento-sigils
-   .tsx). One weight of white for the drawing, `.hit` for the single stroke that
-   carries the meaning — red only on the anchor, where red is a fact, brighter
-   white everywhere else. */
-.pb-sigil {
-  display: block;
-  margin-bottom: 0.9rem;
-  color: rgba(242, 245, 248, 0.42);
-}
-/* fill lands on the two closed shapes that read better solid at 40px — the
-   board's mark and the quarter's day. On a stroke-only path it is a no-op. */
-.pb-sigil .hit {
-  stroke: rgba(242, 245, 248, 0.85);
-  fill: rgba(242, 245, 248, 0.85);
-}
-.pb-signal .pb-sigil .hit {
-  stroke: color-mix(in oklab, var(--critical) 70%, white);
-  fill: color-mix(in oklab, var(--critical) 70%, white);
-}
-/* The anchor's title is a notch up, so its mark is too. */
-.pb-signal .pb-sigil {
-  width: 46px;
-  height: 46px;
-  margin-bottom: 1rem;
+  padding: 1.15rem 1.4rem 0;
 }
 .pb-head h3 {
   font-family: var(--font-sans);
@@ -1531,18 +1506,36 @@ html:has(.landing-canvas) {
   max-width: 26ch;
   text-wrap: balance;
 }
-/* Only the anchor keeps a sentence, and it is one line, read at 4.5:1. */
-.pb-head p {
-  margin-top: 0.45rem;
-  max-width: 52ch;
-  font-size: var(--text-dense);
-  line-height: 1.5;
-  color: rgba(242, 245, 248, 0.6);
-  text-wrap: pretty;
-}
 .pb-signal .pb-head h3 {
-  font-size: 1.25rem;
+  font-size: 1.375rem;
   max-width: 30ch;
+}
+/* The sigil sits INSIDE the title, not above it: the card's idea as geometry
+   (landing/bento-sigils.tsx), on the same line as the words it belongs to. Its
+   own row cost 54px at the top of every card and pushed the object — the thing
+   that has to be seen first — that much further down. */
+.pb-sigil {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  margin-right: 0.5rem;
+  vertical-align: -0.42em;
+  color: rgba(242, 245, 248, 0.5);
+}
+.pb-signal .pb-sigil {
+  width: 32px;
+  height: 32px;
+  vertical-align: -0.46em;
+}
+/* fill lands on the two closed shapes that read better solid at this size — the
+   board's mark and the quarter's day. On a stroke-only path it is a no-op. */
+.pb-sigil .hit {
+  stroke: rgba(242, 245, 248, 0.9);
+  fill: rgba(242, 245, 248, 0.9);
+}
+.pb-signal .pb-sigil .hit {
+  stroke: color-mix(in oklab, var(--critical) 70%, white);
+  fill: color-mix(in oklab, var(--critical) 70%, white);
 }
 /* No padding here: each fragment owns its own, so its rows, rules and bars can
    reach the left and right edges of the card. */
@@ -1552,7 +1545,7 @@ html:has(.landing-canvas) {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  margin-top: 1.1rem;
+  margin-top: 0.95rem;
   overflow: hidden;
 }
 /* The object takes the room that is left, so it ends flush on the bottom edge
@@ -1660,36 +1653,110 @@ html:has(.landing-canvas) {
   font-variant-numeric: tabular-nums;
   color: rgba(242, 245, 248, 0.45);
 }
-/* Mono here is legitimate: it is a diff, read glyph by glyph. Large, because
-   the price is the whole claim and the eye should land on it first. */
+/* The change as a picture: two panes side by side, each filling half the card,
+   the price that was against the price that is. Stacked, the same two numbers
+   read as a list and the eye has to work out which one is new — set them
+   against each other and the drop is seen before anything is read. Mono here is
+   legitimate: it is a diff, read glyph by glyph. */
 .pb-diff {
-  display: flex;
+  display: grid;
   flex: 1;
-  flex-direction: column;
-  justify-content: center;
-  padding: 1.3rem 1.4rem;
+  grid-template-columns: 1fr 1fr;
+  min-height: 0;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
-.pb-diff .was {
-  font-size: clamp(1.25rem, 2.6vw, 2rem);
-  line-height: 1.2;
-  letter-spacing: -0.02em;
+/* Label on top, price in the middle, the condition on the bottom edge: three
+   bands filling the pane, rather than one centred block with a hole under it. */
+.pb-pane {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1.5rem 1.4rem;
   color: rgba(242, 245, 248, 0.4);
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
 }
-.pb-diff .now {
-  margin-top: 0.2rem;
-  font-size: clamp(2.1rem, 5vw, 4.1rem);
-  line-height: 1.06;
+.pb-pane > span {
+  display: flex;
+  flex-direction: column;
+}
+/* The two panes face each other across the divider: left-aligned in both, the
+   anchor is wide enough that the prices end up a third of the card apart and
+   the comparison stops being one. */
+.pb-pane:not(.is-now),
+.pb-pane:not(.is-now) > span {
+  align-items: flex-end;
+  text-align: right;
+}
+/* The divider is the only edge inside the card, so it stays a hairline. */
+.pb-pane.is-now {
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+}
+.pb-pane i {
+  font-style: normal;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(242, 245, 248, 0.4);
+}
+.pb-pane.is-now i {
+  color: color-mix(in oklab, var(--critical) 60%, white);
+}
+.pb-pane b {
+  font-size: clamp(2.2rem, 5vw, 4.4rem);
+  font-weight: 400;
+  line-height: 1.02;
   letter-spacing: -0.035em;
+}
+/* Struck, not merely dim: it is the one glyph that says "this is the old one"
+   without a word, and the label above it should not have to do that work. */
+.pb-pane:not(.is-now) b {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: rgba(242, 245, 248, 0.28);
+}
+.pb-pane.is-now b {
   color: color-mix(in oklab, var(--critical) 70%, white);
 }
-.pb-diff .sub {
-  margin-top: 0.8rem;
+/* The delta is the size of the change, so it rides the price it belongs to. */
+.pb-pane b mark {
+  margin-left: 0.65rem;
+  padding: 0.16rem 0.4rem;
+  border-radius: 4px;
+  vertical-align: 0.55em;
+  background: transparent;
   font-size: var(--text-meta);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: color-mix(in oklab, var(--critical) 74%, white);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--critical) 42%, transparent);
+}
+.pb-pane em {
+  margin-top: 0.3rem;
+  font-style: normal;
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.45);
+}
+.pb-pane u {
+  font-size: var(--text-dense);
+  text-decoration: none;
   color: rgba(242, 245, 248, 0.5);
+}
+.pb-pane.is-now u {
+  color: rgba(242, 245, 248, 0.72);
+}
+/* Half a phone is 175px: the card's own gutter is most of it, so the panes give
+   some back rather than wrapping the price. */
+@media (max-width: 640px) {
+  .pb-pane {
+    padding: 1rem 1rem;
+  }
+  .pb-pane.is-now {
+    padding-right: 1.4rem;
+  }
+  .pb-pane:not(.is-now) {
+    padding-left: 1.4rem;
+  }
 }
 .pb-sig-so {
   flex-shrink: 0;
@@ -1732,8 +1799,10 @@ html:has(.landing-canvas) {
    <b> into a flex item and eat the space in front of it. */
 .pb-bc p {
   margin-top: 0.55rem;
-  font-size: var(--text-content);
-  line-height: 1.45;
+  font-size: 1.15rem;
+  line-height: 1.4;
+  letter-spacing: -0.011em;
+  text-wrap: pretty;
 }
 .pb-bc p b,
 .pb-bc p s {
@@ -1888,14 +1957,6 @@ html:has(.landing-canvas) {
 .pb-lrow.is-self i {
   background: rgba(255, 255, 255, 0.55);
 }
-.pb-note {
-  flex-shrink: 0;
-  padding: 0.75rem 1.4rem 1rem;
-  font-size: var(--text-meta);
-  line-height: 1.5;
-  color: rgba(242, 245, 248, 0.45);
-}
-
 /* The quarter as one object: thirteen weeks of weekdays, lit by what landed. */
 /* Count above, calendar below: the cell is a quarter of a row wide now, and
    side by side neither of the two had room left. */
@@ -3098,4 +3159,191 @@ html:has(.landing-canvas) {
   .pb-caret {
     animation: none;
   }
+}
+
+/* ==================================================================== */
+/*  Marketing pages — the landing's rhythm, off the landing             */
+/* ==================================================================== */
+/* /pricing, /vs/*, /alternatives/*, /blog and the doc pages used to be a
+   plain document site bolted onto the side of the landing: one sticky bar,
+   one flat background, serif headlines throughout. They now run the same
+   composition the home page does — paper, then a hard cut to graphite,
+   paper again, dark footer — so a visitor crossing from / to /pricing stays
+   inside one document. Only the shell is shared; each page still argues its
+   own case in the middle. */
+
+/* The canvas. .lp-light (on the same element) pins the light token set, so
+   these pages ignore html.dark exactly like the landing's paper regions. */
+.lp-page {
+  background: var(--lp-paper);
+  color: var(--lp-ink);
+}
+
+/* Alternating bands. The paper one is the canvas colour, stated anyway so a
+   band reads the same whether it follows paper or graphite. */
+.lp-band-dark {
+  background: #0a0a0a;
+  color: #f2f5f8;
+  padding: clamp(3.5rem, 7vw, 6rem) 0;
+}
+.lp-band-paper {
+  background: var(--lp-paper);
+  color: var(--lp-ink);
+  padding: clamp(3.5rem, 7vw, 6rem) 0;
+}
+/* Between two paper bands the seam would be invisible, so the second one
+   draws the hairline the cut to graphite gives for free. */
+.lp-band-paper + .lp-band-paper {
+  border-top: 1px solid var(--lp-line);
+}
+
+/* Split section header, tone-agnostic: same geometry as .lp-dark-head, but
+   the support paragraph derives from currentColor instead of a literal
+   light, so one class serves both bands. */
+.lp-head {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 2rem;
+  align-items: end;
+}
+.lp-head h2 {
+  font-family: var(--font-sans);
+  font-size: clamp(1.9rem, 3.4vw, 2.6rem);
+  font-weight: 500;
+  letter-spacing: -0.022em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.lp-head p {
+  max-width: 26rem;
+  justify-self: end;
+  font-size: var(--text-lead);
+  line-height: 1.6;
+  color: color-mix(in oklab, currentColor 64%, transparent);
+  text-wrap: pretty;
+}
+@media (max-width: 860px) {
+  .lp-head {
+    grid-template-columns: 1fr;
+  }
+  .lp-head p {
+    justify-self: start;
+    margin-top: 0.9rem;
+  }
+}
+
+/* ---- Page hero — the landing's opening cut, without the fog ---------
+   No Vanta and no marquee: those belong to the home page. What carries over
+   is the type, which is the part that identifies the brand — sans display,
+   one serif italic accent, near-ink lead. A serif headline (what these pages
+   used to render, inherited from the base h1 rule) reads as a different
+   site. */
+.lp-page-head {
+  max-width: 66rem;
+  margin: 0 auto;
+  padding: clamp(2.5rem, 5vw, 4.5rem) clamp(1.25rem, 3vw, 2.5rem)
+    clamp(2.5rem, 5vw, 4rem);
+}
+.lp-page-head h1 {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: clamp(2.3rem, 4.8vw, 3.7rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  max-width: 20ch;
+  text-wrap: balance;
+  color: var(--lp-ink);
+}
+.lp-page-lead {
+  margin-top: 1.5rem;
+  max-width: 42rem;
+  font-size: var(--text-lead);
+  line-height: 1.6;
+  color: var(--lp-ink-muted);
+  text-wrap: pretty;
+}
+.lp-page-ctas {
+  margin-top: 2rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+/* Breadcrumb: the smallest thing on the page, and the first — it sets the
+   page inside the site before the headline claims anything. */
+.lp-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 1.6rem;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-meta);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lp-ink-subtle);
+}
+.lp-crumbs a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 150ms var(--lp-ease);
+}
+.lp-crumbs a:hover {
+  color: var(--lp-ink);
+}
+.lp-crumbs li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.lp-crumbs [aria-current="page"] {
+  color: var(--lp-ink-muted);
+}
+
+/* Column for a band's content. Same measure as .lp-dark-inner, named without
+   a tone because these bands alternate. */
+.lp-inner {
+  max-width: 66rem;
+  margin: 0 auto;
+  padding: 0 clamp(1.25rem, 3vw, 2.5rem);
+}
+.lp-inner-wide {
+  max-width: 82rem;
+}
+
+/* The landing's blocks (.lp-pricing, .lp-faq, .lp-final) carry the landing's
+   own flow spacing, which assumes the section above them. Opening a band, the
+   band's padding already owns that gap — so only the blocks that follow one
+   keep their margin. */
+.lp-band-dark > :first-child,
+.lp-band-paper > .lp-inner > :first-child {
+  margin-top: 0;
+}
+.lp-band-dark > .lp-pricing {
+  padding-bottom: 0;
+}
+.lp-band-dark > .lp-pricing + .lp-inner {
+  margin-top: clamp(3.5rem, 6vw, 5rem);
+}
+
+/* A head that opens a band has nothing above it to hang from, so the landing's
+   bottom-alignment (which lines a mid-page statement up with its support
+   paragraph) would only push the headline down into dead space. */
+.lp-band-dark > :first-child .lp-dark-head,
+.lp-band-dark > :first-child .lp-head,
+.lp-band-paper > .lp-inner > :first-child .lp-head {
+  align-items: start;
+}
+
+/* The closing fine print carries one link — the alternative to signing up. */
+.lp-final-micro a {
+  color: var(--lp-ink-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--lp-line);
+}
+.lp-final-micro a:hover {
+  color: var(--lp-ink);
 }

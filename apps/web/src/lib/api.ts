@@ -545,6 +545,39 @@ export interface Signal {
   // alert (below_threshold | channel_muted | quiet_hours | frequency_cap). Null =
   // not held back.
   filteredReason: string | null;
+  // Important / not important + the one line that says why (OUT-192). Severity is how
+  // big the move is; this is whether the reader should stop for it. Null on signals
+  // written before the flag existed, and the row then shows severity alone.
+  isImportant: boolean | null;
+  importanceReason: string | null;
+  // A/B oscillation (OUT-192): the page served this delta and then its exact inverse,
+  // repeatedly. The flips were folded into this one signal rather than raising a card
+  // each. Null for every signal that never flipped.
+  oscillation: SignalOscillation | null;
+}
+
+/**
+ * An alert condition (OUT-192): what the user wants flagged, in their own words.
+ * `matchCount` and `lastMatchedAt` are there to answer the only question a saved rule
+ * ever raises — is this thing firing?
+ */
+export interface AlertCondition {
+  id: string;
+  condition: string;
+  isActive: boolean;
+  matchCount: number;
+  lastMatchedAt: string | null;
+  createdAt: string;
+}
+
+/** The folded back-and-forth behind an oscillating signal. */
+export interface SignalOscillation {
+  /** Distinct readings of the flip, this signal's own included (so it starts at 2). */
+  observations: number;
+  variantA: string;
+  variantB: string;
+  changeIds: string[];
+  lastObservedAt: string;
 }
 
 // User-safe "Why this insight?" payload (patch-14). No raw HTML, no diff, no AI
@@ -3516,6 +3549,10 @@ export interface SignalsFacets {
     critical: number;
     actions: number;
   };
+  // This week's funnel (OUT-192): changes detected, and how many of them became
+  // signals. Both over the same window as `counts.week`. The gap is what
+  // suppression, the relevance threshold and oscillation folding removed.
+  funnel: { detected: number; surfaced: number };
   categories: string[];
   // `url` drives the favicon in the competitor filter list (null → initial letter).
   competitors: { id: string; name: string; url?: string | null }[];
@@ -4190,6 +4227,21 @@ export const api = {
     request<{ ranking: Record<string, number> }>("/api/compare/ranking"),
   getOnboardingChecklist: () =>
     request<OnboardingChecklist>("/api/onboarding/checklist"),
+  // Alert conditions (OUT-192) — the sentences that decide what gets flagged.
+  listAlertConditions: () =>
+    request<{ data: { conditions: AlertCondition[]; max: number } }>("/api/alert-conditions"),
+  createAlertCondition: (condition: string) =>
+    request<{ data: { condition: AlertCondition } }>("/api/alert-conditions", {
+      method: "POST",
+      body: JSON.stringify({ condition }),
+    }),
+  updateAlertCondition: (id: string, patch: { condition?: string; isActive?: boolean }) =>
+    request<{ data: { condition: AlertCondition } }>(`/api/alert-conditions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteAlertCondition: (id: string) =>
+    request<{ data: { ok: true } }>(`/api/alert-conditions/${id}`, { method: "DELETE" }),
   listSavedViews: () => request<{ views: SavedView[] }>("/api/saved-views"),
   createSavedView: (name: string, filters: SavedViewFilters) =>
     request<{ view: SavedView }>("/api/saved-views", {

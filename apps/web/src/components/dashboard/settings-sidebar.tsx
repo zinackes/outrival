@@ -62,7 +62,7 @@ interface NavItem {
 // Data. Routes here point at the pages that already exist.
 const PERSONAL: NavItem[] = [
   { href: "/dashboard/settings/profile", label: "Profile", icon: UserIcon, exact: true, keywords: "name email avatar account change email" },
-  { href: "/dashboard/settings/notifications", label: "Notifications", icon: BellIcon, exact: true, keywords: "alerts digest quiet hours timezone slack webhook severity batching email cap" },
+  { href: "/dashboard/settings/notifications", label: "Notifications", icon: BellIcon, exact: true, keywords: "alerts digest quiet hours timezone slack webhook severity batching email cap conditions important flag rules" },
   { href: "/dashboard/settings/security", label: "Security", icon: LockIcon, exact: true, keywords: "2fa two-factor authenticator totp password sessions devices sign out backup codes google connected accounts passkey" },
 ];
 

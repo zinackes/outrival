@@ -39,9 +39,12 @@ import {
   PLAN_LIMITS,
   PRICING_STATUSES,
   PRICING_STATUS_LABELS,
+  buildDeltaProof,
+  decideImportance,
   formatDiffForPrompt,
   renderCelebrationEmail,
 } from "@outrival/shared";
+import { evaluateAlertConditions } from "../lib/alert-conditions";
 import { insertSignalFeed, loggedAi } from "../lib/analytics";
 import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
 import { sendEmail, ALERT_FROM } from "../lib/resend";
@@ -55,6 +58,12 @@ import {
   groundableSignalLayer,
 } from "../lib/faithfulness-gate";
 import { interceptEmission, recordEmission } from "../lib/emission-verification";
+import {
+  findOscillation,
+  foldOscillation,
+  OSCILLATION_WINDOW_DAYS,
+  type PriorSignalDelta,
+} from "../lib/oscillation";
 
 // A pricing status transition (patch-11) carries its own severity and replaces
 // the generic diff classification for that change.
@@ -316,6 +325,60 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
       ? PRICING_STATUS_LABELS[input.pricingTransition.current]
       : (input.classification!.humanChangeAfter ?? null);
 
+    // A/B oscillation folding (OUT-192).
+    //
+    // Before anything is verified, generated or dispatched: if this delta is the exact
+    // inverse of one this page was already signalled for inside the fold window, the
+    // page is flipping, not deciding. Fold the flip into the signal that is already
+    // there and stop — one grouped card, no second alert, no second AI call.
+    //
+    // Skipped for the ab_test_suspected anchor (skipVerification), whose whole content
+    // is a statement ABOUT flapping and whose synthetic page_variance monitor would
+    // otherwise fold its own findings into each other, and for archive backfill, where
+    // the back-and-forth IS the history the user asked to see.
+    if (!input.skipVerification && !isBackfill && monitor.sourceType !== "page_variance") {
+      const proof = buildDeltaProof({ diffText, humanChangeBefore, humanChangeAfter });
+      const priors: PriorSignalDelta[] = await db
+        .select({
+          signalId: signals.id,
+          changeId: signals.changeId,
+          detectedAt: changes.detectedAt,
+          diffText: changes.diffText,
+          humanChangeBefore: signals.humanChangeBefore,
+          humanChangeAfter: signals.humanChangeAfter,
+          oscillation: signals.oscillation,
+        })
+        .from(signals)
+        .innerJoin(changes, eq(changes.id, signals.changeId))
+        .where(
+          and(
+            eq(changes.monitorId, monitor.id),
+            ne(signals.changeId, input.changeId),
+            gte(
+              changes.detectedAt,
+              new Date(change.detectedAt.getTime() - OSCILLATION_WINDOW_DAYS * 86_400_000),
+            ),
+          ),
+        )
+        .orderBy(desc(changes.detectedAt))
+        .limit(20);
+
+      const prior = findOscillation(proof, priors, change.detectedAt);
+      const folded = prior ? foldOscillation(prior, input.changeId, change.detectedAt) : null;
+      if (prior && folded) {
+        await db
+          .update(signals)
+          .set({ oscillation: folded })
+          .where(eq(signals.id, prior.signalId));
+        logger.log("Change folded into an oscillating signal", {
+          changeId: input.changeId,
+          signalId: prior.signalId,
+          observations: folded.observations,
+        });
+        return { folded: true, signalId: prior.signalId, observations: folded.observations };
+      }
+    }
+
     // Double capture before a high-stakes emission (Véracité Intelligence v2 P2).
     //
     // Placed HERE on purpose: after the severity guard, so the perimeter reads the
@@ -553,6 +616,37 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
         }))
       : [];
 
+    // The org's own alert conditions, checked against the signal that is about to
+    // exist (OUT-192). Costs one fast call, and only for orgs that wrote a rule.
+    // Skipped on backfill: reconstructing 2023 must not fire today's alerts.
+    const conditions = isBackfill
+      ? { matchedIds: [], matchedTexts: [] }
+      : await evaluateAlertConditions({
+          orgId: competitor.orgId,
+          competitorId: competitor.id,
+          competitorName: competitor.name,
+          category,
+          severity,
+          insight: published.insight,
+          soWhat: published.soWhat ?? null,
+          changeBefore: humanChangeBefore,
+          changeAfter: humanChangeAfter,
+        });
+
+    // Important / not important + the one-line reason the feed badges (OUT-192).
+    // Deterministic over numbers this run already produced, so it adds no call and no
+    // second opinion: the reason can be checked against the row it sits on.
+    const materialityScores = input.classification?.materiality
+      ? toMaterialityScores(input.classification.materiality)
+      : null;
+    const importance = decideImportance({
+      severity,
+      materiality: materialityScores,
+      relevanceScore: change.relevanceScore,
+      matchedConditions: conditions.matchedTexts,
+      isBackfill,
+    });
+
     const [newSignal] = await db
       .insert(signals)
       .values({
@@ -582,12 +676,15 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
         // The materiality sub-scores the severity above was computed from. Null on
         // the synthesized paths (pricing transitions, Hacker News, wellknown,
         // comparison pages) — those force a severity without scoring materiality.
-        materiality: input.classification?.materiality
+        materiality: materialityScores
           ? {
-              ...toMaterialityScores(input.classification.materiality),
+              ...materialityScores,
               ...(corroborationSources.length > 0 ? { corroborationSources } : {}),
             }
           : null,
+        isImportant: importance.important,
+        importanceReason: importance.reason,
+        matchedConditionIds: conditions.matchedIds,
         faithfulness,
       })
       .onConflictDoNothing({ target: signals.changeId })

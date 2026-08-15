@@ -6,6 +6,7 @@ import {
   competitors,
   changes,
   monitors,
+  productCompetitors,
   snapshots,
   qualityFeedback,
   aiQualityChecks,
@@ -243,6 +244,13 @@ signalsRouter.get("/", async (c) => {
       // as an immediate alert (quiet hours / cap / threshold / muted). Null = it
       // wasn't held back. Critical signals bypass moderation entirely.
       filteredReason: signals.filteredReason,
+      // Important / not important + the one-line reason (OUT-192). Null on every
+      // signal written before the flag existed; the row then shows severity alone.
+      isImportant: signals.isImportant,
+      importanceReason: signals.importanceReason,
+      // A/B oscillation (OUT-192): later flips of this exact delta were folded into
+      // this signal instead of becoming their own cards. Null = it never flipped.
+      oscillation: signals.oscillation,
       changeId: signals.changeId,
       // Surfaced inline by the signal source line (patch-14). Joined through the
       // originating change → monitor; null for signals whose change/monitor was
@@ -324,11 +332,11 @@ signalsRouter.get("/facets", async (c) => {
     base.push(sql`${signals.productIds} @> ${JSON.stringify([productId])}::jsonb`);
   }
 
-  // Three reads over the same rows with the same filter — the counts, the distinct
-  // categories, the distinct competitors. They were issued one after the other, so
-  // the facets bar cost three sequential round-trips to say one thing. Nothing here
-  // depends on anything else here.
-  const [countRows, catRows, compRows] = await Promise.all([
+  // Four reads over the same scope — the counts, the distinct categories, the
+  // distinct competitors, and the week's raw change volume behind them. They were
+  // issued one after the other, so the facets bar cost sequential round-trips to
+  // say one thing. Nothing here depends on anything else here.
+  const [countRows, catRows, compRows, changeRows] = await Promise.all([
     db
       .select({
         all: sql<number>`count(*)`,
@@ -360,6 +368,36 @@ signalsRouter.get("/facets", async (c) => {
       .innerJoin(competitors, eq(competitors.id, signals.competitorId))
       .where(and(...base))
       .orderBy(competitors.name),
+
+    // The wide end of the funnel (OUT-192): every change detected this week, before
+    // suppression, relevance and folding cut it down to the signals above. Same
+    // window as the `week` counter so the two numbers are comparable — a ratio over
+    // two different periods would be worse than no ratio at all. Changes carry no
+    // product of their own, so a product scope reaches them through the competitors
+    // linked to it.
+    db
+      .select({ detected: sql<number>`count(*)` })
+      .from(changes)
+      .innerJoin(monitors, eq(monitors.id, changes.monitorId))
+      .innerJoin(competitors, eq(competitors.id, monitors.competitorId))
+      .where(
+        and(
+          eq(competitors.orgId, orgId),
+          isNull(competitors.deletedAt),
+          sql`${changes.detectedAt} >= date_trunc('week', now())`,
+          ...(productId
+            ? [
+                inArray(
+                  monitors.competitorId,
+                  db
+                    .select({ id: productCompetitors.competitorId })
+                    .from(productCompetitors)
+                    .where(eq(productCompetitors.productId, productId)),
+                ),
+              ]
+            : []),
+        ),
+      ),
   ]);
   const counts = countRows[0];
 
@@ -371,6 +409,13 @@ signalsRouter.get("/facets", async (c) => {
       week: Number(counts?.week ?? 0),
       critical: Number(counts?.critical ?? 0),
       actions: Number(counts?.actions ?? 0),
+    },
+    // What the week's filtering actually did, both numbers over the same window
+    // (OUT-192). The digest has said "we read N, we kept M" for a while; the feed
+    // is where the reader wonders what they are NOT being shown.
+    funnel: {
+      detected: Number(changeRows[0]?.detected ?? 0),
+      surfaced: Number(counts?.week ?? 0),
     },
     categories: catRows.map((r) => r.category).sort(),
     competitors: compRows,

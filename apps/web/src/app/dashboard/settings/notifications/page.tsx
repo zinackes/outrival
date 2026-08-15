@@ -3,6 +3,7 @@ import { ArrowRightIcon } from "@/components/icons";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { NotificationSettingsForm } from "@/components/outrival/notification-settings-form";
 import { NotificationModerationForm } from "@/components/outrival/notification-moderation-form";
+import { AlertConditionsForm } from "@/components/outrival/alert-conditions-form";
 import {
   SettingsPageHead,
   SettingsSection,
@@ -66,6 +67,10 @@ export default async function NotificationSettingsPage() {
         {/* Renders its own three sections (routing, quiet hours, volume) so each
             carries the page's heading rank rather than a nested legend. */}
         <NotificationModerationForm />
+
+        {/* Below routing on purpose: routing decides which signals reach you, this
+            decides which ones are worth stopping for once they have. */}
+        <AlertConditionsForm />
       </HydrationBoundary>
     </div>
   );

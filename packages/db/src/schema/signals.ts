@@ -100,6 +100,29 @@ export const signals = pgTable("signals", {
   // Stamped once a deferred signal (dispatchedChannel = digest_daily) has gone out
   // in a daily digest email — the daily digest job's idempotency marker.
   dailyDigestSentAt: timestamp("daily_digest_sent_at"),
+  // Important / not important, with the one-line reason the badge shows (OUT-192).
+  // Deterministic (decideImportance, @outrival/shared) over inputs the pipeline already
+  // computed — materiality, composite relevance, and the user's own alert conditions —
+  // so the reason is checkable against this row. Null on every pre-OUT-192 signal; the
+  // feed falls back to the severity band alone.
+  isImportant: boolean("is_important"),
+  importanceReason: text("importance_reason"),
+  // The user-written alert conditions this signal matched, by id (OUT-192). Drives the
+  // importance flag above and lets the feed filter by condition. Empty = matched none,
+  // which is not the same as null (never evaluated, pre-OUT-192).
+  matchedConditionIds: jsonb("matched_condition_ids").$type<string[]>(),
+  // A/B oscillation (OUT-192). When a later change on the same page carried the exact
+  // INVERSE of this signal's delta inside the fold window, no second signal was
+  // created: the flip was folded in here instead. { observations, variantA, variantB,
+  // changeIds, lastObservedAt } — see apps/workers/src/lib/oscillation.ts. Null for
+  // every signal that never flipped, which is almost all of them.
+  oscillation: jsonb("oscillation").$type<{
+    observations: number;
+    variantA: string;
+    variantB: string;
+    changeIds: string[];
+    lastObservedAt: string;
+  }>(),
   // patch-28 — products (SKUs) this signal affects, derived deterministically from
   // product_competitors at signal creation (not via AI). A competitor shared by
   // Marketing Hub and Sales Hub tags its signals into both. Empty for orgs with no

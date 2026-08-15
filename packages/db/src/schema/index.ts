@@ -10,6 +10,7 @@ export * from "./changes";
 export * from "./signals";
 export * from "./digests";
 export * from "./alerts";
+export * from "./alert-conditions";
 export * from "./job_postings";
 export * from "./posting-facts";
 export * from "./content-items";

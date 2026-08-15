@@ -1,31 +1,28 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import { MagnifyingGlassIcon } from "@/components/icons";
-import { SilkFill } from "./silk-fill";
 
 // "This is the product" = the surfaces, six screens you actually open. The
 // mechanism behind them is the Pipeline section right below, so nothing here
 // re-explains scanning, filtering or writing: this section is what the software
 // looks like, that one is what it does.
 //
-// Every cell holds an OBJECT lifted out of a screen, never a fake window: no
-// chrome bar, no traffic lights, no breadcrumb path. A miniature browser frame
-// is the fastest way to make six cards look like the same stock template, and
-// the path never says anything the sentence above the card has not already
-// said. What is left is the one shape that only this product makes: a market
-// board, a diff, a deck, a prompt, a rank ladder, a quarter of weeks.
+// One anchor and five supports. The signal is the anchor because it is the
+// atomic object of the product: a diff you can check. The five others each hold
+// ONE idea, cropped to the smallest object that still reads as itself.
+//
+// No shader fill behind any of it: depth is luminance, never a gradient or a
+// glow. The price of a flat plate is that an object floating in the middle of a
+// card reads as a hole, so every fragment runs edge to edge instead.
 //
 // Hand-built DOM, never a raster: a screenshot carries none of the page's own
 // type and goes stale the day the product moves. Each one is aria-hidden — the
-// title and the sentence carry the meaning, so a screen reader gets the point
-// instead of walking a pile of decorative UI.
+// title carries the meaning, so a screen reader gets the point instead of
+// walking a pile of decorative UI.
 
 const BOARD = [
-  { name: "Vantage", move: "Cut Pro to $49, no seat minimum", n: 9, ago: "2h", sev: "var(--critical)" },
-  { name: "Meridian", move: "Moved to usage-based billing", n: 7, ago: "4h", sev: "var(--high)" },
-  { name: "Beacon", move: "Hired three enterprise AEs", n: 4, ago: "1d", sev: "var(--high)" },
-  { name: "Lumen", move: "Shipped an SSO tier", n: 3, ago: "1d", sev: "var(--medium)" },
-  { name: "Cobalt", move: "Retired the free plan", n: 2, ago: "2d", sev: "var(--low)" },
-  { name: "Nimbus", move: "Rewrote the homepage", n: 1, ago: "3d", sev: "var(--low)" },
+  { name: "Vantage", move: "Cut Pro to $49, no seat minimum", ago: "2h", sev: "var(--critical)" },
+  { name: "Meridian", move: "Moved to usage-based billing", ago: "4h", sev: "var(--high)" },
+  { name: "Beacon", move: "Hired three enterprise AEs", ago: "1d", sev: "var(--medium)" },
 ];
 
 const LADDER = [
@@ -49,28 +46,9 @@ const HEAT: Record<string, string> = {
   "4": "var(--critical)",
 };
 
-// The board: who moved, what they did, how long ago. The severity lives in the
-// mark, so the eye ranks the list before it reads a word of it.
-function MarketBoard() {
-  return (
-    <div className="pb-board">
-      {BOARD.map((row) => (
-        <div key={row.name} className="pb-brow">
-          <i className="mark" style={{ "--c": row.sev } as CSSProperties}>
-            {row.name.slice(0, 1)}
-          </i>
-          <b>{row.name}</b>
-          <span>{row.move}</span>
-          <u>{row.n}</u>
-          <em>{row.ago}</em>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// One signal, opened. The diff is the whole point: a competitive claim you can
-// check, not a sentence asserting that something changed.
+// The anchor. The diff is the whole object: a competitive claim you can check,
+// not a sentence asserting that something changed. Critical is the only color
+// on the card, and it lands on the mark and on the new price.
 function SignalCard() {
   return (
     <div className="pb-sig">
@@ -79,12 +57,10 @@ function SignalCard() {
         <span className="pb-cat">pricing</span>
         <em>2h ago</em>
       </div>
-      <p className="pb-sig-title">
-        Vantage cut Pro to $49/mo and dropped the seat minimum.
-      </p>
       <div className="pb-diff">
-        <div className="was">$69/user/mo · 5-seat minimum</div>
-        <div className="now">$49/user/mo · no minimum</div>
+        <div className="was">$69/user/mo</div>
+        <div className="now">$49/user/mo</div>
+        <div className="sub">5-seat minimum &rarr; no minimum</div>
       </div>
       <p className="pb-sig-so">
         <b>So what</b> Undercuts your Pro tier on the mid-market deals you are
@@ -94,27 +70,36 @@ function SignalCard() {
   );
 }
 
-// A deck rather than a single sheet: the point of a battle card is that there
-// is one per competitor and they keep themselves current.
-function BattleDeck() {
+// The board: who moved, what they did, how long ago. The severity lives in the
+// mark, so the eye ranks the list before it reads a word of it. Three rows, not
+// six: the shape of the object is the point, the length of it is not.
+function MarketBoard() {
   return (
-    <div className="pb-deck">
-      <div className="pb-sheet s3" />
-      <div className="pb-sheet s2" />
-      <div className="pb-sheet s1">
-        <div className="pb-bc live">
-          <i>Vantage · Pricing</i>
-          <p>
-            Pro <b>$49/mo</b>, was $69. Seat minimum dropped.
-          </p>
-          <em>Rewritten 2h ago</em>
+    <div className="pb-board">
+      {BOARD.map((row) => (
+        <div key={row.name} className="pb-brow">
+          <i className="mark" style={{ "--c": row.sev } as CSSProperties}>
+            {row.name.slice(0, 1)}
+          </i>
+          <b>{row.name}</b>
+          <em>{row.ago}</em>
+          <span>{row.move}</span>
         </div>
-        <div className="pb-bc">
-          <i>Vantage · Objections</i>
-          <p>&ldquo;They&rsquo;re cheaper.&rdquo; Counter with the migration cost.</p>
-          <em>From 4 won deals</em>
-        </div>
-      </div>
+      ))}
+    </div>
+  );
+}
+
+// One card, not a deck: the promise is that the section rewrote itself while you
+// were not looking, and a single sheet says that in one read.
+function BattleCard() {
+  return (
+    <div className="pb-bc">
+      <i>Vantage · Pricing</i>
+      <p>
+        Pro <b>$49/mo</b>, was <s>$69</s>. Seat minimum dropped.
+      </p>
+      <em>Rewritten 2h ago</em>
     </div>
   );
 }
@@ -140,11 +125,6 @@ function AskScreen() {
             <b>Cobalt</b> added a free tier in June
           </li>
         </ul>
-      </div>
-      <div className="pb-cites">
-        <span>vantage.com/pricing</span>
-        <span>meridian.io/changelog</span>
-        <span>+4</span>
       </div>
     </div>
   );
@@ -197,49 +177,46 @@ function QuarterHeat() {
   );
 }
 
-// Silk needs a literal hex. One tint per card, taken from the same family the
-// Pipeline steps use, so the two sections read as one page.
-const CARDS = [
-  {
-    key: "overview",
-    tint: "#1f2a29",
-    title: "Every competitor, ranked by what actually moved.",
-    text: "One board for the whole market, ordered by who moved this week rather than by who you added first.",
-    Viz: MarketBoard,
-  },
+// The anchor is the only cell that keeps a sentence under its title. The five
+// others hold an object that says the same thing faster than a line of text
+// would, so the line is gone.
+type Cell = {
+  key: string;
+  title: string;
+  text?: string;
+  Viz: () => ReactElement;
+};
+
+const CARDS: Cell[] = [
   {
     key: "signal",
-    tint: "#2e2024",
     title: "What changed, why it matters, what to do.",
-    text: "Each signal carries the diff it came from and the read on it.",
+    text: "Every signal carries the diff it came from and the read on it.",
     Viz: SignalCard,
   },
   {
+    key: "overview",
+    title: "Every competitor, ranked by what moved.",
+    Viz: MarketBoard,
+  },
+  {
     key: "ask",
-    tint: "#1e2533",
     title: "Ask your market a question.",
-    text: "Plain English in, an answer out, cited back to the pages it came from.",
     Viz: AskScreen,
   },
   {
     key: "battle",
-    tint: "#302921",
     title: "Battle cards that rewrite themselves.",
-    text: "One per competitor. A fresh pricing signal rewrites the pricing section and dates it.",
-    Viz: BattleDeck,
+    Viz: BattleCard,
   },
   {
     key: "aiv",
-    tint: "#262533",
     title: "See where you stand in AI answers.",
-    text: "How often you come up when buyers ask, next to whoever outranks you.",
     Viz: RankLadder,
   },
   {
     key: "recap",
-    tint: "#202a29",
     title: "Your quarter, at a glance.",
-    text: "Every week of the quarter, colored by what moved and what you acted on.",
     Viz: QuarterHeat,
   },
 ];
@@ -249,10 +226,9 @@ export function ProductBento() {
     <div className="pb-grid">
       {CARDS.map((card) => (
         <article key={card.key} className={`pb-card pb-${card.key}`}>
-          <SilkFill color={card.tint} />
           <div className="pb-head">
             <h3>{card.title}</h3>
-            <p>{card.text}</p>
+            {card.text ? <p>{card.text}</p> : null}
           </div>
           <div className="pb-viz" aria-hidden="true">
             <card.Viz />

@@ -1374,51 +1374,67 @@ html:has(.landing-canvas) {
   }
 }
 
-/* ---- Product bento — six product surfaces ----------------------------- */
-/* Asymmetric in the columns, not in the rows: 7/5, then 7/5, then 5/7. No cell
-   spans two rows any more — a double-height hero made the first card twice as
-   tall as everything beside it, so the grid read as one big card with five
-   footnotes instead of as a bento. */
-/* Fixed row heights, never content heights: the crop is the point, and a cell
-   that sized itself to its object would never bleed off the bottom. */
+/* ---- Product bento — one anchor, five supports ------------------------ */
+/* The signal is the anchor: it is the atomic object of the product, a diff you
+   can check, so it takes two thirds of the width and both of the first two
+   rows. The five supports are a quarter of a row each and hold one idea apiece.
+   The anchor is first in the DOM as well as in the grid. */
+/* No shader fill any more, no gradient, no drop shadow: depth is luminance
+   alone, a flat plate and one hairline. The price of that is that an object
+   floating in the middle of a card reads as a hole rather than as a crop, so
+   every fragment runs edge to edge instead of sitting inside a padded box. */
 .pb-grid {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
-  grid-template-rows: 22rem 20rem 20rem;
-  grid-auto-rows: 20rem;
+  /* auto as the maximum, not a fixed height: nothing needs to bleed now that
+     the fragments fill their cell, and a row that can grow cannot clip a line
+     of text at an unlucky width. */
+  grid-template-rows: minmax(13rem, auto) minmax(13rem, auto) minmax(17rem, auto);
+  grid-auto-rows: minmax(13rem, auto);
   gap: 1rem;
   margin-top: 2.6rem;
 }
+.pb-signal {
+  grid-column: span 8;
+  grid-row: span 2;
+}
 .pb-overview,
 .pb-ask,
-.pb-recap {
-  grid-column: span 7;
-}
-.pb-signal,
 .pb-battle,
-.pb-aiv {
-  grid-column: span 5;
+.pb-aiv,
+.pb-recap {
+  grid-column: span 4;
 }
-/* Pairs stay pairs down to 860: the DOM order (overview, signal, ask, battle,
-   aiv, recap) leaves no hole once the two 7-wide cells go full width. */
+/* Five supports do not pair evenly: the last one takes the full width rather
+   than leaving a hole beside it. */
 @media (max-width: 1100px) {
-  .pb-overview,
-  .pb-recap {
-    grid-column: span 12;
+  .pb-grid {
+    grid-template-rows: none;
+    grid-auto-rows: minmax(16rem, auto);
   }
-  .pb-signal,
+  .pb-signal {
+    grid-column: span 12;
+    grid-row: span 1;
+    min-height: 19rem;
+  }
+  .pb-overview,
   .pb-ask,
   .pb-battle,
   .pb-aiv {
     grid-column: span 6;
   }
+  .pb-recap {
+    grid-column: span 12;
+  }
 }
 @media (max-width: 860px) {
   .pb-grid {
-    grid-template-rows: none;
-    grid-auto-rows: 19rem;
+    grid-auto-rows: minmax(14rem, auto);
   }
-  .pb-signal,
+  .pb-signal {
+    min-height: 21rem;
+  }
+  .pb-overview,
   .pb-ask,
   .pb-battle,
   .pb-aiv {
@@ -1427,19 +1443,12 @@ html:has(.landing-canvas) {
 }
 .pb-card {
   position: relative;
-  isolation: isolate;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   border-radius: 12px;
   background: #0e0e10;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-}
-/* The same shader fill the Pipeline steps use, one tint per card. Without it a
-   card whose object does not reach the edges is a flat graphite rectangle with
-   something small floating in it; the silk gives the object a floor. */
-.pb-card .lp-silk {
-  opacity: 0.5;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 .pb-head {
   flex-shrink: 0;
@@ -1454,74 +1463,59 @@ html:has(.landing-canvas) {
   max-width: 26ch;
   text-wrap: balance;
 }
+/* Only the anchor keeps a sentence, and it is one line, read at 4.5:1. */
 .pb-head p {
   margin-top: 0.45rem;
-  max-width: 46ch;
+  max-width: 52ch;
   font-size: var(--text-dense);
   line-height: 1.5;
-  color: rgba(242, 245, 248, 0.55);
+  color: rgba(242, 245, 248, 0.6);
   text-wrap: pretty;
 }
-/* The first cell carries the section's claim, so its title outranks the rest. */
-.pb-overview .pb-head h3 {
+.pb-signal .pb-head h3 {
   font-size: 1.25rem;
-  max-width: 24ch;
+  max-width: 30ch;
 }
-/* Where the bleed happens: the object is taller than the room left for it and
-   the mask cuts it, instead of shrinking to fit and floating. */
+/* No padding here: each fragment owns its own, so its rows, rules and bars can
+   reach the left and right edges of the card. */
 .pb-viz {
   position: relative;
-  flex: 1;
-  min-height: 6rem;
-  margin-top: 1rem;
-  padding: 0 1.4rem;
-  overflow: hidden;
-  /* A short fade: enough to say the object continues, not enough to swallow a
-     line of text into unreadable gray. */
-  mask-image: linear-gradient(to bottom, #000 88%, transparent);
-}
-/* Three cells hold an object shorter than the room they get; they sit on the
-   bottom edge instead of floating with a hole under them. margin-top: auto
-   rather than justify-content: flex-end — when the cell narrows and the object
-   outgrows it, the margin collapses to 0 and it bleeds off the bottom like the
-   others, instead of overflowing the top and losing its first row. */
-.pb-ask .pb-viz,
-.pb-aiv .pb-viz,
-.pb-recap .pb-viz {
   display: flex;
   flex-direction: column;
-  padding-bottom: 1.5rem;
-  /* Almost no fade on these three: their object ends inside the cell, so the
-     long fade only dimmed the last live line (the citations, the footnote) into
-     gray. It stays non-zero so a narrow cell still cuts softly. */
-  mask-image: linear-gradient(to bottom, #000 96%, transparent);
+  flex: 1;
+  min-height: 0;
+  margin-top: 1.1rem;
+  overflow: hidden;
 }
-.pb-ask .pb-viz > :first-child,
-.pb-aiv .pb-viz > :first-child,
-.pb-recap .pb-viz > :first-child {
-  margin-top: auto;
+/* The object takes the room that is left, so it ends flush on the bottom edge
+   instead of floating with a hole under it. */
+.pb-viz > :first-child {
+  flex: 1;
+  min-height: 0;
 }
 
 /* Market board: who moved, what they did, how long ago. The severity lives in
    the mark, so the eye ranks the list before it reads a word of it. */
+/* Two lines per row rather than five columns: a quarter-row cell is too narrow
+   to keep the move on the same line as the name without shaving it to nothing.
+   The rows split the height between them, so the list ends on the bottom edge. */
 .pb-board {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
 }
 .pb-brow {
   display: grid;
-  grid-template-columns: 1.35rem minmax(0, 6.5rem) minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.65rem;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.035);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-  font-size: var(--text-dense);
-  white-space: nowrap;
+  flex: 1;
+  grid-template-columns: 1.35rem minmax(0, 1fr) auto;
+  align-content: center;
+  column-gap: 0.6rem;
+  row-gap: 0.1rem;
+  padding: 0.5rem 1.4rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 .pb-brow .mark {
+  grid-row: span 2;
+  align-self: center;
   display: grid;
   place-items: center;
   width: 1.35rem;
@@ -1535,49 +1529,44 @@ html:has(.landing-canvas) {
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c) 34%, transparent);
 }
 .pb-brow b {
+  grid-column: 2;
+  font-size: var(--text-dense);
   font-weight: 500;
 }
+/* Mono on the age: it is a value, read as a number. */
+.pb-brow em {
+  grid-column: 3;
+  align-self: center;
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.45);
+}
 .pb-brow span {
+  grid-column: 2 / -1;
   overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
+  font-size: var(--text-meta);
   color: rgba(242, 245, 248, 0.55);
 }
-.pb-brow u {
-  text-decoration: none;
-  font-variant-numeric: tabular-nums;
-  color: rgba(242, 245, 248, 0.75);
-}
-.pb-brow em {
-  min-width: 1.7rem;
-  text-align: right;
-  font-style: normal;
-  font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.4);
-}
 
-/* One signal, opened. The diff is the whole point: a claim you can check, not a
-   sentence asserting that something changed. */
+/* The anchor: one signal, opened. A meta line on top, the diff filling the
+   middle, the read on it along the bottom. Critical is the only color it
+   carries, and it lands on the pill and on the new price. */
 .pb-sig {
-  position: relative;
-  padding: 0.95rem 1.05rem 1.1rem;
-  border-radius: 9px;
-  background: rgba(20, 20, 23, 0.72);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
-.pb-sig::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0.95rem;
-  bottom: 0.95rem;
-  width: 2px;
-  border-radius: 0 2px 2px 0;
-  background: var(--critical);
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 .pb-sig-top {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
+  padding: 0.8rem 1.4rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   font-size: var(--text-meta);
 }
 .pb-sev {
@@ -1586,57 +1575,58 @@ html:has(.landing-canvas) {
   font-weight: 500;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: color-mix(in oklab, var(--critical) 80%, white);
+  color: color-mix(in oklab, var(--critical) 74%, white);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--critical) 42%, transparent);
 }
+/* A category is a label, not a severity, so it stays monochrome. */
 .pb-cat {
   padding: 0.14rem 0.4rem;
   border-radius: 4px;
-  color: color-mix(in oklab, var(--cat-pricing) 78%, white);
-  background: color-mix(in oklab, var(--cat-pricing) 16%, transparent);
+  color: rgba(242, 245, 248, 0.6);
+  background: rgba(255, 255, 255, 0.05);
 }
 .pb-sig-top em {
   margin-left: auto;
   font-style: normal;
-  color: rgba(242, 245, 248, 0.4);
-}
-.pb-sig-title {
-  margin-top: 0.6rem;
-  font-size: var(--text-content);
-  font-weight: 500;
-  line-height: 1.4;
-  letter-spacing: -0.008em;
-}
-/* Mono here is legitimate: it is a diff, read glyph by glyph. */
-.pb-diff {
-  margin-top: 0.7rem;
-  overflow: hidden;
-  border-radius: 6px;
   font-family: var(--font-mono);
-  font-size: var(--text-meta);
-  line-height: 1.75;
+  font-variant-numeric: tabular-nums;
+  color: rgba(242, 245, 248, 0.45);
 }
-.pb-diff .was,
-.pb-diff .now {
-  padding: 0.16rem 0.55rem;
+/* Mono here is legitimate: it is a diff, read glyph by glyph. Large, because
+   the price is the whole claim and the eye should land on it first. */
+.pb-diff {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  padding: 1.3rem 1.4rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 .pb-diff .was {
-  color: rgba(242, 245, 248, 0.42);
-  background: rgba(255, 255, 255, 0.04);
+  font-size: clamp(1.25rem, 2.6vw, 2rem);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: rgba(242, 245, 248, 0.4);
   text-decoration: line-through;
+  text-decoration-thickness: 1px;
 }
 .pb-diff .now {
-  color: color-mix(in oklab, var(--lp-teal) 68%, white);
-  background: color-mix(in oklab, var(--lp-teal) 11%, transparent);
+  margin-top: 0.2rem;
+  font-size: clamp(2.1rem, 5vw, 4.1rem);
+  line-height: 1.06;
+  letter-spacing: -0.035em;
+  color: color-mix(in oklab, var(--critical) 70%, white);
 }
-.pb-diff .was::before {
-  content: "- ";
-}
-.pb-diff .now::before {
-  content: "+ ";
+.pb-diff .sub {
+  margin-top: 0.8rem;
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.5);
 }
 .pb-sig-so {
-  margin-top: 0.7rem;
+  flex-shrink: 0;
+  padding: 0.8rem 1.4rem 0.9rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   font-size: var(--text-dense);
   line-height: 1.5;
   color: rgba(242, 245, 248, 0.6);
@@ -1647,77 +1637,56 @@ html:has(.landing-canvas) {
   font-weight: 500;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: rgba(242, 245, 248, 0.4);
+  color: rgba(242, 245, 248, 0.45);
 }
 
-/* Battle cards: a deck, because the point is there is one per competitor and
-   they keep themselves current. */
-.pb-deck {
-  position: relative;
-  height: 100%;
-}
-.pb-sheet {
-  position: absolute;
-  left: 0;
-  right: 0;
-  border-radius: 9px;
-  background: rgba(22, 22, 24, 0.85);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
-}
-.pb-sheet.s3 {
-  top: 0;
-  height: 3rem;
-  transform: scale(0.9);
-  opacity: 0.4;
-}
-.pb-sheet.s2 {
-  top: 0.55rem;
-  height: 3rem;
-  transform: scale(0.95);
-  opacity: 0.6;
-}
-.pb-sheet.s1 {
-  top: 1.15rem;
-  bottom: 0;
-  overflow: hidden;
-}
+/* One battle card, not a deck: the stack said "there are several", which the
+   title already says, and it left three grey rectangles doing nothing. */
 .pb-bc {
-  padding: 0.75rem 0.95rem;
-}
-.pb-bc + .pb-bc {
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.95rem 1.4rem 1.1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 .pb-bc i {
-  display: block;
+  flex-shrink: 0;
   font-style: normal;
   font-size: var(--text-meta);
   font-weight: 500;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: rgba(242, 245, 248, 0.42);
+  color: rgba(242, 245, 248, 0.45);
 }
+/* The sentence takes the middle, the same grammar the anchor uses: label on
+   top, object in the middle, freshness on the bottom edge. Spaced by the column
+   rather than by display: flex on the paragraph itself, which would turn every
+   <b> into a flex item and eat the space in front of it. */
 .pb-bc p {
-  margin-top: 0.3rem;
-  font-size: var(--text-dense);
+  margin-top: 0.55rem;
+  font-size: var(--text-content);
   line-height: 1.45;
+}
+.pb-bc p b,
+.pb-bc p s {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 .pb-bc p b {
   font-weight: 500;
-  color: color-mix(in oklab, var(--lp-teal) 68%, white);
 }
+.pb-bc p s {
+  color: rgba(242, 245, 248, 0.4);
+}
+/* The freshness line is the whole promise of the card: this section was
+   rewritten while you were not looking. It sits on the bottom edge. */
 .pb-bc em {
-  display: block;
-  margin-top: 0.3rem;
+  padding-top: 0.9rem;
   font-style: normal;
   font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.38);
+  color: rgba(242, 245, 248, 0.45);
 }
-/* The freshness dot is the whole promise of the card: this section was rewritten
-   while you were not looking. */
-.pb-bc.live i {
-  color: color-mix(in oklab, var(--lp-teal) 68%, white);
-}
-.pb-bc.live i::before {
+.pb-bc em::before {
   content: "";
   display: inline-block;
   width: 5px;
@@ -1725,42 +1694,42 @@ html:has(.landing-canvas) {
   margin-right: 0.4rem;
   border-radius: 50%;
   vertical-align: middle;
-  background: var(--lp-teal);
+  background: rgba(242, 245, 248, 0.5);
   animation: lp-pulse 2.2s var(--lp-ease) infinite;
 }
 
-/* Ask: a prompt bar, an answer, the pages it came from. */
+/* Ask: a prompt bar and an answer. The bar runs edge to edge, like the command
+   palette it is, instead of floating as a rounded pill inside the card. */
 .pb-ask {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
 }
 .pb-ask-bar {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.62rem 0.8rem;
-  border-radius: 8px;
-  background: rgba(22, 22, 24, 0.85);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, var(--lp-teal) 30%, transparent),
-    0 0 0 4px color-mix(in oklab, var(--lp-teal) 7%, transparent);
+  padding: 0.7rem 1.4rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.025);
   font-size: var(--text-dense);
 }
 .pb-ask-bar svg {
   flex-shrink: 0;
-  color: color-mix(in oklab, var(--lp-teal) 62%, white);
+  color: rgba(242, 245, 248, 0.5);
 }
 .pb-caret {
   width: 1px;
   height: 0.95rem;
-  background: var(--lp-teal);
+  background: rgba(242, 245, 248, 0.7);
   animation: lp-blink 1.06s step-end infinite;
 }
 /* The answer is a list, not a paragraph: it is what the product actually
    returns, and a wide cell would otherwise render it as one lonely line with a
    hole above it. */
 .pb-ask-ans {
+  padding: 0.9rem 1.4rem 1.1rem;
   font-size: var(--text-dense);
   line-height: 1.55;
   color: rgba(242, 245, 248, 0.62);
@@ -1781,26 +1750,11 @@ html:has(.landing-canvas) {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: color-mix(in oklab, var(--lp-teal) 55%, transparent);
+  background: rgba(242, 245, 248, 0.3);
 }
 .pb-ask-ans b {
   font-weight: 500;
   color: rgba(242, 245, 248, 0.92);
-}
-.pb-cites {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-/* Mono on the citations: they are URLs. */
-.pb-cites span {
-  padding: 0.16rem 0.42rem;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.5);
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
 /* Rank ladder: the number people want is their rank, and the share is the
@@ -1808,29 +1762,36 @@ html:has(.landing-canvas) {
 .pb-ladder {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
 }
 .pb-lq {
-  margin-bottom: 0.25rem;
+  flex-shrink: 0;
+  padding: 0 1.4rem 0.7rem;
   font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.45);
+  color: rgba(242, 245, 248, 0.5);
 }
+/* A floor under the row: four rows splitting a short cell would otherwise line
+   up tighter than the text inside them. */
 .pb-lrow {
   position: relative;
   display: flex;
+  flex: 1;
+  min-height: 2.3rem;
   align-items: center;
   gap: 0.6rem;
   overflow: hidden;
-  padding: 0.34rem 0.6rem;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.035);
+  padding: 0 1.4rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   font-size: var(--text-dense);
+}
+.pb-lrow u,
+.pb-lrow em {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 .pb-lrow u {
   text-decoration: none;
   font-size: var(--text-meta);
-  font-variant-numeric: tabular-nums;
-  color: rgba(242, 245, 248, 0.35);
+  color: rgba(242, 245, 248, 0.4);
 }
 .pb-lrow b {
   font-weight: 500;
@@ -1838,8 +1799,7 @@ html:has(.landing-canvas) {
 .pb-lrow em {
   margin-left: auto;
   font-style: normal;
-  font-variant-numeric: tabular-nums;
-  color: rgba(242, 245, 248, 0.55);
+  color: rgba(242, 245, 248, 0.6);
 }
 .pb-lrow i {
   position: absolute;
@@ -1848,56 +1808,77 @@ html:has(.landing-canvas) {
   height: 2px;
   background: rgba(255, 255, 255, 0.16);
 }
+/* Your own row is white, not a second hue: the color budget belongs to the
+   severities. */
 .pb-lrow.is-self {
-  background: color-mix(in oklab, var(--lp-teal) 10%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--lp-teal) 26%, transparent);
+  background: rgba(255, 255, 255, 0.05);
 }
 .pb-lrow.is-self b,
 .pb-lrow.is-self em {
-  color: color-mix(in oklab, var(--lp-teal) 65%, white);
+  color: rgba(242, 245, 248, 0.98);
 }
 .pb-lrow.is-self i {
-  background: var(--lp-teal);
+  background: rgba(255, 255, 255, 0.55);
 }
 .pb-note {
-  margin-top: 0.7rem;
+  flex-shrink: 0;
+  padding: 0.75rem 1.4rem 1rem;
   font-size: var(--text-meta);
   line-height: 1.5;
-  color: rgba(242, 245, 248, 0.4);
+  color: rgba(242, 245, 248, 0.45);
 }
 
 /* The quarter as one object: thirteen weeks of weekdays, lit by what landed. */
-/* Count on the left, calendar on the right: stacked, the grid had to stay
-   narrow to fit the height and left half the widest cell empty. */
+/* Count above, calendar below: the cell is a quarter of a row wide now, and
+   side by side neither of the two had room left. */
 .pb-quarter {
   display: flex;
-  align-items: center;
-  gap: 1.5rem;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 1.4rem 1.3rem;
 }
 .pb-qstat {
-  flex-shrink: 0;
-  max-width: 8.5rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
 }
 .pb-qstat b {
-  display: block;
-  font-size: 2.4rem;
+  font-family: var(--font-mono);
+  font-size: 1.9rem;
   font-weight: 500;
   line-height: 1;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
 .pb-qstat span {
-  display: block;
-  margin-top: 0.4rem;
   font-size: var(--text-meta);
   line-height: 1.45;
-  color: rgba(242, 245, 248, 0.45);
+  color: rgba(242, 245, 248, 0.5);
 }
 .pb-weeks {
   display: flex;
-  flex: 1;
   gap: 0.3rem;
-  max-width: 21rem;
+}
+/* One band wide enough to hold both objects: the cell goes full width there,
+   and a calendar stretched across it would be a wall of tiles. */
+@media (min-width: 861px) and (max-width: 1100px) {
+  .pb-quarter {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 1.4rem;
+  }
+  .pb-qstat {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+    max-width: 10rem;
+  }
+  .pb-weeks {
+    flex: 1;
+    max-width: 24rem;
+  }
 }
 /* One column per week, one square per weekday of that week. */
 .pb-week {
@@ -2003,11 +1984,14 @@ html:has(.landing-canvas) {
     grid-template-columns: 1fr 1fr;
   }
 }
+/* Mono on the four values: they are figures, read as figures, and the strip
+   sits right under a bento whose numbers all read the same way. */
 .lp-stat b {
   display: block;
+  font-family: var(--font-mono);
   font-size: var(--text-3xl);
   font-weight: 500;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
 .lp-stat span {

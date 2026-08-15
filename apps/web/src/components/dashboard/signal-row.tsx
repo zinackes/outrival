@@ -135,10 +135,14 @@ export function SignalRow({
         >
           {title}
         </span>
-        {/* Why it matters, in the one line the brief gives every item. Clamped:
-            a second paragraph under the title would undo what the title bought. */}
+        {/* Why it matters — the sentence the reader actually triages on, so it
+            gets two lines. At one it cut mid-clause ("The removed claim does
+            not ove…"): an excerpt with the conclusion missing, which forced the
+            reader to open every signal to sort it. Two lines is still a bound,
+            not the paragraph the title bought us out of — a short so-what keeps
+            the row at 77px, a long one grows it to 95. */}
         {signal.soWhat && (
-          <span className="mt-0.5 block truncate text-dense leading-snug text-muted-foreground">
+          <span className="mt-0.5 line-clamp-2 text-dense leading-snug text-muted-foreground">
             {signal.soWhat}
           </span>
         )}

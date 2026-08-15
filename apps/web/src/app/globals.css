@@ -3480,6 +3480,10 @@ html:has(.landing-canvas) {
     gap: 0.6rem;
   }
 }
+/* The category hub is a survey, not a ranking: no numeral, so no gutter. */
+.lp-tools.is-flat > li {
+  grid-template-columns: 1fr;
+}
 .lp-tool-rank {
   padding-top: 0.35rem;
   font-size: var(--text-meta);

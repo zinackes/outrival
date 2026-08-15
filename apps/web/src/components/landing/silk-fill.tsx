@@ -25,6 +25,10 @@ export function SilkFill({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
+  // `lit` trails `mounted` by two frames: the canvas is transparent until its
+  // first shader pass has run, so fading it in from the mount frame showed a
+  // blank card first. Two rAFs, then a 500ms fade — no snap on scroll.
+  const [lit, setLit] = useState(false);
 
   useEffect(() => {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -34,14 +38,31 @@ export function SilkFill({
       (entries) => {
         for (const entry of entries) setMounted(entry.isIntersecting);
       },
-      { rootMargin: "200px" },
+      // 600px of lead: the canvas is compiled and painted well before the card
+      // reaches the fold, so scrolling never catches it mid-warm-up.
+      { rootMargin: "600px" },
     );
     io.observe(el);
     return () => io.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (!mounted) {
+      setLit(false);
+      return;
+    }
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setLit(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [mounted]);
+
   return (
-    <div ref={ref} className="lp-silk" aria-hidden>
+    <div ref={ref} className={lit ? "lp-silk is-lit" : "lp-silk"} aria-hidden>
       {mounted && (
         <Silk
           color={color}

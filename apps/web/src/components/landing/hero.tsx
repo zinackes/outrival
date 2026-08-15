@@ -15,12 +15,6 @@ export function Hero() {
         <div className="lp-glow-red" aria-hidden />
         <VantaFog />
         <div className="lp-fog-grain" aria-hidden />
-        {/* The strip rides inside the fog stack, transparent: an opaque band
-            above the section cut the hero off from its own background. */}
-        <div className="lp-banner">
-          <b>Free forever on 2 competitors</b> · No credit card · Cancel in one
-          click
-        </div>
         <Nav tone="landing" />
         <div className="lp-center">
           <h1 className="lp-h1">
@@ -41,6 +35,11 @@ export function Hero() {
               See a sample digest
             </a>
           </div>
+          {/* The old top banner answered an objection nobody had yet. It reads
+              as the button's fine print instead, where the objection lands. */}
+          <p className="lp-reassure">
+            Free forever on 2 competitors · No credit card · Cancel in one click
+          </p>
         </div>
         <div className="lp-machine" aria-hidden>
           <SignalLane />

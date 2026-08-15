@@ -935,24 +935,6 @@ html:has(.landing-canvas) {
 /* the miniature product replicas) stay raw and are commented as such.  */
 /* ==================================================================== */
 
-/* ---- Announcement strip — inside the hero, over the fog --------------- */
-/* No band, no rule: an opaque strip above the section severed the hero from
-   its own background. It floats in the fog stack, one notch above the nav. */
-.lp-banner {
-  position: relative;
-  z-index: 10;
-  background: transparent;
-  color: var(--lp-ink-subtle);
-  text-align: center;
-  font-size: var(--text-dense);
-  font-weight: 500;
-  padding: 0.9rem 1rem 0.15rem;
-}
-.lp-banner b {
-  color: var(--lp-ink-muted);
-  font-weight: 500;
-}
-
 /* ---- Hero shell ------------------------------------------------------ */
 .lp-hero {
   position: relative;
@@ -1149,6 +1131,12 @@ html:has(.landing-canvas) {
 .lp-btn-hero {
   padding: 0.95rem 1.5rem;
   font-size: var(--text-base);
+}
+/* Fine print under the CTAs — the terms, read at the moment of clicking. */
+.lp-reassure {
+  margin-top: 1.1rem;
+  font-size: var(--text-dense);
+  color: oklch(0.45 0.014 260);
 }
 /* One notch off the button's ink so the pair reads as primary + secondary,
    with the rule taking the text's own color instead of the generic hairline. */
@@ -1370,6 +1358,15 @@ html:has(.landing-canvas) {
   height: 100%;
   border-radius: inherit;
   pointer-events: none;
+}
+/* The fade lives on the canvas, not on .lp-silk: each host region sets its own
+   .lp-silk opacity, and animating that would flatten those levels. */
+.lp-silk canvas {
+  opacity: 0;
+  transition: opacity 500ms var(--lp-ease);
+}
+.lp-silk.is-lit canvas {
+  opacity: 1;
 }
 .lp-card .lp-silk {
   opacity: 0.9;
@@ -1789,13 +1786,16 @@ html:has(.landing-canvas) {
 }
 .lp-pstep .pstep-head {
   display: flex;
-  align-items: center;
-  gap: 0.7rem;
+  align-items: baseline;
+  gap: 0.6rem;
 }
-/* Plain colored figure, not a badge. */
+/* Plain colored figure, not a badge — and the loudest thing in the head, so
+   the five steps read as an ordered sequence before they read as titles. */
 .lp-pstep .pstep-num {
-  font-size: var(--text-content);
+  font-size: var(--text-3xl);
+  line-height: 1;
   font-weight: 600;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   color: var(--pc);
 }
@@ -1988,20 +1988,43 @@ html:has(.landing-canvas) {
   background: color-mix(in oklab, var(--c) 12%, #141414);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c) 32%, transparent);
 }
+/* Four columns, each severity stating the response it asks for — a bare row of
+   colored labels was decoration, and read as such. */
 .lp-sev-fixed {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 2.4rem;
-  margin-top: 2.2rem;
-  font-size: var(--text-content);
-  font-weight: 500;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.6rem;
+  margin-top: 2.6rem;
+}
+@media (max-width: 720px) {
+  .lp-sev-fixed {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 .lp-sev-fixed .s {
   display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.lp-sev-fixed .s-head {
+  display: flex;
   align-items: center;
   gap: 0.55rem;
-  color: rgba(242, 245, 248, 0.8);
+  font-size: var(--text-content);
+  font-weight: 500;
+  color: #f2f5f8;
+}
+.lp-sev-fixed .s-gloss {
+  font-size: var(--text-dense);
+  line-height: 1.5;
+  color: rgba(242, 245, 248, 0.6);
+}
+.lp-sev-note {
+  margin-top: 1.6rem;
+  font-size: var(--text-dense);
+  color: rgba(242, 245, 248, 0.5);
 }
 
 /* ---- Hot price card — the one warm moment in the dark body ------------- */

@@ -1824,7 +1824,7 @@ html:has(.landing-canvas) {
 .lp-pstep .viz-bleed {
   margin: auto -1.3rem -1.2rem 0;
   padding: 1.1rem 0 0;
-  height: var(--viz-h, 8.4rem);
+  height: var(--viz-h, 10.6rem);
   overflow: hidden;
   mask-image:
     linear-gradient(to right, #000 74%, transparent 100%),
@@ -1881,7 +1881,7 @@ html:has(.landing-canvas) {
 .lp-pstep .cls-grid .cell {
   aspect-ratio: 1;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.11);
 }
 .lp-pstep .cls-grid .is-hit {
   background: var(--c);
@@ -1907,7 +1907,7 @@ html:has(.landing-canvas) {
 }
 .lp-pstep .wr-from {
   display: block;
-  margin: 0.85rem 0 0.4rem;
+  margin: 0.6rem 0 0.35rem;
   font-size: var(--text-meta);
   font-weight: 500;
   letter-spacing: 0.06em;

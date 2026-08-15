@@ -227,7 +227,7 @@ export function Pipeline() {
                 <div>
                   <div className="act-meta">
                     <b>Outrival</b>
-                    <i>09:04</i>
+                    <i>09:06</i>
                   </div>
                   <div className="act-txt">
                     Vantage cuts Pro to $49/mo, seat minimum dropped.
@@ -235,6 +235,22 @@ export function Pipeline() {
                   <div className="act-reacts">
                     <span className="rc">Dismissed</span>
                     <span className="rc">Snooze 30d</span>
+                  </div>
+                </div>
+              </div>
+              <div className="act-msg">
+                <LogoMark size={22} className="ava" />
+                <div>
+                  <div className="act-meta">
+                    <b>Outrival</b>
+                    <i>09:11</i>
+                  </div>
+                  <div className="act-txt">
+                    Beacon raises a $200M Series E.
+                  </div>
+                  <div className="act-reacts">
+                    <span className="rc">Watch closely</span>
+                    <span className="rc">Shared with the board</span>
                   </div>
                 </div>
               </div>

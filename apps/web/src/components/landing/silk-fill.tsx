@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Silk from "./silk";
+import dynamic from "next/dynamic";
+
+// three + @react-three/fiber are ~170 KB gzip. Imported statically they land in
+// the landing route's entry chunk whatever the viewport gate below decides —
+// and they defeat VantaFog's own dynamic import of three, since a module
+// already in the chunk is already downloaded. Behind next/dynamic instead:
+// nothing ships until a host card comes within the observer's lead.
+const Silk = dynamic(() => import("./silk"), { ssr: false });
 
 // WebGL budget guard for the Silk fills: up to ~15 of them live on the landing
 // (6 bento cards, 5 pipeline steps, 4 plans) next to the hero's

@@ -15,6 +15,10 @@ export function VantaFog() {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const el = ref.current;
     if (!el) return;
+    // The hero this canvas is about to cover: .lp-fog-live freezes and hides
+    // the CSS fog banks under it, which are occluded from the moment the
+    // effect paints (see the .lp-fog-live rule in globals.css).
+    const hero = el.closest<HTMLElement>(".lp-hero, .lp-page-hero");
     let effect: VantaEffect | null = null;
     let cancelled = false;
     void (async () => {
@@ -31,6 +35,13 @@ export function VantaFog() {
         gyroControls: false,
         minHeight: 200,
         minWidth: 200,
+        // Vanta renders at devicePixelRatio / scale, and both scales default
+        // to 1: on a retina screen that is 4x the pixels of a full-viewport
+        // fragment shader, for fog whose whole subject is blur. The divisors
+        // below cap the render at 1.5x (1.25x on mobile, weaker GPU) and the
+        // max(1, …) keeps a DPR-1 screen at native rather than under it.
+        scale: Math.max(1, devicePixelRatio / 1.5),
+        scaleMobile: Math.max(1, devicePixelRatio / 1.25),
         // 24-bit ints. Paper base keeps the canvas opaque over the fallback;
         // highlight/midtone/lowlight echo the CSS fog banks (soft red, teal,
         // iris — the landing's three signal hues).
@@ -42,9 +53,11 @@ export function VantaFog() {
         speed: 1.1,
         zoom: 0.7,
       });
+      hero?.classList.add("lp-fog-live");
     })();
     return () => {
       cancelled = true;
+      hero?.classList.remove("lp-fog-live");
       effect?.destroy();
       effect = null;
     };

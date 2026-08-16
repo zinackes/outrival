@@ -77,7 +77,16 @@ comme des bugs applicatifs.
 
 ## Session 3 — réfutation et rapport
 
-Exige que les deux fichiers précédents existent.
+Exige que les deux fichiers précédents existent. Avant de la lancer, exécute
+**toi-même** (le DLQ passe par ton ssh) :
+
+```
+node docs/audits/2026-08-16/harness/telemetry.mjs
+```
+
+Attendu : `telemetry/{sentry,dlq,scrape-runs}.json` sous
+`~/.outrival-audit/2026-08-16/`. Un `SKIP` dans la sortie est tolérable, à
+signaler dans le rapport ; les critiques de la phase 4 lisent ces fichiers.
 
 ```
 Audit Outrival 2026-08-16, session 3 sur 3: réfutation et rapport.

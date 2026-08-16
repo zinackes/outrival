@@ -252,6 +252,23 @@ La fusion se fait par sévérité, en parallèle, puis un agent transcrit
 `findings-ux.json`. L'accord entre angles est du signal : un défaut vu par
 `responsive` **et** `visual-consistency` compte plus qu'un défaut vu une fois.
 
+### Télémétrie prod (entrée de la phase 4)
+
+`telemetry.mjs`, lancé **par Mathys** avant la session 3 (le DLQ passe par son
+ssh), écrit trois fichiers dans `~/.outrival-audit/2026-08-16/telemetry/` :
+
+| Fichier | Source | Contenu |
+|---|---|---|
+| `sentry.json` | API Sentry, 30 j | erreurs réelles non résolues, triées par fréquence |
+| `dlq.json` | `outrival-pg` via ssh | jobs morts après épuisement des retries, échecs par queue |
+| `scrape-runs.json` | Neon prod | agrégats d'échecs et de refus de scrape, pires monitors |
+
+Pourquoi : les critiques de complétude devinaient ce qui casse au runtime ; ces
+fichiers sont ce qui a **réellement** cassé. `audit-verify.js` les donne à lire
+aux cinq critiques. Une erreur prod récurrente qu'aucun finding n'explique est
+elle-même un trou de couverture. Un collecteur en échec est un `SKIP` loggé et
+une lacune à déclarer dans le rapport, jamais un blocage.
+
 ### Phase 4, réfutation et balayage (workflow, 300 à 450 agents `sonnet`)
 
 **Session 3.** Un modèle principal seul, face à 150 findings à rouvrir un par un,

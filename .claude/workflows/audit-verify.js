@@ -331,6 +331,13 @@ screenshots: ${OUT}.
 An audit already ran: 40 code agents across 8 packages and 5 lenses, plus 17
 product angles and 2 live browser passes over 80 routes.
 
+Real production telemetry sits in ${OUT}/telemetry/: sentry.json (top unresolved
+errors, 30d), dlq.json (jobs that exhausted their retries, plus failure counts
+per queue), scrape-runs.json (scrape failure and refusal aggregates). READ the
+files relevant to your angle before proposing gaps: a probe grounded in an error
+that actually fired beats a speculative one, and a recurring prod failure that no
+finding explains is itself a gap. If a file is missing, name that as a gap.
+
 What those agents themselves admitted they did NOT cover:
 ${JSON.stringify(loaded.notAudited)}
 

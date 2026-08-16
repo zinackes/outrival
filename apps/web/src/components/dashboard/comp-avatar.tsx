@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 import { useTheme } from "next-themes";
+import { COMP_FILL, COMP_ON_FILL, competitorColorVars } from "@/lib/competitor-color";
+import {
+  competitorFallbackColor,
+  competitorInitials,
+} from "@/lib/competitor-identity";
 
 function domainFromUrl(url?: string | null): string | null {
   if (!url) return null;
@@ -192,12 +197,19 @@ export function CompAvatar({
   name,
   url,
   size = 32,
+  color,
 }: {
   name: string;
   url?: string | null;
   size?: number;
+  /**
+   * The competitor's assigned colour. Absent, the tile borrows a hue derived from
+   * the name — without it, every competitor with no favicon renders the same
+   * neutral square and the initials are doing the whole job alone.
+   */
+  color?: string | null;
 }) {
-  const letter = name ? name[0]!.toUpperCase() : "?";
+  const initials = name ? competitorInitials(name) : "?";
   const domain = domainFromUrl(url);
   const { resolvedTheme } = useTheme();
   const [failed, setFailed] = useState(false);
@@ -235,29 +247,41 @@ export function CompAvatar({
   const blank = analysis?.kind === "glyph" && analysis.src === null;
   const showLetter = !showIcon || !loaded || blank;
 
+  // Only the initials wear the competitor's colour. Behind a real favicon the tile
+  // keeps the neutral surface: a tinted plate showing through a transparent brand
+  // glyph puts two identities on one 18px square.
+  const tint =
+    competitorColorVars(color) ?? competitorColorVars(competitorFallbackColor(name));
+
   return (
     <div
+      title={name || undefined}
       style={{
+        ...(showLetter ? tint : null),
         position: "relative",
         width: size,
         height: size,
         borderRadius: 4,
-        background: "var(--surface-2)",
+        background: showLetter ? COMP_FILL : "var(--surface-2)",
+        color: showLetter ? COMP_ON_FILL : undefined,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         fontFamily: "var(--font-display)",
         fontWeight: 600,
-        fontSize: Math.round(size * 0.46),
+        // Two glyphs in the same box need the tighter step, or the pair touches the
+        // tile's edges on the 18px avatar the signals list uses.
+        fontSize: Math.round(size * (initials.length > 1 ? 0.38 : 0.46)),
+        letterSpacing: initials.length > 1 ? "-0.02em" : undefined,
         flexShrink: 0,
         overflow: "hidden",
       }}
     >
-      {/* The initial is a PLACEHOLDER, not a backdrop: it is removed the moment the favicon
-          paints. Left underneath, it showed through every transparent logo — the glyph read
-          as sitting on top of a stray letter. A missing URL, a load error, or a favicon with
-          no visible pixels keeps it — never an empty box. */}
-      {showLetter && letter}
+      {/* The initials are a PLACEHOLDER, not a backdrop: they are removed the moment the
+          favicon paints. Left underneath, they showed through every transparent logo — the
+          glyph read as sitting on top of stray letters. A missing URL, a load error, or a
+          favicon with no visible pixels keeps them — never an empty box. */}
+      {showLetter && initials}
       {showIcon && (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element -- dynamic proxied icon, not a static asset */}

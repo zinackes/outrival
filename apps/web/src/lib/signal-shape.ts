@@ -37,6 +37,32 @@ const SURFACE =
 const CLAUSE =
   /,\s+(?:after|which|while|whilst|whereas|though|although|following|replacing|compared)\b/i;
 
+// The DEFINITE generic subject, anywhere but the front of the sentence (the front
+// is SUBJECT's job — the row already carries the name there). A bare "competitor"
+// is left alone: it is a common noun in "a new competitor entered the space", and
+// swapping a name into that sentence states something the model never said.
+const GENERIC_SUBJECT = /\bthe\s+competitor(?:'s|’s)?\b/gi;
+
+/**
+ * Put the competitor's NAME where the model wrote "the competitor".
+ *
+ * The insight prompt hands the model the name and it still writes the generic
+ * subject, which is what made a screen of fifty signals read as fifty rows about
+ * one unnamed company (OUT-179). Doing it here rather than only in the prompt
+ * fixes the backlog too: every signal already stored keeps its generic prose
+ * forever otherwise.
+ */
+export function nameCompetitor(
+  text: string,
+  competitorName: string | null | undefined,
+): string {
+  const name = competitorName?.trim();
+  if (!name) return text;
+  return text.replace(GENERIC_SUBJECT, (match) =>
+    /['’]s$/.test(match) ? `${name}'s` : name,
+  );
+}
+
 /** The sentence break, ignoring the periods inside "$16.00" and "v2.1". */
 function firstSentence(text: string): string {
   const m = /[.!?](?:\s|$)/.exec(text);
@@ -75,6 +101,9 @@ export function signalTitle(
     text = text.replace(new RegExp(`^${escapeRe(name)}(?:'s|’s)?\\s+`, "i"), "");
   }
   text = text.replace(SUBJECT, "").replace(SURFACE, "");
+  // Whatever generic subject survives the leading strip is mid-sentence, where the
+  // row has nothing else to say who it means.
+  text = nameCompetitor(text, name);
 
   text = firstSentence(text);
   const clause = CLAUSE.exec(text);

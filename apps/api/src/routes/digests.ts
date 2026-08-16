@@ -1,7 +1,15 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { and, count, desc, eq, gte, isNull, lt, ne, notInArray, or } from "drizzle-orm";
-import { digests, signals, competitors, organizations, monitors, changes } from "@outrival/db";
+import {
+  digests,
+  signals,
+  competitors,
+  organizations,
+  monitors,
+  changes,
+  loadMemorySignals,
+} from "@outrival/db";
 import {
   capDigestSignals,
   DIGEST_MAX_SIGNALS,
@@ -10,6 +18,8 @@ import {
   type DigestInputSignal,
 } from "@outrival/ai";
 import {
+  buildCompetitorMemory,
+  MEMORY_HISTORY_CAP,
   renderDigestEmail,
   signDigestFeedbackToken,
   signUnsubscribeToken,
@@ -196,9 +206,24 @@ digestsRouter.get("/in-progress", async (c) => {
   const kept = capDigestSignals(ranked).kept as Array<(typeof ranked)[number]>;
   const keptIds = new Set(kept.map((k) => k.id));
 
+  // Accumulated memory (OUT-172), built from the same loader and the same builder the
+  // cron uses, so the preview shows the block Monday's brief will actually carry rather
+  // than a second approximation of it. Detail fetch only: the card needs counts, and
+  // this reads the whole tracking period, not just the window above.
+  const memory = buildCompetitorMemory(
+    await loadMemorySignals({ orgId, limit: MEMORY_HISTORY_CAP }),
+    { now },
+  );
+
   return c.json({
     inProgress: {
       ...base,
+      ...(memory.stories.length > 0
+        ? {
+            competitorStories: memory.stories,
+            competitorStoriesOmitted: memory.omitted,
+          }
+        : {}),
       signals: rows.map((r) => ({
         id: r.id,
         competitor: r.competitor,

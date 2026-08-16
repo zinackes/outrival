@@ -141,7 +141,9 @@ const billing = await page.evaluate(() => (document.body?.innerText ?? "").slice
 const plan = billing.match(/\b(Free|Starter|Pro|Scale|Enterprise)\b/)?.[1] ?? "unknown";
 console.log(`Detected plan: ${plan}`);
 
-await writeFile(join(OUT_DIR, "session-check.json"), JSON.stringify({ landed, plan, checkedAt: new Date().toISOString() }, null, 2));
+// audit-ux reads this from the dated artifacts dir, next to routes.json.
+await mkdir(join(OUT_DIR, "2026-08-16"), { recursive: true });
+await writeFile(join(OUT_DIR, "2026-08-16", "session-check.json"), JSON.stringify({ landed, plan, checkedAt: new Date().toISOString() }, null, 2));
 console.log(`\nSession saved to ${STATE_PATH}`);
 console.log("Next: node docs/audits/2026-08-16/harness/inventory.mjs");
 

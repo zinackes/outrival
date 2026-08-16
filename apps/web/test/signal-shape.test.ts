@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { signalTitle, signalTier, TITLE_MAX } from "../src/lib/signal-shape";
+import {
+  nameCompetitor,
+  signalTitle,
+  signalTier,
+  TITLE_MAX,
+} from "../src/lib/signal-shape";
 
 const sig = (insight: string, competitorName = "JFrog") => ({
   insight,
@@ -91,6 +96,49 @@ describe("signalTitle", () => {
 
   test("an empty insight never renders an empty row", () => {
     expect(signalTitle(sig("   "))).toBe("Signal");
+  });
+
+  test("names the competitor the model left generic mid-sentence", () => {
+    expect(signalTitle(sig("Pricing dropped on the competitor's Pro plan"))).toBe(
+      "Pricing dropped on JFrog's Pro plan",
+    );
+  });
+});
+
+describe("nameCompetitor", () => {
+  test("replaces the generic subject with the name", () => {
+    expect(nameCompetitor("The competitor now undercuts us", "JFrog")).toBe(
+      "JFrog now undercuts us",
+    );
+  });
+
+  test("keeps the possessive", () => {
+    expect(nameCompetitor("Cuts into the competitor's free tier", "JFrog")).toBe(
+      "Cuts into JFrog's free tier",
+    );
+  });
+
+  test("handles the typographic apostrophe the model writes", () => {
+    expect(nameCompetitor("The competitor’s page changed", "JFrog")).toBe(
+      "JFrog's page changed",
+    );
+  });
+
+  test("replaces every occurrence, not just the first", () => {
+    expect(
+      nameCompetitor("The competitor raised the competitor's floor price", "JFrog"),
+    ).toBe("JFrog raised JFrog's floor price");
+  });
+
+  test("leaves the common noun alone", () => {
+    const text = "A new competitor entered the space, and competitors are cutting";
+    expect(nameCompetitor(text, "JFrog")).toBe(text);
+  });
+
+  test("a missing name leaves the text untouched", () => {
+    expect(nameCompetitor("The competitor shipped SSO", "  ")).toBe(
+      "The competitor shipped SSO",
+    );
   });
 });
 

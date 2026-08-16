@@ -80,9 +80,12 @@ ${myProductBlock}
 <task>
 Generate a strategic insight for this competitor change.
 
-State what the competitor's page NOW says, and what it STOPPED saying. Text under
+State what ${competitorName}'s page NOW says, and what it STOPPED saying. Text under
 <removed> was DELETED: never report it as something they announced, launched or
 introduced. Dropping a claim is itself the news — say they removed it.
+
+Call them "${competitorName}". Never write "the competitor": these signals are read
+in a list covering many companies at once, where a generic subject names nobody.
 
 Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 Write all text values in English.

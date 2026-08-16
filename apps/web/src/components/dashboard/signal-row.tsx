@@ -5,7 +5,7 @@ import { formatDistanceToNow } from "date-fns";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { shortAge } from "@/lib/format-date";
-import { signalTitle } from "@/lib/signal-shape";
+import { nameCompetitor, signalTitle } from "@/lib/signal-shape";
 import { sourceLabel } from "@/lib/source-labels";
 import { competitorNameColor } from "@/lib/competitor-color";
 import { SeverityGauge } from "@/components/outrival/severity-scale";
@@ -69,6 +69,11 @@ export function SignalRow({
       tabIndex={tabStop ? 0 : -1}
       role="option"
       aria-selected={selected}
+      // Hover disclosure for the rows whose meta line does not carry the name (a
+      // competitor heading stands over them, and it scrolls away — only the tier
+      // header above it sticks). It cannot live on the avatar: that fades out under
+      // the selection checkbox on the very hover that would reveal it.
+      title={showCompetitor ? undefined : signal.competitorName}
       onFocus={onFocus}
       onClick={onSelect}
       className={cn(
@@ -108,6 +113,7 @@ export function SignalRow({
           <CompAvatar
             name={signal.competitorName}
             url={signal.competitorUrl}
+            color={signal.competitorColor}
             size={18}
           />
         </span>
@@ -121,6 +127,14 @@ export function SignalRow({
             no read state at all. Inside the button's content it lands in the
             name, first, the way the dot lands first for a sighted reader. */}
         {unread && <span className="sr-only">Unread. </span>}
+        {/* Under a competitor heading the name is not repeated on the meta line, so
+            it is not in this row's accessible name either — and a heading is not
+            announced when the reader arrows through the listbox one option at a
+            time. Say it here instead; sighted readers have the heading and the
+            tile's colour. */}
+        {!showCompetitor && (
+          <span className="sr-only">{signal.competitorName}. </span>
+        )}
         {/* The finding leads: it's what the reader is scanning for. */}
         <span
           className={cn(
@@ -143,7 +157,7 @@ export function SignalRow({
             the row at 77px, a long one grows it to 95. */}
         {signal.soWhat && (
           <span className="mt-0.5 line-clamp-2 text-dense leading-snug text-muted-foreground">
-            {signal.soWhat}
+            {nameCompetitor(signal.soWhat, signal.competitorName)}
           </span>
         )}
         {/* Where we caught it, and — ungrouped — who moved. The title used to
@@ -278,6 +292,7 @@ export function FoldRow({
         <CompAvatar
           name={first.competitorName}
           url={first.competitorUrl}
+          color={first.competitorColor}
           size={18}
         />
         <SeverityGauge severity={maxSev} />
@@ -297,8 +312,9 @@ export function FoldRow({
           {/* The AI batch summary when the grouping came from the server, else a
               plain count. Neither names the competitor reliably, so the meta line
               under it always does. */}
-          {summary ??
-            `${signals.length} similar ${catLabel(first.category).toLowerCase()} signals`}
+          {summary
+            ? nameCompetitor(summary, first.competitorName)
+            : `${signals.length} similar ${catLabel(first.category).toLowerCase()} signals`}
         </span>
         <span className="mt-1 flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground">
           <StackIcon size={14} className="shrink-0" aria-hidden />

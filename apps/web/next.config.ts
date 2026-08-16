@@ -42,6 +42,12 @@ const nextConfig: NextConfig = {
     // shells stay reusable longer. Experimental flag, but stable since 14.2.
     staleTimes: { dynamic: 30, static: 180 },
   },
+  images: {
+    // Next 16 only serves the qualities listed here (default: [75] alone). The
+    // product captures are dense UI at 13px type, where q75 smears the glyphs —
+    // they ask for 90. Everything else stays on the default.
+    qualities: [75, 90],
+  },
   // Baseline security headers on every response. Deliberately NO full
   // Content-Security-Policy (default-src/script-src): the app loads Turnstile,
   // Stripe, PostHog and Sentry from third-party origins plus Next's own inline

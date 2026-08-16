@@ -3695,9 +3695,11 @@ html:has(.landing-canvas) {
 }
 /* Pages whose subject is the text right underneath — an article, a policy,
    a changelog. A full fold of fog in front of a retention table is a wall,
-   so they get the same opening at half the height. */
+   so they get the same opening at two thirds of the height. Not less: the
+   bottom 13rem is the mask fading the fog into the paper band, and under
+   ~70dvh that fade starts before the headline has finished. */
 .lp-page-hero.is-compact {
-  min-height: 62dvh;
+  min-height: 74dvh;
 }
 /* The compact hero belongs to the text under it, so it takes that column's
    measure — otherwise the headline sits 10rem left of its own first
@@ -3869,6 +3871,26 @@ html:has(.landing-canvas) {
    ever moves off the graphite band. */
 .lp-proof {
   margin-top: 2.75rem;
+}
+/* The shot is the argument, so it leaves the band's 66rem measure and takes
+   the fold: capped at the 1408px it was captured at, gutters below that. The
+   points underneath stay on the text column. */
+.lp-proof-shot {
+  width: min(100vw - 3rem, 88rem);
+  margin-left: calc(50% - min(50vw - 1.5rem, 44rem));
+}
+.lp-proof-shot img {
+  display: block;
+  border-radius: 14px;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, currentColor 14%, transparent),
+    0 2px 6px rgba(0, 0, 0, 0.18),
+    0 24px 60px -20px rgba(0, 0, 0, 0.55);
+}
+.lp-proof-shot figcaption {
+  margin-top: 1rem;
+  font-size: var(--text-dense);
+  color: color-mix(in oklab, currentColor 55%, transparent);
 }
 .lp-proof-points {
   list-style: none;

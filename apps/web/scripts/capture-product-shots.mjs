@@ -15,8 +15,11 @@
 //   CAPTURE_BASE_URL=http://localhost:3000 node scripts/capture-product-shots.mjs
 //
 // Output: apps/web/public/product/{overview,signal-detail,dashboard}.webp
-// Viewport 1440×900 (1600×950 for the full app), deviceScaleFactor 2 (retina),
-// dark theme, WebP q82.
+// Viewport 1440×900, deviceScaleFactor 2 (retina), dark theme, WebP q82.
+//
+// The viewport width is also the width the marketing page renders the capture
+// at (the full-app shot bleeds to ~1408px), so the app's own text lands close
+// to 1:1 instead of being downscaled into mush.
 
 import { chromium } from "playwright";
 import sharp from "sharp";
@@ -28,16 +31,11 @@ const WEB_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = join(WEB_ROOT, "public", "product");
 const BASE_URL = process.env.CAPTURE_BASE_URL ?? "http://localhost:3000";
 
-/**
- * `viewport` overrides the default only where the shot needs it: the app shot
- * carries the sidebar, so it needs the width a real desktop gives it.
- * @type {{ shot: "overview" | "signal" | "app", file: string,
- *          viewport?: { width: number, height: number } }[]}
- */
+/** @type {{ shot: "overview" | "signal" | "app", file: string }[]} */
 const SHOTS = [
   { shot: "overview", file: "overview.webp" },
   { shot: "signal", file: "signal-detail.webp" },
-  { shot: "app", file: "dashboard.webp", viewport: { width: 1600, height: 910 } },
+  { shot: "app", file: "dashboard.webp" },
 ];
 
 async function main() {
@@ -69,8 +67,7 @@ async function main() {
 
   const page = await context.newPage();
 
-  for (const { shot, file, viewport } of SHOTS) {
-    if (viewport) await page.setViewportSize(viewport);
+  for (const { shot, file } of SHOTS) {
     const url = `${BASE_URL}/dev/preview?shot=${shot}`;
     // Not "networkidle": Next dev keeps an HMR websocket open, so networkidle never
     // fires. Wait on the shot container + fonts instead.

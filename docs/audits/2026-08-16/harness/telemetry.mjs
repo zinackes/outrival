@@ -132,6 +132,18 @@ async function collectSentry() {
     period = "14d";
     res = await fetchIssues(period);
   }
+  if (res.status === 403 && env.SENTRY_PROJECT_WEB) {
+    // Org-wide listing needs org:read; a narrower token may still read one project.
+    const params = new URLSearchParams({ query: "is:unresolved", statsPeriod: period, sort: "freq", limit: "100" });
+    res = await fetch(
+      `https://sentry.io/api/0/projects/${org}/${env.SENTRY_PROJECT_WEB}/issues/?${params}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+  }
+  if (res.status === 403)
+    return skips.push(
+      "sentry: 403 — the token lacks read scopes. Create a user auth token with org:read + event:read + project:read and put it in SENTRY_AUTH_TOKEN (any loaded env file)",
+    );
   if (!res.ok) return skips.push(`sentry: API answered ${res.status}`);
   const issues = (await res.json()).map((i) => ({
     shortId: i.shortId,
@@ -176,14 +188,16 @@ function collectDlq() {
   const query = (withArchive) =>
     `select json_build_object('dlq', ${dlqSelect}, 'failedByQueue', ${failedSelect}` +
     (withArchive ? `, 'archivedFailedByQueue', ${archiveSelect})` : ")");
+  // The SQL travels on STDIN (ssh -> docker exec -i -> psql), never on the
+  // command line: its single quotes would terminate the remote sh -c wrapper.
   const run = (sqlText) =>
     execFileSync(
       "ssh",
       [
         "outrival",
-        `docker exec outrival-pg sh -c 'psql -U "\${POSTGRES_USER:-postgres}" -d "\${POSTGRES_DB:-postgres}" -t -A -c "${sqlText.replace(/\n/g, " ")}"'`,
+        `docker exec -i outrival-pg sh -c 'psql -U "\${POSTGRES_USER:-postgres}" -d "\${POSTGRES_DB:-postgres}" -t -A -v ON_ERROR_STOP=1'`,
       ],
-      { encoding: "utf8", timeout: 30_000 },
+      { encoding: "utf8", timeout: 30_000, input: sqlText },
     ).trim();
   let raw;
   try {

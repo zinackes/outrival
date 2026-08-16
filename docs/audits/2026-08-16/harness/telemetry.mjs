@@ -183,13 +183,10 @@ function collectDlq() {
       from pgboss.job
       where state = 'failed' and created_on > now() - interval '${DAYS} days'
       group by name order by runs desc) t)`;
-  const archiveSelect = `(select coalesce(json_agg(t), '[]'::json) from (
-      select name, count(*) as runs from pgboss.archive
-      where state = 'failed' and created_on > now() - interval '${DAYS} days'
-      group by name order by runs desc) t)`;
-  const query = (withArchive) =>
-    `select json_build_object('dlq', ${dlqSelect}, 'failedByQueue', ${failedSelect}` +
-    (withArchive ? `, 'archivedFailedByQueue', ${archiveSelect})` : ")");
+  // pgboss.archive does not exist on this install (checked 2026-08-16) — the
+  // live job table alone carries the failure history we need.
+  const query = () =>
+    `select json_build_object('dlq', ${dlqSelect}, 'failedByQueue', ${failedSelect})`;
   // The SQL travels on STDIN (ssh -> docker exec -i -> psql), never on the
   // command line: its single quotes would terminate the remote sh -c wrapper.
   const run = (sqlText) =>
@@ -203,13 +200,7 @@ function collectDlq() {
     ).trim();
   let raw;
   try {
-    try {
-      raw = run(query(true));
-    } catch {
-      // pgboss.archive may be pruned or shaped differently across versions;
-      // the live job table alone is still worth having.
-      raw = run(query(false));
-    }
+    raw = run(query());
   } catch (err) {
     return skips.push(`dlq: ssh/psql failed (${err.message.split("\n")[0]}) — rerun from a machine with the 'outrival' ssh alias`);
   }

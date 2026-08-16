@@ -112,9 +112,11 @@ async function collectScrapeRuns() {
 /* 2. Sentry top issues (org-wide, read-only)                          */
 /* ------------------------------------------------------------------ */
 async function collectSentry() {
-  const token = env.SENTRY_AUTH_TOKEN;
+  // SENTRY_AUDIT_TOKEN: read-scoped token for this audit, so the CI token
+  // (sourcemap upload scopes only) never needs touching.
+  const token = env.SENTRY_AUDIT_TOKEN ?? env.SENTRY_AUTH_TOKEN;
   const org = env.SENTRY_ORG;
-  if (!token || !org) return skips.push("sentry: SENTRY_AUTH_TOKEN or SENTRY_ORG not found");
+  if (!token || !org) return skips.push("sentry: SENTRY_AUDIT_TOKEN/SENTRY_AUTH_TOKEN or SENTRY_ORG not found");
   const fetchIssues = async (statsPeriod) => {
     const params = new URLSearchParams({
       query: "is:unresolved",
@@ -142,7 +144,7 @@ async function collectSentry() {
   }
   if (res.status === 403)
     return skips.push(
-      "sentry: 403 — the token lacks read scopes. Create a user auth token with org:read + event:read + project:read and put it in SENTRY_AUTH_TOKEN (any loaded env file)",
+      "sentry: 403 — the token lacks read scopes. Create a user auth token with org:read + event:read + project:read and put it in SENTRY_AUDIT_TOKEN in the root .env.local",
     );
   if (!res.ok) return skips.push(`sentry: API answered ${res.status}`);
   const issues = (await res.json()).map((i) => ({

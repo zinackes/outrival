@@ -94,7 +94,9 @@ faire dans l'historique non plus.
 
 ## 4. Phases
 
-L'audit tourne en **trois sessions**, décrites dans `KICKOFF.md`. Elles
+L'audit tourne en **trois sessions**. `RUN.md` donne le message exact à coller
+pour chacune, et ce qu'il faut vérifier entre deux ; ce fichier-ci dit le
+pourquoi. Elles
 communiquent par les fichiers de `~/.outrival-audit/2026-08-16/`, jamais par le
 contexte.
 

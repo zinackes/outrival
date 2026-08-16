@@ -35,7 +35,6 @@ import { SeverityScale } from "@/components/outrival/severity-scale";
 import { CatBadge } from "@/components/outrival/data-marks";
 import { sourceShortLabel } from "@/lib/source-labels";
 import { cn } from "@/lib/utils";
-import { MobileAppsFact, type MobileApps } from "./mobile-apps";
 import { Empty, scrapeActivity, type MonitorSourceProps } from "./shared";
 import { PRODUCT_SOURCES, filterByLens } from "./product-lenses";
 
@@ -75,7 +74,6 @@ export function PositioningTab({
   monitors,
   scrapingIds,
   onRun,
-  mobileApps,
   overview,
 }: {
   competitorId: string;
@@ -85,8 +83,6 @@ export function PositioningTab({
   category: string | null;
   changes: ChangeRow[];
   signals: CompetitorSignal[];
-  // Which platforms they ship on — a standing fact about their positioning.
-  mobileApps: MobileApps | null;
   // Already loaded for the page: the homepage fact sheet carries the customer
   // logos and testimonials this tab counts, so the proof section costs no request.
   overview: CompetitorOverview;
@@ -274,12 +270,6 @@ export function PositioningTab({
       )}
 
       <ShareOfModelSection summary={summary} loading={summaryQuery.isPending} />
-
-      {mobileApps && (
-        <TabSection title="Mobile apps">
-          <MobileAppsFact apps={mobileApps} name={competitorName} />
-        </TabSection>
-      )}
 
       {/* Releases and incidents answer the same question and want the same shape:
           "they shipped X" and "they were down 41 minutes" are both a dated line. */}

@@ -889,7 +889,6 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 onRun={requestRunMonitor}
-                mobileApps={mobileApps}
                 overview={overview}
               />
             </TabsContent>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRightIcon, CheckIcon, MinusIcon } from "@/components/icons";
-import { Band, Breadcrumbs, CompareShell } from "./compare-shell";
+import { Band, PageHero, CompareShell } from "./compare-shell";
 import { CompareFaq } from "./compare-faq";
 import { ProductProof } from "./product-proof";
 import { DIY, LAST_REVIEWED, PRICE_AS_OF } from "./data";
@@ -28,13 +28,12 @@ const XLINKS = [
 export function DiyPage() {
   return (
     <CompareShell>
-      <header className="lp-page-head">
-        <Breadcrumbs
-          items={[
-            { name: "Home", path: "/" },
-            { name: "Outrival vs doing it yourself", path: "/vs/diy" },
-          ]}
-        />
+      <PageHero
+        crumbs={[
+          { name: "Home", path: "/" },
+          { name: "Outrival vs doing it yourself", path: "/vs/diy" },
+        ]}
+      >
         <h1>
           Outrival vs doing it{" "}
           <span className="lp-serif-accent">yourself</span>
@@ -56,7 +55,7 @@ export function DiyPage() {
             See all plans
           </Link>
         </div>
-      </header>
+      </PageHero>
 
       <Band tone="dark">
         <div className="lp-block">

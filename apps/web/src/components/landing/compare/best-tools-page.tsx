@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRightIcon } from "@/components/icons";
-import { Band, Breadcrumbs, CompareShell } from "./compare-shell";
+import { Band, PageHero, CompareShell } from "./compare-shell";
 import { CompareFaq } from "./compare-faq";
 import { GlanceTable } from "./glance-table";
 import { ProductProof } from "./product-proof";
@@ -29,16 +29,17 @@ export function BestToolsPage() {
         items={BEST_TOOLS.items.map((it) => it.name)}
       />
 
-      <header className="lp-page-head">
-        <Breadcrumbs
-          items={[
-            { name: "Home", path: "/" },
-            {
-              name: "Best competitive intelligence tools",
-              path: "/alternatives/best-competitive-intelligence-tools",
-            },
-          ]}
-        />
+      <PageHero
+
+        crumbs={[
+          { name: "Home", path: "/" },
+          {
+            name: "Best competitive intelligence tools",
+            path: "/alternatives/best-competitive-intelligence-tools",
+          },
+        ]}
+
+      >
         <h1>
           Best competitive <span className="lp-serif-accent">intelligence</span>{" "}
           tools in 2026
@@ -56,7 +57,7 @@ export function BestToolsPage() {
             See pricing
           </Link>
         </div>
-      </header>
+      </PageHero>
 
       <Band tone="dark">
         <div className="lp-block">

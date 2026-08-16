@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRightIcon } from "@/components/icons";
-import { Band, Breadcrumbs, CompareShell } from "./compare-shell";
+import { Band, PageHero, CompareShell } from "./compare-shell";
 import { CompareFaq } from "./compare-faq";
 import { GlanceTable } from "./glance-table";
 import { ProductProof } from "./product-proof";
@@ -47,16 +47,17 @@ export function AlternativesPage({
         items={data.items.map((it) => it.name)}
       />
 
-      <header className="lp-page-head">
-        <Breadcrumbs
-          items={[
-            { name: "Home", path: "/" },
-            {
-              name: `${subject} alternatives`,
-              path: `/alternatives/${competitorKey}`,
-            },
-          ]}
-        />
+      <PageHero
+
+        crumbs={[
+          { name: "Home", path: "/" },
+          {
+            name: `${subject} alternatives`,
+            path: `/alternatives/${competitorKey}`,
+          },
+        ]}
+
+      >
         <h1>
           Best <span className="lp-serif-accent">{subject}</span> alternatives
           in 2026
@@ -74,7 +75,7 @@ export function AlternativesPage({
             Outrival vs {subject}
           </Link>
         </div>
-      </header>
+      </PageHero>
 
       <Band tone="dark">
         <div className="lp-block">

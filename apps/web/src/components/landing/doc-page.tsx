@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { Nav } from "./nav";
 import { Footer } from "./footer";
+import { PageHero } from "./compare/compare-shell";
 
 // Shared shell for the standalone marketing/legal pages (about, bot, docs,
 // status, changelog, security, terms, privacy, dpa). It ran its own minimal
@@ -27,13 +27,16 @@ export function DocPage({
 }) {
   return (
     <div className="landing-canvas lp-light lp-page min-h-dvh font-sans antialiased">
-      <Nav tone="marketing" />
-
       <main id="main-content" tabIndex={-1}>
-        <article className="lp-article">
+        {/* compact: same fog opening as everywhere else, at half a fold —
+            a policy is read, not sold. */}
+        <PageHero compact>
           <h1>{title}</h1>
           {intro && <p className="lp-page-lead">{intro}</p>}
           {updated && <p className="lp-page-meta">Last updated {updated}</p>}
+        </PageHero>
+
+        <article className="lp-article">
           <div className="lp-doc-body">{children}</div>
         </article>
       </main>

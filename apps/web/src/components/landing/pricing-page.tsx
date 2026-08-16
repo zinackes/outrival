@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Band, CompareShell, PageHead } from "./compare/compare-shell";
+import { Band, CompareShell, PageHero } from "./compare/compare-shell";
 import { CompareFaq } from "./compare/compare-faq";
 import { Pricing } from "./pricing";
 import { COMPETITORS, LAST_REVIEWED, PRICE_AS_OF } from "./compare/data";
@@ -141,26 +141,30 @@ function ContextTable() {
 export function PricingPage() {
   return (
     <CompareShell>
-      <PageHead
+      <PageHero
         crumbs={[
           { name: "Home", path: "/" },
           { name: "Pricing", path: "/pricing" },
         ]}
-        title={
-          <>
-            Competitive intelligence, priced{" "}
-            <span className="lp-serif-accent">in public</span>.
-          </>
-        }
-        lead="Free forever on 2 competitors, then €29, €79 or €199 a month. Every AI cost is included, billing is monthly, and cancelling takes one click. No demo stands between you and the price."
       >
-        <a className="lp-btn-accent lp-btn-hero" href="/auth">
-          Start free
-        </a>
-        <Link href="/sample" className="lp-link-sample">
-          Read a real digest
-        </Link>
-      </PageHead>
+        <h1>
+          Competitive intelligence, priced{" "}
+          <span className="lp-serif-accent">in public</span>.
+        </h1>
+        <p className="lp-page-lead">
+          Free forever on 2 competitors, then €29, €79 or €199 a month. Every AI
+          cost is included, billing is monthly, and cancelling takes one click.
+          No demo stands between you and the price.
+        </p>
+        <div className="lp-page-ctas">
+          <a className="lp-btn-accent lp-btn-hero" href="/auth">
+            Start free
+          </a>
+          <Link href="/sample" className="lp-link-sample">
+            Read a real digest
+          </Link>
+        </div>
+      </PageHero>
 
       <section className="lp-band-dark dark" data-lp-tone="dark">
         <Pricing />

@@ -958,7 +958,8 @@ html:has(.landing-canvas) {
    reduced-motion fallback; the Vanta FOG canvas mounts at z -2 with an opaque
    paper baseColor and simply covers them once loaded; the turbulence grain at
    z -1 rides on whichever fog is showing. */
-.lp-hero::before {
+.lp-hero::before,
+.lp-page-hero::before {
   content: "";
   position: absolute;
   z-index: -3;
@@ -974,7 +975,8 @@ html:has(.landing-canvas) {
   filter: blur(24px);
   animation: lp-fog-a 26s ease-in-out infinite alternate;
 }
-.lp-hero::after {
+.lp-hero::after,
+.lp-page-hero::after {
   content: "";
   position: absolute;
   z-index: -3;
@@ -3172,6 +3174,8 @@ html:has(.landing-canvas) {
   }
   .lp-hero::before,
   .lp-hero::after,
+  .lp-page-hero::before,
+  .lp-page-hero::after,
   .lp-glow-red,
   .lp-fog-grain {
     animation: none;
@@ -3284,22 +3288,61 @@ html:has(.landing-canvas) {
   }
 }
 
-/* ---- Page hero — the landing's opening cut, without the fog ---------
-   No Vanta and no marquee: those belong to the home page. What carries over
-   is the type, which is the part that identifies the brand — sans display,
-   one serif italic accent, near-ink lead. A serif headline (what these pages
-   used to render, inherited from the base h1 rule) reads as a different
-   site. */
+/* ---- Page hero — the landing's opening cut, fog included -------------
+   It first shipped as a flat block of type on paper: the reasoning was that
+   the fog belonged to the home page. Side by side that reads as a different
+   site — the fog IS the brand's first impression, and a headline sitting on
+   bare paper at a third of the fold announces a documentation page. So these
+   pages now open on the same stack the landing opens on: CSS fog banks at
+   z -3, the Vanta canvas over them at z -2, grain at z -1, the bar in flow so
+   the fog runs behind it, and a full viewport before the first cut to
+   graphite. The marquee stays home — that one really is the landing's. */
+.lp-page-hero {
+  position: relative;
+  /* Same reason as .lp-hero: the floating pill is born in here and must paint
+     over the positioned cards of the bands below. */
+  z-index: 1;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--lp-paper);
+  color: var(--lp-ink);
+}
+/* Pages whose subject is the text right underneath — an article, a policy,
+   a changelog. A full fold of fog in front of a retention table is a wall,
+   so they get the same opening at half the height. */
+.lp-page-hero.is-compact {
+  min-height: 62dvh;
+}
+/* The compact hero belongs to the text under it, so it takes that column's
+   measure — otherwise the headline sits 10rem left of its own first
+   paragraph. */
+.lp-page-hero.is-compact > .lp-page-head {
+  max-width: 46rem;
+}
 .lp-page-head {
   max-width: 66rem;
   margin: 0 auto;
   padding: clamp(2.5rem, 5vw, 4.5rem) clamp(1.25rem, 3vw, 2.5rem)
     clamp(2.5rem, 5vw, 4rem);
 }
+/* Inside the hero the head is the growing part, so the headline sits on the
+   fold's centre line rather than under the bar. */
+.lp-page-hero > .lp-page-head {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+}
 .lp-page-head h1 {
   font-family: var(--font-sans);
   font-weight: 500;
-  font-size: clamp(2.3rem, 4.8vw, 3.7rem);
+  /* Within a hair of .lp-h1's display clamp: on a full fold the old 3.7rem
+     ceiling read as a section header that had wandered up the page. */
+  font-size: clamp(2.5rem, 5.2vw, 4.2rem);
   line-height: 1.1;
   letter-spacing: -0.03em;
   max-width: 20ch;
@@ -3335,38 +3378,6 @@ html:has(.landing-canvas) {
   flex-wrap: wrap;
   align-items: center;
   gap: 1.25rem;
-}
-
-/* Breadcrumb: the smallest thing on the page, and the first — it sets the
-   page inside the site before the headline claims anything. */
-.lp-crumbs {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem;
-  margin: 0 0 1.6rem;
-  padding: 0;
-  list-style: none;
-  font-size: var(--text-meta);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--lp-ink-subtle);
-}
-.lp-crumbs a {
-  color: inherit;
-  text-decoration: none;
-  transition: color 150ms var(--lp-ease);
-}
-.lp-crumbs a:hover {
-  color: var(--lp-ink);
-}
-.lp-crumbs li {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-}
-.lp-crumbs [aria-current="page"] {
-  color: var(--lp-ink-muted);
 }
 
 /* Column for a band's content. Same measure as .lp-dark-inner, named without
@@ -3605,13 +3616,6 @@ html:has(.landing-canvas) {
   text-wrap: pretty;
 }
 
-/* A paper band straight under the page head is the same region continuing,
-   not a new one. Without this the two paddings stack into a gap that only
-   reads as breathing room when a colour change splits it. */
-.lp-page-head + .lp-band-paper {
-  padding-top: 0;
-}
-
 /* ---- Blog ------------------------------------------------------------
    The index is an archive, so the date belongs in the gutter the way the
    rank does on /alternatives — the eye scans one column, not a bordered
@@ -3686,16 +3690,6 @@ html:has(.landing-canvas) {
   padding: clamp(2.5rem, 5vw, 4rem) clamp(1.25rem, 3vw, 2.5rem)
     clamp(4rem, 7vw, 6rem);
 }
-.lp-article > h1 {
-  margin-top: 1.75rem;
-  font-family: var(--font-sans);
-  font-weight: 500;
-  font-size: clamp(2rem, 3.6vw, 2.9rem);
-  line-height: 1.12;
-  letter-spacing: -0.028em;
-  text-wrap: balance;
-  color: var(--lp-ink);
-}
 
 /* Doc + legal bodies. /bot, /security and every legal page each carried their
    own copy of the same arbitrary-variant prose string, so the four of them
@@ -3712,14 +3706,8 @@ html:has(.landing-canvas) {
   line-height: 1.7;
   color: var(--lp-ink-muted);
 }
-/* Only the outermost one clears the page head — a page that nests a second
-   column inside (the legal shell, under its language toggle) must not add the
-   gap twice. */
-.lp-article > .lp-doc-body {
-  margin-top: 2.5rem;
-}
-/* The head already spaced the column; a leading heading must not space it
-   again. */
+/* The article's own top padding spaces it off the hero; a leading heading
+   must not space it again. */
 .lp-doc-body > :first-child {
   margin-top: 0;
 }

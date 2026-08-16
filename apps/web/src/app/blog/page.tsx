@@ -3,7 +3,7 @@ import { pageMetadata } from "@/lib/metadata";
 import Link from "next/link";
 import { getAllPosts, formatPostDate } from "@/lib/blog";
 import { BlogShell } from "@/components/blog/blog-shell";
-import { Band, Breadcrumbs } from "@/components/landing/compare/compare-shell";
+import { Band, PageHero } from "@/components/landing/compare/compare-shell";
 
 const DESCRIPTION =
   "Field notes on competitive intelligence: how competitors move, what the tools really cost, and how Outrival is built. Quality over volume, roughly one a month.";
@@ -21,13 +21,12 @@ export default function BlogIndexPage() {
 
   return (
     <BlogShell>
-      <header className="lp-page-head">
-        <Breadcrumbs
-          items={[
-            { name: "Home", path: "/" },
-            { name: "Blog", path: "/blog" },
-          ]}
-        />
+      <PageHero
+        crumbs={[
+          { name: "Home", path: "/" },
+          { name: "Blog", path: "/blog" },
+        ]}
+      >
         <h1>
           Field notes on competitive{" "}
           <span className="lp-serif-accent">intelligence</span>
@@ -38,7 +37,7 @@ export default function BlogIndexPage() {
             RSS feed
           </a>
         </div>
-      </header>
+      </PageHero>
 
       <Band tone="paper">
         <ul className="lp-posts">

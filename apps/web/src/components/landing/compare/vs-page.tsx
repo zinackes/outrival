@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRightIcon, CheckIcon, MinusIcon } from "@/components/icons";
-import { Band, Breadcrumbs, CompareShell } from "./compare-shell";
+import { Band, PageHero, CompareShell } from "./compare-shell";
 import { CompareTable } from "./compare-table";
 import { PricingFaceOff } from "./pricing-face-off";
 import { CompareFaq } from "./compare-faq";
@@ -38,13 +38,12 @@ export function VsPage({ competitorKey }: { competitorKey: CompetitorKey }) {
 
   return (
     <CompareShell>
-      <header className="lp-page-head">
-        <Breadcrumbs
-          items={[
-            { name: "Home", path: "/" },
-            { name: `Outrival vs ${c.name}`, path: `/vs/${c.key}` },
-          ]}
-        />
+      <PageHero
+        crumbs={[
+          { name: "Home", path: "/" },
+          { name: `Outrival vs ${c.name}`, path: `/vs/${c.key}` },
+        ]}
+      >
         <h1>
           Outrival vs <span className="lp-serif-accent">{c.name}</span>
         </h1>
@@ -65,7 +64,7 @@ export function VsPage({ competitorKey }: { competitorKey: CompetitorKey }) {
             See all {c.name} alternatives
           </Link>
         </div>
-      </header>
+      </PageHero>
 
       <Band tone="dark">
         <div className="lp-block">

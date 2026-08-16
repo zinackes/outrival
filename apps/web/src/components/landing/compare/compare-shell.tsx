@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { Nav } from "../nav";
 import { Footer } from "../footer";
+import { VantaFog } from "../vanta-fog";
 import { BreadcrumbJsonLd, SoftwareAppJsonLd } from "./structured-data";
 
 // Brand shell for every page around the landing — /pricing, /vs/*,
@@ -15,7 +15,8 @@ export function CompareShell({ children }: { children: ReactNode }) {
   return (
     <div className="landing-canvas lp-light lp-page min-h-dvh font-sans antialiased">
       <SoftwareAppJsonLd />
-      <Nav tone="marketing" />
+      {/* No <Nav> here: it belongs inside <PageHero>, in flow, so the fog runs
+          behind it exactly as it does on the landing. */}
       <main id="main-content" tabIndex={-1}>
         {children}
       </main>
@@ -55,58 +56,32 @@ export function Band({
   );
 }
 
-// The opening of a marketing page: where you are, what the page claims, the
-// one-paragraph version, then the actions. Sans headline with a serif italic
-// accent — the landing's register, not the serif-everything the base h1 rule
-// gives an unstyled page.
-export function PageHead({
+// The opening of a marketing page, on the landing's own hero: the fog stack
+// behind, the bar in flow over it, and a full viewport of it before the first
+// cut to graphite. Sans headline with a serif italic accent — the landing's
+// register, not the serif-everything the base h1 rule gives an unstyled page.
+//
+// `crumbs` is structured data only. The visible trail ("Home / Outrival vs
+// Crayon") was the one element that still looked like a documentation site
+// sitting above the headline; Google reads the JSON-LD either way.
+export function PageHero({
   crumbs,
-  title,
-  lead,
+  compact = false,
   children,
 }: {
-  crumbs: { name: string; path: string }[];
-  title: ReactNode;
-  lead?: ReactNode;
-  children?: ReactNode;
+  crumbs?: { name: string; path: string }[];
+  /** Half-height opening for pages whose subject is the text right below. */
+  compact?: boolean;
+  children: ReactNode;
 }) {
   return (
-    <header className="lp-page-head">
-      <Breadcrumbs items={crumbs} />
-      <h1>{title}</h1>
-      {lead && <p className="lp-page-lead">{lead}</p>}
-      {children && <div className="lp-page-ctas">{children}</div>}
-    </header>
-  );
-}
-
-// Visual breadcrumb + its BreadcrumbList JSON-LD in one place, so the two never
-// drift. The last item is the current page (not a link).
-export function Breadcrumbs({
-  items,
-}: {
-  items: { name: string; path: string }[];
-}) {
-  return (
-    <nav aria-label="Breadcrumb">
-      <BreadcrumbJsonLd items={items} />
-      <ol className="lp-crumbs">
-        {items.map((it, i) => {
-          const last = i === items.length - 1;
-          return (
-            <li key={it.path}>
-              {last ? (
-                <span aria-current="page">{it.name}</span>
-              ) : (
-                <>
-                  <Link href={it.path}>{it.name}</Link>
-                  <span aria-hidden>/</span>
-                </>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </nav>
+    <section className={compact ? "lp-page-hero is-compact" : "lp-page-hero"}>
+      {crumbs && <BreadcrumbJsonLd items={crumbs} />}
+      <div className="lp-glow-red" aria-hidden />
+      <VantaFog />
+      <div className="lp-fog-grain" aria-hidden />
+      <Nav tone="marketing" />
+      <header className="lp-page-head">{children}</header>
+    </section>
   );
 }

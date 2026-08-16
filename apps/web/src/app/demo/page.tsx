@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/metadata";
 import { CheckIcon } from "@/components/icons";
-import { Nav } from "@/components/landing/nav";
 import { Footer } from "@/components/landing/footer";
-import { Band } from "@/components/landing/compare/compare-shell";
+import { Band, PageHero } from "@/components/landing/compare/compare-shell";
 import { ProductShot } from "@/components/landing/product-shot";
 import { DemoForm } from "./demo-form";
 
@@ -51,10 +50,8 @@ export default async function DemoPage({
 
   return (
     <div className="landing-canvas lp-light lp-page min-h-dvh font-sans antialiased">
-      <Nav tone="marketing" />
-
       <main id="main-content" tabIndex={-1}>
-        <header className="lp-page-head">
+        <PageHero>
           <p className="lp-page-meta">
             {isBusiness
               ? "Business plan"
@@ -95,7 +92,7 @@ export default async function DemoPage({
               You&apos;ll hear back either way.
             </p>
           )}
-        </header>
+        </PageHero>
 
         {/* The product before the form: a visitor asked to fill in five fields
             deserves to have seen the thing first. Graphite, because the shots

@@ -7,7 +7,7 @@ import { BlogShell } from "@/components/blog/blog-shell";
 import { renderMdx } from "@/components/blog/mdx";
 import { PostCta } from "@/components/blog/post-cta";
 import { ArticleJsonLd } from "@/components/blog/article-json-ld";
-import { Breadcrumbs } from "@/components/landing/compare/compare-shell";
+import { PageHero } from "@/components/landing/compare/compare-shell";
 
 // Only the authored posts exist — unknown slugs 404 instead of rendering on demand.
 export const dynamicParams = false;
@@ -59,14 +59,16 @@ export default async function BlogPostPage({
     <BlogShell>
       <ArticleJsonLd post={post} />
 
-      <article className="lp-article">
-        <Breadcrumbs
-          items={[
-            { name: "Home", path: "/" },
-            { name: "Blog", path: "/blog" },
-            { name: post.title, path: `/blog/${slug}` },
-          ]}
-        />
+      {/* compact: the fog opens the article, it does not replace it — a full
+          fold in front of a 12-minute read is a toll gate. */}
+      <PageHero
+        compact
+        crumbs={[
+          { name: "Home", path: "/" },
+          { name: "Blog", path: "/blog" },
+          { name: post.title, path: `/blog/${slug}` },
+        ]}
+      >
         <h1>{post.title}</h1>
         <p className="lp-page-lead">{post.description}</p>
         <div className="lp-post-tags">
@@ -76,8 +78,10 @@ export default async function BlogPostPage({
             <span key={tag}>{tag}</span>
           ))}
         </div>
+      </PageHero>
 
-        <div className="prose-blog mt-12">{await renderMdx(post.content)}</div>
+      <article className="lp-article">
+        <div className="prose-blog">{await renderMdx(post.content)}</div>
 
         <PostCta />
 

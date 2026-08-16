@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/metadata";
 import Link from "next/link";
-import { Nav } from "@/components/landing/nav";
 import { Footer } from "@/components/landing/footer";
-import { Band, Breadcrumbs } from "@/components/landing/compare/compare-shell";
+import { Band, PageHero } from "@/components/landing/compare/compare-shell";
 import { DigestView } from "@/components/dashboard/digest-view";
 import { SAMPLE_DIGEST, SAMPLE_DIGEST_READY } from "@/lib/sample-digest";
 
@@ -23,7 +22,7 @@ export const metadata: Metadata = pageMetadata({
 });
 
 // WebPage only — the BreadcrumbList that used to live here now comes from
-// <Breadcrumbs>, which emits it alongside the visible trail.
+// <PageHero>, which emits it as structured data with no visible trail.
 function SampleJsonLd() {
   const data = {
     "@context": "https://schema.org",
@@ -55,16 +54,14 @@ export default function SamplePage() {
   return (
     <div className="landing-canvas lp-light lp-page min-h-dvh font-sans antialiased">
       <SampleJsonLd />
-      <Nav tone="marketing" />
 
       <main id="main-content" tabIndex={-1}>
-        <header className="lp-page-head">
-          <Breadcrumbs
-            items={[
-              { name: "Home", path: "/" },
-              { name: "Sample digest", path: "/sample" },
-            ]}
-          />
+        <PageHero
+          crumbs={[
+            { name: "Home", path: "/" },
+            { name: "Sample digest", path: "/sample" },
+          ]}
+        >
           <h1>
             The Monday <span className="lp-serif-accent">brief</span>
           </h1>
@@ -81,7 +78,7 @@ export default function SamplePage() {
             {content.temperature}
             {competitorCount > 0 ? ` · ${competitorCount} competitors` : ""}
           </p>
-        </header>
+        </PageHero>
 
         {/* The digest on graphite: it is the product, and the landing shows the
             product on its dark region. Band flips the token set, so the app

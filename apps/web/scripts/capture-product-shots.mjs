@@ -14,8 +14,12 @@
 //   pnpm --filter @outrival/web capture:shots
 //   CAPTURE_BASE_URL=http://localhost:3000 node scripts/capture-product-shots.mjs
 //
-// Output: apps/web/public/product/{overview,signal-detail}.webp
+// Output: apps/web/public/product/{overview,signal-detail,dashboard}.webp
 // Viewport 1440×900, deviceScaleFactor 2 (retina), dark theme, WebP q82.
+//
+// The viewport width is also the width the marketing page renders the capture
+// at (the full-app shot bleeds to ~1408px), so the app's own text lands close
+// to 1:1 instead of being downscaled into mush.
 
 import { chromium } from "playwright";
 import sharp from "sharp";
@@ -27,10 +31,11 @@ const WEB_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = join(WEB_ROOT, "public", "product");
 const BASE_URL = process.env.CAPTURE_BASE_URL ?? "http://localhost:3000";
 
-/** @type {{ shot: "overview" | "signal", file: string }[]} */
+/** @type {{ shot: "overview" | "signal" | "app", file: string }[]} */
 const SHOTS = [
   { shot: "overview", file: "overview.webp" },
   { shot: "signal", file: "signal-detail.webp" },
+  { shot: "app", file: "dashboard.webp" },
 ];
 
 async function main() {
@@ -70,6 +75,18 @@ async function main() {
     const el = await page.waitForSelector(`[data-shot="${shot}"]`, {
       timeout: 30_000,
     });
+    // Next's dev indicator is a body-level portal, so it paints OVER the shot
+    // and lands in the crop of anything that reaches the bottom-left corner.
+    await page.addStyleTag({
+      content: "nextjs-portal{display:none!important}",
+    });
+    // The sidebar's competitor rail opens by default and polls the API, which
+    // this route deliberately does not have — so it would be captured as three
+    // loading bars. Collapsed, it is the same nav a signed-in user sees folded.
+    if (shot === "app") {
+      const collapse = await page.$('[aria-label="Collapse competitors"]');
+      if (collapse) await collapse.click();
+    }
     await page.evaluate(() => document.fonts?.ready);
     await page.waitForTimeout(700);
 

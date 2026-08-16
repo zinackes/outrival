@@ -22,6 +22,7 @@ export default function BlogIndexPage() {
   return (
     <BlogShell>
       <PageHero
+        fog="editorial"
         crumbs={[
           { name: "Home", path: "/" },
           { name: "Blog", path: "/blog" },

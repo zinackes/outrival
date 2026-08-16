@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Nav } from "../nav";
 import { Footer } from "../footer";
-import { VantaFog } from "../vanta-fog";
+import { VantaFog, type FogTone } from "../vanta-fog";
 import { BreadcrumbJsonLd, SoftwareAppJsonLd } from "./structured-data";
 
 // Brand shell for every page around the landing — /pricing, /vs/*,
@@ -67,18 +67,27 @@ export function Band({
 export function PageHero({
   crumbs,
   compact = false,
+  fog = "default",
   children,
 }: {
   crumbs?: { name: string; path: string }[];
   /** Half-height opening for pages whose subject is the text right below. */
   compact?: boolean;
+  /**
+   * Which brand hue leads the fog. Same palette everywhere, different ranking,
+   * so a page family is recognisable without reading as a separate site.
+   */
+  fog?: FogTone;
   children: ReactNode;
 }) {
   return (
-    <section className={compact ? "lp-page-hero is-compact" : "lp-page-hero"}>
+    <section
+      className={compact ? "lp-page-hero is-compact" : "lp-page-hero"}
+      data-fog={fog}
+    >
       {crumbs && <BreadcrumbJsonLd items={crumbs} />}
       <div className="lp-glow-red" aria-hidden />
-      <VantaFog />
+      <VantaFog tone={fog} />
       <div className="lp-fog-grain" aria-hidden />
       <Nav tone="marketing" />
       <header className="lp-page-head">{children}</header>

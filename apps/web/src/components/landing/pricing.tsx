@@ -24,9 +24,9 @@ export function Pricing() {
           Four plans. AI cost <span className="lp-serif-accent">included</span>.
         </h2>
         <p>
-          You pay by user and by number of competitors. Every AI cost is baked
-          into the price, with no usage-based billing. Each plan builds on the
-          one before it.
+          You pay for one workspace and the number of competitors it tracks.
+          No per-seat pricing, no per-scan meter: every AI cost is baked into
+          the price. Each plan builds on the one before it.
         </p>
       </div>
       <div className="lp-plans">

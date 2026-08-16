@@ -39,6 +39,7 @@ export function VsPage({ competitorKey }: { competitorKey: CompetitorKey }) {
   return (
     <CompareShell>
       <PageHero
+        fog="compare"
         crumbs={[
           { name: "Home", path: "/" },
           { name: `Outrival vs ${c.name}`, path: `/vs/${c.key}` },

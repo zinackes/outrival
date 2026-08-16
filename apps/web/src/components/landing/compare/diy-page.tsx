@@ -29,6 +29,7 @@ export function DiyPage() {
   return (
     <CompareShell>
       <PageHero
+        fog="compare"
         crumbs={[
           { name: "Home", path: "/" },
           { name: "Outrival vs doing it yourself", path: "/vs/diy" },

@@ -48,7 +48,7 @@ export function AlternativesPage({
       />
 
       <PageHero
-
+        fog="compare"
         crumbs={[
           { name: "Home", path: "/" },
           {

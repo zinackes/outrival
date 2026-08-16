@@ -30,7 +30,7 @@ export function BestToolsPage() {
       />
 
       <PageHero
-
+        fog="compare"
         crumbs={[
           { name: "Home", path: "/" },
           {

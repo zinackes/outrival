@@ -908,7 +908,7 @@ function worstOther(list: Array<{ name: string; avg: number }>): string {
  * ("Klarity just moved · cut its entry plan to $49"). Capped so a long insight can
  * never push the fact line onto two rows.
  */
-function firstClause(insight: string, max = 72): string {
+export function firstClause(insight: string, max = 72): string {
   const clause = insight.split(/(?<=[.;])\s|,\s/)[0] ?? insight;
   const trimmed = clause.replace(/[.;]$/, "").trim();
   const lower = trimmed.charAt(0).toLowerCase() + trimmed.slice(1);

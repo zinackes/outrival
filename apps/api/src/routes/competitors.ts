@@ -494,9 +494,9 @@ async function buildHomepageFacts(
 // surfacing of existing data: no AI call, no scrape. Analytics reads are
 // best-effort (return [] on error), so the fact sheet degrades gracefully.
 async function buildOverview(competitorId: string) {
-  // Eight independent reads about ONE competitor, previously issued one at a time.
-  // None of them feeds another — they are eight separate questions about the same
-  // competitor id — so the handler paid eight network round-trips to answer them in
+  // Nine independent reads about ONE competitor, previously issued one at a time.
+  // None of them feeds another — they are nine separate questions about the same
+  // competitor id — so the handler paid nine network round-trips to answer them in
   // a fixed order nothing required. This sits on the competitor detail page's
   // critical path, the page the product is actually read from.
   const [
@@ -505,6 +505,7 @@ async function buildOverview(competitorId: string) {
     pricingNow,
     reviews,
     hiringRows,
+    hiringSeenRows,
     pricingMovedRows,
     rolesDeltaRows,
     scoreDeltaRows,
@@ -532,13 +533,16 @@ async function buildOverview(competitorId: string) {
     `),
 
     // Current tier set = the most recent recorded_at batch for this competitor.
+    // `recorded_at` rides along on every row so the fact sheet can date the price
+    // it shows — one batch, so every row carries the same instant (OUT-194).
     analyticsQuery<{
       plan_name: string;
       price: number | null;
       currency: string;
       billing_period: string;
+      recorded_at: string;
     }>(sql`
-      SELECT plan_name, price, currency, billing_period
+      SELECT plan_name, price, currency, billing_period, recorded_at::text AS recorded_at
       FROM pricing_history
       WHERE competitor_id = ${competitorId} AND origin = 'live'
         AND recorded_at = (
@@ -553,8 +557,9 @@ async function buildOverview(competitorId: string) {
       score: number;
       review_count: number;
       sentiment_score: number;
+      recorded_at: string;
     }>(sql`
-      SELECT source, score, review_count, sentiment_score
+      SELECT source, score, review_count, sentiment_score, recorded_at::text AS recorded_at
       FROM (
         SELECT DISTINCT ON (source) source, score, review_count, sentiment_score, recorded_at
         FROM review_scores
@@ -568,6 +573,15 @@ async function buildOverview(competitorId: string) {
       .select({ count: sql<number>`count(*)::int` })
       .from(jobPostings)
       .where(and(eq(jobPostings.competitorId, competitorId), eq(jobPostings.isActive, true))),
+
+    // When we last COUNTED their roles (OUT-194). Read off job_counts, the
+    // observation series, not job_postings: a posting row carries no last-seen, so
+    // "3 open roles" would otherwise be undatable and read as current forever.
+    analyticsQuery<{ seen_at: string | null }>(sql`
+      SELECT max(recorded_at)::text AS seen_at
+      FROM job_counts
+      WHERE competitor_id = ${competitorId}
+    `),
 
     // --- Movement ---------------------------------------------------------------
     // The overview stated levels only, and on a monitoring product the derivative is
@@ -644,8 +658,10 @@ async function buildOverview(competitorId: string) {
     homepage,
     numericClaims,
     pricingNow,
+    // When the tier set above was read. One batch, so one instant for all of it.
+    pricingCapturedAt: pricingNow[0]?.recorded_at ?? null,
     reviews,
-    hiring: { openRoles: hiringRow?.count ?? 0 },
+    hiring: { openRoles: hiringRow?.count ?? 0, capturedAt: hiringSeenRows[0]?.seen_at ?? null },
     movement: {
       // Null when the entry price has never differed, which is "unchanged for as
       // long as we have watched" and reads differently from "changed recently".

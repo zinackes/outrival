@@ -724,12 +724,27 @@ export function OverviewTab({
         <TabSection
           title="How they position"
           action={
-            capturedAt && (
-              <span className="shrink-0 text-xs text-muted-foreground">
-                Homepage, captured{" "}
-                {formatDistanceToNow(new Date(capturedAt), { addSuffix: true })}
-              </span>
-            )
+            <span className="flex shrink-0 items-center gap-3">
+              {capturedAt && (
+                <span className="text-xs text-muted-foreground">
+                  Homepage, captured{" "}
+                  {formatDistanceToNow(new Date(capturedAt), { addSuffix: true })}
+                </span>
+              )}
+              {/* This sheet holds the current capture only; the Positioning tab
+                  keeps every version before it. Named from the section that owns
+                  the words, so the deep read is one click instead of a tab tour
+                  (OUT-184) — the same promise the headline metrics already make. */}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1 text-dense"
+                onClick={() => onOpenTab("product")}
+              >
+                See every version
+                <CaretRightIcon size={14} aria-hidden />
+              </Button>
+            </span>
           }
         >
           {/* Attributed and set as quoted material. Rendered bare at 17px in the

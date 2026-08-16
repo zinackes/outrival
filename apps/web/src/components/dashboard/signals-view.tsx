@@ -639,6 +639,14 @@ export function SignalsView() {
     [navIds],
   );
 
+  // The first unread row in reading order — what the reader came for. Read off
+  // navIds rather than the feed so it is a row they can actually see move: an
+  // unread signal inside a collapsed group is not the one to open on arrival.
+  const firstUnreadId = useMemo(() => {
+    const unread = new Set(filtered.filter((s) => !s.isRead).map((s) => s.id));
+    return navIds.find((id) => unread.has(id)) ?? null;
+  }, [navIds, filtered]);
+
   // Prune the selection to rows still in the feed. Non-destructive bulk actions
   // (mark read/unread, track) keep the selection so a follow-up action hits the
   // same set — but if one of those rows later leaves the view (e.g. marking read
@@ -981,8 +989,9 @@ export function SignalsView() {
 
   // Bootstrap selection: open the signal named by ?focus= (deep-link from the
   // Overview, or a reload — the sync effect above keeps it in the URL), else
-  // default to the first row on desktop so the detail pane is never empty. Mobile
-  // starts unselected (list-first).
+  // default to the first UNREAD row on desktop so the detail pane is never empty
+  // and lands on the thing the reader came for. Mobile starts unselected
+  // (list-first).
   const deepLinkConsumedRef = useRef(false);
   useEffect(() => {
     if (focusedId || !navIds.length) return;
@@ -993,6 +1002,10 @@ export function SignalsView() {
       deepLinkConsumedRef.current = true;
       const wanted = focusId && navIds.includes(focusId) ? focusId : null;
       if (wanted) {
+        // Counts as the default selection having run: without this, Esc on a
+        // deep-linked signal fell through to the branch below and snapped the
+        // pane back open on another row, so it took two Escs to close one.
+        focusedRef.current = "init";
         selectRow(wanted);
         return;
       }
@@ -1003,15 +1016,41 @@ export function SignalsView() {
       window.matchMedia("(min-width: 1024px)").matches
     ) {
       focusedRef.current = "init";
-      selectRow(navIds[0]!);
+      // The first unread, not the top row: the feed is threat-sorted, so on a
+      // returning visit the top is usually something already read and the
+      // backlog the reader came for stayed one click away. Falls back to the top
+      // row — the brief when there is one — once everything is read.
+      selectRow(firstUnreadId ?? navIds[0]!);
     }
-  }, [focusedId, navIds, focusId, selectRow]);
+  }, [focusedId, navIds, focusId, firstUnreadId, selectRow]);
+
+  // A focus that resolves to nothing is the blank right column this ticket is
+  // about. The open row can leave the feed without the reader touching it: a poll
+  // drops it (marked read while the Unread view is on), a saved view is applied,
+  // the week rolls over and the brief goes. `focusedId` then names a row nothing
+  // renders, and ~40% of the window goes empty while the list beside it looks
+  // normal. Treat it as no focus so the bootstrap above opens the next one, and
+  // clear focusedRef with it — a row that vanished is not the reader deselecting.
+  useEffect(() => {
+    if (!focusedId || !signals?.length) return;
+    const resolves =
+      focusedId === BRIEF_ID
+        ? Boolean(brief)
+        : signals.some((s) => s.id === focusedId);
+    if (resolves) return;
+    focusedRef.current = null;
+    setFocusedId(null);
+  }, [focusedId, signals, brief, setFocusedId]);
 
   // The signal backing the detail pane (null when the brief is open, or nothing is).
+  // Resolved against the whole loaded feed rather than the filtered view: in the
+  // Unread view, reading the open signal drops its row from `filtered`, and
+  // resolving there blanked the pane under the reader mid-read. The row leaves the
+  // list; what they are reading stays until they move off it.
   const selectedSignal = useMemo<Signal | null>(() => {
     if (!selectedId || selectedId === BRIEF_ID) return null;
-    return filtered.find((s) => s.id === selectedId) ?? null;
-  }, [selectedId, filtered]);
+    return (signals ?? []).find((s) => s.id === selectedId) ?? null;
+  }, [selectedId, signals]);
   const briefOpen = selectedId === BRIEF_ID && Boolean(brief);
 
   // Mobile: the detail renders as a full-screen sheet, which reads as its own
@@ -1555,28 +1594,92 @@ export function SignalsView() {
               onSnooze={(id, ms) => snoozeSignals([id], ms)}
             />
           ) : (
-            <div className="flex h-full items-center justify-center p-8">
-              <div className="max-w-xs text-center">
-                <span
-                  className="mx-auto flex size-9 items-center justify-center rounded-md border border-border bg-surface-2 text-muted-foreground"
-                  aria-hidden
-                >
-                  <ScanIcon size={20} />
-                </span>
-                <p className="mt-3 text-sm font-medium text-foreground">
-                  No signal open
-                </p>
-                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                  Pick one from the list to read what changed, why it matters, and
-                  what to do.
-                </p>
-              </div>
-            </div>
+            <DetailPlaceholder
+              unread={
+                filtered.reduce((n, s) => (s.isRead ? n : n + 1), 0)
+              }
+              hasRows={filtered.length > 0}
+              hasBrief={brief !== null}
+              onOpenFirstUnread={
+                firstUnreadId ? () => selectRow(firstUnreadId) : null
+              }
+              onMarkAllRead={markAllRead}
+              onReadBrief={() => selectRow(BRIEF_ID)}
+            />
           )}
         </div>
       </div>
 
       <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} />
+    </div>
+  );
+}
+
+/**
+ * The right column with nothing open. It is roughly 40% of a laptop window, so
+ * it carries the next action rather than describing the one the reader did not
+ * take (OUT-219). The view opens the first unread on arrival, so what is left
+ * for this panel is deselecting (Esc), and a feed the filters emptied.
+ */
+function DetailPlaceholder({
+  unread,
+  hasRows,
+  hasBrief,
+  onOpenFirstUnread,
+  onMarkAllRead,
+  onReadBrief,
+}: {
+  /** Unread rows in the current view: the same scope the action opens. */
+  unread: number;
+  /** false = the filters exclude every signal, so there is nothing to open. */
+  hasRows: boolean;
+  hasBrief: boolean;
+  /** null when no unread row is visible to open. */
+  onOpenFirstUnread: (() => void) | null;
+  onMarkAllRead: () => void;
+  onReadBrief: () => void;
+}) {
+  return (
+    <div className="flex h-full items-center justify-center p-8">
+      {!hasRows ? (
+        // The list beside it already offers "Reset filters"; saying it twice in
+        // one screen reads as two different problems.
+        <EmptyState
+          icon={TrayIcon}
+          title="Nothing to open"
+          description="No signal matches the current filters."
+        />
+      ) : unread > 0 && onOpenFirstUnread ? (
+        <EmptyState
+          icon={ScanIcon}
+          title={`${unread} unread signal${unread === 1 ? "" : "s"}`}
+          description="The feed is sorted by threat, so the first unread is the one worth reading now."
+          actions={
+            <>
+              <Button size="sm" onClick={onOpenFirstUnread}>
+                Open the first unread
+              </Button>
+              <Button size="sm" variant="ghost" onClick={onMarkAllRead}>
+                Mark all read
+              </Button>
+            </>
+          }
+        />
+      ) : (
+        <EmptyState
+          icon={CheckIcon}
+          tone="positive"
+          title="You are all caught up"
+          description="Nothing unread here. Pick any signal to reread what changed, why it matters, and what to do."
+          actions={
+            hasBrief ? (
+              <Button size="sm" variant="outline" onClick={onReadBrief}>
+                Read this week&apos;s brief
+              </Button>
+            ) : null
+          }
+        />
+      )}
     </div>
   );
 }

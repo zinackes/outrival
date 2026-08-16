@@ -7,7 +7,7 @@ import { BlogShell } from "@/components/blog/blog-shell";
 import { renderMdx } from "@/components/blog/mdx";
 import { PostCta } from "@/components/blog/post-cta";
 import { ArticleJsonLd } from "@/components/blog/article-json-ld";
-import { BreadcrumbJsonLd } from "@/components/landing/compare/structured-data";
+import { PageHero } from "@/components/landing/compare/compare-shell";
 
 // Only the authored posts exist — unknown slugs 404 instead of rendering on demand.
 export const dynamicParams = false;
@@ -58,44 +58,38 @@ export default async function BlogPostPage({
   return (
     <BlogShell>
       <ArticleJsonLd post={post} />
-      <BreadcrumbJsonLd
-        items={[
+
+      {/* compact: the fog opens the article, it does not replace it — a full
+          fold in front of a 12-minute read is a toll gate. */}
+      <PageHero
+        compact
+        crumbs={[
           { name: "Home", path: "/" },
           { name: "Blog", path: "/blog" },
           { name: post.title, path: `/blog/${slug}` },
         ]}
-      />
+      >
+        <h1>{post.title}</h1>
+        <p className="lp-page-lead">{post.description}</p>
+        <div className="lp-post-tags">
+          <time dateTime={post.date}>{formatPostDate(post.date)}</time>
+          <span>{post.readingTime} min read</span>
+          {post.tags.map((tag) => (
+            <span key={tag}>{tag}</span>
+          ))}
+        </div>
+      </PageHero>
 
-      <article className="mx-auto w-full max-w-2xl px-6 py-14 sm:py-20">
-        <Link
-          href="/blog"
-          className="inline-flex items-center gap-1.5 text-sm text-text-muted transition-colors hover:text-foreground"
-        >
-          <ArrowLeftIcon size={16} /> All posts
-        </Link>
-
-        <header className="mt-8 flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-2.5 text-meta text-text-subtle">
-            <time dateTime={post.date}>{formatPostDate(post.date)}</time>
-            <span aria-hidden>·</span>
-            <span>{post.readingTime} min read</span>
-            {post.tags.map((tag) => (
-              <span key={tag} aria-hidden>
-                · {tag}
-              </span>
-            ))}
-          </div>
-          <h1 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
-            {post.title}
-          </h1>
-          <p className="text-lg leading-relaxed text-text-muted">
-            {post.description}
-          </p>
-        </header>
-
-        <div className="prose-blog mt-10">{await renderMdx(post.content)}</div>
+      <article className="lp-article">
+        <div className="prose-blog">{await renderMdx(post.content)}</div>
 
         <PostCta />
+
+        <div className="lp-xlinks">
+          <Link href="/blog">
+            <ArrowLeftIcon size={14} aria-hidden /> All posts
+          </Link>
+        </div>
       </article>
     </BlogShell>
   );

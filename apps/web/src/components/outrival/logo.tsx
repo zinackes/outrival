@@ -20,10 +20,12 @@ export function LogoMark({
 }: {
   className?: string;
   size?: number;
-  /** Pin the dark-ink mark regardless of theme — for regions whose background
-      stays light even under html.dark (the landing's pinned-light paper hero),
-      where the `dark:` swap would show the white mark on paper. */
-  ink?: boolean;
+  /** Pin one variant regardless of theme — for regions whose background does
+      not follow html.dark. `true` pins the dark-ink mark (the landing's
+      pinned-light paper hero, where the `dark:` swap would show the white mark
+      on paper); `"light"` pins the light-ink one (the landing's floating nav
+      pill once it is over the dark body, inside that same pinned-light tree). */
+  ink?: boolean | "light";
 }) {
   return (
     <span
@@ -32,7 +34,14 @@ export function LogoMark({
       aria-hidden
     >
       {ink ? (
-        <span className="block h-full w-full bg-[url('/logo-dark-96.png')] bg-contain bg-center bg-no-repeat" />
+        <span
+          className={cn(
+            "block h-full w-full bg-contain bg-center bg-no-repeat",
+            ink === "light"
+              ? "bg-[url('/logo-light-96.png')]"
+              : "bg-[url('/logo-dark-96.png')]",
+          )}
+        />
       ) : (
         <>
           {/* light surfaces → dark-ink mark */}

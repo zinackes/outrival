@@ -3,7 +3,6 @@
 import { useRef, useState } from "react";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { CheckCircleIcon, SpinnerIcon } from "@/components/icons";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -224,7 +223,13 @@ export function DemoForm({
           </p>
         )}
 
-        <Button type="submit" size="lg" disabled={status === "submitting"} className="w-full">
+        {/* The landing's ink pill, not the app's teal primary: on a marketing
+            page colour is spent once, and here it is spent on the checks. */}
+        <button
+          type="submit"
+          disabled={status === "submitting"}
+          className="lp-btn-accent is-block"
+        >
           {status === "submitting" ? (
             <>
               <SpinnerIcon className="animate-spin" size={16} /> Sending…
@@ -234,7 +239,7 @@ export function DemoForm({
           ) : (
             "Send request"
           )}
-        </Button>
+        </button>
         <p className="text-xs text-text-subtle">
           We&apos;ll only use this to reply to your request. No spam, ever.
         </p>

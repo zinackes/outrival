@@ -28,7 +28,10 @@ function FooterCol({
 
 export function Footer() {
   return (
-    <footer className="border-t border-border bg-background-2">
+    // text-foreground is explicit because the footer is rendered inside a
+    // .dark region hung off a pinned-light canvas: without it the wordmark's
+    // "Out" inherited the canvas ink and disappeared into the dark surface.
+    <footer className="border-t border-border bg-background-2 text-foreground">
       <div className="mx-auto w-full max-w-6xl px-6 py-12">
         <div className="grid gap-10 md:grid-cols-[1.5fr_2fr]">
           <div>

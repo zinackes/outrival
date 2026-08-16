@@ -1,84 +1,87 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
-import { CaretRightIcon } from "@/components/icons";
-import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/dashboard/theme-toggle";
+import { Nav } from "../nav";
 import { Footer } from "../footer";
+import { VantaFog } from "../vanta-fog";
 import { BreadcrumbJsonLd, SoftwareAppJsonLd } from "./structured-data";
 
-// Brand shell for the comparison / alternatives pages. Same register as the
-// landing (.landing-canvas → Zodiak headings, deep dark canvas) but a static,
-// wide header (logo + Start free) instead of the anchored client Nav, whose
-// in-page section links don't resolve off the home page.
+// Brand shell for every page around the landing — /pricing, /vs/*,
+// /alternatives/*. It used to be a static sticky bar over a flat background,
+// which read as a documentation site parked next to the marketing site. It now
+// runs the landing's own composition: paper canvas pinned light (.lp-light, so
+// html.dark can't half-theme it), the landing bar that detaches into a floating
+// pill on scroll, alternating paper / graphite bands supplied by <Band>, and
+// the footer in the dark region the landing ends on.
 export function CompareShell({ children }: { children: ReactNode }) {
   return (
-    <div className="landing-canvas min-h-dvh bg-background font-sans text-foreground antialiased">
+    <div className="landing-canvas lp-light lp-page min-h-dvh font-sans antialiased">
       <SoftwareAppJsonLd />
-      <header className="sticky top-0 z-40 border-b border-border/60 bg-background/85 backdrop-blur-sm">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
-          <Link href="/" className="text-lg font-semibold tracking-tight">
-            Out<span className="text-primary">rival</span>
-          </Link>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/pricing"
-              className="mr-2 hidden text-sm text-text-muted transition-colors hover:text-foreground sm:inline"
-            >
-              Pricing
-            </Link>
-            <ThemeToggle />
-            <Button asChild size="sm">
-              <Link href="/auth">Start free</Link>
-            </Button>
-          </div>
-        </div>
-      </header>
+      {/* No <Nav> here: it belongs inside <PageHero>, in flow, so the fog runs
+          behind it exactly as it does on the landing. */}
       <main id="main-content" tabIndex={-1}>
         {children}
       </main>
-      <Footer />
+      <div className="dark" data-lp-tone="dark">
+        <Footer />
+      </div>
     </div>
   );
 }
 
-// Visual breadcrumb + its BreadcrumbList JSON-LD in one place, so the two never
-// drift. The last item is the current page (not a link).
-export function Breadcrumbs({
-  items,
+// One band of the page. `dark` flips the whole system token set for the
+// subtree (severities, categories, text tiers) exactly like the landing's dark
+// body, and marks the box for the nav pill, which samples these regions at its
+// own height to decide its tone (see landing/nav.tsx).
+export function Band({
+  tone = "paper",
+  wide = false,
+  id,
+  children,
 }: {
-  items: { name: string; path: string }[];
+  tone?: "paper" | "dark";
+  wide?: boolean;
+  id?: string;
+  children: ReactNode;
+}) {
+  const dark = tone === "dark";
+  return (
+    <section
+      id={id}
+      className={dark ? "lp-band-dark dark" : "lp-band-paper"}
+      data-lp-tone={dark ? "dark" : undefined}
+    >
+      <div className={wide ? "lp-inner lp-inner-wide" : "lp-inner"}>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+// The opening of a marketing page, on the landing's own hero: the fog stack
+// behind, the bar in flow over it, and a full viewport of it before the first
+// cut to graphite. Sans headline with a serif italic accent — the landing's
+// register, not the serif-everything the base h1 rule gives an unstyled page.
+//
+// `crumbs` is structured data only. The visible trail ("Home / Outrival vs
+// Crayon") was the one element that still looked like a documentation site
+// sitting above the headline; Google reads the JSON-LD either way.
+export function PageHero({
+  crumbs,
+  compact = false,
+  children,
+}: {
+  crumbs?: { name: string; path: string }[];
+  /** Half-height opening for pages whose subject is the text right below. */
+  compact?: boolean;
+  children: ReactNode;
 }) {
   return (
-    <nav aria-label="Breadcrumb" className="text-dense">
-      <BreadcrumbJsonLd items={items} />
-      <ol className="flex flex-wrap items-center gap-1.5 text-text-subtle">
-        {items.map((it, i) => {
-          const last = i === items.length - 1;
-          return (
-            <li key={it.path} className="flex items-center gap-1.5">
-              {last ? (
-                <span className="text-text-muted" aria-current="page">
-                  {it.name}
-                </span>
-              ) : (
-                <Link
-                  href={it.path}
-                  className="transition-colors hover:text-foreground"
-                >
-                  {it.name}
-                </Link>
-              )}
-              {!last && (
-                <CaretRightIcon
-                  size={16}
-                  className="text-text-subtle/60"
-                  aria-hidden
-                />
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </nav>
+    <section className={compact ? "lp-page-hero is-compact" : "lp-page-hero"}>
+      {crumbs && <BreadcrumbJsonLd items={crumbs} />}
+      <div className="lp-glow-red" aria-hidden />
+      <VantaFog />
+      <div className="lp-fog-grain" aria-hidden />
+      <Nav tone="marketing" />
+      <header className="lp-page-head">{children}</header>
+    </section>
   );
 }

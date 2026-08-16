@@ -10,28 +10,18 @@ export const metadata: Metadata = pageMetadata({
     "How Outrival stores your data in the EU, keeps AI outputs grounded and verifiable, and scrapes responsibly. A factual trust overview.",
 });
 
-// Prose styling matching the legal pages (see legal-doc.tsx PROSE) so the trust
-// hub reads as one system with /privacy, /terms, /subprocessors — without pulling
-// the bilingual client shell (this page ships English-only, no lang toggle).
-const PROSE = [
-  "mt-8 flex flex-col gap-4 text-sm leading-relaxed text-text-muted",
-  "[&_h2]:mt-8 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-foreground",
-  "[&_strong]:font-semibold [&_strong]:text-foreground",
-  "[&_a]:text-primary [&_a]:underline-offset-2 hover:[&_a]:underline",
-  "[&_ul]:flex [&_ul]:list-disc [&_ul]:flex-col [&_ul]:gap-1.5 [&_ul]:pl-5",
-  "[&_li]:leading-relaxed",
-  "[&_code]:rounded [&_code]:bg-background-2 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-dense",
-  "[&_.fine]:text-xs [&_.fine]:text-text-subtle",
-].join(" ");
-
 export default function SecurityPage() {
   return (
     <DocPage
-      title="Security & trust"
+      title={
+        <>
+          Security &amp; <span className="lp-serif-accent">trust</span>
+        </>
+      }
       updated={LEGAL_VERSION.updatedEn}
       intro="How we store your data, how we keep AI outputs grounded and verifiable, and how we scrape responsibly. This page describes what Outrival does today, not aspirations."
     >
-      <div className={PROSE}>
+      <div className="lp-doc-body">
         <h2>Where your data lives</h2>
         <p>
           Outrival is built for <strong>EU data storage</strong>. Your account,

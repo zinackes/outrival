@@ -1,10 +1,11 @@
 "use client";
 
 /* Silk — React Bits (https://reactbits.dev/backgrounds/silk), MIT license.
-   Adapted for Outrival: client directive + double-quote style; the shader,
-   uniforms and component structure are kept verbatim so upstream fixes stay
-   easy to diff in. Rendered exclusively through <SilkFill>, which owns the
-   WebGL budget (viewport-gated mount, reduced-motion opt-out). */
+   Adapted for Outrival: client directive, double-quote style, and a lower dpr
+   ceiling (see <Canvas> below); the shader, uniforms and component structure
+   are kept verbatim so upstream fixes stay easy to diff in. Rendered
+   exclusively through <SilkFill>, which owns the WebGL budget (viewport-gated
+   mount, reduced-motion opt-out). */
 /* eslint-disable react/no-unknown-property */
 import React, { forwardRef, useMemo, useRef, useLayoutEffect, useEffect } from "react";
 import { Canvas, useFrame, useThree, type RootState } from "@react-three/fiber";
@@ -157,7 +158,11 @@ const Silk: React.FC<SilkProps> = ({ speed = 5, scale = 1, color = "#7B7481", no
   }, [speed, scale, noiseIntensity, color, rotation, uniforms]);
 
   return (
-    <Canvas dpr={[1, 2]} frameloop="always">
+    // Upstream ships dpr={[1, 2]}: on a retina screen that is 4x the fragment
+    // shader pixels, per canvas, and up to ten of these are lit at once on the
+    // landing. 1.5 halves that work on a field of soft noise where the extra
+    // samples were never legible.
+    <Canvas dpr={[1, 1.5]} frameloop="always">
       <SilkPlane ref={meshRef} uniforms={uniforms} />
     </Canvas>
   );

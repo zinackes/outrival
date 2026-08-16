@@ -1,10 +1,21 @@
-import { PLAN_LABELS, PLANS } from "@outrival/shared";
+import type { CSSProperties } from "react";
+import { PLAN_LABELS, PLANS, type Plan } from "@outrival/shared";
 import { PLAN_CARDS, planPrice } from "@/lib/plan-catalog";
-import { SilkFill } from "./silk-fill";
+
+// Every card used to carry a Silk fill, but at scale 0.42 and speed 1.4 the
+// fold barely moved: four WebGL contexts (of the landing's fifteen, against a
+// browser ceiling of sixteen) to paint what reads as a still. The fill is now
+// a CSS gradient on .lp-plan, one slow fold each, angled where the shader used
+// to be rotated — degrees here, the same radians as before.
+const PLAN_FILL: Record<Plan, { color: string; angle: string }> = {
+  free: { color: "#1a1d24", angle: "23deg" },
+  starter: { color: "#16231f", angle: "86deg" },
+  pro: { color: "#252143", angle: "149deg" },
+  business: { color: "#2a1d23", angle: "212deg" },
+};
 
 // Dark pricing, still wired to the one plan table: copy from PLAN_CARDS,
 // prices derived from PLAN_PRICING via planPrice — nothing hand-written here.
-// Only the featured plan gets a Silk fill; the other cards stay quiet.
 export function Pricing() {
   return (
     <div className="lp-dark-inner lp-pricing" id="pricing">
@@ -25,8 +36,13 @@ export function Pricing() {
             <div
               key={plan}
               className={card.featured ? "lp-plan lp-plan-featured" : "lp-plan"}
+              style={
+                {
+                  "--plan-fill": PLAN_FILL[plan].color,
+                  "--plan-angle": PLAN_FILL[plan].angle,
+                } as CSSProperties
+              }
             >
-              {card.featured && <SilkFill color="#2d2b3f" />}
               {card.featured && <span className="plan-pop">Most popular</span>}
               <h3>{PLAN_LABELS[plan]}</h3>
               <div className="plan-price">

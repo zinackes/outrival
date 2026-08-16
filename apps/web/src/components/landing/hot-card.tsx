@@ -11,11 +11,20 @@ export function HotCard() {
         <div className="lp-hot-copy">
           <p>
             Competitive intelligence used to cost a salary and a sales call.
-            Klue and Crayon start around $20,000 to $40,000 a year, with prices
-            you have to ask for. Outrival is €29 to €199, published, self-serve,
-            cancel in one click.
+            Klue and Crayon start around{" "}
+            {/* The sourcing belongs on the figures, not on a line of its own
+                under the paragraph, where it read as a disclaimer. */}
+            <span
+              className="lp-cite"
+              tabIndex={0}
+              data-tip="Third-party estimates, July 2026."
+              aria-label="$20,000 to $40,000 — third-party estimates, July 2026"
+            >
+              $20,000 to $40,000
+            </span>{" "}
+            a year, with prices you have to ask for. Outrival is €29 to €199,
+            published, self-serve, cancel in one click.
           </p>
-          <p className="lp-hot-note">Third-party estimates, July 2026.</p>
           <p className="lp-hot-links">
             <a href="/vs/crayon">Outrival vs Crayon</a> ·{" "}
             <a href="/vs/klue">Outrival vs Klue</a>

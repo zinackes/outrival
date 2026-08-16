@@ -21,18 +21,43 @@ const CATS = [
 // Second row starts half-way through the list so the two lanes never mirror.
 const CATS_B = [...CATS.slice(6), ...CATS.slice(0, 6)];
 
+// A severity is only worth showing if it says what it costs you. The rank is
+// carried by a filling rule above each column — a dot has no degree, so four
+// of them side by side said nothing the labels didn't already say.
 const SEVERITIES = [
-  { label: "Critical", c: "var(--critical)" },
-  { label: "High", c: "var(--high)" },
-  { label: "Medium", c: "var(--medium)" },
-  { label: "Low", c: "var(--low)" },
+  {
+    label: "Critical",
+    c: "var(--critical)",
+    fill: "100%",
+    gloss: "They moved on your core. Answer today.",
+  },
+  {
+    label: "High",
+    c: "var(--high)",
+    fill: "68%",
+    gloss: "Worth a decision this week.",
+  },
+  {
+    label: "Medium",
+    c: "var(--medium)",
+    fill: "42%",
+    gloss: "Context you should know.",
+  },
+  {
+    label: "Low",
+    c: "var(--low)",
+    fill: "22%",
+    gloss: "Logged and searchable, no ping.",
+  },
 ];
 
 function MarqueeRow({ cats, reverse = false }: { cats: typeof CATS; reverse?: boolean }) {
   return (
     <div className={reverse ? "lp-mq lp-mq-b" : "lp-mq"} aria-hidden>
+      {/* Four copies, scrolled by half the track: on a wide screen two were
+          narrower than the viewport, so the lane emptied before it looped. */}
       <div className="lp-mq-track">
-        {[0, 1].map((h) => (
+        {[0, 1, 2, 3].map((h) => (
           <div key={h} className="lp-mq-half">
             {cats.map((cat) => (
               <span
@@ -66,10 +91,15 @@ export function Categories() {
       <MarqueeRow cats={CATS_B} reverse />
       <div className="lp-sev-fixed">
         {SEVERITIES.map((sev) => (
-          <span key={sev.label} className="s">
-            <span className="lp-sev-dot" style={{ background: sev.c }} />
-            {sev.label}
-          </span>
+          <div
+            key={sev.label}
+            className="s"
+            style={{ "--c": sev.c, "--fill": sev.fill } as CSSProperties}
+          >
+            <span className="s-bar" />
+            <span className="s-head">{sev.label}</span>
+            <span className="s-gloss">{sev.gloss}</span>
+          </div>
         ))}
       </div>
     </div>

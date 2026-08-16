@@ -11,10 +11,6 @@ import { VantaFog } from "./vanta-fog";
 export function Hero() {
   return (
     <>
-      <div className="lp-banner">
-        <b>Free forever on 2 competitors</b> · No credit card · Cancel in one
-        click
-      </div>
       <section className="lp-hero">
         <div className="lp-glow-red" aria-hidden />
         <VantaFog />
@@ -39,6 +35,11 @@ export function Hero() {
               See a sample digest
             </a>
           </div>
+          {/* The old top banner answered an objection nobody had yet. It reads
+              as the button's fine print instead, where the objection lands. */}
+          <p className="lp-reassure">
+            Free forever on 2 competitors · No credit card · Cancel in one click
+          </p>
         </div>
         <div className="lp-machine" aria-hidden>
           <SignalLane />

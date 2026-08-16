@@ -10,20 +10,6 @@ export const metadata: Metadata = pageMetadata({
     "What OutrivalBot is, what it collects, how often, and exactly how to block it. Outrival collects only what is openly published and never bypasses a site's controls.",
 });
 
-// English-only, matching the trust hub (/security) prose so /bot reads as one
-// system with the legal + security pages, without the bilingual client shell.
-const PROSE = [
-  "mt-8 flex flex-col gap-4 text-sm leading-relaxed text-text-muted",
-  "[&_h2]:mt-8 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-foreground",
-  "[&_strong]:font-semibold [&_strong]:text-foreground",
-  "[&_a]:text-primary [&_a]:underline-offset-2 hover:[&_a]:underline",
-  "[&_ul]:flex [&_ul]:list-disc [&_ul]:flex-col [&_ul]:gap-1.5 [&_ul]:pl-5",
-  "[&_li]:leading-relaxed",
-  "[&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:border [&_pre]:border-border [&_pre]:bg-background-2 [&_pre]:p-4 [&_pre]:text-dense",
-  "[&_code]:rounded [&_code]:bg-background-2 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-dense",
-  "[&_.fine]:text-xs [&_.fine]:text-text-subtle",
-].join(" ");
-
 export default function BotPage() {
   return (
     <DocPage
@@ -31,7 +17,7 @@ export default function BotPage() {
       updated={LEGAL_VERSION.updatedEn}
       intro="Outrival monitors competitor websites on behalf of our customers. Our crawler, OutrivalBot, identifies itself on every request and collects only what a site publishes openly. This page explains what it does and how to block it."
     >
-      <div className={PROSE}>
+      <div className="lp-doc-body">
         <h2>Who we are</h2>
         <p>
           OutrivalBot is the automated crawler operated by Outrival, a

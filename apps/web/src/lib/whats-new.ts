@@ -134,4 +134,37 @@ export const WHATS_NEW: WhatsNewEntry[] = [
 ];
 
 export const WHATS_NEW_SEEN_KEY = "whatsNewSeen";
-export const LATEST_WHATS_NEW_DATE = WHATS_NEW[0]?.date ?? "";
+
+/** Newest release date, or null when there is no release to announce. */
+export const LATEST_WHATS_NEW_DATE: string | null = WHATS_NEW[0]?.date ?? null;
+
+/**
+ * Is there a release the reader hasn't opened yet?
+ *
+ * `seen` is whatever a past build left in localStorage, so the two sides are not
+ * guaranteed to share a shape — a lexicographic `<` on a full ISO instant against a
+ * plain `YYYY-MM-DD` answers confidently and wrongly. Compare instants instead, and
+ * treat an unreadable marker as never-seen (a dot too many, never one too few).
+ *
+ * An empty changelog announces nothing: the old form lit the dot forever, because
+ * the missing latest date collapsed to `""` and the marker written on click was
+ * falsy, so the next load read it back as "never seen".
+ */
+export function hasUnseenWhatsNew(seen: string | null): boolean {
+  if (!LATEST_WHATS_NEW_DATE) return false;
+  const latest = Date.parse(LATEST_WHATS_NEW_DATE);
+  if (Number.isNaN(latest)) return false;
+  if (!seen) return true;
+  const seenAt = Date.parse(seen);
+  return Number.isNaN(seenAt) || seenAt < latest;
+}
+
+/** Record the newest release as read. No-op when there is nothing to record. */
+export function markWhatsNewSeen(): void {
+  if (!LATEST_WHATS_NEW_DATE) return;
+  try {
+    localStorage.setItem(WHATS_NEW_SEEN_KEY, LATEST_WHATS_NEW_DATE);
+  } catch {
+    /* storage blocked — the dot simply comes back on the next load */
+  }
+}

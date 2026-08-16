@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ENTITLEMENT_CATALOG,
@@ -13,6 +13,7 @@ import type { ValueComparisonSide } from "@/lib/api";
 import { useFx } from "@/lib/fx";
 import { planMonthlyMap } from "@/lib/plan-monthly";
 import { productValueComparisonQuery } from "@/lib/queries";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,39 +41,46 @@ export function ValueComparisonPanel({ productId }: { productId: string }) {
 
   if (q.isPending) {
     return (
-      <Card className="bg-gradient-card-strong p-4">
+      <Shell>
         <Skeleton className="h-32 w-full" />
-      </Card>
+      </Shell>
     );
   }
-  if (!model) return null;
 
-  const { columns, rows, currency, ourMatrixMissing } = model;
-
-  if (ourMatrixMissing) {
+  // The panel used to vanish whenever it had nothing to draw — a section that is
+  // simply absent reads as a section that doesn't exist, and every reason it was
+  // absent is a different (and mostly fixable) story. Each one now says which.
+  if (q.isError || !model) {
     return (
-      <Card className="bg-gradient-card-strong p-4">
-        <h3 className="mb-1 text-dense font-semibold uppercase tracking-wide text-muted-foreground">
-          What your price buys
-        </h3>
-        <Separator className="mb-3" />
+      <Shell heading>
         <p className="text-dense text-muted-foreground">
-          Your rivals&rsquo; pricing pages list what each plan includes, yours has no captured
-          feature list yet. Point this product at a pricing page and the comparison fills in
-          on the next scan.
+          We couldn&rsquo;t read the plan comparison just now.
         </p>
-      </Card>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="mt-3"
+          onClick={() => void q.refetch()}
+          disabled={q.isFetching}
+        >
+          {q.isFetching ? "Trying…" : "Try again"}
+        </Button>
+      </Shell>
     );
   }
 
-  if (rows.length === 0 || columns.length === 0) return null;
+  if (model.kind !== "table") {
+    return (
+      <Shell heading>
+        <p className="text-dense text-muted-foreground">{EMPTY_COPY[model.kind]}</p>
+      </Shell>
+    );
+  }
+
+  const { columns, rows, currency } = model;
 
   return (
-    <Card className="bg-gradient-card-strong p-4">
-      <h3 className="mb-1 text-dense font-semibold uppercase tracking-wide text-muted-foreground">
-        What your price buys
-      </h3>
-      <Separator className="mb-3" />
+    <Shell heading>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[36rem] border-collapse text-sm">
           <thead>
@@ -119,9 +127,35 @@ export function ValueComparisonPanel({ productId }: { productId: string }) {
         &ldquo;Not listed&rdquo; means the page does not mention it, which is not the same as
         unavailable.
       </p>
+    </Shell>
+  );
+}
+
+/** The panel's frame, so every state (table, skeleton, explanation) sits in one card. */
+function Shell({ children, heading }: { children: ReactNode; heading?: boolean }) {
+  return (
+    <Card className="bg-gradient-card-strong p-4">
+      {heading && (
+        <>
+          <h3 className="mb-1 text-dense font-semibold uppercase tracking-wide text-muted-foreground">
+            What your price buys
+          </h3>
+          <Separator className="mb-3" />
+        </>
+      )}
+      {children}
     </Card>
   );
 }
+
+const EMPTY_COPY: Record<Exclude<PanelModel["kind"], "table">, string> = {
+  "theirs-missing":
+    "No competitor has a captured plan and feature list yet. This fills in as their pricing pages are scanned.",
+  "ours-missing":
+    "Your rivals' pricing pages list what each plan includes, yours has no captured feature list yet. Point this product at a pricing page and the comparison fills in on the next scan.",
+  "no-overlap":
+    "Nothing lines up yet: no feature in the catalog appears on both your pricing page and a rival's. A wider capture on either side will fill this in.",
+};
 
 function PlanCell({ side, currency }: { side: FeatureSide | null; currency: string }) {
   if (!side) {
@@ -152,6 +186,22 @@ interface PanelRow {
 const CATALOG_ORDER = new Map(ENTITLEMENT_CATALOG.map((entry, i) => [entry.slug, i]));
 
 /**
+ * Either the table, or the reason there isn't one. The three empty cases are told
+ * apart because they ask for three different things from the reader: wait for their
+ * scans, point our own product at a pricing page, or nothing at all.
+ */
+type PanelModel =
+  | {
+      kind: "table";
+      columns: { id: string; name: string }[];
+      rows: PanelRow[];
+      currency: string;
+    }
+  | { kind: "theirs-missing" }
+  | { kind: "ours-missing" }
+  | { kind: "no-overlap" };
+
+/**
  * One comparison per rival, merged into one table. `ours` is derived from our own
  * matrix alone, so it is the same object in every pairing — the merge keeps the
  * first one and only widens the competitor columns.
@@ -159,13 +209,13 @@ const CATALOG_ORDER = new Map(ENTITLEMENT_CATALOG.map((entry, i) => [entry.slug,
 function buildModel(
   data: { self: ValueComparisonSide | null; competitors: ValueComparisonSide[] },
   rates: Record<string, number> | null,
-) {
+): PanelModel {
   const self = data.self;
   const rivals = data.competitors.filter((c) => c.cells.length > 0);
-  if (!self || rivals.length === 0) return null;
-  if (self.cells.length === 0) {
-    return { columns: [], rows: [], currency: "USD", ourMatrixMissing: true as const };
-  }
+  // Their side first: with no rival matrix, saying ours is missing would blame the
+  // reader for a blank that isn't theirs to fill.
+  if (rivals.length === 0) return { kind: "theirs-missing" };
+  if (!self || self.cells.length === 0) return { kind: "ours-missing" };
 
   const currency =
     self.plans.find((p) => p.price != null)?.currency ??
@@ -200,10 +250,12 @@ function buildModel(
       (CATALOG_ORDER.get(b.slug) ?? Number.MAX_SAFE_INTEGER),
   );
 
+  if (rows.length === 0) return { kind: "no-overlap" };
+
   return {
+    kind: "table",
     columns: rivals.map((r) => ({ id: r.id, name: r.name })),
     rows,
     currency,
-    ourMatrixMissing: false as const,
   };
 }

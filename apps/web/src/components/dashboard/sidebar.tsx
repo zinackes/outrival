@@ -21,6 +21,7 @@ import {
   CaretUpDownIcon,
   CreditCardIcon,
   ColumnsIcon,
+  SparkleIcon,
 } from "@/components/icons";
 import {
   Sidebar,
@@ -97,11 +98,15 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
-    // Slimmed (page-audit-2026-06-30): Ask lives in the always-on ask-dock and Sector
-    // is reached from the Overview teaser, so neither earns a rail slot. Trends and
-    // Compare stay — real cross-competitor destinations. AI Visibility (docs/ai-visibility.md).
+    // Slimmed (page-audit-2026-06-30): Sector is reached from the Overview teaser, so
+    // it doesn't earn a rail slot. Trends and Compare stay — real cross-competitor
+    // destinations. AI Visibility (docs/ai-visibility.md). Ask came back in
+    // (page-audit-2026-08-14): the dock answers in place, but /dashboard/ask is also a
+    // page of its own — watched questions and history — and nothing on the rail led
+    // there, so that half was reachable only by typing the URL.
     label: "Analyze",
     items: [
+      { href: "/dashboard/ask", label: "Ask", icon: SparkleIcon },
       {
         href: "/dashboard/ai-visibility",
         label: "AI Visibility",

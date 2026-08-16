@@ -31,10 +31,7 @@ export default async function BriefPrintPage({
 
   return (
     <div className="min-h-dvh bg-background">
-      <PrintControls
-        backHref={`/dashboard/digests/${detail.digest.id}`}
-        auto={query.print === "1"}
-      />
+      <PrintControls auto={query.print === "1"} />
       <DigestSheet digest={detail.digest} />
     </div>
   );

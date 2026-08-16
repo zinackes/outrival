@@ -9,8 +9,14 @@ import {
   competitors,
   digests,
 } from "@outrival/db";
-import { emailButton, signUnsubscribeToken } from "@outrival/shared";
+import {
+  emailButton,
+  memoryHtml,
+  signUnsubscribeToken,
+  type CompetitorMemory,
+} from "@outrival/shared";
 import { sendEmail, ALERT_FROM } from "../lib/resend";
+import { loadCompetitorMemory } from "../lib/competitor-memory";
 import { localHour } from "../lib/notification-dispatcher";
 import { escapeHtml } from "../lib/escape-html";
 import { emailShell, e, t, severityDot, type EmailSeverity } from "../lib/email-shell";
@@ -45,7 +51,7 @@ function severityToUrgency(severity: string): "action_required" | "watch" | "fyi
   return "fyi";
 }
 
-function buildDailyDigestContent(deferred: DeferredSignal[]) {
+function buildDailyDigestContent(deferred: DeferredSignal[], memory: CompetitorMemory) {
   const hasHigh = deferred.some(
     (s) => s.severity === "critical" || s.severity === "high",
   );
@@ -63,6 +69,16 @@ function buildDailyDigestContent(deferred: DeferredSignal[]) {
       insight: s.insight,
       so_what: s.soWhat ?? "",
     })),
+    // Accumulated memory (OUT-172). Written on the daily brief too, and not only on
+    // the weekly one it was built for: the daily is the brief an org on hourly
+    // dispatch actually receives, so leaving it out is leaving the block unread.
+    // Same shape, so the in-app reader and the markdown export need no change.
+    ...(memory.stories.length > 0
+      ? {
+          competitorStories: memory.stories,
+          competitorStoriesOmitted: memory.omitted,
+        }
+      : {}),
   };
 }
 
@@ -179,11 +195,19 @@ export async function runGenerateDailyDigest(payload?: { timestamp?: Date }) {
           : undefined;
       const webUrl = process.env.WEB_URL ?? "https://outrival.app";
 
+      // Accumulated memory (OUT-172), loaded once and used twice: the email below and
+      // the persisted content the in-app reader renders.
+      const memory = await loadCompetitorMemory(org.id, now);
+      // Empty string when no competitor is over the threshold — kept out of the
+      // template entirely then, so a quiet org gets no stray spacer above the CTA.
+      const memorySection = memoryHtml(memory.stories, memory.omitted);
+
       const headline = `${deferred.length} update${deferred.length > 1 ? "s" : ""} since yesterday`;
       const html = emailShell(
         `<div ${e("muted", t("meta", "margin:0 0 10px;"))}>Daily briefing</div>
   <h1 ${e("text", t("display", "margin:0 0 22px;"))}>${headline}</h1>
   ${rows}
+  ${memorySection ? `<div style="margin-top:28px;">${memorySection}</div>` : ""}
   <div style="margin-top:28px;">${emailButton(`${webUrl}/dashboard/signals?src=digest_daily`, "Open the full briefing")}</div>
   ${unsubscribeUrl ? `<div ${e("faint", t("meta", "margin-top:28px;letter-spacing:normal;"))}><a href="${unsubscribeUrl}" ${e("faint", "text-decoration:underline;")}>Unsubscribe</a></div>` : ""}`,
         640,
@@ -228,7 +252,7 @@ export async function runGenerateDailyDigest(payload?: { timestamp?: Date }) {
       // idempotency/finalize lookups. Best-effort — a failure here never blocks the
       // send (the email already went out and the signals are stamped).
       try {
-        const content = buildDailyDigestContent(deferred);
+        const content = buildDailyDigestContent(deferred, memory);
         const day = isoDate(sentAt);
         await db.insert(digests).values({
           orgId: org.id,

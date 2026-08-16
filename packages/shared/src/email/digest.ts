@@ -137,8 +137,11 @@ function storyBlock(story: CompetitorStory, isFirst: boolean): string {
  * compounds, which is also why it renders in the all-quiet email: a calm week is
  * exactly when "nothing moved" needs to be read next to everything that did.
  * Empty (no competitor over the threshold) renders nothing at all.
+ *
+ * Exported because the daily briefing builds its own shell rather than going through
+ * `renderDigestEmail`, and the block has to read identically in both sends.
  */
-function memoryHtml(stories: CompetitorStory[], omitted: number): string {
+export function memoryHtml(stories: CompetitorStory[], omitted: number): string {
   if (stories.length === 0) return "";
   const more =
     omitted > 0

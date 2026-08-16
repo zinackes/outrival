@@ -10,7 +10,6 @@ import {
   standingQueries,
   signalVerifications,
   insertAiQualityCheck,
-  loadMemorySignals,
 } from "@outrival/db";
 import {
   generateDigest,
@@ -27,13 +26,12 @@ import {
   groundableDigestLayer,
 } from "../lib/faithfulness-gate";
 import {
-  buildCompetitorMemory,
   signDigestFeedbackToken,
   signUnsubscribeToken,
   VERIFIED_OUTCOME,
   verificationGapMinutes,
-  type CompetitorMemory,
 } from "@outrival/shared";
+import { loadCompetitorMemory } from "../lib/competitor-memory";
 import { renderDigestEmail, renderAllQuietDigest } from "../lib/digest-email";
 import { sendEmail, ALERT_FROM } from "../lib/resend";
 import { loggedAi } from "../lib/analytics";
@@ -113,28 +111,6 @@ async function confirmedVerifications(
     out.set(key, gapByChange.get(v.changeId) ?? null);
   }
   return out;
-}
-
-/**
- * Ceiling on the signal history one memory block is built from. An org watching
- * twenty competitors for a year sits far under it; past it the OLDEST facts are the
- * ones dropped, so the rendered trajectory stays correct and only `since` reads
- * later than the true first capture. The reverse (capping the recent end) would
- * silently narrate a stale story, which is worse than a shortened one.
- */
-const MEMORY_HISTORY_CAP = 2000;
-
-/**
- * What the org knows about its competitors over the whole tracking period (OUT-172).
- *
- * Deterministic and free: no AI call, and nothing here is new prose — every line is
- * the plain-language before/after the classifier recorded at the time, replayed.
- * What counts as replayable is decided by `loadMemorySignals` (@outrival/db), which
- * the competitor page reads through too so the two surfaces cannot drift.
- */
-async function loadCompetitorMemory(orgId: string, now: Date): Promise<CompetitorMemory> {
-  const rows = await loadMemorySignals({ orgId, limit: MEMORY_HISTORY_CAP });
-  return buildCompetitorMemory(rows, { now });
 }
 
 // Runtime-neutral job body: shared verbatim by the pg-boss handler and the thin

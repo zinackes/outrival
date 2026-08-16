@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRightIcon, CheckIcon } from "@/components/icons";
+import { ArrowRightIcon, CheckIcon, ClockIcon } from "@/components/icons";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { shortAge } from "@/lib/format-date";
@@ -63,68 +63,162 @@ export function OverviewLead({
   const severity = signal.severityOverride ?? signal.severity;
 
   return (
-    <div className="grid overflow-hidden rounded-lg border border-border-strong bg-card lg:grid-cols-[minmax(0,1fr)_264px]">
-      <div className="flex min-w-0 flex-col gap-3 px-5 py-4">
-        {/* Who and how bad, before what. Same order as the signal detail pane. */}
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
-          <SeverityScale severity={severity} size="compact" />
-          <span aria-hidden>·</span>
-          <Link
-            href={`/dashboard/competitors/${signal.competitorId}`}
-            className="inline-flex items-center gap-2 font-semibold hover:underline"
-            style={competitorNameColor(signal.competitorColor)}
-          >
-            <CompAvatar name={signal.competitorName} url={signal.competitorUrl} size={20} />
-            {signal.competitorName}
-          </Link>
-          <span aria-hidden>·</span>
-          <CatText category={signal.category} />
-          {signal.sourceType && (
-            <>
-              <span aria-hidden>·</span>
-              <span>{sourceLabel(signal.sourceType)}</span>
-            </>
-          )}
-          <span aria-hidden>·</span>
-          {/* An age is measured against the clock at render time, so the server's
-              string is already stale when the browser recomputes it and a bucket
-              boundary in between makes them differ. `dateTime` carries the instant. */}
-          <time className="tabular-nums" dateTime={signal.createdAt} suppressHydrationWarning>
-            {shortAge(signal.createdAt)}
-          </time>
+    <LeadFrame pulse={pulse} rangeLabel={rangeLabel}>
+      {/* Who and how bad, before what. Same order as the signal detail pane. */}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
+        <SeverityScale severity={severity} size="compact" />
+        <span aria-hidden>·</span>
+        <Link
+          href={`/dashboard/competitors/${signal.competitorId}`}
+          className="inline-flex items-center gap-2 font-semibold hover:underline"
+          style={competitorNameColor(signal.competitorColor)}
+        >
+          <CompAvatar name={signal.competitorName} url={signal.competitorUrl} size={20} />
+          {signal.competitorName}
+        </Link>
+        <span aria-hidden>·</span>
+        <CatText category={signal.category} />
+        {signal.sourceType && (
+          <>
+            <span aria-hidden>·</span>
+            <span>{sourceLabel(signal.sourceType)}</span>
+          </>
+        )}
+        <span aria-hidden>·</span>
+        {/* An age is measured against the clock at render time, so the server's
+            string is already stale when the browser recomputes it and a bucket
+            boundary in between makes them differ. `dateTime` carries the instant. */}
+        <time className="tabular-nums" dateTime={signal.createdAt} suppressHydrationWarning>
+          {shortAge(signal.createdAt)}
+        </time>
+      </div>
+
+      <p className="m-0 max-w-[44ch] text-lead font-medium leading-snug tracking-tight text-pretty lg:text-xl">
+        {signal.insight}
+      </p>
+
+      {signal.soWhat && (
+        <p className="m-0 max-w-[62ch] text-sm text-muted-foreground">{signal.soWhat}</p>
+      )}
+
+      {signal.recommendedAction && (
+        <div className="mt-0.5 flex max-w-[66ch] items-start gap-2.5 border-t border-dashed border-border pt-3 text-sm">
+          <span className="shrink-0 pt-px text-xs text-muted-foreground">Do this</span>
+          <span>{signal.recommendedAction}</span>
         </div>
+      )}
 
-        <p className="m-0 max-w-[44ch] text-lead font-medium leading-snug tracking-tight text-pretty lg:text-xl">
-          {signal.insight}
-        </p>
-
-        {signal.soWhat && (
-          <p className="m-0 max-w-[62ch] text-sm text-muted-foreground">{signal.soWhat}</p>
-        )}
-
-        {signal.recommendedAction && (
-          <div className="mt-0.5 flex max-w-[66ch] items-start gap-2.5 border-t border-dashed border-border pt-3 text-sm">
-            <span className="shrink-0 pt-px text-xs text-muted-foreground">Do this</span>
-            <span>{signal.recommendedAction}</span>
-          </div>
-        )}
-
-        <div className="mt-0.5 flex flex-wrap items-center gap-2">
-          <Button asChild size="sm">
-            <Link href={`/dashboard/signals?focus=${signal.id}`}>Open the signal</Link>
+      <div className="mt-0.5 flex flex-wrap items-center gap-2">
+        <Button asChild size="sm">
+          <Link href={`/dashboard/signals?focus=${signal.id}`}>Open the signal</Link>
+        </Button>
+        <Button asChild size="sm" variant="outline">
+          <Link href={`/dashboard/competitors/${signal.competitorId}`}>
+            View {signal.competitorName}
+          </Link>
+        </Button>
+        {onMarkRead && !signal.isRead && (
+          <Button size="sm" variant="ghost" onClick={() => onMarkRead(signal.id)}>
+            <CheckIcon size={16} /> Mark read
           </Button>
+        )}
+      </div>
+    </LeadFrame>
+  );
+}
+
+/**
+ * The same band when there is no signal to lead on: the first hours after
+ * onboarding, or a window that happens to be quiet.
+ *
+ * Both states used to leave the Overview's shape — the first one swapped the whole
+ * page for a dedicated wait surface, the second dropped a bare grey strip — so
+ * arriving with little data read as arriving somewhere else. The frame and the rail
+ * stay: the period's numbers really are zero, the spark really is fourteen observed
+ * zeros, and the page already looks like the one signals will land in.
+ */
+export function OverviewLeadPending({
+  pulse,
+  rangeLabel,
+  variant,
+  competitorCount,
+  nextRunLabel,
+}: {
+  pulse: PulseData;
+  rangeLabel: string;
+  /** `first-run`: nothing has ever landed. `window`: history exists, this period is empty. */
+  variant: "first-run" | "window";
+  competitorCount: number;
+  /** When the next scrape lands, when we know. */
+  nextRunLabel: string | null;
+}) {
+  const firstRun = variant === "first-run";
+
+  return (
+    <LeadFrame pulse={pulse} rangeLabel={rangeLabel}>
+      {/* Same eyebrow grammar as a real lead — state, subject, timing — so the two
+          bands read as one component in two conditions. */}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
+          <ClockIcon size={16} aria-hidden />
+          {firstRun ? "Collecting" : "Quiet period"}
+        </span>
+        <span aria-hidden>·</span>
+        <span>
+          <span className="tabular-nums">{competitorCount}</span> competitor
+          {competitorCount > 1 ? "s" : ""} watched
+        </span>
+        {nextRunLabel && (
+          <>
+            <span aria-hidden>·</span>
+            {/* Clock-relative, so the server's string and the browser's a second
+                later can land either side of a bucket boundary. */}
+            <span suppressHydrationWarning>next scan {nextRunLabel}</span>
+          </>
+        )}
+      </div>
+
+      <p className="m-0 max-w-[44ch] text-lead font-medium leading-snug tracking-tight text-pretty lg:text-xl">
+        {firstRun
+          ? "No signal yet. Monitoring is running."
+          : `No signal in the ${rangeLabel}.`}
+      </p>
+
+      <p className="m-0 max-w-[62ch] text-sm text-muted-foreground">
+        {firstRun
+          ? "A signal lands here the moment a competitor changes something we watch: pricing, hiring, product or content."
+          : "Nothing moved in this period. Widen the range to see earlier activity."}
+      </p>
+
+      {firstRun && (
+        <div className="mt-0.5 flex flex-wrap items-center gap-2">
           <Button asChild size="sm" variant="outline">
-            <Link href={`/dashboard/competitors/${signal.competitorId}`}>
-              View {signal.competitorName}
+            <Link href="/dashboard/competitors">
+              Review competitors <ArrowRightIcon size={16} />
             </Link>
           </Button>
-          {onMarkRead && !signal.isRead && (
-            <Button size="sm" variant="ghost" onClick={() => onMarkRead(signal.id)}>
-              <CheckIcon size={16} /> Mark read
-            </Button>
-          )}
         </div>
-      </div>
+      )}
+    </LeadFrame>
+  );
+}
+
+/**
+ * The band's shell: the story on the left, the period's rail on the right. Shared
+ * so the pending state cannot drift away from the populated one.
+ */
+function LeadFrame({
+  pulse,
+  rangeLabel,
+  children,
+}: {
+  pulse: PulseData;
+  rangeLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid overflow-hidden rounded-lg border border-border-strong bg-card lg:grid-cols-[minmax(0,1fr)_264px]">
+      <div className="flex min-w-0 flex-col gap-3 px-5 py-4">{children}</div>
 
       <div className="flex flex-col border-border bg-background-2 max-lg:flex-row max-lg:border-t max-sm:flex-col lg:border-l">
         <PulseStat

@@ -28,7 +28,7 @@ import { useSetAskContext } from "./ask-context";
 import { catLabel } from "./cat-pill";
 import { OnboardingChecklistCard } from "./onboarding-checklist";
 import { LandscapeSection } from "./landscape";
-import { OverviewLead, type PulseData } from "./overview-lead";
+import { OverviewLead, OverviewLeadPending, type PulseData } from "./overview-lead";
 import { OverviewMovers } from "./overview-movers";
 import { OverviewQueue, type QueueItem } from "./overview-queue";
 import { OverviewMeasured } from "./overview-measured";
@@ -282,8 +282,12 @@ export function OverviewView() {
   const everHadSignals = sigs.length > 0;
   // Cold-start regimes (NN/g — first-use vs no-results vs populated):
   //  • no competitors      → a setup hero, nothing else (every cell would be empty);
-  //  • competitors, no signal yet (`watching`) → a confident wait state instead of
-  //    a strip of bare "0" KPIs that reads as broken;
+  //  • competitors, no signal yet (`watching`) → the page below, in its limited-data
+  //    variants: the lead band states that collection is running, the queue says
+  //    nothing has arrived rather than claiming a cleared inbox, and the day-0
+  //    landscape stands in for the measured band. OUT-82 — this used to replace the
+  //    whole page with a dedicated wait surface, so the last step of onboarding
+  //    landed somewhere that did not look like the product;
   //  • populated           → the full dashboard.
   const watching = hasCompetitors && !everHadSignals;
 
@@ -291,11 +295,11 @@ export function OverviewView() {
   if (!sample && !hasCompetitors) {
     return (
       <div className="space-y-9">
-        <OnboardingChecklistCard />
         <PageHead
           title="Overview"
           sub="Track every competitor move (pricing, hiring, product, content) as it happens."
         />
+        <OnboardingChecklistCard />
         <EmptyState
           icon={ScanIcon}
           title="Start tracking your first competitor"
@@ -334,6 +338,11 @@ export function OverviewView() {
       }
     : null;
   const nextRun = health?.upcoming[0]?.nextRunAt ?? null;
+  // Read once and passed down: three surfaces state it, and computing it three
+  // times against the render clock is three chances to disagree by a bucket.
+  const nextRunLabel = nextRun
+    ? formatDistanceToNow(new Date(nextRun), { addSuffix: true })
+    : null;
 
   const pulse: PulseData = {
     count: derived.inWindow.length,
@@ -353,19 +362,26 @@ export function OverviewView() {
 
   return (
     <div className="space-y-9">
-      {/* Progressive streaming right after onboarding (patch-25) — refreshes this
-          view each poll so signals/competitors fill in live. Self-hides otherwise. */}
-      {!sample && <OnboardingAnalysisPanel state={analysis} />}
-
-      {!sample && !analysisActive && <OnboardingChecklistCard />}
-
       <SampleBanner />
 
       <PageHead
         title="Overview"
         sub={
           watching ? (
-            `Watching ${comps.length} competitor${comps.length > 1 ? "s" : ""}.`
+            // Same two-clause grammar as the populated verdict below: what is true
+            // now, then what happens next, so day 0 reads as this page with less in
+            // it rather than as a different page.
+            <span className="text-foreground">
+              Watching <span className="tabular-nums">{comps.length}</span>{" "}
+              competitor{comps.length > 1 ? "s" : ""}.{" "}
+              <span className="text-muted-foreground" suppressHydrationWarning>
+                {analysisActive
+                  ? `First analysis running, ${analysis.analyzed} of ${analysis.total} done.`
+                  : nextRunLabel
+                    ? `Next scan ${nextRunLabel}.`
+                    : "First signals land as scans complete."}
+              </span>
+            </span>
           ) : (
             // The verdict, not the tally: who moved, on what, and whether anything
             // is still unhandled. Composed from counts we already hold, so it costs
@@ -389,8 +405,8 @@ export function OverviewView() {
                   ? `${derived.criticals.length} critical still open.`
                   : derived.inWindow.length > 0
                     ? "Nothing critical open."
-                    : nextRun
-                      ? `Next scan ${formatDistanceToNow(new Date(nextRun), { addSuffix: true })}.`
+                    : nextRunLabel
+                      ? `Next scan ${nextRunLabel}.`
                       : ""}
               </span>
             </span>
@@ -418,49 +434,57 @@ export function OverviewView() {
         }
       />
 
-      {watching ? (
-        // Day-0 landscape (post-onboarding activation): competitors exist but no
-        // signal yet — deliver the first-scrape "state of the world" instead of a
-        // bare wait state. Falls back to the wait empty-state on fetch error.
-        <LandscapeSection productId={productId} competitorCount={comps.length} />
+      {/* Progressive streaming right after onboarding (patch-25) — refreshes this
+          view each poll so signals/competitors fill in live. Self-hides otherwise.
+          Sits under the masthead, not above it (OUT-82): the page opens on the
+          Overview it will keep being, and the first-run surfaces are blocks in it. */}
+      {!sample && <OnboardingAnalysisPanel state={analysis} />}
+
+      {!sample && !analysisActive && <OnboardingChecklistCard />}
+
+      {derived.lead ? (
+        <OverviewLead
+          signal={derived.lead}
+          pulse={pulse}
+          rangeLabel={rangeLabel}
+          onMarkRead={sample ? undefined : markRead}
+        />
       ) : (
-        <>
-          {derived.lead ? (
-            <OverviewLead
-              signal={derived.lead}
-              pulse={pulse}
-              rangeLabel={rangeLabel}
-              onMarkRead={sample ? undefined : markRead}
-            />
-          ) : (
-            // Signals exist, but none in this window. The range is the thing to
-            // change, so say that rather than showing a dead band.
-            <div className="rounded-lg border border-border bg-card px-5 py-8 text-sm text-muted-foreground">
-              No signals in the {rangeLabel}. Widen the range to see history.
-            </div>
-          )}
-
-          <OverviewMovers competitors={comps} />
-
-          <OverviewQueue
-            items={derived.queue}
-            windowCount={derived.inWindow.length}
-            rangeLabel={rangeLabel}
-            nextRunLabel={
-              nextRun
-                ? formatDistanceToNow(new Date(nextRun), { addSuffix: true })
-                : null
-            }
-          />
-
-          {/* Mounted-only: its query is keyed on the range, and mounting it before
-              the local window is adopted would fetch the UTC window first, then the
-              real one. It renders nothing without data, so the server loses no HTML. */}
-          {!sample && mounted && <OverviewMeasured range={range} productId={productId} />}
-
-          {!sample && <OverviewArtifacts />}
-        </>
+        // Nothing to lead on: either nothing has ever landed, or this window is
+        // quiet. Same band either way, with the period's real zeros on the rail.
+        <OverviewLeadPending
+          pulse={pulse}
+          rangeLabel={rangeLabel}
+          variant={watching ? "first-run" : "window"}
+          competitorCount={comps.length}
+          nextRunLabel={sample ? null : nextRunLabel}
+        />
       )}
+
+      <OverviewMovers competitors={comps} />
+
+      <OverviewQueue
+        items={derived.queue}
+        windowCount={derived.inWindow.length}
+        rangeLabel={rangeLabel}
+        nextRunLabel={nextRunLabel}
+        firstRun={watching}
+      />
+
+      {watching ? (
+        // Day-0 landscape (post-onboarding activation): the first-scrape "state of
+        // the world" — pricing, hiring, reviews, recent news. It takes the measured
+        // band's slot because it answers the same question from the only data that
+        // exists yet: what we captured, with no model in it.
+        <LandscapeSection productId={productId} />
+      ) : (
+        // Mounted-only: its query is keyed on the range, and mounting it before the
+        // local window is adopted would fetch the UTC window first, then the real
+        // one. It renders nothing without data, so the server loses no HTML.
+        !sample && mounted && <OverviewMeasured range={range} productId={productId} />
+      )}
+
+      {!sample && <OverviewArtifacts />}
     </div>
   );
 }

@@ -183,6 +183,39 @@ All tiers in v1; deeper lookback for pro+ is a later monetization knob.
 - **Example signal card** in the empty feed, labeled "Example" (reuse the
   PR #25 sample-mode pattern).
 
+## Overview shape at day 0 (OUT-82)
+
+> One page, three regimes. The end of onboarding lands on the Overview the user
+> will keep using, not on a surface built for the wait.
+
+Until OUT-82 the `watching` regime (competitors exist, no signal yet) replaced
+the whole page: no lead band, no movers, no queue, only the landscape. Arriving
+there straight from onboarding read as landing on a different product. The page
+now keeps one structure in all three regimes and swaps blocks for their
+limited-data variants instead.
+
+| Block | 0 signal ever (`watching`) | First results arriving | Fully populated |
+|---|---|---|---|
+| Masthead | "Watching N competitors." plus next scan, or the live analysis count | same, the count moves each poll | the verdict ("3 of 5 moved, mostly on pricing") |
+| Analysis panel | hidden until a session is active | per-competitor progress, checklist suppressed under it | hidden |
+| Lead band | `OverviewLeadPending`, variant `first-run`: same frame, rail on a real 0, spark of observed zeros | flips to `OverviewLead` on the first signal, no layout change | `OverviewLead` |
+| Who moved | real tiles, all quiet ("never moved", "first scan pending") | tiles fill in as counts land | ranked movers |
+| Needs a decision | "Nothing yet", neutral clock, no green tick | same until a critical or high lands | the queue |
+| Measured slot | `LandscapeSection`: what the first scrape captured (pricing, hiring, reviews, news) plus the source coverage strip | landscape until the first signal | `OverviewMeasured` |
+| Artifacts | self-hides | self-hides | shelves |
+
+Rules that hold across the three:
+
+- Available, in progress and absent stay distinguishable. A zero we measured is
+  a zero on the rail; a source not yet reached says "pending"; a source we
+  cannot reach says so inline.
+- No block claims work the user did not do. "Cleared" is never shown to an org
+  that has never had a signal.
+- The wait message lives in exactly one place, the lead band. `LandscapeSection`
+  renders nothing rather than repeating it.
+- `OverviewLeadPending` also covers the populated org whose picked window is
+  empty (variant `window`), which used to be a bare grey strip.
+
 ## Lever 5 — Behavioral lifecycle sequence (upgraded from "welcome digest")
 
 Behavior-triggered, never purely time-based; exit the sequence the moment

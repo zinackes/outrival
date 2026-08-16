@@ -7,11 +7,15 @@ Trois sessions, dans l'ordre. Chacune part d'une **fenêtre neuve** (ou `/clear`
 relais par les fichiers de `~/.outrival-audit/2026-08-16/`, jamais par le
 contexte : tu peux couper entre deux, dormir, reprendre demain.
 
-| | Session | Agents | Durée | Navigateur |
-|---|---|---|---|---|
-| ☐ | 1. code | 40 à 120 | 40 à 70 min | non |
-| ☐ | 2. produit | ~25 | 50 à 70 min | **oui, sur la prod** |
-| ☐ | 3. réfutation et rapport | 300 à 450 | 60 à 90 min | non |
+| | Session | Agents | Durée de calcul | Fenêtres de quota | Navigateur |
+|---|---|---|---|---|---|
+| ☐ | 1. code | 40 à 120 | 40 à 70 min | 1 à 2 | non |
+| ☐ | 2. produit | ~25 | 50 à 70 min | 1 | **oui, sur la prod** |
+| ☐ | 3. réfutation et rapport | 300 à 450 | 60 à 90 min | plusieurs | non |
+
+Sessions 1 et 3 : bloquer sur la limite d'usage est **normal** (voir PLAN.md,
+« Quota de requêtes »). Lancer en début de fenêtre ; à la limite, attendre la
+fenêtre suivante et reprendre avec `resumeFromRunId`.
 
 ---
 
@@ -118,9 +122,10 @@ poussé. Le pousser rebuild l'image web en prod.
 2026-09-15. Réexporter les cookies et rejouer
 `node docs/audits/2026-08-16/harness/adopt-cookies.mjs`.
 
-**Un workflow meurt en route.** Il a écrit son script sous le dossier de
-session et rendu un `runId`. Relancer avec `resumeFromRunId`, le préfixe déjà
-exécuté revient du cache sans recoûter.
+**Un workflow meurt en route, ou « usage limit reached ».** Attendu sur les
+sessions 1 et 3. Le workflow a écrit son script sous le dossier de session et
+rendu un `runId` : relancer avec `resumeFromRunId` (à la fenêtre suivante si
+c'est le quota), le préfixe déjà exécuté revient du cache sans recoûter.
 
 **Une session dit `networkidle`.** Elle réintroduit un bug déjà corrigé :
 `networkidle` ne se déclenche jamais sur une page authentifiée, parce que

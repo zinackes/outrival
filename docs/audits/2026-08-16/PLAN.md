@@ -13,7 +13,7 @@ Charte de l'audit. À relire et amender **avant** de lancer quoi que ce soit.
 | Mutations | **autorisées**, sauf les deux exceptions ci-dessous |
 | Rédaction du rapport | modèle principal de session (Fable 5), jamais déléguée |
 | Modèles sous-agents | `sonnet` partout, épinglé explicitement sur chaque appel |
-| Priorité | **exhaustivité**, le coût en requêtes n'est pas une contrainte |
+| Priorité | **exhaustivité** ; les tokens ne sont pas une contrainte, le quota de requêtes si (voir « Quota de requêtes ») |
 
 Le compte n'étant pas admin, les **23 pages `/admin/*`** sortent du périmètre
 navigateur. Elles restent couvertes en audit de code (phase 1).
@@ -100,11 +100,11 @@ pourquoi. Elles
 communiquent par les fichiers de `~/.outrival-audit/2026-08-16/`, jamais par le
 contexte.
 
-| Session | Phases | Agents | Durée |
-|---|---|---|---|
-| 1 | phase 1, code | 40 à 120 | 40 à 70 min |
-| 2 | phases 2 et 3, crawl puis produit | ~25 | 50 à 70 min |
-| 3 | phases 4 et 5, réfutation puis rapport | 300 à 450 | 60 à 90 min |
+| Session | Phases | Agents | Durée de calcul | Fenêtres de quota |
+|---|---|---|---|---|
+| 1 | phase 1, code | 40 à 120 | 40 à 70 min | 1 à 2 |
+| 2 | phases 2 et 3, crawl puis produit | ~25 | 50 à 70 min | 1 |
+| 3 | phases 4 et 5, réfutation puis rapport | 300 à 450 | 60 à 90 min | plusieurs |
 
 Découper n'est pas une concession au budget. Une session unique passerait la
 moitié de l'audit au-dessus de 200k de contexte, où chaque tour est refacturé et
@@ -112,6 +112,16 @@ où la compaction commence à effacer les artefacts au moment précis où on en 
 besoin (`.claude/rules/linear-workflow.md`). Trois sessions courtes, chacune
 partant d'un contexte propre et lisant ses entrées sur le disque, tiennent une
 exhaustivité qu'une session longue ne tient pas.
+
+### Quota de requêtes, la vraie horloge
+
+Le quota 5 h se compte en **requêtes API** (~500 par fenêtre, mesuré le
+2026-08-08), et chaque tour de chaque sous-agent est une requête. Les sessions
+1 et 3 dépassent donc une fenêtre : **bloquer sur la limite d'usage est le
+déroulement normal, pas une panne.** Lancer chaque session en début de fenêtre,
+et reprendre à la fenêtre suivante avec `resumeFromRunId` ; le préfixe déjà
+exécuté revient du cache sans recoûter. Les durées du tableau sont du temps de
+calcul, pas du temps mural.
 
 ### Phase 0, harness : TERMINÉE le 2026-08-16
 
@@ -312,8 +322,9 @@ pas.
 
 L'audit est terminé quand :
 
-1. `failures.json` est produit pour les 70 routes du périmètre navigateur, en 8
-   combinaisons chacune, sans trou dû au harness lui-même.
+1. `failures.json` est produit pour les 80 routes résolues de `routes.json`,
+   en 8 combinaisons chacune (640 chargements), sans trou dû au harness
+   lui-même.
 2. Chaque finding du rapport porte : preuve `file:line` ou URL plus screenshot,
    impact, effort S/M/L, risque du correctif, confiance.
 3. Chaque finding de la table est passé par la phase 4 : soit confirmé par

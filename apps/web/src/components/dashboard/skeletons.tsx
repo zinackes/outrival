@@ -59,6 +59,63 @@ export function TableSkeleton({
   );
 }
 
+/**
+ * The competitors roster, mid-load. One definition for both entrances: the SSR
+ * `loading.tsx` and the client list's own pending branch used to draw two different
+ * screens — a card grid on the server, a table on the client — so a cold visit
+ * reflowed from one layout into the other before the data even arrived.
+ *
+ * Column widths track the real header (competitors-list.tsx `GRID`): a tick box, a
+ * colour dot, the competitor, its latest move, then the columns that only appear as
+ * the container widens.
+ */
+export function CompetitorsListSkeleton({ rows = 6 }: { rows?: number } = {}) {
+  const grid =
+    "grid items-center gap-x-3.5 px-2 " +
+    "grid-cols-[1rem_0.625rem_minmax(0,1.15fr)_minmax(0,1.6fr)_1.75rem] " +
+    "@2xl:grid-cols-[1rem_0.625rem_minmax(0,1.15fr)_minmax(0,1.7fr)_7rem_1.75rem] " +
+    "@4xl:grid-cols-[1rem_0.625rem_minmax(0,1.15fr)_minmax(0,1.75fr)_7rem_9rem_1.75rem] " +
+    "@5xl:grid-cols-[1rem_0.625rem_minmax(0,1.15fr)_minmax(0,1.8fr)_7rem_4rem_9rem_1.75rem]";
+  return (
+    <div className="@container">
+      <div className={`${grid} border-b border-border pb-2`}>
+        <Skeleton className="size-3.5 rounded-sm" />
+        <span />
+        <Skeleton className="h-2.5 w-20" />
+        <Skeleton className="h-2.5 w-20" />
+        <Skeleton className="hidden h-2.5 w-14 @2xl:block" />
+        <Skeleton className="hidden h-2.5 w-12 @5xl:block" />
+        <Skeleton className="hidden h-2.5 w-16 @4xl:block" />
+        <span />
+      </div>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className={`${grid} h-[3.75rem] border-b border-border last:border-b-0`}>
+          <Skeleton className="size-3.5 rounded-sm" />
+          <Skeleton className="size-2.5 rounded-full" />
+          <div className="flex items-center gap-2.5">
+            <Skeleton className="size-7 shrink-0 rounded-full" />
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="h-2.5 w-20" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-3" style={{ width: `${70 - (i % 3) * 12}%` }} />
+            <Skeleton className="h-2.5 w-24" />
+          </div>
+          <Skeleton className="hidden h-5 w-16 @2xl:block" />
+          <Skeleton className="hidden h-3 w-8 @5xl:block" />
+          <div className="hidden flex-col gap-1.5 @4xl:flex">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-2.5 w-16" />
+          </div>
+          <span />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ListRowsSkeleton({ rows = 5 }: { rows?: number } = {}) {
   return (
     <Card className="overflow-hidden">

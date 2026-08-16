@@ -1,8 +1,10 @@
 import { Skeleton } from "@/components/ui/skeleton";
-import { GridCardsSkeleton } from "@/components/dashboard/skeletons";
+import { CompetitorsListSkeleton } from "@/components/dashboard/skeletons";
 
-// Competitors list — header + toolbar + a card grid. Overrides the generic dashboard
-// skeleton so the toolbar row is present and the grid density matches the real list.
+// Competitors list — header + toolbar + the roster. Overrides the generic dashboard
+// skeleton so the toolbar row is present, and shares CompetitorsListSkeleton with the
+// list's own pending branch: this used to draw a card grid where the client drew a
+// table, so a cold visit changed layout twice before showing a single competitor.
 export default function CompetitorsLoading() {
   return (
     <div aria-busy="true" aria-live="polite">
@@ -18,7 +20,7 @@ export default function CompetitorsLoading() {
           <Skeleton key={i} className="h-8 w-28 rounded-md" />
         ))}
       </div>
-      <GridCardsSkeleton cards={6} />
+      <CompetitorsListSkeleton />
     </div>
   );
 }

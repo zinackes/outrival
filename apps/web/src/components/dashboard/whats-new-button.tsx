@@ -5,26 +5,21 @@ import { useEffect, useState } from "react";
 import { MegaphoneIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { LATEST_WHATS_NEW_DATE, WHATS_NEW_SEEN_KEY } from "@/lib/whats-new";
+import { hasUnseenWhatsNew, markWhatsNewSeen, WHATS_NEW_SEEN_KEY } from "@/lib/whats-new";
 
 export function WhatsNewButton() {
   const [unseen, setUnseen] = useState(false);
 
   useEffect(() => {
     try {
-      const seen = localStorage.getItem(WHATS_NEW_SEEN_KEY);
-      setUnseen(!seen || seen < LATEST_WHATS_NEW_DATE);
+      setUnseen(hasUnseenWhatsNew(localStorage.getItem(WHATS_NEW_SEEN_KEY)));
     } catch {
       /* localStorage blocked — leave the dot off */
     }
   }, []);
 
   function markSeen() {
-    try {
-      localStorage.setItem(WHATS_NEW_SEEN_KEY, LATEST_WHATS_NEW_DATE);
-    } catch {
-      /* ignore */
-    }
+    markWhatsNewSeen();
     setUnseen(false);
   }
 

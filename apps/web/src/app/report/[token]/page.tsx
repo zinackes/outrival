@@ -40,6 +40,10 @@ async function attempt(url: string, init: RequestInit): Promise<ReportLoad> {
 
 async function loadReport(token: string): Promise<ReportLoad> {
   const url = `${API}/api/public/report/${encodeURIComponent(token)}`;
+  // 300s is also the revocation propagation window, and the number Settings → Data
+  // quotes to the reader: a token revoked right after a successful render keeps
+  // being served from this cache entry until it expires. Changing it changes that
+  // promise — keep the two in step (shared-reports-settings.tsx).
   const first = await attempt(url, { next: { revalidate: 300 } });
   if (first.ok || first.failure === "revoked") return first;
   // A revoked link stays revoked, so its 404 is worth the 300s window. An outage is

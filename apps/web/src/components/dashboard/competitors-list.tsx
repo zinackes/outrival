@@ -12,6 +12,7 @@ import {
   ArrowRightIcon,
   SpinnerIcon,
   DotsThreeIcon,
+  PencilIcon,
   TrashIcon,
   ArrowSquareOutIcon,
   BinocularsIcon,
@@ -84,7 +85,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { CatText } from "./cat-pill";
-import { TableSkeleton } from "./skeletons";
+import { CompetitorsListSkeleton } from "./skeletons";
 import { ActivitySpark } from "./activity-spark";
 import { CompetitorsBulkBar } from "./competitors-bulk-bar";
 import { SelectBox } from "./select-box";
@@ -267,6 +268,10 @@ export function CompetitorsList() {
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Competitor | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Correcting a name or a URL is the one edit the roster provokes — you read a
+  // wrong name here, not on the detail page — and it used to cost a round trip
+  // through the detail view and back.
+  const [editTarget, setEditTarget] = useState<Competitor | null>(null);
   // Roster selection driving the bulk bar. `lastSelectedRef` anchors shift-click
   // ranges along the CURRENTLY VISIBLE order, so a range covers what the user sees
   // rather than the order the server happened to send.
@@ -544,7 +549,7 @@ export function CompetitorsList() {
         </div>
       )}
 
-      {competitors === null && <TableSkeleton rows={6} columns={5} />}
+      {competitors === null && <CompetitorsListSkeleton />}
 
       {competitors && competitors.length === 0 && (
         <EmptyState
@@ -637,6 +642,7 @@ export function CompetitorsList() {
                   selected={selectedIds.has(row.id)}
                   onToggleSelect={(range) => toggleSelect(row.id, range)}
                   onColor={(v) => void setColor(row.id, v)}
+                  onEdit={() => setEditTarget(row)}
                   onDelete={() => setDeleteTarget(row)}
                 />
               </motion.div>
@@ -660,6 +666,12 @@ export function CompetitorsList() {
           setShowDialog(false);
           setPaywall(reason);
         }}
+      />
+
+      <EditCompetitorDialog
+        competitor={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSaved={refresh}
       />
 
       <Dialog
@@ -715,6 +727,7 @@ function CompetitorRow({
   selected,
   onToggleSelect,
   onColor,
+  onEdit,
   onDelete,
 }: {
   row: Row;
@@ -722,6 +735,7 @@ function CompetitorRow({
   selected: boolean;
   onToggleSelect: (range: boolean) => void;
   onColor: (value: string | null) => void;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   const router = useRouter();
@@ -926,9 +940,12 @@ function CompetitorRow({
               <DotsThreeIcon size={16} />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuItem onClick={() => router.push(href)}>
               <ArrowRightIcon size={16} /> Open detail
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onEdit}>
+              <PencilIcon size={16} /> Edit name & URL
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={onDelete}
@@ -940,6 +957,123 @@ function CompetitorRow({
         </DropdownMenu>
       </div>
     </div>
+  );
+}
+
+/**
+ * Correct a competitor's name or website, without leaving the roster.
+ *
+ * Name and URL only: they are the two fields the list itself displays, so they are
+ * the two a reader can tell are wrong from here. Category, description and colour
+ * stay on the detail page, where the context that justifies them is.
+ *
+ * Keyed by competitor id so a second target re-mounts the form rather than carrying
+ * the previous one's draft over.
+ */
+function EditCompetitorDialog({
+  competitor,
+  onClose,
+  onSaved,
+}: {
+  competitor: Competitor | null;
+  onClose: () => void;
+  onSaved: () => Promise<unknown>;
+}) {
+  return (
+    <Dialog open={competitor !== null} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        {competitor && (
+          <EditCompetitorForm
+            key={competitor.id}
+            competitor={competitor}
+            onClose={onClose}
+            onSaved={onSaved}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditCompetitorForm({
+  competitor,
+  onClose,
+  onSaved,
+}: {
+  competitor: Competitor;
+  onClose: () => void;
+  onSaved: () => Promise<unknown>;
+}) {
+  const [name, setName] = useState(competitor.name);
+  const [url, setUrl] = useState(competitor.url ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const trimmedName = name.trim();
+  const trimmedUrl = url.trim();
+  const changed = trimmedName !== competitor.name || trimmedUrl !== (competitor.url ?? "");
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!trimmedName || !changed) {
+      onClose();
+      return;
+    }
+    const patch: { name?: string; url?: string } = {};
+    if (trimmedName !== competitor.name) patch.name = trimmedName;
+    if (trimmedUrl && trimmedUrl !== (competitor.url ?? "")) patch.url = trimmedUrl;
+
+    setSaving(true);
+    try {
+      await api.updateCompetitor(competitor.id, patch);
+      await onSaved();
+      toast.success("Competitor updated");
+      onClose();
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't update the competitor" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <DialogHeader>
+        <DialogTitle>Edit competitor</DialogTitle>
+        <DialogDescription>
+          Correct the name or the website. Scrapes won&apos;t overwrite these.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="my-4 space-y-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="row-cmp-name">Name</Label>
+          <Input
+            id="row-cmp-name"
+            value={name}
+            maxLength={COMPETITOR_NAME_MAX_LENGTH}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="row-cmp-url">Website URL</Label>
+          <Input
+            id="row-cmp-url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://…"
+          />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving || !trimmedName || !changed}>
+          {saving && <SpinnerIcon size={16} className="animate-spin" />}
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }
 

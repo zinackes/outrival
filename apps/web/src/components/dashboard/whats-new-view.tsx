@@ -5,12 +5,7 @@ import { MegaphoneIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { PageHead } from "./page-head";
-import {
-  WHATS_NEW,
-  LATEST_WHATS_NEW_DATE,
-  WHATS_NEW_SEEN_KEY,
-  type WhatsNewKind,
-} from "@/lib/whats-new";
+import { WHATS_NEW, markWhatsNewSeen, type WhatsNewKind } from "@/lib/whats-new";
 import { formatDate as formatDateIntl } from "@/lib/format-date";
 
 function formatDate(iso: string): string {
@@ -48,11 +43,7 @@ function KindLabel({ kind }: { kind: WhatsNewKind }) {
 export function WhatsNewView() {
   // Visiting the page clears the unseen dot (covers direct navigation).
   useEffect(() => {
-    try {
-      localStorage.setItem(WHATS_NEW_SEEN_KEY, LATEST_WHATS_NEW_DATE);
-    } catch {
-      /* ignore */
-    }
+    markWhatsNewSeen();
   }, []);
 
   return (

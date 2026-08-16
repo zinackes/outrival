@@ -34,12 +34,19 @@ export function ListError({ error, onRetry }: { error: unknown; onRetry?: () => 
  */
 export function PartialError({
   title,
+  description,
   error,
   onRetry,
 }: {
   /** The part that is missing, named: "The market charts didn't load". */
   title: string;
-  error: unknown;
+  /**
+   * Overrides the error-derived copy. For the miss that isn't a failure: an
+   * upstream that answered, with less. There is no error to translate there, and
+   * the generic "something went wrong" would name the wrong problem.
+   */
+  description?: string;
+  error?: unknown;
   onRetry: () => void;
 }) {
   const cfg = errorConfig(error);
@@ -53,7 +60,7 @@ export function PartialError({
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium text-foreground">{title}</div>
         <p className="max-w-[62ch] text-dense leading-relaxed text-muted-foreground">
-          {cfg.description}
+          {description ?? cfg.description}
         </p>
       </div>
       <Button variant="outline" size="sm" onClick={onRetry} className="shrink-0">

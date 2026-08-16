@@ -31,14 +31,16 @@ export const DEFAULT_PRESETS: DatePreset[] = [
   { label: "Last 90 days", range: () => lastNDays(90) },
 ];
 
-// "All time" — a fixed early start so the window spans the org's full history
-// (product data never predates this). Only for pages that pass {from,to} straight
-// through to a query; pages that render "last N days" labels should NOT use it.
-export const ALL_TIME_START = new Date(2000, 0, 1);
+// "All time" — the widest window offered, capped at two years rather than left
+// open. It used to start at 2000-01-01: a 26-year span sent to time-series queries
+// that no capture reaches into, so the widest preset was also the slowest, for
+// history that does not exist. Two years still outruns the oldest snapshot the
+// product holds, so the label stays true to what it returns.
+export const ALL_TIME_DAYS = 730;
 
 export const ALL_TIME_PRESET: DatePreset = {
   label: "All time",
-  range: () => ({ from: ALL_TIME_START, to: endOfDay(new Date()) }),
+  range: () => lastNDays(ALL_TIME_DAYS),
 };
 
 function rangesMatch(a: DateRange, b: DateRange): boolean {

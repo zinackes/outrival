@@ -20,7 +20,8 @@ export function ShareRecapButton({ month }: { month: string }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
       toast.success("Recap link copied", {
-        description: "Anyone with the link can view your recap. Revoke it in Settings → Data.",
+        description:
+          "Anyone with the link can view your recap. Revoke it in Settings → Data; it stops opening within 5 minutes.",
       });
     } catch {
       toast.error("Couldn’t create the share link. Please try again.");

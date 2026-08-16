@@ -5,7 +5,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ChartLineIcon } from "@/components/icons";
+import { ChartLineIcon, DownloadSimpleIcon } from "@/components/icons";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { EmptyState } from "./empty-state";
 import { ListError, PartialError } from "@/components/outrival/list-error";
@@ -18,6 +18,12 @@ import {
   type TechMove,
 } from "@/lib/api";
 import { trendsSummaryQuery, trendsMarketQuery } from "@/lib/queries";
+import { toCsv, downloadCsv } from "@/lib/csv";
+import {
+  toTrendsRows,
+  trendsCsvFilename,
+  TRENDS_CSV_COLUMNS,
+} from "./trends-export";
 import { formatDate } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 import { competitorNameColor } from "@/lib/competitor-color";
@@ -797,6 +803,22 @@ export function TrendsView() {
     return ids.size;
   }, [visibleSummary]);
 
+  // Built off `visibleSummary` for the same reason every other derived number on
+  // this page is: a file that quietly re-adds a competitor the reader unticked is a
+  // different report under the same filename.
+  const exportRows = useMemo(
+    () => (visibleSummary ? toTrendsRows(visibleSummary) : []),
+    [visibleSummary],
+  );
+
+  function exportCsv() {
+    if (exportRows.length === 0) return;
+    downloadCsv(
+      trendsCsvFilename(range.from, range.to),
+      toCsv(exportRows, TRENDS_CSV_COLUMNS),
+    );
+  }
+
   // OUT-190 — this used to be a bare sentence: the page it replaced had a date
   // range and a competitor filter, and neither survives a re-navigation, so the
   // only way out was a full reload. Same panel and same copy as every other list.
@@ -834,6 +856,14 @@ export function TrendsView() {
               onShowAll={showAll}
             />
             <DateRangePicker value={range} onChange={setRange} presets={TRENDS_PRESETS} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportCsv}
+              disabled={exportRows.length === 0}
+            >
+              <DownloadSimpleIcon size={16} /> Export
+            </Button>
           </>
         }
       />
@@ -870,6 +900,19 @@ export function TrendsView() {
           title="The charts didn't load"
           error={marketQ.error}
           onRetry={() => void marketQ.refetch()}
+        />
+      )}
+
+      {/* `degraded` means the summary route fell back: it answered, on less than the
+          full history. The page only ever reacted to it when the window came back
+          completely empty, so the partial case — some dimensions read, others
+          dropped — rendered as a finished report of a quiet market. Every "held
+          steady" below it was then a claim about data that was never read. */}
+      {summary?.degraded && !allEmpty && (
+        <PartialError
+          title="This report is missing part of its data"
+          description="Some of the trend history couldn't be read for this window, so a dimension may look quieter than it was. Reloading usually fills it in."
+          onRetry={() => void summaryQ.refetch()}
         />
       )}
 

@@ -28,6 +28,13 @@ export function SharedReportsSettings() {
   const [creating, setCreating] = useState(false);
   // A public link keeps working until it's revoked, so revoking is destructive and
   // irreversible from the reader's side — it asks first, like every other one.
+  //
+  // Revocation is not instant, and the UI says so rather than promising otherwise:
+  // /report/[token] renders through Next's full-route cache with `revalidate: 300`
+  // (apps/web/src/app/report/[token]/page.tsx), so a page that already rendered
+  // successfully can keep being served for up to five minutes after the token is
+  // revoked. Only a page that has never rendered — or whose window has expired —
+  // reaches the API and gets the 404. That 300s is the whole propagation window.
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null);
   const [revoking, setRevoking] = useState(false);
   const linksQ = useQuery({
@@ -61,7 +68,9 @@ export function SharedReportsSettings() {
       await api.revokeShareLink(revokeTarget);
       await qc.invalidateQueries({ queryKey: ["share-links"] });
       setRevokeTarget(null);
-      toast.success("Link revoked. It no longer opens.");
+      toast.success("Link revoked", {
+        description: "It stops opening within 5 minutes, once the cached page expires.",
+      });
     } catch {
       toast.error("Couldn't revoke the link. Please try again.");
     } finally {
@@ -77,7 +86,7 @@ export function SharedReportsSettings() {
   return (
     <SettingsSection
       title="Shared reports"
-      description="Public read-only links to your Competitive Snapshot. Anyone with a link can view it. Revoke anytime."
+      description="Public read-only links to your Competitive Snapshot. Anyone with a link can view it. Revoke anytime — a revoked link stops opening within 5 minutes."
       action={
         <Button variant="outline" size="sm" onClick={create} disabled={creating}>
           {creating ? (
@@ -151,8 +160,10 @@ export function SharedReportsSettings() {
           <DialogHeader>
             <DialogTitle>Revoke this link?</DialogTitle>
             <DialogDescription>
-              Anyone who already has it stops being able to open the report. This
-              can't be undone — you'd have to create a new link and share it again.
+              Anyone who already has it stops being able to open the report, within
+              5 minutes: the public page is cached that long, so a copy already
+              rendered can still be served until the cache expires. This can't be
+              undone — you'd have to create a new link and share it again.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

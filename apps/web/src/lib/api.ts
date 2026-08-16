@@ -3245,14 +3245,23 @@ export type CompetitorOverview = {
     price: number | null;
     currency: string;
     billing_period: string;
+    recorded_at: string;
   }>;
+  // When the tier set above was read off their pricing page (OUT-194). One batch,
+  // so one instant for the whole ladder. Null when nothing has been captured.
+  pricingCapturedAt: string | null;
   reviews: Array<{
     source: string;
     score: number;
     review_count: number;
     sentiment_score: number;
+    // When this source's score was last read — per source, so a stale G2 and a
+    // fresh Capterra are not flattened into one freshness claim.
+    recorded_at: string;
   }>;
-  hiring: { openRoles: number };
+  // `capturedAt` is when we last COUNTED the roles (the job_counts series), not
+  // when a posting appeared. Null before the first count.
+  hiring: { openRoles: number; capturedAt: string | null };
   // Movement, not level. The overview stated levels only, and on a monitoring
   // product the derivative is the product: "3 open roles" is inventory, "+2 this
   // month" is the finding. Each is null when its series is too short to say.

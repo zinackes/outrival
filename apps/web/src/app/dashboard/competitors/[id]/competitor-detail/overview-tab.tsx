@@ -4,9 +4,6 @@ import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { classifyLogoName, storySummary, type AnalysisStatus } from "@outrival/shared";
 import { toast } from "@/lib/toast";
-import { useQuery } from "@tanstack/react-query";
-import { useProductScope } from "@/components/dashboard/product-scope-provider";
-import { myProductQuery } from "@/lib/queries";
 import {
   ArrowSquareOutIcon,
   CaretRightIcon,
@@ -39,6 +36,8 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
 import { MemoryTimeline } from "@/components/dashboard/digest-view";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
+import { SeenBadge } from "@/components/dashboard/seen-badge";
+import { HeadToHeadSections } from "./head-to-head-sections";
 import { MobileAppsFact, type MobileApps } from "./mobile-apps";
 import { formatTierPrice, logoLabel, isRenderableLogoSrc } from "./helpers";
 import { scrapeActivity } from "./shared";
@@ -55,11 +54,18 @@ function Metric({
   onClick,
   children,
   foot,
+  seen,
 }: {
   label: string;
   onClick: () => void;
   children: React.ReactNode;
   foot?: React.ReactNode;
+  /**
+   * Where this figure was read and when (OUT-194). The age sits on the label row
+   * rather than in `foot`, which already carries the movement reading; the source
+   * itself is in the badge's tooltip, since the cell has no width for both.
+   */
+  seen?: { source: string; at: string | null };
 }) {
   return (
     <button
@@ -70,6 +76,7 @@ function Metric({
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
         {label}
         <CaretRightIcon size={14} className="opacity-60" aria-hidden />
+        {seen && <SeenBadge compact source={seen.source} at={seen.at} className="ml-auto" />}
       </span>
       <span className="block">{children}</span>
       {foot && <span className="flex min-h-4 items-center gap-1.5 text-xs">{foot}</span>}
@@ -294,7 +301,16 @@ export function OverviewTab({
   onOpenTab: (tab: TabKey) => void;
   competitorName: string;
 }) {
-  const { homepage, numericClaims, pricingNow, reviews, hiring, capturedAt, movement } = overview;
+  const {
+    homepage,
+    numericClaims,
+    pricingNow,
+    pricingCapturedAt,
+    reviews,
+    hiring,
+    capturedAt,
+    movement,
+  } = overview;
 
   // Entry price = the cheapest captured tier with a real number. Quote-based tiers
   // carry no figure, so they never win the "entry" slot.
@@ -513,6 +529,11 @@ export function OverviewTab({
         <Metric
           label="Entry price"
           onClick={() => onOpenTab("pricing")}
+          seen={
+            pricingCapturedAt
+              ? { source: "their pricing page", at: pricingCapturedAt }
+              : undefined
+          }
           foot={
             entryTier ? (
               <span className="text-muted-foreground">
@@ -535,6 +556,9 @@ export function OverviewTab({
         <Metric
           label="Open roles"
           onClick={() => onOpenTab("hiring")}
+          seen={
+            hiring.capturedAt ? { source: "their jobs board", at: hiring.capturedAt } : undefined
+          }
           foot={
             movement.openRoles30d ? (
               <>
@@ -561,6 +585,7 @@ export function OverviewTab({
         <Metric
           label={topReview ? `${topReview.source} rating` : "Reviews"}
           onClick={() => onOpenTab("reviews")}
+          seen={topReview ? { source: topReview.source, at: topReview.recorded_at } : undefined}
           foot={
             topReview ? (
               movement.reviewScore90d && Math.abs(movement.reviewScore90d) >= 0.1 ? (
@@ -892,92 +917,10 @@ export function OverviewTab({
           reads that decide it. */}
       <CompetitorTechStack techStack={techStack} />
 
-      <HeadToHead competitorName={competitorName} overview={overview} />
+      {/* The duel, read as findings rather than as a two-row table of levels
+          (OUT-194): which side each dimension favours, by how much, and the moves
+          that follow. Self-hiding when we hold no column for your own product. */}
+      <HeadToHeadSections competitorId={competitorId} />
     </div>
-  );
-}
-
-/** Cheapest tier carrying a real figure. Quote-based tiers have none. */
-function entryPriceOf(tiers: Array<{ price: number | null; currency: string; billing_period: string; plan_name: string }>) {
-  return tiers.filter((t) => t.price != null && t.price > 0).sort((a, b) => a.price! - b.price!)[0];
-}
-
-/**
- * The competitor against your own product.
- *
- * The page compared them to nothing, which for a competitive intelligence tool is
- * the omission that matters most. Only measures we hold on BOTH sides are listed:
- * a self-competitor never gets a reviews monitor (patch-12), so there is no "our
- * rating" to line up against theirs and no such row is invented. A missing side
- * says so rather than borrowing the other one's number.
- */
-function HeadToHead({
-  competitorName,
-  overview,
-}: {
-  competitorName: string;
-  overview: CompetitorOverview;
-}) {
-  const productScope = useProductScope() ?? undefined;
-  const myProductQ = useQuery({ ...myProductQuery(productScope), retry: false });
-  const mine = myProductQ.data ?? null;
-
-  // Without our own product captured there is nothing to compare against, and a
-  // one-sided table is worse than no table.
-  if (!mine) return null;
-
-  const ourEntry = entryPriceOf(mine.pricing.tiers);
-  const theirEntry = entryPriceOf(overview.pricingNow);
-  const rows: Array<{ label: string; ours: string | null; theirs: string | null }> = [
-    {
-      label: "Entry price",
-      ours: ourEntry ? formatTierPrice(ourEntry) : null,
-      theirs: theirEntry ? formatTierPrice(theirEntry) : null,
-    },
-    {
-      label: "Open roles",
-      ours: mine.jobs.total > 0 ? String(mine.jobs.total) : null,
-      theirs: overview.hiring.openRoles > 0 ? String(overview.hiring.openRoles) : null,
-    },
-  ];
-  // A row where neither side has a figure teaches nothing.
-  const usable = rows.filter((r) => r.ours !== null || r.theirs !== null);
-  if (usable.length === 0) return null;
-
-  return (
-    <TabCard>
-    <TabSection title="Against your product" action={
-      <span className="shrink-0 truncate text-xs text-muted-foreground">{mine.name}</span>
-    }>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-xs text-muted-foreground">
-              <th className="pb-1.5 text-left font-normal">Measure</th>
-              <th className="pb-1.5 text-right font-normal">
-                <span className="block truncate">{mine.name}</span>
-              </th>
-              <th className="pb-1.5 text-right font-normal">
-                <span className="block truncate">{competitorName}</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {usable.map((r) => (
-              <tr key={r.label} className="border-t border-border">
-                <td className="py-2 text-muted-foreground">{r.label}</td>
-                <td className="py-2 text-right tabular-nums">
-                  {r.ours ?? <span className="font-sans text-dense text-muted-foreground">not tracked</span>}
-                </td>
-                <td className="py-2 text-right tabular-nums text-foreground">
-                  {r.theirs ?? <span className="font-sans text-dense text-muted-foreground">not tracked</span>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </TabSection>
-    </TabCard>
   );
 }

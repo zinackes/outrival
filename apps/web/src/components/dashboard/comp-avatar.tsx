@@ -242,8 +242,10 @@ export function CompAvatar({
   const src =
     analysis?.kind === "glyph" && analysis.src ? analysis.src : faviconSrc;
   const pad = fill ? 0 : Math.max(2, Math.round(size * 0.15));
-  // A favicon that analysed to no glyph pixels at all paints nothing — the letter is the
-  // only thing left to identify the tile, so it stays.
+  // A favicon that analysed to no glyph pixels at all has nothing left to paint — the
+  // letter is the only thing that identifies the tile, so it stays and the icon layer is
+  // dropped entirely. Keeping the layer would fall `src` back to the RAW favicon below and
+  // repaint the plate we just keyed out, on top of the letter.
   const blank = analysis?.kind === "glyph" && analysis.src === null;
   const showLetter = !showIcon || !loaded || blank;
 
@@ -282,7 +284,7 @@ export function CompAvatar({
           glyph read as sitting on top of stray letters. A missing URL, a load error, or a
           favicon with no visible pixels keeps them — never an empty box. */}
       {showLetter && initials}
-      {showIcon && (
+      {showIcon && !blank && (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element -- dynamic proxied icon, not a static asset */}
           <img

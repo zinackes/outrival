@@ -1,14 +1,9 @@
 import { loadMemorySignals } from "@outrival/db";
-import { buildCompetitorMemory, type CompetitorMemory } from "@outrival/shared";
-
-/**
- * Ceiling on the signal history one memory block is built from. An org watching
- * twenty competitors for a year sits far under it; past it the OLDEST facts are the
- * ones dropped, so the rendered trajectory stays correct and only `since` reads
- * later than the true first capture. The reverse (capping the recent end) would
- * silently narrate a stale story, which is worse than a shortened one.
- */
-const MEMORY_HISTORY_CAP = 2000;
+import {
+  buildCompetitorMemory,
+  MEMORY_HISTORY_CAP,
+  type CompetitorMemory,
+} from "@outrival/shared";
 
 /**
  * What the org knows about its competitors over the whole tracking period (OUT-172).

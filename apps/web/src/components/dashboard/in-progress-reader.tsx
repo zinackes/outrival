@@ -10,9 +10,11 @@ import {
   FunnelSimpleIcon,
   SpinnerIcon,
 } from "@/components/icons";
+import { storySummary } from "@outrival/shared";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "./empty-state";
 import { CatText } from "./cat-pill";
+import { MemoryTimeline } from "./digest-view";
 import { MoverList, MoverName, RailLabel, type ColorOf, type UrlOf } from "./digest-parts";
 import { digestInProgressDetailQuery } from "@/lib/queries";
 import { digestLabel, digestRunLabel, URGENCY_META, URGENCY_ORDER } from "@/lib/digest-shape";
@@ -74,6 +76,8 @@ export function InProgressReader() {
   const collected = wip.signals ?? [];
   const inBrief = collected.filter((s) => s.inBrief);
   const dropped = collected.filter((s) => !s.inBrief);
+  const stories = wip.competitorStories ?? [];
+  const storiesOmitted = wip.competitorStoriesOmitted ?? 0;
 
   const identity = new Map<string, { color: string | null; url: string | null; id: string | null }>();
   for (const s of collected) {
@@ -185,6 +189,50 @@ export function InProgressReader() {
               {dropped.map((s) => (
                 <CollectedMove key={s.id} signal={s} muted />
               ))}
+            </section>
+          )}
+
+          {/* Accumulated memory (OUT-172), the one block on this page that is not about
+              this week. It renders here rather than through the reader's MemoryBand
+              because a card would break the page's boxless rhythm — the rail itself is
+              the shared component, so a fact reads the same here, in the brief and on
+              the competitor page. Computed live, so the ages are as of now: this is the
+              week under construction, not a frozen article. */}
+          {stories.length > 0 && (
+            <section className="flex flex-col">
+              <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b border-border pb-2">
+                <h2 className="text-content font-semibold tracking-tight">
+                  What you know now
+                </h2>
+                <p className="m-0 text-xs text-muted-foreground">
+                  The whole watch, not just this week. Monday&apos;s brief carries it too.
+                </p>
+                <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                  {stories.length}
+                </span>
+              </div>
+              {stories.map((story) => (
+                <div
+                  key={story.competitorId}
+                  className="border-b border-border py-4 last:border-b-0"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                    <h3 className="m-0 text-content font-medium tracking-tight">
+                      {story.competitor}
+                    </h3>
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {storySummary(story)}
+                    </span>
+                  </div>
+                  <MemoryTimeline story={story} />
+                </div>
+              ))}
+              {storiesOmitted > 0 && (
+                <p className="m-0 pt-3 text-xs text-muted-foreground">
+                  +{storiesOmitted} more competitor{storiesOmitted === 1 ? "" : "s"} with a
+                  history on file
+                </p>
+              )}
             </section>
           )}
         </div>

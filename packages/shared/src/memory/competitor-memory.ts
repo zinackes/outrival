@@ -74,6 +74,18 @@ export const MEMORY_MIN_FACTS = 2;
 export const MEMORY_MAX_COMPETITORS = 3;
 /** A competitor watched for a year has dozens of facts; the recent ones carry the trajectory. */
 export const MEMORY_MAX_FACTS = 5;
+/**
+ * Ceiling on the signal history one memory block is built from. An org watching
+ * twenty competitors for a year sits far under it; past it the OLDEST facts are the
+ * ones dropped, so the rendered trajectory stays correct and only `since` reads later
+ * than the true first capture. The reverse (capping the recent end) would silently
+ * narrate a stale story, which is worse than a shortened one.
+ *
+ * Lives next to the builder because three surfaces read the same block — the weekly
+ * brief, the daily brief and the in-progress preview of the next one — and a
+ * per-caller copy would let them disagree on how far back the memory goes.
+ */
+export const MEMORY_HISTORY_CAP = 2000;
 
 const DAY_MS = 86_400_000;
 

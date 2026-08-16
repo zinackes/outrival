@@ -1960,6 +1960,13 @@ export interface DigestInProgress {
   cap: { max: number; omitted: number };
   /** Only present on the detail fetch (`signals=1`). */
   signals?: InProgressSignal[];
+  /**
+   * Accumulated memory (OUT-172), also detail-fetch only. Unlike a sent digest's copy
+   * this one is computed live, so the relative ages read as of now — the preview is
+   * the week under construction, not a frozen article.
+   */
+  competitorStories?: CompetitorStory[];
+  competitorStoriesOmitted?: number;
 }
 
 /** One move already collected for the next brief, before any of it has been written. */

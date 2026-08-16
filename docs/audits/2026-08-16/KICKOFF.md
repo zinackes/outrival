@@ -1,102 +1,132 @@
-# Amorçage de la session d'exécution
+# Amorçage des sessions d'exécution
 
-Tout ce dont la nouvelle session a besoin est sur le disque. Rien ne dépend de
-la conversation de préparation.
+Tout ce dont l'exécution a besoin est sur le disque. Rien ne dépend de la
+conversation de préparation.
 
-Ouvre une session neuve à la racine du repo, sur `main`, et colle le bloc
-ci-dessous **tel quel** comme premier et unique message.
+L'audit tourne en **trois sessions**, dans cet ordre. Chacune part d'un `/clear`
+ou d'une fenêtre neuve, à la racine du repo, sur `main`. Elles communiquent par
+les fichiers de `~/.outrival-audit/2026-08-16/`, jamais par le contexte.
 
-Version courte, si tu ne veux pas coller le bloc entier :
+Découper n'est pas une concession au budget, c'est ce qui rend l'exhaustivité
+possible : une session unique passerait la moitié de l'audit au-dessus de 200k de
+contexte, où chaque tour est refacturé et où la compaction commence à effacer
+les artefacts au moment précis où on en a besoin.
 
-```
-Lis docs/audits/2026-08-16/KICKOFF.md et exécute.
-Lance les workflows audit-code, audit-ux et audit-verify tels quels, sans les
-réécrire.
-```
+| Session | Contenu | Agents | Durée | Navigateur |
+|---|---|---|---|---|
+| 1 | `audit-code` | 40 à 120 | 40 à 70 min | non |
+| 2 | `crawl.mjs` puis `audit-ux` | ~25 | 50 à 70 min | oui, sur la prod |
+| 3 | `audit-verify` puis `REPORT.md` | 300 à 450 | 60 à 90 min | non |
 
-La seconde phrase est nécessaire : l'outil Workflow n'accepte de tourner que si
-la demande vient de toi. Une instruction lue dans un fichier ne compte pas comme
-telle.
-
-Activer le mode ultracode par-dessus ne casse rien, mais n'apporte plus grand
-chose : ce qu'il aurait poussé à faire est déjà écrit. Sa vraie valeur, la
-réfutation adversariale et la critique de complétude, vit dans `audit-verify`,
-où elle est bornée. Laissé en mode libre, il aurait aussi enrobé le crawl et la
-rédaction du rapport, deux étapes qui n'y gagnent rien.
+**Le mode ultracode est utile ici**, contrairement à ce qui était noté avant. Il
+ne change pas les workflows, qui sont écrits et paramétrés, mais il lève
+l'hésitation par défaut à lancer une orchestration lourde, et c'est exactement ce
+qu'on veut sur les trois. Ce qu'il faut surveiller : qu'il n'enrobe pas le crawl
+(un script déterministe) ni la rédaction du rapport (voir session 3).
 
 ---
 
+## Session 1 — code
+
 ```
-Audit Outrival 2026-08-16 — exécution
-Type: audit
-Mode: direct, pas de plan mode
+Audit Outrival 2026-08-16, session 1 sur 3: le code.
 
 Lis docs/audits/2026-08-16/PLAN.md en entier avant d'agir. C'est la charte:
-périmètre, garde-fous, ce qui est hors couverture. La phase 0 est déjà faite et
+périmètre, garde-fous, ce qui est hors couverture. La phase 0 est faite et
 validée: accès prouvé, plan Pro confirmé, 80 routes résolues.
 
-Exécute dans cet ordre, en me rendant la main entre chaque étape:
+Lance le workflow audit-code tel quel, sans le réécrire.
+
+Il fait tourner 8 packages x 5 angles de lecture, puis reboucle sur les paires
+qui ont produit quelque chose, en leur disant ce qui est déjà trouvé, jusqu'à
+ce qu'un tour n'ajoute plus rien. Il écrit findings-code.json.
+
+Quand il rend la main: résume-moi ce qu'il a écrit, et ne fais RIEN d'autre.
+Pas de correctif, pas de vérification, pas de ticket. La session 3 s'en charge.
+```
+
+## Session 2 — produit
+
+```
+Audit Outrival 2026-08-16, session 2 sur 3: le produit.
+
+Lis docs/audits/2026-08-16/PLAN.md en entier avant d'agir.
 
 1. node docs/audits/2026-08-16/harness/crawl.mjs
-   ~15 min, 640 chargements, strictement read-only.
-   Produit failures.json, results.json et les screenshots dans
-   ~/.outrival-audit/2026-08-16/
+   ~15 min, 640 chargements, strictement read-only. C'est un script, ne
+   l'enrobe pas dans un workflow. Produit failures.json, results.json et les
+   screenshots dans ~/.outrival-audit/2026-08-16/
 
-2. Workflow, name: "audit-code"
-   9 agents. Écrit ~/.outrival-audit/2026-08-16/findings-code.json
+2. Lance le workflow audit-ux tel quel, sans le réécrire.
+   Deux passes navigateur en série (le MCP ne pilote qu'une instance), puis 15
+   angles en parallèle. Écrit findings-ux.json.
 
-3. Workflow, name: "audit-ux"
-   11 agents, dont un seul pilote le navigateur. Écrit findings-ux.json
+Ne pousse rien sur main pendant le crawl. Coolify auto-déploie, et un
+redéploiement en cours de parcours produit des 502 que les agents rapporteraient
+comme des bugs applicatifs.
 
-4. Workflow, name: "audit-verify"
-   ~45 agents. Réfute chaque finding, puis balaie ce que personne n'a audité.
-   Écrit findings-verified.json
+Quand il rend la main: résume, et rien d'autre.
+```
 
-5. docs/audits/2026-08-16/REPORT.md, écrit par toi, pas par un sous-agent
+## Session 3 — réfutation et rapport
 
-Contraintes non négociables:
-- Ne pousse rien sur main pendant le crawl. Coolify auto-déploie, et un
-  redéploiement en cours de parcours produit des 502 que les agents
-  rapporteraient comme des bugs applicatifs.
-- L'étape 5 reste sur le modèle principal. Le rapport est le seul artefact où
-  une voix unique ayant tout le contexte compte; le déléguer le dilue.
-- L'étape 4 a déjà tué les faux positifs. Ne refais pas sa passe à la main:
-  lis findings-verified.json, garde la distinction verified true/false, et
-  n'augmente la confiance de personne.
-- Ne relance pas les workflows en boucle. Un passage, puis on lit.
+```
+Audit Outrival 2026-08-16, session 3 sur 3: réfutation et rapport.
 
-Critère de succès: docs/audits/2026-08-16/REPORT.md existe, chaque finding y
-porte sa preuve (file:line ou URL plus screenshot), son impact, son effort
-S/M/L, le risque du correctif et un niveau de confiance; les findings non
-vérifiés issus du balayage sont marqués comme tels; le rapport liste ce qui a
-été réfuté et pourquoi; et il dit explicitement ce qui n'a pas été audité.
+Lis docs/audits/2026-08-16/PLAN.md en entier avant d'agir.
+
+1. Lance le workflow audit-verify tel quel, sans le réécrire.
+   Il réfute chaque finding sous 2 ou 3 angles adverses, puis fait tourner 5
+   critiques de complétude et balaie leurs sondes, en rebouclant jusqu'à ce
+   qu'un tour ne propose plus rien de neuf. Écrit findings-verified.json.
+
+2. Écris docs/audits/2026-08-16/REPORT.md TOI-MEME. Ne le délègue à aucun
+   sous-agent: c'est le seul artefact où une voix unique ayant tout le contexte
+   compte, et la phase 1 a déjà fait le tri mécanique.
+   Lis findings-verified.json, garde la distinction verified true/false,
+   n'augmente la confiance de personne, et reprends la liste refuted telle
+   quelle dans une section "considéré et rejeté".
+
+3. Propose les tickets Linear, ne les crée pas avant mon go.
+
+Critère de succès: REPORT.md existe; chaque finding porte sa preuve (file:line
+ou URL plus screenshot), son impact, son effort S/M/L, le risque du correctif,
+sa confiance et son statut vérifié ou non; la section "considéré et rejeté"
+donne la raison de chaque réfutation; et le rapport dit explicitement ce qui n'a
+pas été audité.
 ```
 
 ---
 
-## Rappels pour la session d'exécution
+## Rappels
 
-**Ce qui est déjà fait.** La session est authentifiée via `state.json`, écrit à
-partir de cookies exportés du navigateur. Le cookie expire aux alentours du
-2026-09-15. Si le crawl part en boucle de redirections vers `/auth`, c'est que
-la session est morte: rejouer `adopt-cookies.mjs` avec un export frais.
+**Accès.** La session est authentifiée via `state.json`, écrit à partir de
+cookies exportés du navigateur. Le cookie expire aux alentours du 2026-09-15. Si
+le crawl part en boucle de redirections vers `/auth`, la session est morte :
+rejouer `adopt-cookies.mjs` avec un export frais.
 
 **Le piège déjà désamorcé.** `networkidle` ne se déclenche jamais sur une page
 authentifiée, parce que `notifications-bell.tsx` ouvre un `EventSource` dans le
 shell du dashboard. `settle.mjs` attend la disparition des
-`data-slot="skeleton"` à la place. Ne pas réintroduire `networkidle`.
+`data-slot="skeleton"` à la place. Ne pas le réintroduire.
 
 **Ce que le smoke a déjà trouvé**, sur 2 routes seulement, à confirmer et non à
 recopier tel quel :
 - erreur d'hydratation React #418 sur `/dashboard/activity`, sur les 8
-  combinaisons; hypothèse à vérifier, un rendu de date serveur contre client;
-- débordement horizontal de 55 px à la largeur tablette de 768 px;
+  combinaisons ; hypothèse à vérifier, un rendu de date serveur contre client ;
+- débordement horizontal de 55 px à la largeur tablette de 768 px ;
 - violations axe `button-name` et `color-contrast`, probablement dans le shell,
   donc à grouper par règle et non par page.
 
-**Deux routes restent à créer.** `/brief/[id]` et `/report/[token]` n'existent
-qu'une fois un partage créé. C'est l'agent navigateur de `audit-ux` qui s'en
-charge, étape 5 de son prompt.
+**Deux routes n'existent pas encore.** `/brief/[id]` et `/report/[token]`
+n'apparaissent qu'une fois un partage créé. C'est la première passe navigateur
+de la session 2 qui les crée, étape 5 de son prompt, et qui doit remonter leurs
+URLs.
+
+**La session 2 écrit dans ta vraie prod.** Un produit, un concurrent, une battle
+card et son PDF, une requête Ask, un lien de partage. Des e-mails réels partent.
+Jusqu'à 8 des 10 actions IA de l'heure sont consommées. `/settings/danger` et
+`/settings/billing` restent interdits, Stripe est en LIVE.
 
 **Après l'audit.** Révoquer la session utilisée, dans Settings puis Security.
 Le jeton a transité par une conversation.

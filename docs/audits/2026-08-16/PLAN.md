@@ -11,8 +11,9 @@ Charte de l'audit. À relire et amender **avant** de lancer quoi que ce soit.
 | Session | **cookies importés du navigateur**, Google ne s'automatise pas en headless |
 | Plan | **Pro** attendu, vérifié et écrit par le harness dans `session-check.json` |
 | Mutations | **autorisées**, sauf les deux exceptions ci-dessous |
-| Modèle de vérification | modèle principal de session (Fable 5), jamais délégué |
-| Modèles sous-agents | `sonnet` (découverte, jugement), `haiku` (inventaire, tri) |
+| Rédaction du rapport | modèle principal de session (Fable 5), jamais déléguée |
+| Modèles sous-agents | `sonnet` partout, épinglé explicitement sur chaque appel |
+| Priorité | **exhaustivité**, le coût en requêtes n'est pas une contrainte |
 
 Le compte n'étant pas admin, les **23 pages `/admin/*`** sortent du périmètre
 navigateur. Elles restent couvertes en audit de code (phase 1).
@@ -93,6 +94,23 @@ faire dans l'historique non plus.
 
 ## 4. Phases
 
+L'audit tourne en **trois sessions**, décrites dans `KICKOFF.md`. Elles
+communiquent par les fichiers de `~/.outrival-audit/2026-08-16/`, jamais par le
+contexte.
+
+| Session | Phases | Agents | Durée |
+|---|---|---|---|
+| 1 | phase 1, code | 40 à 120 | 40 à 70 min |
+| 2 | phases 2 et 3, crawl puis produit | ~25 | 50 à 70 min |
+| 3 | phases 4 et 5, réfutation puis rapport | 300 à 450 | 60 à 90 min |
+
+Découper n'est pas une concession au budget. Une session unique passerait la
+moitié de l'audit au-dessus de 200k de contexte, où chaque tour est refacturé et
+où la compaction commence à effacer les artefacts au moment précis où on en a
+besoin (`.claude/rules/linear-workflow.md`). Trois sessions courtes, chacune
+partant d'un contexte propre et lisant ses entrées sur le disque, tiennent une
+exhaustivité qu'une session longue ne tient pas.
+
 ### Phase 0, harness : TERMINÉE le 2026-08-16
 
 Accès prouvé, plan **Pro** confirmé, **80 routes** résolues, smoke crawl vert.
@@ -124,10 +142,34 @@ fois un partage créé. À générer en phase 3, où les mutations sont autoris�
 écrite dans `~/.outrival-audit/curl.txt` par Mathys, lue par le script, jamais
 affichée : les logs n'impriment que les *noms* de cookies.
 
-### Phase 1, audit de code (workflow, 8 agents `sonnet`)
+### Phase 1, audit de code (workflow, 40 à 120 agents `sonnet`)
 
-`improve deep` fanné par package : `web`, `api`, `workers`, `db`, `ai`,
-`scrapers`, `queue`, `shared`. Chaque agent reçoit :
+**Session 1.** `improve deep` fanné sur une matrice **package × angle de
+lecture**, et non un agent par package. Un agent seul lit un package en largeur
+et s'arrête au premier finding plausible de chaque zone ; cinq agents relisent le
+même code cinq fois avec cinq questions différentes, et c'est là que vit la
+seconde moitié des findings.
+
+Les 8 packages : `web`, `api`, `workers`, `db`, `ai`, `scrapers`, `queue`,
+`shared`. Les 5 angles :
+
+| Angle | Ce qu'il cherche |
+|---|---|
+| `security` | scoping tenant avant tout, puis sessions, CORS, secrets côté client, SSRF, surface d'injection de prompt |
+| `correctness` | logique fausse, `noUncheckedIndexedAccess` non respecté, promesses non attendues, catch vides, courses entre workers |
+| `performance` | N+1, requêtes sans `LIMIT`, index manquants pour les filtres réels, ce qui coûte de l'argent par appel |
+| `tests` | pas la couverture, le risque : quel chemin casserait la prod et n'a pas de test |
+| `debt` | code mort, logique dupliquée qui divergera, `any` sans garde, docs qui contredisent le code |
+
+**Boucle jusqu'à épuisement.** Le tour 1 lance les 40 paires. Les tours suivants
+ne relancent que les paires **productives**, en leur donnant la liste de ce qui
+est déjà trouvé et la consigne de trouver ce que le tour précédent a manqué. La
+boucle s'arrête dès qu'un tour n'ajoute rien, plafond à 3 tours. Une paire
+revenue vide n'est pas relancée : un angle vide sur un petit package est une
+réponse, pas un échec.
+
+La déduplication se fait en JS sur titre normalisé plus première preuve, avant
+tout appel d'agent, puis un agent de fusion par catégorie. Chaque agent reçoit :
 
 - le chemin absolu de `.claude/skills/improve/references/audit-playbook.md` et
   les sections à lire, dont **« ## Finding format »** ;
@@ -160,58 +202,94 @@ Sortie : un JSON par route plus `summary.json` et `failures.json`.
 C'est le point qui économise le plus : **1 requête API au lieu d'environ 300**.
 Les agents ne liront que `failures.json` et les screenshots suspects.
 
-### Phase 3, audit UX et produit (workflow, ~10 agents)
+### Phase 3, audit UX et produit (workflow, ~25 agents `sonnet`)
 
-Un agent par angle, tous en `sonnet` sauf mention :
+**Session 2**, juste après le crawl. Deux passes navigateur **en série**, puis 15
+angles en parallèle sur les artefacts.
 
-| # | Angle | Ce qu'il fait |
-|---|---|---|
-| 1 | Landing et pricing, en « vrai utilisateur » | lit les screenshots, juge la proposition de valeur, les frictions, la clarté du pricing |
-| 2 | Parcours compte plein | onboarding, ajout produit, discovery, génération battle card, bout en bout |
-| 3 | Cohérence visuelle | compare les screenshots entre pages : espacements, typographies, états vides, boutons |
-| 4 | Responsive | ne lit que les combinaisons mobile et tablette, plus les débordements détectés |
-| 5 | Accessibilité | violations axe, ordre de tabulation, contrastes, `aria-label` |
-| 6 | SEO et AEO | `/vs/*`, `/alternatives/*`, `/blog/*` : metadata, canonical, schema.org, sitemap |
-| 7 | Qualité du contenu IA | insights, battle cards, digests : est-ce juste, sourcé, utile |
-| 8 | Copy et langue (`haiku`) | traque les chaînes françaises, la casse, les micro-copies incohérentes |
-| 9 | États vides et erreurs | pas de compte neuf : lecture des composants d'état vide plus les états d'erreur provoqués sur le compte réel |
-| 10 | Emails et exports | `/dev/preview-emails`, PDF de battle card |
+Les passes navigateur sont sérialisées parce que le MCP Playwright ne pilote
+qu'une instance : deux agents qui naviguent en même temps se disputent le même
+onglet. Ce n'est pas un choix de coût, c'est une contrainte physique.
 
-**Points ouverts sur cette phase, à trancher ensemble** (section 6).
+| Passe | Ce qu'elle fait |
+|---|---|
+| `live:flows` | le chemin heureux : ajout produit et discovery, ajout concurrent, battle card et son PDF, requête Ask, création des liens de partage, réglages qui persistent |
+| `live:adversarial` | ce qu'un clic normal ne touche jamais : formulaires vides, doublons, 5000 caractères, double soumission, bouton retour après mutation, navigation au clavier seul, ids inexistants, jeton de partage inventé |
 
-### Phase 4, réfutation et balayage (workflow, ~45 agents `sonnet`)
+Puis les 15 angles, chacun sur un seul artefact set :
 
-Un modèle principal seul, face à 80 ou 120 findings à rouvrir un par un, fatigue
-et finit par tamponner. La vérification est donc fanée, mais **bornée** : le
-budget se compte en requêtes API, pas en tokens, et trois réfuteurs par finding
-sur toute la liste videraient la fenêtre de 5 h pour rien.
+| Angle | Ce qu'il cherche |
+|---|---|
+| `landing` | proposition de valeur en cinq secondes, objection non traitée, lisibilité du pricing |
+| `information-architecture` | ce qu'on ne trouve pas : pages enterrées, doublons de nom, pages joignables seulement par leur URL |
+| `onboarding` | de la création de compte au premier moment de valeur : combien d'étapes, quoi casse en route |
+| `visual-consistency` | où le produit cesse de ressembler à un produit |
+| `dark-mode` | light contre dark côte à côte : contrastes perdus, bordures disparues, charts pensés en clair |
+| `responsive` | mobile et tablette, plus les `overflowPx` détectés |
+| `accessibility` | violations axe **groupées par règle**, dans les deux thèmes |
+| `forms-inputs` | vrais labels, placement des erreurs, double soumission, confirmations destructives |
+| `seo-aeo` | metadata, canonical, JSON-LD, sitemap, maillage entre `/vs/*` et `/alternatives/*` |
+| `ai-content` | la sortie IA **est** le produit : spécifique ou générique, sourcée ou pas |
+| `copy-language` | balayage mécanique : français, em-dashes, mono sur de la prose, `TODO` oubliés |
+| `empty-error-states` | depuis la source, faute de compte neuf : que voit un utilisateur sans données |
+| `perceived-performance` | les `ms` de `results.json`, ce que l'utilisateur regarde pendant l'attente, le saut de layout |
+| `trust-legal` | `/privacy`, `/terms`, `/security`, `/accessibility`, `/bot` : les promesses publiques contre ce que le produit fait vraiment |
+| `emails-exports` | digests Resend, alertes, PDF de battle card |
+
+La fusion se fait par sévérité, en parallèle, puis un agent transcrit
+`findings-ux.json`. L'accord entre angles est du signal : un défaut vu par
+`responsive` **et** `visual-consistency` compte plus qu'un défaut vu une fois.
+
+### Phase 4, réfutation et balayage (workflow, 300 à 450 agents `sonnet`)
+
+**Session 3.** Un modèle principal seul, face à 150 findings à rouvrir un par un,
+fatigue et finit par tamponner. C'est la panne que le rapport peut le moins se
+permettre : un finding rejeté ne coûte rien, un faux coûte une journée à
+quelqu'un.
 
 Trois classes d'échec sont attendues, d'après le skill `improve` lui-même :
 comportement voulu rapporté comme bug, preuve mal attribuée (bon finding,
-mauvais fichier), doublons entre agents. Chacune a son objectif dédié.
+mauvais fichier), doublons entre agents. Chacune a son angle dédié.
 
-1. **Réfutation.** Les findings à enjeu (sécurité, scoping tenant, perte de
-   données, correctness, ou confiance faible) reçoivent **trois réfuteurs aux
-   angles distincts** : `evidence` rouvre la preuve citée, `intent` cherche la
-   décision délibérée dans les `CLAUDE.md` et `.claude/rules/`, `consequence`
-   accorde le fait et attaque l'impact. Deux voix sur trois tuent le finding.
-   Le reste part en lots de six chez un vérificateur unique.
-   Règle centrale : **l'invérifiable est réfuté**. Un finding que personne n'a
-   pu confirmer coûte une journée à quelqu'un pour rien.
+1. **Réfutation.** Chaque finding reçoit au moins **deux réfuteurs aux angles
+   distincts**, et trois s'il est à enjeu (sécurité, scoping tenant, perte de
+   données, correctness, ou confiance faible) :
+   - `evidence` rouvre la preuve citée. Le fichier existe ? La ligne dit ça ?
+     Le screenshot montre le défaut ? Une preuve absente est une réfutation,
+     pas une égalité.
+   - `intent` cherche la décision délibérée dans les `CLAUDE.md` et
+     `.claude/rules/`. Un choix assumé rapporté comme défaut est réfuté.
+   - `consequence` accorde le fait et attaque l'impact. Atteignable au runtime,
+     ou branche morte ? Un vrai fait sans conséquence, gonflé en problème
+     sérieux, est réfuté.
 
-2. **Critique de complétude.** Trois agents lisent les tableaux `notAudited` et
-   répondent à « qu'est-ce que personne n'a regardé ? », sous trois angles : le
-   code (ce qui tombe **entre** les agents par package, chacun ayant eu
-   consigne de rester chez lui), le produit (les 23 pages `/admin`, les états
-   vides, l'isolation entre organisations), et le runtime (ce qui n'apparaît
-   qu'en mouvement : fetch en échec, job mort à mi-course, session expirée,
-   plafond de 10 actions IA atteint). Chacun rend des **sondes** exécutables,
-   pas des intentions.
+   La majorité tue le finding. Règle centrale : **l'invérifiable est réfuté**.
+   Un réfuteur n'est pas un juge neutre, c'est la défense ; s'il ne trouve rien
+   après avoir vraiment vérifié, il le dit.
 
-3. **Balayage.** Les 8 premières sondes deviennent des agents chercheurs. Ce
-   qu'elles remontent est marqué `verified: false` et ne se mélange jamais aux
-   survivants de l'étape 1. Les sondes non exécutées sont **loguées**, jamais
-   coupées en silence.
+2. **Critique de complétude.** Cinq agents lisent les tableaux `notAudited` et
+   répondent à « qu'est-ce que personne n'a regardé ? » :
+
+   | Critique | Ce qu'il traque |
+   |---|---|
+   | `code` | ce qui tombe **entre** les agents par package, chacun ayant eu consigne de rester chez lui : dérive de contrat api/web, payload de job contre schéma Zod, enum défini deux fois |
+   | `product` | les 23 pages `/admin` jamais ouvertes, les états vides inatteignables, l'isolation entre organisations, le billing intouché |
+   | `runtime` | ce qui n'apparaît qu'en mouvement : fetch en échec, job mort à mi-course, deux workers sur la même ligne, session expirée, plafond 10/h atteint |
+   | `data` | colonnes que personne n'écrit ou ne lit, enums qui ont dérivé, FK qui autorise un orphelin, lignes qui s'accumulent sans rétention |
+   | `adversary` | l'abus plutôt que l'intrusion : contourner le cap IA par un autre endpoint, énumérer un jeton de partage, faire dépenser de l'argent au produit, faire remonter du contenu scrapé dans un prompt |
+
+   Chacun rend des **sondes** exécutables, pas des intentions. « Regarde la
+   sécurité » est jeté ; « ouvre `apps/api/src/routes/*.ts` et liste les
+   handlers dont la requête n'a pas de filtre `orgId` » part en agent.
+
+3. **Balayage, en boucle.** Toutes les sondes sont exécutées, sans plafond.
+   Puis les critiques repassent sur le nouvel état, avec la liste de ce qui est
+   déjà sur la table et des sondes déjà tirées, et proposent ce qui reste. La
+   boucle s'arrête quand un tour ne propose plus rien, plafond à 3 tours. Un
+   tour vide est la seule preuve honnête qu'un audit est fini.
+
+   Ce que le balayage remonte est marqué `verified: false` et ne se mélange
+   jamais aux survivants de l'étape 1.
 
 Sortie : `findings-verified.json`, contenant les survivants, les nouveaux
 findings non vérifiés, et un tableau `refuted` avec la raison de chaque mort.
@@ -289,6 +367,13 @@ conséquences pendant la fenêtre d'audit :
 ### Modèles
 
 Si la session tourne sous Fable 5, les appels `agent()` héritent du modèle de
-session. Les scripts de workflow portent donc `model: "sonnet"` ou `"haiku"`
-**explicitement sur chaque appel**, sinon les sous-agents partent en Fable.
-La phase 4 reste sur le modèle principal, jamais déléguée.
+session. Les scripts de workflow portent donc `model: "sonnet"` **explicitement
+sur chaque appel**, sinon les sous-agents partent en Fable.
+
+Tout est en `sonnet`, y compris le balayage mécanique de `copy-language` qui
+était prévu en `haiku` : un angle qui doit distinguer une chaîne française d'un
+nom propre, ou un mono légitime sur un identifiant d'un mono abusif sur de la
+prose, fait des faux positifs en `haiku` que la phase 4 paie ensuite à réfuter.
+
+La **phase 5**, la rédaction du rapport, reste sur le modèle principal et n'est
+jamais déléguée. La phase 4 fait le tri mécanique ; la 5 fait le jugement.

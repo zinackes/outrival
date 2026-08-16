@@ -17,7 +17,17 @@ import { COMPETITORS, LAST_REVIEWED, PRICE_AS_OF } from "./compare/data";
 // Answering it with dated, attributed third-party figures is both the honest
 // answer and the reason to link here.
 
-const CONTEXT_ROWS = [
+type ContextCol = {
+  name: string;
+  /** Ours: the one column that gets colour. */
+  self?: boolean;
+  price: string;
+  yearly: string;
+  access: string;
+  commitment: string;
+};
+
+const CONTEXT_COLS: ContextCol[] = [
   {
     name: "Outrival",
     self: true,
@@ -40,6 +50,16 @@ const CONTEXT_ROWS = [
     access: "Demo required, custom quote",
     commitment: "Annual contract",
   },
+];
+
+const CONTEXT_ATTRS: {
+  label: string;
+  key: keyof Omit<ContextCol, "name" | "self">;
+}[] = [
+  { label: "Published price", key: "price" },
+  { label: "Typical annual cost", key: "yearly" },
+  { label: "How you buy", key: "access" },
+  { label: "Commitment", key: "commitment" },
 ];
 
 const PRICING_FAQS = [
@@ -73,58 +93,44 @@ const PRICING_FAQS = [
   },
 ];
 
-// Real tabular data, in the landing's compact register: meta-sized column
-// heads, hairline rows, our own row lifted off the graphite. Colour is spent
-// once, on the row that is ours.
+// The market context, transposed. It first shipped as five columns of dense
+// hairline rows — the shape of a spec sheet, which is exactly what the plan
+// cards two blocks up are not, and five columns forced a 46rem scroll on a
+// page whose whole point is that the number is easy to find. One column per
+// tool instead: three columns, four attributes down the side, and ours drawn
+// as a filled column with the featured plan card's iris outline so the eye
+// lands on it first. The label column sticks while the rest scrolls on a
+// phone, so a value never loses its row.
 function ContextTable() {
-  const HEADS = [
-    "Tool",
-    "Published price",
-    "Typical annual cost",
-    "How you buy",
-    "Commitment",
-  ];
   return (
-    <div className="mt-10 overflow-x-auto">
-      <table className="w-full min-w-[46rem] border-collapse text-dense">
+    <div className="lp-ctx-wrap">
+      <table className="lp-ctx">
         <caption className="sr-only">
           What competitive intelligence tools cost, compared
         </caption>
         <thead>
-          <tr className="border-b border-border-strong text-left">
-            {HEADS.map((h) => (
+          <tr>
+            <td className="ctx-corner" />
+            {CONTEXT_COLS.map((col) => (
               <th
-                key={h}
+                key={col.name}
                 scope="col"
-                className="py-3 pr-5 text-meta font-medium uppercase tracking-[0.06em] text-text-subtle"
+                className={col.self ? "is-self" : undefined}
               >
-                {h}
+                {col.name}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {CONTEXT_ROWS.map((row) => (
-            <tr
-              key={row.name}
-              className={`border-b border-border align-top ${
-                row.self ? "bg-surface" : ""
-              }`}
-            >
-              <th
-                scope="row"
-                className={`py-4 pr-5 text-left font-medium ${
-                  row.self ? "text-primary" : ""
-                }`}
-              >
-                {row.name}
-              </th>
-              <td className="py-4 pr-5 text-text-muted">{row.price}</td>
-              <td className="py-4 pr-5 tabular-nums text-text-muted">
-                {row.yearly}
-              </td>
-              <td className="py-4 pr-5 text-text-muted">{row.access}</td>
-              <td className="py-4 text-text-muted">{row.commitment}</td>
+          {CONTEXT_ATTRS.map((attr) => (
+            <tr key={attr.key}>
+              <th scope="row">{attr.label}</th>
+              {CONTEXT_COLS.map((col) => (
+                <td key={col.name} className={col.self ? "is-self" : undefined}>
+                  {col[attr.key]}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>

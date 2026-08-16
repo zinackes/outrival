@@ -6,6 +6,19 @@ la conversation de préparation.
 Ouvre une session neuve à la racine du repo, sur `main`, et colle le bloc
 ci-dessous **tel quel** comme premier et unique message.
 
+Version courte, si tu ne veux pas coller le bloc entier :
+
+```
+Lis docs/audits/2026-08-16/KICKOFF.md et exécute.
+Lance les workflows audit-code et audit-ux tels quels, sans les réécrire.
+```
+
+La seconde phrase est nécessaire : l'outil Workflow n'accepte de tourner que si
+la demande vient de toi. Une instruction lue dans un fichier ne compte pas comme
+telle. Inutile en revanche d'activer le mode ultracode globalement : il pousse à
+enrober **chaque** tâche dans un workflow, y compris le crawl et la vérification,
+qui n'en ont pas besoin.
+
 ---
 
 ```

@@ -26,5 +26,7 @@ export default async function PreviewPage({
     notFound();
   }
   const { shot } = await searchParams;
-  return <PreviewClient shot={shot === "signal" ? "signal" : "overview"} />;
+  const known =
+    shot === "signal" || shot === "app" ? shot : ("overview" as const);
+  return <PreviewClient shot={known} />;
 }

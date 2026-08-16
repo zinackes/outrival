@@ -14,8 +14,9 @@
 //   pnpm --filter @outrival/web capture:shots
 //   CAPTURE_BASE_URL=http://localhost:3000 node scripts/capture-product-shots.mjs
 //
-// Output: apps/web/public/product/{overview,signal-detail}.webp
-// Viewport 1440×900, deviceScaleFactor 2 (retina), dark theme, WebP q82.
+// Output: apps/web/public/product/{overview,signal-detail,dashboard}.webp
+// Viewport 1440×900 (1600×950 for the full app), deviceScaleFactor 2 (retina),
+// dark theme, WebP q82.
 
 import { chromium } from "playwright";
 import sharp from "sharp";
@@ -27,10 +28,16 @@ const WEB_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = join(WEB_ROOT, "public", "product");
 const BASE_URL = process.env.CAPTURE_BASE_URL ?? "http://localhost:3000";
 
-/** @type {{ shot: "overview" | "signal", file: string }[]} */
+/**
+ * `viewport` overrides the default only where the shot needs it: the app shot
+ * carries the sidebar, so it needs the width a real desktop gives it.
+ * @type {{ shot: "overview" | "signal" | "app", file: string,
+ *          viewport?: { width: number, height: number } }[]}
+ */
 const SHOTS = [
   { shot: "overview", file: "overview.webp" },
   { shot: "signal", file: "signal-detail.webp" },
+  { shot: "app", file: "dashboard.webp", viewport: { width: 1600, height: 910 } },
 ];
 
 async function main() {
@@ -62,7 +69,8 @@ async function main() {
 
   const page = await context.newPage();
 
-  for (const { shot, file } of SHOTS) {
+  for (const { shot, file, viewport } of SHOTS) {
+    if (viewport) await page.setViewportSize(viewport);
     const url = `${BASE_URL}/dev/preview?shot=${shot}`;
     // Not "networkidle": Next dev keeps an HMR websocket open, so networkidle never
     // fires. Wait on the shot container + fonts instead.
@@ -70,6 +78,18 @@ async function main() {
     const el = await page.waitForSelector(`[data-shot="${shot}"]`, {
       timeout: 30_000,
     });
+    // Next's dev indicator is a body-level portal, so it paints OVER the shot
+    // and lands in the crop of anything that reaches the bottom-left corner.
+    await page.addStyleTag({
+      content: "nextjs-portal{display:none!important}",
+    });
+    // The sidebar's competitor rail opens by default and polls the API, which
+    // this route deliberately does not have — so it would be captured as three
+    // loading bars. Collapsed, it is the same nav a signed-in user sees folded.
+    if (shot === "app") {
+      const collapse = await page.$('[aria-label="Collapse competitors"]');
+      if (collapse) await collapse.click();
+    }
     await page.evaluate(() => document.fonts?.ready);
     await page.waitForTimeout(700);
 

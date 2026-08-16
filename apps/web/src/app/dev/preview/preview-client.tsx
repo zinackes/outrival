@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { ProductScopeProvider } from "@/components/dashboard/product-scope-provider";
 import { AskContextProvider } from "@/components/dashboard/ask-context";
+import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { OverviewView } from "@/components/dashboard/overview";
 import { SignalCard } from "@/components/dashboard/signal-card";
 import { SignalEvidence } from "@/components/outrival/signal-evidence";
@@ -56,11 +57,45 @@ function SignalShot() {
   );
 }
 
-export function PreviewClient({ shot }: { shot: "overview" | "signal" }) {
-  // Both shots render real dashboard components, which reach for the same providers
-  // the app supplies (product scope, ask context) on top of the query/tooltip/toaster
-  // from the /dev layout. Wrap both so e.g. SignalCard's product chips (useProductScope)
-  // don't throw.
+// (c) The whole app, once: the real sidebar and topbar around the real
+// Overview. The two crops above answer "what does a signal look like"; this one
+// answers "what am I buying", which is the question the comparison pages ask.
+// DashboardShell supplies its own providers, so it is NOT wrapped in the ones
+// the other two shots need.
+function AppShot() {
+  return (
+    <>
+      {/* Sample banner and the feedback launcher are app chrome, not product. */}
+      <style>{`[data-sample-banner]{display:none!important}`}</style>
+      <div data-shot="app">
+        <DashboardShell
+          user={{ name: "Mathys", email: "hello@outrival.app" }}
+          org={{ plan: "Pro", competitorsUsed: 6 }}
+        >
+          <OverviewView />
+        </DashboardShell>
+      </div>
+    </>
+  );
+}
+
+export function PreviewClient({
+  shot,
+}: {
+  shot: "overview" | "signal" | "app";
+}) {
+  // The two crops render bare dashboard components, which reach for the same
+  // providers the app supplies (product scope, ask context) on top of the
+  // query/tooltip/toaster from the /dev layout. Wrap them so e.g. SignalCard's
+  // product chips (useProductScope) don't throw. The app shot brings the real
+  // shell, which already carries both.
+  if (shot === "app") {
+    return (
+      <ForceSample>
+        <AppShot />
+      </ForceSample>
+    );
+  }
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <ForceSample>

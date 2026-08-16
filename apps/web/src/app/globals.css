@@ -1055,6 +1055,25 @@ html:has(.landing-canvas) {
   z-index: -2;
   pointer-events: none;
 }
+/* The hero → paper seam.
+   The Vanta canvas is opaque and inset: 0, so it stops dead at the hero's
+   bottom edge. Cutting into graphite that edge IS the composition — the
+   landing's signature is fog, then a hard cut to dark. But a hero followed by
+   another sheet of paper (an article, a doc, the blog index) has no cut to
+   make: the reader sees a horizontal line where the fog was chopped, with the
+   same colour on both sides of it. So the canvas dissolves over its last
+   13rem instead, into the hero's own paper, which is the colour the next band
+   is painted in.
+   Length, not percent: the fade has to read the same under a 100dvh hero and
+   a 62dvh one, and a percentage would eat a third of the short one.
+   :has() picks the seam rather than a page, so a hero keeps its hard cut the
+   moment it is followed by graphite again. Where :has() is unsupported the
+   rule simply never applies and the edge is the one shipped before. */
+.lp-page-hero:has(+ .lp-band-paper) .lp-vanta,
+.lp-page-hero:has(+ .lp-article) .lp-vanta {
+  -webkit-mask-image: linear-gradient(black calc(100% - 13rem), transparent);
+  mask-image: linear-gradient(black calc(100% - 13rem), transparent);
+}
 /* Once Vanta is up its canvas is opaque and inset: 0, and both heroes clip
    their overflow — so the three fog banks under it are covered pixel for
    pixel while still animating a 24px blur over a 74rem box. The class is set
@@ -3139,6 +3158,195 @@ html:has(.landing-canvas) {
     padding-inline: 1rem;
   }
 }
+/* The dagger and its footnote. Used by the feature board on /vs/*, where the
+   rival's entry price is a third-party estimate and has to say so. */
+.lp-ctx .ctx-mark {
+  margin-left: 0.15rem;
+  color: rgba(242, 245, 248, 0.42);
+}
+.lp-ctx-note {
+  margin-top: 1rem;
+  font-size: var(--text-dense);
+  line-height: 1.55;
+  color: rgba(242, 245, 248, 0.45);
+  text-wrap: pretty;
+}
+
+/* ---- Pricing face-off (/vs/*, graphite band) --------------------------
+   The rival's quote against our published ladder, in the plan cards' register
+   rather than the dashboard's: same 8px radius, same #131316 / #16161c bases,
+   same iris outline on the one that is ours. Two panels, not two identical
+   cards — the left one ends on the source of its estimate, the right one ends
+   on a price list and a way in. */
+.lp-faceoff {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 2.75rem;
+}
+@media (max-width: 900px) {
+  .lp-faceoff {
+    grid-template-columns: 1fr;
+  }
+}
+.lp-fo {
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  background: #131316;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  padding: 1.75rem 1.6rem 1.5rem;
+}
+.lp-fo.is-self {
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in oklab, var(--lp-iris) 30%, transparent),
+      transparent 58%
+    ),
+    #16161c;
+  box-shadow: inset 0 0 0 1px rgba(168, 157, 255, 0.55);
+}
+.lp-fo .fo-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.lp-fo .fo-top h3 {
+  font-family: var(--font-sans);
+  font-size: var(--text-lead);
+  font-weight: 600;
+}
+.lp-fo .fo-tag {
+  flex: none;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: rgba(242, 245, 248, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+.lp-fo.is-self .fo-tag {
+  color: #c9c2ff;
+  background: #241f47;
+  box-shadow: none;
+}
+.lp-fo .fo-price {
+  margin-top: 1.5rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+.lp-fo .fo-price b {
+  font-size: var(--text-3xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  text-wrap: balance;
+}
+.lp-fo .fo-price span {
+  font-size: var(--text-dense);
+  color: rgba(242, 245, 248, 0.5);
+}
+.lp-fo .fo-sub {
+  margin-top: 0.55rem;
+  font-size: var(--text-dense);
+  color: rgba(242, 245, 248, 0.5);
+}
+.lp-fo .fo-detail {
+  margin-top: 1.2rem;
+  font-size: var(--text-content);
+  line-height: 1.6;
+  color: rgba(242, 245, 248, 0.68);
+  text-wrap: pretty;
+}
+.lp-fo .fo-list {
+  list-style: none;
+  margin: 1.3rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+  font-size: var(--text-dense);
+}
+.lp-fo .fo-list li {
+  display: flex;
+  gap: 0.6rem;
+  color: rgba(242, 245, 248, 0.6);
+}
+/* An en-dash, not a check: these are the things the panel does NOT offer. */
+.lp-fo .fo-list li::before {
+  content: "–";
+  flex: none;
+  color: rgba(242, 245, 248, 0.35);
+}
+/* The ladder. One hairline row per plan, price flushed right so the four
+   numbers read as a column. */
+.lp-fo .fo-plans {
+  list-style: none;
+  margin: 1.4rem 0 0;
+  padding: 0;
+  font-size: var(--text-dense);
+}
+.lp-fo .fo-plans li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.62rem 0;
+  border-top: 1px solid rgba(168, 157, 255, 0.18);
+}
+.lp-fo .fo-plans li:first-child {
+  border-top: 0;
+}
+.lp-fo .fo-plans b {
+  font-weight: 500;
+  color: #f2f5f8;
+}
+.lp-fo .fo-plans .fo-note {
+  min-width: 0;
+  flex: 1;
+  color: rgba(242, 245, 248, 0.45);
+}
+.lp-fo .fo-plans .fo-amt {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: #f2f5f8;
+}
+.lp-fo .fo-src {
+  margin-top: auto;
+  padding-top: 1.6rem;
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.42);
+}
+.lp-fo .fo-foot {
+  margin-top: auto;
+  padding-top: 1.6rem;
+}
+/* Same pill as the featured plan's, so the two CTAs on a comparison page and
+   on /pricing are one button. */
+.lp-fo .fo-cta {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  padding: 0.7rem 1rem;
+  border-radius: 0.5rem;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1;
+  background: #f2f5f8;
+  color: #0a0a0a;
+  transition: background-color 150ms var(--lp-ease);
+}
+.lp-fo .fo-cta:hover {
+  background: #fff;
+}
+.lp-fo .fo-micro {
+  margin-top: 0.8rem;
+  text-align: center;
+  font-size: var(--text-meta);
+  color: rgba(242, 245, 248, 0.45);
+  text-wrap: pretty;
+}
 
 /* ---- Light return: founder letter · FAQ · final CTA --------------------- */
 .lp-body-light {
@@ -3655,6 +3863,50 @@ html:has(.landing-canvas) {
   margin-top: clamp(4rem, 7vw, 6.5rem);
 }
 
+/* ---- Product proof — one capture of the whole app --------------------
+   The three notes under the shot, on the hairline stack the rest of these
+   pages use. Rules derive from currentColor so the block keeps working if it
+   ever moves off the graphite band. */
+.lp-proof {
+  margin-top: 2.75rem;
+}
+.lp-proof-points {
+  list-style: none;
+  margin: 2.25rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0 clamp(1.5rem, 3vw, 2.5rem);
+}
+.lp-proof-points li {
+  padding-top: 1rem;
+  border-top: 1px solid color-mix(in oklab, currentColor 16%, transparent);
+}
+.lp-proof-points b {
+  display: block;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in oklab, currentColor 52%, transparent);
+}
+.lp-proof-points p {
+  margin-top: 0.5rem;
+  font-size: var(--text-dense);
+  line-height: 1.55;
+  color: color-mix(in oklab, currentColor 72%, transparent);
+  text-wrap: pretty;
+}
+@media (max-width: 760px) {
+  .lp-proof-points {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .lp-proof-points li + li {
+    margin-top: 1.1rem;
+  }
+}
+
 /* ---- Ranked tool list — /alternatives and the category hub -----------
    Not six cards: six entries on one hairline stack, so the page reads as one
    survey instead of a shelf of competing offers. Colour appears once, on the
@@ -4077,4 +4329,3 @@ html:has(.landing-canvas) {
 .lp-final-micro a:hover {
   color: var(--lp-ink);
 }
-

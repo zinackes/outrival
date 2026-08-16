@@ -30,7 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import { cn, isGitHubRepoUrl } from "@/lib/utils";
 
 // Diff-aware update modal — replaces the full-page re-onboarding for profile
 // updates. Default path is a pure edit (no AI). Re-analyze is opt-in: it re-runs
@@ -587,16 +587,6 @@ function isValidUrl(s: string): boolean {
   try {
     const u = new URL(s.trim());
     return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function isGitHubRepoUrl(s: string): boolean {
-  try {
-    const u = new URL(s.trim());
-    if (u.hostname !== "github.com" && u.hostname !== "www.github.com") return false;
-    return u.pathname.split("/").filter(Boolean).length >= 2;
   } catch {
     return false;
   }

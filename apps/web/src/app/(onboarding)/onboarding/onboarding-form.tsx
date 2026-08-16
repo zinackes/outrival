@@ -86,7 +86,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
+import { cn, isGitHubRepoUrl } from "@/lib/utils";
 
 type Screen = "stage" | "input" | "profile" | "discover";
 type SourceType = "homepage" | "pricing" | "blog";
@@ -183,16 +183,6 @@ function isValidUrl(s: string): boolean {
   try {
     const u = new URL(s);
     return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function isGitHubRepoUrl(s: string): boolean {
-  try {
-    const u = new URL(s);
-    if (u.hostname !== "github.com" && u.hostname !== "www.github.com") return false;
-    return u.pathname.split("/").filter(Boolean).length >= 2;
   } catch {
     return false;
   }

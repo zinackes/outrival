@@ -49,3 +49,16 @@ export function isValidHttpUrl(value: string): boolean {
     return false;
   }
 }
+
+// A "developing" product is monitored through its GitHub repo, so any other host
+// would create a `github_repo` monitor that can never resolve. Every form that
+// takes a repo URL must gate on this same rule, not on `isValidHttpUrl`.
+export function isGitHubRepoUrl(value: string): boolean {
+  try {
+    const u = new URL(value.trim());
+    if (u.hostname !== "github.com" && u.hostname !== "www.github.com") return false;
+    return u.pathname.split("/").filter(Boolean).length >= 2;
+  } catch {
+    return false;
+  }
+}

@@ -44,7 +44,7 @@ import { PLAN_LABELS, hasDiscoveryInputs, type Plan } from "@outrival/shared";
 import { useSetProductScope } from "@/components/dashboard/product-scope-provider";
 import { toastApiError } from "@/lib/error-helpers";
 import { discoverOutcome, type DiscoverOutcome } from "@/lib/discovery-outcome";
-import { cn, isValidHttpUrl } from "@/lib/utils";
+import { cn, isGitHubRepoUrl, isValidHttpUrl } from "@/lib/utils";
 
 // "Add product" as a mini-onboarding (patch-28 multi-SKU). Adding a 2nd+ product used
 // to be a bare name+URL insert, so the SKU landed unanalysed and Discovery was blocked
@@ -517,15 +517,17 @@ export function AddProductWizard({
 
   // Validate the URL / repo shape client-side so an obviously-bad value is caught in
   // the form (inline hint + disabled Analyze) instead of bouncing back as a raw
-  // "Invalid body" 400 from the backend validator.
+  // "Invalid body" 400 from the backend validator. The repo gate is the stricter
+  // GitHub rule, same as onboarding: any other host passes `url()` server-side but
+  // yields a `github_repo` monitor that silently never resolves.
   const urlInvalid = stage === "live" && url.trim().length > 0 && !isValidHttpUrl(url);
   const repoInvalid =
-    stage === "developing" && repoUrl.trim().length > 0 && !isValidHttpUrl(repoUrl);
+    stage === "developing" && repoUrl.trim().length > 0 && !isGitHubRepoUrl(repoUrl);
 
   const canAnalyze =
     !!name.trim() &&
     ((stage === "live" && isValidHttpUrl(url)) ||
-      (stage === "developing" && isValidHttpUrl(repoUrl)) ||
+      (stage === "developing" && isGitHubRepoUrl(repoUrl)) ||
       (stage === "document" && !!file) ||
       (stage === "idea" && description.trim().length >= 10));
 

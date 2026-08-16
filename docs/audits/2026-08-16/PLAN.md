@@ -179,15 +179,54 @@ Un agent par angle, tous en `sonnet` sauf mention :
 
 **Points ouverts sur cette phase, à trancher ensemble** (section 6).
 
-### Phase 4, vérification (modèle principal, non délégué)
+### Phase 4, réfutation et balayage (workflow, ~45 agents `sonnet`)
 
-Pour chaque finding : ouvrir le code cité et confirmer. Trois classes d'échec
-attendues, d'après le skill lui-même : comportement voulu rapporté comme bug,
-preuve mal attribuée (bon finding, mauvais fichier), doublons entre agents.
+Un modèle principal seul, face à 80 ou 120 findings à rouvrir un par un, fatigue
+et finit par tamponner. La vérification est donc fanée, mais **bornée** : le
+budget se compte en requêtes API, pas en tokens, et trois réfuteurs par finding
+sur toute la liste videraient la fenêtre de 5 h pour rien.
 
-Sortie : `REPORT.md`, table priorisée par levier (impact / effort, pondéré par
-la confiance), plus une section « considéré et rejeté » pour ne pas re-auditer
-la même chose au prochain passage. Puis création des tickets Linear.
+Trois classes d'échec sont attendues, d'après le skill `improve` lui-même :
+comportement voulu rapporté comme bug, preuve mal attribuée (bon finding,
+mauvais fichier), doublons entre agents. Chacune a son objectif dédié.
+
+1. **Réfutation.** Les findings à enjeu (sécurité, scoping tenant, perte de
+   données, correctness, ou confiance faible) reçoivent **trois réfuteurs aux
+   angles distincts** : `evidence` rouvre la preuve citée, `intent` cherche la
+   décision délibérée dans les `CLAUDE.md` et `.claude/rules/`, `consequence`
+   accorde le fait et attaque l'impact. Deux voix sur trois tuent le finding.
+   Le reste part en lots de six chez un vérificateur unique.
+   Règle centrale : **l'invérifiable est réfuté**. Un finding que personne n'a
+   pu confirmer coûte une journée à quelqu'un pour rien.
+
+2. **Critique de complétude.** Trois agents lisent les tableaux `notAudited` et
+   répondent à « qu'est-ce que personne n'a regardé ? », sous trois angles : le
+   code (ce qui tombe **entre** les agents par package, chacun ayant eu
+   consigne de rester chez lui), le produit (les 23 pages `/admin`, les états
+   vides, l'isolation entre organisations), et le runtime (ce qui n'apparaît
+   qu'en mouvement : fetch en échec, job mort à mi-course, session expirée,
+   plafond de 10 actions IA atteint). Chacun rend des **sondes** exécutables,
+   pas des intentions.
+
+3. **Balayage.** Les 8 premières sondes deviennent des agents chercheurs. Ce
+   qu'elles remontent est marqué `verified: false` et ne se mélange jamais aux
+   survivants de l'étape 1. Les sondes non exécutées sont **loguées**, jamais
+   coupées en silence.
+
+Sortie : `findings-verified.json`, contenant les survivants, les nouveaux
+findings non vérifiés, et un tableau `refuted` avec la raison de chaque mort.
+Un finding rejeté est une information, pas un déchet : il évite de re-auditer la
+même chose au passage suivant.
+
+### Phase 5, rapport (modèle principal, non délégué)
+
+`REPORT.md`, table priorisée par levier (impact / effort, pondéré par la
+confiance), sécurité et scoping tenant en tête quel que soit l'effort, plus la
+section « considéré et rejeté ». Puis création des tickets Linear.
+
+C'est le seul artefact où une voix unique ayant tout le contexte compte. La
+phase 4 a fait le tri mécanique ; celle-ci fait le jugement, et ne se délègue
+pas.
 
 ## 5. Critères de succès
 
@@ -197,8 +236,10 @@ L'audit est terminé quand :
    combinaisons chacune, sans trou dû au harness lui-même.
 2. Chaque finding du rapport porte : preuve `file:line` ou URL plus screenshot,
    impact, effort S/M/L, risque du correctif, confiance.
-3. Chaque finding de la table a été rouvert et confirmé en phase 4.
-4. Le rapport dit explicitement ce qui n'a **pas** été audité.
+3. Chaque finding de la table est passé par la phase 4 : soit confirmé par
+   réfutation, soit marqué `verified: false` s'il vient du balayage.
+4. Le rapport dit explicitement ce qui n'a **pas** été audité, et ce qui a été
+   réfuté, avec la raison.
 5. Les findings retenus sont dans Linear, priorisés.
 
 ## 6. Décisions actées

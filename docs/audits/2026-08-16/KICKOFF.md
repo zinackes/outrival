@@ -10,14 +10,19 @@ Version courte, si tu ne veux pas coller le bloc entier :
 
 ```
 Lis docs/audits/2026-08-16/KICKOFF.md et exécute.
-Lance les workflows audit-code et audit-ux tels quels, sans les réécrire.
+Lance les workflows audit-code, audit-ux et audit-verify tels quels, sans les
+réécrire.
 ```
 
 La seconde phrase est nécessaire : l'outil Workflow n'accepte de tourner que si
 la demande vient de toi. Une instruction lue dans un fichier ne compte pas comme
-telle. Inutile en revanche d'activer le mode ultracode globalement : il pousse à
-enrober **chaque** tâche dans un workflow, y compris le crawl et la vérification,
-qui n'en ont pas besoin.
+telle.
+
+Activer le mode ultracode par-dessus ne casse rien, mais n'apporte plus grand
+chose : ce qu'il aurait poussé à faire est déjà écrit. Sa vraie valeur, la
+réfutation adversariale et la critique de complétude, vit dans `audit-verify`,
+où elle est bornée. Laissé en mode libre, il aurait aussi enrobé le crawl et la
+rédaction du rapport, deux étapes qui n'y gagnent rien.
 
 ---
 
@@ -43,22 +48,28 @@ Exécute dans cet ordre, en me rendant la main entre chaque étape:
 3. Workflow, name: "audit-ux"
    11 agents, dont un seul pilote le navigateur. Écrit findings-ux.json
 
-4. Vérification, puis docs/audits/2026-08-16/REPORT.md
+4. Workflow, name: "audit-verify"
+   ~45 agents. Réfute chaque finding, puis balaie ce que personne n'a audité.
+   Écrit findings-verified.json
+
+5. docs/audits/2026-08-16/REPORT.md, écrit par toi, pas par un sous-agent
 
 Contraintes non négociables:
 - Ne pousse rien sur main pendant le crawl. Coolify auto-déploie, et un
   redéploiement en cours de parcours produit des 502 que les agents
   rapporteraient comme des bugs applicatifs.
-- L'étape 4 reste sur le modèle principal. Ne la délègue à aucun sous-agent:
-  les agents sur-rapportent, et un rapport avec 15 faux findings sur 40 vaut
-  moins qu'un rapport de 20 vrais.
+- L'étape 5 reste sur le modèle principal. Le rapport est le seul artefact où
+  une voix unique ayant tout le contexte compte; le déléguer le dilue.
+- L'étape 4 a déjà tué les faux positifs. Ne refais pas sa passe à la main:
+  lis findings-verified.json, garde la distinction verified true/false, et
+  n'augmente la confiance de personne.
 - Ne relance pas les workflows en boucle. Un passage, puis on lit.
 
 Critère de succès: docs/audits/2026-08-16/REPORT.md existe, chaque finding y
 porte sa preuve (file:line ou URL plus screenshot), son impact, son effort
-S/M/L, le risque du correctif et un niveau de confiance; chaque finding de la
-table a été rouvert et confirmé; et le rapport dit explicitement ce qui n'a pas
-été audité.
+S/M/L, le risque du correctif et un niveau de confiance; les findings non
+vérifiés issus du balayage sont marqués comme tels; le rapport liste ce qui a
+été réfuté et pourquoi; et il dit explicitement ce qui n'a pas été audité.
 ```
 
 ---

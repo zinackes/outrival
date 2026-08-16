@@ -14,7 +14,6 @@ import {
   ArrowSquareOutIcon,
   GiftIcon,
   LightbulbIcon,
-  ScanIcon,
   StarIcon,
   TagIcon,
   WarningIcon,
@@ -24,9 +23,7 @@ import type { LandscapeData, LandscapeInsight, LandscapePricingRow } from "@/lib
 import { landscapeQuery } from "@/lib/queries";
 import { formatDate } from "@/lib/format-date";
 import { competitorNameColor } from "@/lib/competitor-color";
-import { Button } from "@/components/ui/button";
 import { SectionHead } from "./section-head";
-import { EmptyState } from "./empty-state";
 import { CompAvatar } from "./comp-avatar";
 
 // Day-0 competitive landscape (docs/post-onboarding-activation.md, Levers 1/3/4).
@@ -136,23 +133,6 @@ function PriceCell({
         </span>
       )}
     </span>
-  );
-}
-
-function WaitEmptyState({ competitorCount }: { competitorCount: number }) {
-  return (
-    <EmptyState
-      icon={ScanIcon}
-      title={`Outrival is watching ${competitorCount} competitor${competitorCount > 1 ? "s" : ""}`}
-      description="Scans run continuously. Your first signals (pricing, hiring, product and content moves) land here the moment something changes."
-      actions={
-        <Button asChild size="sm" variant="outline">
-          <Link href="/dashboard/competitors">
-            Review competitors <ArrowRightIcon size={16} />
-          </Link>
-        </Button>
-      }
-    />
   );
 }
 
@@ -344,19 +324,16 @@ function SourcesCoverage({
   );
 }
 
-export function LandscapeSection({
-  productId,
-  competitorCount,
-}: {
-  productId?: string;
-  competitorCount: number;
-}) {
+export function LandscapeSection({ productId }: { productId?: string }) {
   // First scrapes complete within minutes of onboarding — poll so pricing,
   // hiring and the source lights fill in live while the user watches.
   const q = useQuery({ ...landscapeQuery(productId), refetchInterval: 30_000 });
   const data = q.data ?? null;
 
-  if (q.isError) return <WaitEmptyState competitorCount={competitorCount} />;
+  // OUT-82 — the "we are watching, nothing yet" message now belongs to the
+  // Overview's own lead band, which renders above this in every day-0 state. This
+  // section only ever adds what the first scan actually captured, or nothing.
+  if (q.isError) return null;
   if (!data) {
     return (
       <div className="rounded-md border border-border px-4 py-10 text-sm text-muted-foreground">
@@ -380,13 +357,6 @@ export function LandscapeSection({
     list.push(s);
     sourcesByComp.set(s.competitorId, list);
   }
-  const hasAnyContent =
-    data.insights.length > 0 ||
-    hasPricing ||
-    data.hiring.length > 0 ||
-    data.reviews.length > 0 ||
-    data.recentActivity.length > 0;
-
   const hasBaseline =
     hasPricing || data.hiring.length > 0 || data.reviews.length > 0;
 
@@ -592,10 +562,6 @@ export function LandscapeSection({
         sourcesByComp={sourcesByComp}
         nextCheckAt={data.nextCheckAt}
       />
-
-      {!hasAnyContent && data.sources.length === 0 && (
-        <WaitEmptyState competitorCount={competitorCount} />
-      )}
     </>
   );
 }

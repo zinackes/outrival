@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRightIcon, CheckIcon } from "@/components/icons";
+import { ArrowRightIcon, CheckIcon, ClockIcon } from "@/components/icons";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { shortAge } from "@/lib/format-date";
@@ -42,6 +42,7 @@ export function OverviewQueue({
   windowCount,
   rangeLabel,
   nextRunLabel,
+  firstRun = false,
 }: {
   items: QueueItem[];
   /** Signals in the window at all, which decides which cleared copy is true. */
@@ -49,12 +50,17 @@ export function OverviewQueue({
   rangeLabel: string;
   /** When the next scrape lands, when we know. */
   nextRunLabel: string | null;
+  /**
+   * No signal has ever landed. The queue is empty because collection is young, not
+   * because the user worked through it — a green "cleared" tick would be a claim.
+   */
+  firstRun?: boolean;
 }) {
   return (
     <section>
       <SectionHead
         title="Needs a decision"
-        sub={items.length === 0 ? "cleared" : undefined}
+        sub={items.length === 0 ? (firstRun ? "nothing yet" : "cleared") : undefined}
         divider={false}
         action={
           <Button asChild variant="outline" size="sm">
@@ -68,21 +74,30 @@ export function OverviewQueue({
       {items.length === 0 ? (
         <div className="mt-3 flex items-center gap-3 rounded-lg border border-border bg-card px-5 py-5">
           <span
-            className="flex size-7 shrink-0 items-center justify-center rounded-full border border-positive/40 bg-positive/10 text-positive"
+            className={cn(
+              "flex size-7 shrink-0 items-center justify-center rounded-full border",
+              firstRun
+                ? "border-border bg-background-2 text-muted-foreground"
+                : "border-positive/40 bg-positive/10 text-positive",
+            )}
             aria-hidden
           >
-            <CheckIcon size={16} />
+            {firstRun ? <ClockIcon size={16} /> : <CheckIcon size={16} />}
           </span>
           <span>
-            <span className="block text-sm font-semibold">Nothing waiting.</span>
+            <span className="block text-sm font-semibold">
+              {firstRun ? "Nothing yet." : "Nothing waiting."}
+            </span>
             {/* `nextRunLabel` is clock-relative, so it can differ between the server
                 render and hydration a second later. */}
             <span className="text-sm text-muted-foreground" suppressHydrationWarning>
               {/* Precise on purpose: "you handled everything" would be a claim even
                   when the window only ever held mediums. */}
-              {windowCount > 0
-                ? `No unread critical or high in the ${rangeLabel}, and nothing in your to-do.`
-                : `No signal has needed a decision in the ${rangeLabel}.`}
+              {firstRun
+                ? "The first signal that needs a decision shows up here."
+                : windowCount > 0
+                  ? `No unread critical or high in the ${rangeLabel}, and nothing in your to-do.`
+                  : `No signal has needed a decision in the ${rangeLabel}.`}
               {nextRunLabel ? ` Next scan ${nextRunLabel}.` : ""}
             </span>
           </span>

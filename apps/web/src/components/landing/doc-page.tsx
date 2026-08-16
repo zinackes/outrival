@@ -30,7 +30,7 @@ export function DocPage({
       <main id="main-content" tabIndex={-1}>
         {/* compact: same fog opening as everywhere else, at half a fold —
             a policy is read, not sold. */}
-        <PageHero compact>
+        <PageHero compact fog="editorial">
           <h1>{title}</h1>
           {intro && <p className="lp-page-lead">{intro}</p>}
           {updated && <p className="lp-page-meta">Last updated {updated}</p>}

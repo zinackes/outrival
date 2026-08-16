@@ -63,6 +63,7 @@ export default async function BlogPostPage({
           fold in front of a 12-minute read is a toll gate. */}
       <PageHero
         compact
+        fog="editorial"
         crumbs={[
           { name: "Home", path: "/" },
           { name: "Blog", path: "/blog" },

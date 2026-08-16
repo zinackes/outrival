@@ -958,6 +958,20 @@ html:has(.landing-canvas) {
    reduced-motion fallback; the Vanta FOG canvas mounts at z -2 with an opaque
    paper baseColor and simply covers them once loaded; the turbulence grain at
    z -1 rides on whichever fog is showing. */
+
+/* The three hues the banks burn, named by slot rather than by colour so a page
+   family can re-rank them without touching the geometry: --fog-a is the left
+   bank, --fog-b the right, --fog-c the centre glow. The landing keeps the
+   original ranking; the [data-fog] blocks further down re-point them for
+   /pricing, the comparison pages and the editorial ones. The palette itself
+   never grows — a fourth hue would mean a colour with no meaning in a product
+   where red, teal and iris are severity and category. */
+.lp-hero,
+.lp-page-hero {
+  --fog-a: var(--lp-teal);
+  --fog-b: var(--lp-iris);
+  --fog-c: #ff5c72;
+}
 .lp-hero::before,
 .lp-page-hero::before {
   content: "";
@@ -969,8 +983,8 @@ html:has(.landing-canvas) {
   top: -16rem;
   left: -22rem;
   background:
-    radial-gradient(38% 42% at 30% 42%, color-mix(in oklab, var(--lp-teal) 30%, transparent), transparent 74%),
-    radial-gradient(30% 34% at 58% 60%, color-mix(in oklab, var(--lp-teal) 20%, transparent), transparent 70%),
+    radial-gradient(38% 42% at 30% 42%, color-mix(in oklab, var(--fog-a) 30%, transparent), transparent 74%),
+    radial-gradient(30% 34% at 58% 60%, color-mix(in oklab, var(--fog-a) 20%, transparent), transparent 70%),
     radial-gradient(24% 30% at 44% 26%, rgba(255, 255, 255, 0.55), transparent 70%);
   filter: blur(24px);
   animation: lp-fog-a 26s ease-in-out infinite alternate;
@@ -986,8 +1000,8 @@ html:has(.landing-canvas) {
   top: -14rem;
   right: -20rem;
   background:
-    radial-gradient(40% 44% at 62% 40%, color-mix(in oklab, var(--lp-iris) 22%, transparent), transparent 74%),
-    radial-gradient(28% 32% at 38% 62%, color-mix(in oklab, var(--lp-iris) 14%, transparent), transparent 70%),
+    radial-gradient(40% 44% at 62% 40%, color-mix(in oklab, var(--fog-b) 22%, transparent), transparent 74%),
+    radial-gradient(28% 32% at 38% 62%, color-mix(in oklab, var(--fog-b) 14%, transparent), transparent 70%),
     radial-gradient(22% 28% at 70% 60%, rgba(255, 255, 255, 0.55), transparent 70%);
   filter: blur(24px);
   animation: lp-fog-b 32s ease-in-out infinite alternate;
@@ -1002,10 +1016,38 @@ html:has(.landing-canvas) {
   left: 50%;
   margin-left: -22rem;
   background:
-    radial-gradient(42% 44% at 46% 46%, color-mix(in oklab, #ff5c72 8%, transparent), transparent 72%),
-    radial-gradient(26% 30% at 64% 58%, color-mix(in oklab, #ff5c72 5%, transparent), transparent 70%);
+    radial-gradient(42% 44% at 46% 46%, color-mix(in oklab, var(--fog-c) 8%, transparent), transparent 72%),
+    radial-gradient(26% 30% at 64% 58%, color-mix(in oklab, var(--fog-c) 5%, transparent), transparent 70%);
   filter: blur(20px);
   animation: lp-fog-c 21s ease-in-out infinite alternate;
+}
+/* ---- Fog tones, one per page family ---------------------------------
+   Same three hues, re-ranked. The matching Vanta ints live in FOG_TONES
+   (landing/vanta-fog.tsx) and must move together: the CSS banks are what a
+   visitor sees before the canvas paints, and under reduced motion they are
+   all they ever see. `default` needs no block — it is the rule above. */
+/* One bank shifts per variant, and it shifts along the hue circle rather than
+   being replaced: the three hues average to a neutral pastel, and dropping one
+   of them collapses the average onto the other two. Two cuts proved it — all
+   three moved turned /pricing into a saturated violet that ate the lead
+   paragraph's contrast, and one swapped hue turned /vs/* entirely pink. */
+/* /pricing: the teal bank is carried toward iris, the hue the Pro card and the
+   cost board already spend. Cooler fold, same warm counterweight. */
+.lp-page-hero[data-fog="pricing"] {
+  --fog-a: #7bbcd8;
+}
+/* /vs/* and /alternatives/*: the iris bank turns brand red. Red is the
+   severity hue, and these are the pages whose subject is a rival. */
+.lp-page-hero[data-fog="compare"] {
+  --fog-b: #ff5c72;
+}
+/* /blog, /docs, the policies: the calmest mix, all three hues washed toward
+   the paper base, because a full bank of colour in front of an article reads
+   as a wall rather than an opening. */
+.lp-page-hero[data-fog="editorial"] {
+  --fog-a: color-mix(in oklab, var(--lp-teal) 55%, var(--lp-paper));
+  --fog-b: color-mix(in oklab, var(--lp-iris-b) 70%, var(--lp-paper));
+  --fog-c: #ffc2cb;
 }
 .lp-vanta {
   position: absolute;

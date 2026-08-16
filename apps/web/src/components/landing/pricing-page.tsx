@@ -148,6 +148,7 @@ export function PricingPage() {
   return (
     <CompareShell>
       <PageHero
+        fog="pricing"
         crumbs={[
           { name: "Home", path: "/" },
           { name: "Pricing", path: "/pricing" },

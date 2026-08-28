@@ -8,22 +8,25 @@ la demande. Ne pas l'importer avec `@`, ça le remettrait dans chaque session.
 @.claude/rules/production.md
 
 Session ouverte depuis un ticket Linear (worktree `OUT-NN` ou branche
-`*/out-NN-*`) : lire `.claude/rules/linear-workflow.md` **avant** de choisir plan
+`*/out-NN-*`) : lire `.claude/docs/linear-workflow.md` **avant** de choisir plan
 mode ou exécution directe. Ce fichier prime sur la préférence par défaut de
 Claude Code pour `EnterPlanMode`.
 
 ## Carte du monorepo (lire le `CLAUDE.md` du package avant d'y toucher)
 
-| Package | Tu y vas quand… |
-|---|---|
-| `apps/web` | page, composant, design system |
-| `apps/api` | route HTTP, auth, gating de plan (enqueue seul, jamais un handler) |
-| `apps/workers` | corps d'un job, cron, orchestration d'un scrape |
-| `packages/db` | table, colonne, enum, migration |
-| `packages/ai` | prompt, tâche IA, grounding |
-| `packages/scrapers` | source de données, cascade de collecte |
-| `packages/queue` | déclarer un job : retry, expire, concurrence |
-| `packages/shared` | type / constante / util partagé (dont `PLAN_LIMITS`) |
+| Package | Tu y vas quand… | Peut importer |
+|---|---|---|
+| `apps/web` | page, composant, design system | `shared` |
+| `apps/api` | route HTTP, auth, gating de plan | `db`, `ai`, `shared`, `queue` (enqueue seul) |
+| `apps/workers` | corps d'un job, cron, orchestration d'un scrape | `db`, `ai`, `scrapers`, `shared`, `queue` |
+| `packages/db` | table, colonne, enum, migration | — |
+| `packages/ai` | prompt, tâche IA, grounding | — |
+| `packages/scrapers` | source de données, cascade de collecte | `shared` |
+| `packages/queue` | déclarer un job : retry, expire, concurrence | — |
+| `packages/shared` | type / constante / util partagé (dont `PLAN_LIMITS`) | — |
+
+Jamais `web → api`, `api → workers`, `workers → web`, `web → queue`. Un nouveau
+script passe par `turbo.json` avant d'être utilisé.
 
 ## Valider un changement
 
@@ -53,12 +56,19 @@ un chantier à part, pas un prérequis pour passer le gate.
 
 ## Interdits
 
-- `pnpm add` sans `--filter @outrival/<pkg>` : la racine ne porte que du tooling.
+- `pnpm add` sans `--filter @outrival/<pkg>` : la racine ne porte que du tooling
+  (typescript, oxlint, turbo, `@types/*`).
 - Import cross-apps direct. Passer par `@outrival/shared`.
 - Snapshot HTML en Postgres. Les assets binaires vont sur R2.
 - `prettier --write` : aucune config dans le repo, il reformaterait tout.
 - Commit hors Conventional Commits (`feat|fix|refactor|docs|test|chore`, sujet ≤ 50
   car., description qui dit le *pourquoi*, pas le *quoi*).
+
+## Sous-agents
+
+Lecture, grep, scaffolding, tests unitaires simples, migration triviale → `haiku`.
+Implémentation, refactor, tests → `sonnet`. Décision d'architecture, revue de
+design, problème complexe → `opus`. Toujours les alias, jamais un id daté.
 
 ## Skills tierces (`.claude/skills/`, MIT, pas Anthropic)
 

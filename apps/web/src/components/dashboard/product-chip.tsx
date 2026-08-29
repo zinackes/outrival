@@ -2,9 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { productsListQuery, competitorsQuery } from "@/lib/queries";
-import { productColorVars } from "@/lib/product-color";
-import { COMP_ACCENT } from "@/lib/competitor-color";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
+import { ProductTile } from "./product-tile";
 import { cn } from "@/lib/utils";
 
 const MAX_CHIPS = 2;
@@ -12,9 +11,10 @@ const MAX_CHIPS = 2;
 // Product attribution for a competitor, shown ONLY in all-products scope (the caller
 // gates on that), listing the products it is linked to (product_competitors). The API
 // sends an empty list for a competitor linked to EVERY product — attribution that
-// never varies disambiguates nothing. The product's identity color is a small dot;
-// the label stays muted-foreground so it never competes with the competitor's own
-// name color (different visual slot, lighter weight).
+// never varies disambiguates nothing. Each product wears its own <ProductTile> (favicon
+// → repo host → initials, ringed in the product's color), so an attribution is read by
+// logo like every other identity in the list; the label stays muted-foreground so it
+// never competes with the competitor's own name color (lighter weight, same row).
 export function ProductChips({
   productIds,
   className,
@@ -41,7 +41,7 @@ export function ProductChips({
 
   return (
     <span
-      className={cn("flex items-center gap-1.5", className)}
+      className={cn("flex items-center gap-2", className)}
       // The full label of every linked product, so the overflow "+N" stays
       // discoverable on hover.
       title={resolved.map((p) => p.name).join(" · ")}
@@ -49,12 +49,18 @@ export function ProductChips({
       {shown.map((p) => (
         <span
           key={p.id}
-          className="inline-flex min-w-0 items-center gap-1 text-meta text-muted-foreground"
+          className="inline-flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground"
         >
-          <span
-            aria-hidden
-            className="size-1.5 shrink-0 rounded-full"
-            style={{ ...productColorVars(p.position), background: COMP_ACCENT }}
+          {/* pointer-events-none: the tile carries its own `title` (the product name),
+              which would otherwise shadow the parent's full product list on hover. */}
+          <ProductTile
+            name={p.name}
+            url={p.url}
+            repoUrl={p.repoUrl}
+            position={p.position}
+            size={14}
+            ring
+            className="pointer-events-none"
           />
           <span className="truncate max-w-[14ch]">{p.name}</span>
         </span>

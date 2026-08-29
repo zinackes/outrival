@@ -1322,26 +1322,50 @@ export function SignalsView() {
     activeFilterCount === 0 &&
     !query;
 
+  // Two cold starts, not one, and the same funnel that dates the header separates
+  // them. Zero signals AND zero changes = nothing is being watched yet, and adding a
+  // competitor is the answer. Zero signals while changes ARE landing is a different
+  // workspace: monitoring works, so "add a competitor" reads as an accusation of not
+  // having set the product up, and it sends the reader to the one screen that cannot
+  // help. It is also the shape a stalled generation pipeline produces — Activity keeps
+  // filling while the feed stays empty — so that state points at the raw changes,
+  // where the difference between "nothing was significant" and "nothing was generated"
+  // is visible in one look.
+  const detectedThisWeek = funnel?.detected ?? 0;
+
   if (coldStart) {
     return (
       <div className="flex h-full items-center justify-center overflow-y-auto px-4 py-8">
-        <EmptyState
-          icon={ScanIcon}
-          title="No signals yet"
-          description="Outrival turns every competitor move into a signal: what changed, why it matters, and what to do. Add a competitor to start, or explore with sample data first."
-          actions={
-            <>
-              <Button asChild size="sm">
-                <Link href="/dashboard/competitors">Add a competitor</Link>
+        {detectedThisWeek > 0 ? (
+          <EmptyState
+            icon={ScanIcon}
+            title="No signals yet"
+            description={`Monitoring is running: ${detectedThisWeek} ${detectedThisWeek === 1 ? "change" : "changes"} detected this week, none significant enough to become a signal. The raw changes are on the activity feed.`}
+            actions={
+              <Button asChild size="sm" variant="outline">
+                <Link href="/dashboard/activity">View activity</Link>
               </Button>
-              {!sample && (
-                <Button size="sm" variant="ghost" onClick={() => setSample(true)}>
-                  <FlaskIcon size={16} /> Explore with sample data
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={ScanIcon}
+            title="No signals yet"
+            description="Outrival turns every competitor move into a signal: what changed, why it matters, and what to do. Add a competitor to start, or explore with sample data first."
+            actions={
+              <>
+                <Button asChild size="sm">
+                  <Link href="/dashboard/competitors">Add a competitor</Link>
                 </Button>
-              )}
-            </>
-          }
-        />
+                {!sample && (
+                  <Button size="sm" variant="ghost" onClick={() => setSample(true)}>
+                    <FlaskIcon size={16} /> Explore with sample data
+                  </Button>
+                )}
+              </>
+            }
+          />
+        )}
       </div>
     );
   }

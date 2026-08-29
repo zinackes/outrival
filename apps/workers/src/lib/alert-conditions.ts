@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, alertConditions } from "@outrival/db";
 import { AI_CONFIG, matchAlertConditions } from "@outrival/ai";
 import { loggedAi } from "./analytics";
+import { logger } from "./job-logger";
 
 // Alert conditions (OUT-192) evaluated at signal creation. The org writes what it
 // cares about in its own words; every signal is checked against the active rules, and
@@ -46,11 +47,25 @@ export interface EvaluateConditionsInput {
 export async function evaluateAlertConditions(
   input: EvaluateConditionsInput,
 ): Promise<EvaluatedConditions> {
+  // Best-effort, like the two calls below and for a harder reason: this read is the
+  // first statement of the last thing generate-signal does BEFORE it inserts the
+  // signal row. Unguarded, a failure here (unreachable pool, a migration not applied
+  // on this env, a statement timeout) throws out of generate-signal for every org on
+  // every change, pg-boss burns the retries and dead-letters — the pipeline keeps
+  // writing `changes`, so Activity looks alive while the feed goes permanently empty.
+  // An unreadable rule set costs one importance badge; a throw costs the signal.
   const rows = await db
     .select({ id: alertConditions.id, condition: alertConditions.condition })
     .from(alertConditions)
     .where(and(eq(alertConditions.orgId, input.orgId), eq(alertConditions.isActive, true)))
-    .limit(MAX_EVALUATED_CONDITIONS);
+    .limit(MAX_EVALUATED_CONDITIONS)
+    .catch((err: unknown) => {
+      logger.error("Alert conditions unreadable — signal keeps its severity-only importance", {
+        orgId: input.orgId,
+        err,
+      });
+      return [] as { id: string; condition: string }[];
+    });
 
   if (rows.length === 0) return NONE;
 

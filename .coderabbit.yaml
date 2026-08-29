@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+# CodeRabbit reviewed every PR unprompted, and each review is a comment on a PR
+# whose author is subscribed by definition — so every PR cost an email whether or
+# not anyone wanted the review. GitHub cannot mute one bot, so the quiet has to be
+# arranged here.
+#
+# The reviewer is not removed, only made opt-in: comment `@coderabbitai review` on
+# a PR and it runs as before.
+reviews:
+  auto_review:
+    enabled: false
+  # Chatter that costs a notification and carries no finding.
+  review_status: false
+  high_level_summary: false
+  poem: false

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { COMP_FILL, COMP_ON_FILL, competitorColorVars } from "@/lib/competitor-color";
 import {
@@ -223,6 +223,7 @@ export function CompAvatar({
   const { resolvedTheme } = useTheme();
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(() =>
     domain ? (cache.get(domain) ?? null) : null,
   );
@@ -250,6 +251,42 @@ export function CompAvatar({
   const haloColor = isDark ? "var(--logo-halo-light)" : "var(--logo-halo-dark)";
   const src =
     analysis?.kind === "glyph" && analysis.src ? analysis.src : faviconSrc;
+
+  // Analyse a domain once, then reuse it for every avatar of that domain. When a
+  // sibling already cached the result (or this <img> re-fired after `src` swapped to
+  // the recentred data URL), adopt the cached analysis instead of re-running it —
+  // without this, the avatar that loses the race keeps `analysis` null and renders the
+  // raw, off-center favicon.
+  const absorb = useCallback(
+    (el: HTMLImageElement) => {
+      setLoaded(true);
+      if (!domain) return;
+      const cached = cache.get(domain);
+      if (cached) {
+        setAnalysis(cached);
+        return;
+      }
+      try {
+        const a = analyzeFavicon(el);
+        cache.set(domain, a);
+        setAnalysis(a);
+      } catch {
+        // Cross-origin/decoding edge — keep the bare treatment.
+      }
+    },
+    [domain],
+  );
+
+  // The favicon can finish loading BEFORE React attaches onLoad: the sidebar's roster
+  // is server-rendered (the dashboard layout dehydrates the competitors query), so the
+  // browser holds the image well before hydration and the event never fires. The tile
+  // then keeps `loaded` false and `analysis` null — the tinted initials stay behind the
+  // icon and the raw, still-plated favicon is what paints. Re-read `complete` on mount
+  // and after every src swap so a cached image takes the same path as a fresh one.
+  useEffect(() => {
+    const el = imgRef.current;
+    if (el?.complete && el.naturalWidth > 0) absorb(el);
+  }, [src, absorb]);
   const pad = fill ? 0 : Math.max(2, Math.round(size * 0.15));
   // A favicon that analysed to no glyph pixels at all has nothing left to paint — the
   // letter is the only thing that identifies the tile, so it stays and the icon layer is
@@ -297,30 +334,12 @@ export function CompAvatar({
         <>
           {/* eslint-disable-next-line @next/next/no-img-element -- dynamic proxied icon, not a static asset */}
           <img
+            ref={imgRef}
             src={src}
             alt=""
             aria-hidden
             loading="lazy"
-            onLoad={(e) => {
-              setLoaded(true);
-              // Analyse a domain once, then reuse it for every avatar of that domain. When a
-              // sibling already cached the result (or this <img> re-fired onLoad after `src`
-              // swapped to the recentred data URL), adopt the cached analysis instead of
-              // re-running it — without this, the avatar that loses the race keeps
-              // `analysis` null and renders the raw, off-center favicon.
-              const cached = cache.get(domain);
-              if (cached) {
-                setAnalysis(cached);
-                return;
-              }
-              try {
-                const a = analyzeFavicon(e.currentTarget);
-                cache.set(domain, a);
-                setAnalysis(a);
-              } catch {
-                // Cross-origin/decoding edge — keep the bare treatment.
-              }
-            }}
+            onLoad={(e) => absorb(e.currentTarget)}
             onError={() => setFailed(true)}
             style={{
               position: "absolute",

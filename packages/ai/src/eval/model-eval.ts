@@ -342,8 +342,9 @@ async function main(): Promise<void> {
 
   // --- Summary table. Token/latency/cost means are over VALID responses only, so a
   //     429 (0 tokens) doesn't deflate the cost. "api!" counts surface separately. ---
+  const idCol = Math.max(28, ...SPECS.map((s) => s.id.length + 2));
   console.log(
-    "\nMODEL".padEnd(28) + "ZOD".padEnd(7) + "api!".padEnd(6) + "PROMPT".padEnd(9) + "COMPL".padEnd(9) + "LAT".padEnd(9) + "~$/1k",
+    "\nMODEL".padEnd(idCol) + "ZOD".padEnd(7) + "api!".padEnd(6) + "PROMPT".padEnd(9) + "COMPL".padEnd(9) + "LAT".padEnd(9) + "~$/1k",
   );
   for (const spec of SPECS) {
     const rs = [...results.get(spec.id)!.values()];
@@ -354,7 +355,7 @@ async function main(): Promise<void> {
     const lat = mean(ok.map((r) => r.latencyMs));
     const cost = costPer1kUsd(spec, pTok, cTok);
     console.log(
-      spec.id.padEnd(28) +
+      spec.id.padEnd(idCol) +
         `${ok.length}/${rs.length}`.padEnd(7) +
         String(apiErr).padEnd(6) +
         Math.round(pTok).toString().padEnd(9) +
@@ -385,7 +386,7 @@ async function main(): Promise<void> {
       if (b.is_significant === m.is_significant) sig++;
     }
     console.log(
-      `  ${spec.id.padEnd(24)} category ${cat}/${comparable}   severity ${sev}/${comparable}   is_significant ${sig}/${comparable}`,
+      `  ${spec.id.padEnd(idCol)} category ${cat}/${comparable}   severity ${sev}/${comparable}   is_significant ${sig}/${comparable}`,
     );
   }
 
@@ -402,16 +403,22 @@ async function main(): Promise<void> {
     const cost = costPer1kUsd(spec, mean(ok.map((r) => r.promptTokens)), mean(ok.map((r) => r.completionTokens)));
     // <= so a free candidate against a free baseline is not reported as 'not cheaper'.
     const cheaper = cost <= baseCost;
+    // A model that never produced ONE valid response is not a pilot candidate, whatever
+    // its cost column says. Measured the hard way: a provider answering "400 Model is
+    // unavailable" to all six cases has no parse failure and a cost of zero, and came
+    // out "PILOT-WORTHY" — a recommendation to adopt a model that never answered.
     const verdict =
       parseFails > 0
         ? `BLOCKED (${parseFails} JSON-adherence failure${parseFails > 1 ? "s" : ""})`
-        : cheaper
-          ? "PILOT-WORTHY"
-          : "REVIEW (not cheaper)";
+        : ok.length === 0
+          ? `INCONCLUSIVE (no valid response: ${apiErr} API error${apiErr > 1 ? "s" : ""})`
+          : cheaper
+            ? "PILOT-WORTHY"
+            : "REVIEW (not cheaper)";
     const note = apiErr > 0 ? `  [${apiErr} API/429 error(s) — re-run with higher EVAL_PACING_MS]` : "";
     const priced = isFree(spec) ? "free" : `~$${cost.toFixed(3)}/1k`;
     const basePriced = isFree(baseline) ? "free" : `$${baseCost.toFixed(3)}`;
-    console.log(`  ${spec.id.padEnd(24)} ${verdict}  (${priced} vs baseline ${basePriced})${note}`);
+    console.log(`  ${spec.id.padEnd(idCol)} ${verdict}  (${priced} vs baseline ${basePriced})${note}`);
   }
   console.log("");
 }

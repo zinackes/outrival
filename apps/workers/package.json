@@ -14,7 +14,8 @@
     "backfill:content-dates": "bun run src/scripts/backfill-content-dates.ts",
     "backfill:messaging": "bun run src/scripts/backfill-messaging-versions.ts",
     "backfill:named-competitors": "bun run src/scripts/backfill-named-competitors.ts",
-    "ats:coverage": "bun run src/scripts/ats-coverage.ts"
+    "ats:coverage": "bun run src/scripts/ats-coverage.ts",
+    "replay:dlq": "bun run src/scripts/replay-dlq.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

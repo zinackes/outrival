@@ -148,7 +148,12 @@ function analyzeFavicon(img: HTMLImageElement): Analysis {
   // plate out only when a real glyph is left — never erase a near-blank white favicon.
   const plateFrac = opaque ? plateCount / opaque : 0;
   const glyphFrac = (opaque - plateCount) / (S * S);
-  const deplate = plateFrac >= 0.45 && glyphFrac > 0.03;
+  // `coverage` is what tells a BAKED plate from a pale LOGO: a plate the proxy painted is
+  // opaque edge to edge by construction, so it fills the tile. A white/near-white logo on a
+  // transparent background covers a third of it — its pixels pass isPlatePixel all the same,
+  // and without this guard the feather below erased the whole icon and the tile fell back to
+  // initials for a competitor that does have a favicon (OUT-82).
+  const deplate = coverage >= 0.85 && plateFrac >= 0.45 && glyphFrac > 0.03;
 
   // An opaque branded square (no plate to key out) carries its own background — show it
   // edge to edge as-is, no trim.
@@ -179,6 +184,10 @@ function analyzeFavicon(img: HTMLImageElement): Analysis {
   ctx.putImageData(image, 0, 0);
 
   const bounds = glyphBounds(data, S);
+  // De-plating ate everything: the glyph was too close to white to survive the ramp. The
+  // favicon still exists, so show it raw rather than drop to initials — a pale logo on its
+  // own white plate reads, an initial tile pretends there is no logo at all.
+  if (deplate && !bounds) return { kind: "fill" };
   const lum = deplate
     ? glyphAlpha
       ? glyphLumSum / glyphAlpha

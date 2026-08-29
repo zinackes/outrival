@@ -97,14 +97,32 @@ export interface CompletionOptions {
   onPartial?: (textSoFar: string) => void;
 }
 
-// A 429/5xx is transient. A per-provider 401/403/404 (bad key or missing model at
-// THIS provider) is permanent for this provider, but the next one — different key
-// and model — may still work, so fail over too. Only a 400 (a request WE built
-// wrong) would hit every provider identically → fail fast.
-function shouldFailover(err: unknown): boolean {
+// A 429/5xx is transient. A per-provider 401/402/403/404 (bad key, no credit, or
+// missing model at THIS provider) is permanent for this provider, but the next one —
+// different account and model — may still work, so fail over too. Only a 400 (a
+// request WE built wrong) would hit every provider identically → fail fast.
+//
+// 402 was missing from this list until OUT-237 and cost twelve days of production.
+// Cerebras (priority 1) started answering "402 status code (no body)" on 2026-08-17;
+// the pool fell through to the `throw` below instead of failing over, so Cloudflare,
+// Groq and Mistral — all four healthy, all four idle — were never asked. Every AI
+// task died on the first provider: 3909 failed ai_runs, 982 dead-lettered changes,
+// and not one signal written for any org while `changes` kept landing. A status that
+// belongs to ONE provider's billing must never be read as a verdict on the request.
+// Exported for unit testing this branch, like isConfigError and isTooLarge below.
+export function shouldFailover(err: unknown): boolean {
   if (!(err instanceof OpenAI.APIError)) return false;
   const s = err.status ?? 0;
-  return s === 429 || s === 413 || s === 401 || s === 403 || s === 404 || s >= 500;
+  return s === 429 || s === 413 || s === 401 || s === 402 || s === 403 || s === 404 || s >= 500;
+}
+
+// 402 = this provider's account is out of credit (or its billing lapsed). Like a bad
+// key it will not self-heal by backing off, and unlike a bad key nobody can fix it in
+// env: someone has to top the account up. Tagged separately from isConfigError so the
+// surfaced error names THAT action instead of sending ops to read AI_PROVIDER_* vars
+// that are perfectly correct.
+export function isOutOfCredit(err: unknown): boolean {
+  return err instanceof OpenAI.APIError && err.status === 402;
 }
 
 // 413 = this request does not fit THIS provider's limits. Groq's free tier counts
@@ -202,18 +220,30 @@ export function resolveReasoningEffort(
  * request, so treating it as an outage blanks AI over one bad task.
  * Pure, and exported for the unit test.
  */
-export type PoolExhaustion = "misconfigured" | "too_large" | "empty_replies" | "transient";
+export type PoolExhaustion =
+  | "misconfigured"
+  | "out_of_credit"
+  | "too_large"
+  | "empty_replies"
+  | "transient";
 
 export function classifyExhaustion(seen: {
   configError: boolean;
   transientError: boolean;
+  outOfCredit: boolean;
   tooLarge: boolean;
   emptyCompletion: boolean;
 }): PoolExhaustion {
   // A transient fault anywhere means something really was distressed: it outranks
-  // every "the request was the problem" reading below.
+  // every "the request was the problem" reading below — and also outranks the two
+  // ops verdicts, because one provider still answering 429 means the pool is not
+  // permanently blocked, only busy.
   if (seen.transientError) return "transient";
   if (seen.configError) return "misconfigured";
+  // Same shape as misconfigured — back-off cannot fix it, a human must — but a
+  // different human action, so it gets its own verdict rather than being folded into
+  // a message about env vars that are correct.
+  if (seen.outOfCredit) return "out_of_credit";
   if (seen.tooLarge) return "too_large";
   if (seen.emptyCompletion) return "empty_replies";
   return "transient";
@@ -332,6 +362,10 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
   // "all_providers_failed / no_providers_available" message implies.
   let sawConfigError = false;
   let sawTransientError = false;
+  // An account out of credit (402) is the same kind of wipe as a bad key, with a
+  // different repair: top the account up. Tracked apart so a pool that is entirely
+  // unpaid does not surface as an env mistake.
+  let sawOutOfCredit = false;
   // A request no provider would accept is a bug in what WE sent, not an outage —
   // see the exhaustion path for why that distinction has to survive to the end.
   let sawTooLarge = false;
@@ -466,6 +500,7 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
           bucketKey = null;
         }
         if (isConfigError(err)) sawConfigError = true;
+        else if (isOutOfCredit(err)) sawOutOfCredit = true;
         else if (tooLarge) sawTooLarge = true;
         else sawTransientError = true;
         // A refused-as-too-large request leaves the provider healthy: try the next
@@ -503,6 +538,7 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
   const exhaustion = classifyExhaustion({
     configError: sawConfigError,
     transientError: sawTransientError,
+    outOfCredit: sawOutOfCredit,
     tooLarge: sawTooLarge,
     emptyCompletion: sawEmptyCompletion,
   });
@@ -515,6 +551,17 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
     throw new AIUnavailableError(
       `ai_provider_misconfigured: every provider rejected the request (last: ${detail}). ` +
         `Check AI_PROVIDER_*_BASE_URL (needs a trailing /v1) and AI_PROVIDER_*_MODEL.`,
+    );
+  }
+  // Every provider that answered said the account behind it has no credit left. Same
+  // treatment as a misconfigured pool — retrying cannot buy credit, so pause AI
+  // workspace-wide and say so once, loudly, instead of burning every task on a wall
+  // that only a top-up moves.
+  if (exhaustion === "out_of_credit") {
+    await tripGlobalBreaker("ai_out_of_credit");
+    throw new AIUnavailableError(
+      `ai_out_of_credit: every provider answered 402 (last: ${detail}). ` +
+        `Top up or re-enable billing on the AI_PROVIDER_* accounts.`,
     );
   }
   // Every provider refused the request as too large. Nothing is down: the prompt or

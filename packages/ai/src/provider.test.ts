@@ -3,9 +3,11 @@ import OpenAI from "openai";
 import {
   resolveReasoningEffort,
   isConfigError,
+  isOutOfCredit,
   isTooLarge,
   rateLimitBackoffSec,
   classifyExhaustion,
+  shouldFailover,
 } from "./provider";
 import {
   estimateRequestTokens,
@@ -110,6 +112,43 @@ test("nothing else is mistaken for a too-large refusal", () => {
   expect(isTooLarge(new Error("boom"))).toBe(false);
 });
 
+// --- what fails over, and what stops the call (OUT-237) ---------------------
+//
+// The pool tries the next provider only for a status in this list; anything else hits
+// `throw err` and the task dies on the first provider. 402 was missing, so when
+// Cerebras (priority 1) ran out of credit on 2026-08-17 the three healthy providers
+// behind it were never asked: every AI task failed, classify-change dead-lettered 982
+// changes, and no signal was written for any org for twelve days while `changes` kept
+// landing. A per-provider billing status is never a verdict on the request.
+
+test("a provider out of credit fails over to the next one", () => {
+  expect(shouldFailover(apiError(402))).toBe(true);
+});
+
+test("every other per-provider fault still fails over", () => {
+  for (const status of [401, 403, 404, 413, 429, 500, 502, 503]) {
+    expect(shouldFailover(apiError(status))).toBe(true);
+  }
+});
+
+test("a request WE built wrong still fails fast — it would fail identically everywhere", () => {
+  expect(shouldFailover(apiError(400))).toBe(false);
+  expect(shouldFailover(new Error("socket hang up"))).toBe(false);
+});
+
+test("402 is its own diagnosis: no env var is wrong, an account needs topping up", () => {
+  expect(isOutOfCredit(apiError(402))).toBe(true);
+  expect(isConfigError(apiError(402))).toBe(false);
+  expect(isTooLarge(apiError(402))).toBe(false);
+});
+
+test("nothing else is mistaken for an out-of-credit account", () => {
+  for (const status of [400, 401, 403, 404, 413, 429, 500, 503]) {
+    expect(isOutOfCredit(apiError(status))).toBe(false);
+  }
+  expect(isOutOfCredit(new Error("boom"))).toBe(false);
+});
+
 // --- per-request size ceiling ----------------------------------------------
 //
 // The 413 above is handled well AFTER it happens. The point of a published ceiling
@@ -166,6 +205,7 @@ test("an unset ceiling means unknown, never zero", () => {
 const seen = (over: Partial<Parameters<typeof classifyExhaustion>[0]> = {}) => ({
   configError: false,
   transientError: false,
+  outOfCredit: false,
   tooLarge: false,
   emptyCompletion: false,
   ...over,
@@ -192,6 +232,23 @@ test("the pre-existing config and too-large verdicts are unchanged", () => {
   expect(classifyExhaustion(seen({ configError: true, tooLarge: true }))).toBe("misconfigured");
   // A size refusal outranks an empty reply: it names the actionable budget.
   expect(classifyExhaustion(seen({ tooLarge: true, emptyCompletion: true }))).toBe("too_large");
+});
+
+test("a pool with no credit left names the top-up, not an env mistake", () => {
+  expect(classifyExhaustion(seen({ outOfCredit: true }))).toBe("out_of_credit");
+  // A bad key still outranks it: env is free to fix and blocks that provider outright.
+  expect(classifyExhaustion(seen({ outOfCredit: true, configError: true }))).toBe("misconfigured");
+  // And it outranks the two request-shaped readings, which say nothing is down.
+  expect(classifyExhaustion(seen({ outOfCredit: true, tooLarge: true }))).toBe("out_of_credit");
+  expect(classifyExhaustion(seen({ outOfCredit: true, emptyCompletion: true }))).toBe(
+    "out_of_credit",
+  );
+});
+
+test("one provider still answering 429 keeps the verdict transient", () => {
+  // Not everything is permanently blocked: a busy provider clears on its own clock,
+  // so this must not pause AI workspace-wide and demand a human.
+  expect(classifyExhaustion(seen({ outOfCredit: true, transientError: true }))).toBe("transient");
 });
 
 test("an exhaustion with nothing observed still counts as transient", () => {

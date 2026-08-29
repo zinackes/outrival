@@ -40,6 +40,8 @@ import { Sparkline } from "./sparkline";
 // Plain SVG, no recharts: imported directly so the page's first chart doesn't
 // arrive behind a skeleton the way the lazy market chart has to.
 import { TrendsSlopeChart } from "./trends-slope-chart";
+// Arithmetic only, no recharts — safe to pull in statically beside the lazy chart.
+import { endValue, orderByEnd } from "./trends-chart-model";
 import { PageHead } from "./page-head";
 import {
   DateRangePicker,
@@ -434,17 +436,25 @@ const KEY_SCROLL_AFTER = 12;
  * A switched-off entry stays in place at reduced opacity rather than disappearing:
  * it is how you switch it back on, and a control that vanishes when used sends the
  * reader to the toolbar for something they were already holding.
+ *
+ * The order is the caller's, and is meant to be the plot's own: entries arrive
+ * ranked by where their lines end, so the key reads top-to-bottom against the right
+ * edge of the chart instead of asking the reader to resolve a hue. `note` carries
+ * the value that ranking is by — without it the order looks arbitrary and buys
+ * nothing.
  */
 function ChartKey({
   series,
   hidden,
   paint,
+  note,
   onToggle,
   onHighlight,
 }: {
   series: TrendsMarketSeries[];
   hidden: Set<string>;
   paint: Map<string, SeriesPaint>;
+  note?: Map<string, string>;
   onToggle: (id: string) => void;
   onHighlight: (id: string | null) => void;
 }) {
@@ -460,6 +470,7 @@ function ChartKey({
     >
       {series.map((item) => {
         const off = hidden.has(item.competitorId);
+        const ranked = note?.get(item.competitorId);
         return (
           <button
             key={item.competitorId}
@@ -487,6 +498,9 @@ function ChartKey({
               {item.competitorName}
               {item.isSelf && <span className="text-muted-foreground"> (you)</span>}
             </span>
+            {ranked && (
+              <span className="tabular-nums text-muted-foreground">{ranked}</span>
+            )}
           </button>
         );
       })}
@@ -517,6 +531,25 @@ function MarketPlot({
 }) {
   // Transient, so it stays local: pointing at a line is not choosing one.
   const [highlighted, setHighlighted] = useState<string | null>(null);
+  // The key is ranked by the chart's right edge, and says what by. In index mode
+  // that is the percent the line travelled — the height it actually ends at — not
+  // the raw reading, which is a different ordering and would rank the key against
+  // a plot it does not describe.
+  const { ordered, note } = useMemo(() => {
+    const ranked = orderByEnd(series, mode, hidden);
+    const labels = new Map<string, string>();
+    for (const item of ranked) {
+      const end = endValue(item, mode);
+      if (end === null) continue;
+      labels.set(
+        item.competitorId,
+        mode === "index"
+          ? `${end > 0 ? "+" : ""}${Number.isInteger(end) ? end : end.toFixed(1)}%`
+          : formatValue(end, item),
+      );
+    }
+    return { ordered: ranked, note: labels };
+  }, [series, mode, hidden, formatValue]);
   if (series.length === 0) return null;
   return (
     <div className="flex flex-col gap-2">
@@ -530,9 +563,10 @@ function MarketPlot({
         height={height}
       />
       <ChartKey
-        series={series}
+        series={ordered}
         hidden={hidden}
         paint={paint}
+        note={note}
         onHighlight={setHighlighted}
         onToggle={onToggle}
       />

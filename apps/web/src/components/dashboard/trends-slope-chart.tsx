@@ -211,7 +211,7 @@ export function TrendsSlopeChart({
                     strokeOpacity={row.moved ? 1 : 0.5}
                     strokeDasharray={row.single ? "3 3" : undefined}
                   />
-                  {/* A pinned endpoint gives its dot up to the caret drawn over it:
+                  {/* A pinned endpoint gives its dot up to the caret drawn beyond it:
                       a round dot means "the price is here", and it is not. */}
                   {model.outside(row.from) === null && (
                     <circle
@@ -254,7 +254,15 @@ export function TrendsSlopeChart({
                 return (
                   <span
                     key={`clip-${row.item.competitorId}-${left}`}
-                    className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
+                    className={cn(
+                      "pointer-events-none absolute -translate-x-1/2",
+                      // Clear of the rung, not centred on it. Centred, the caret was
+                      // sliced in half by the grid line it points past and reached
+                      // into the date row above the plot, so the one marker whose
+                      // whole job is to say "the value carries on past here" was
+                      // itself the thing that looked cut off.
+                      direction === "above" ? "-translate-y-full" : "translate-y-0",
+                    )}
                     style={{
                       left,
                       top: y(value),

@@ -24,6 +24,7 @@ import {
   asOfKey,
   buildCarriedGrid,
   buildIndexDomain,
+  plotHeight,
   rawKey,
   type ChartRow,
 } from "@/components/dashboard/trends-chart-model";
@@ -62,6 +63,7 @@ import {
 export interface MarketChartProps {
   series: TrendsMarketSeries[];
   mode: "index" | "absolute";
+  /** Fixed height. Omit it and the plot takes the height its series count needs. */
   height?: number;
   /** Renders the raw captured value in the tooltip (money, roles, score). */
   formatValue: (value: number, series: TrendsMarketSeries) => string;
@@ -169,7 +171,7 @@ function TooltipCard({
 export function TrendsMarketChart({
   series,
   mode,
-  height = 200,
+  height,
   formatValue,
   paint,
   hidden,
@@ -184,6 +186,10 @@ export function TrendsMarketChart({
   // the highlight on a line that is no longer plotted, fading every remaining one
   // with nothing to look at.
   const active = visible.some((s) => s.competitorId === highlighted) ? highlighted : null;
+
+  // Grown per series unless the caller pinned it: six lines in the height five were
+  // drawn in is the whole "the hiring chart is unreadable" complaint.
+  const plotH = height ?? plotHeight(visible.length);
 
   // Trimmed by default, with the way back below the plot. Index mode only: absolute
   // mode plots review scores, where 0 to 5 is already a shared scale and there is
@@ -220,7 +226,7 @@ export function TrendsMarketChart({
     return (
       <div
         className="flex items-center justify-center text-sm text-muted-foreground"
-        style={{ height }}
+        style={{ height: plotH }}
       >
         Nothing to plot in this window.
       </div>
@@ -233,7 +239,7 @@ export function TrendsMarketChart({
 
   return (
     <div className="w-full">
-      <div style={{ height }}>
+      <div style={{ height: plotH }}>
         <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -8 }}>
           <CartesianGrid stroke="var(--border)" vertical={false} />

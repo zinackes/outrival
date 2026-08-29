@@ -6,7 +6,11 @@ import {
   buildIndexDomain,
   buildSlopeModel,
   decollide,
+  endValue,
+  orderByEnd,
+  plotHeight,
   rawKey,
+  LABEL_GAP,
 } from "../src/components/dashboard/trends-chart-model";
 
 function series(
@@ -500,5 +504,100 @@ describe("buildSlopeModel leaders", () => {
     ])!;
 
     expect(model.leaders).toEqual([]);
+  });
+});
+
+describe("plotHeight", () => {
+  test("a small field keeps the height it always had", () => {
+    expect(plotHeight(1)).toBe(200);
+    expect(plotHeight(5)).toBe(200);
+  });
+
+  test("past five series the plot buys separation per line", () => {
+    expect(plotHeight(6)).toBeGreaterThan(plotHeight(5));
+    expect(plotHeight(10)).toBeGreaterThan(plotHeight(6));
+  });
+
+  test("it stops growing before it pushes the evidence off the screen", () => {
+    expect(plotHeight(40)).toBe(plotHeight(200));
+    expect(plotHeight(40)).toBeLessThanOrEqual(340);
+  });
+});
+
+describe("endValue", () => {
+  test("index mode reads the percent the line travelled", () => {
+    expect(endValue(series("a", [["2026-05-01", 10], ["2026-05-10", 12]]), "index")).toBe(20);
+  });
+
+  test("absolute mode reads the last capture itself", () => {
+    expect(
+      endValue(series("a", [["2026-05-01", 4.6], ["2026-05-10", 4.3]]), "absolute"),
+    ).toBe(4.3);
+  });
+
+  test("a series with nothing captured has no end", () => {
+    expect(endValue(series("a", []), "index")).toBeNull();
+  });
+});
+
+describe("orderByEnd", () => {
+  const field = () => [
+    series("flat", [["2026-05-01", 10], ["2026-05-10", 10]]),
+    series("up", [["2026-05-01", 10], ["2026-05-10", 30]]),
+    series("down", [["2026-05-01", 10], ["2026-05-10", 5]]),
+  ];
+
+  test("the key ranks by where the lines end, top of the plot first", () => {
+    expect(orderByEnd(field(), "index").map((s) => s.competitorId)).toEqual([
+      "up",
+      "flat",
+      "down",
+    ]);
+  });
+
+  test("hidden competitors sort under the plotted ones whatever they are worth", () => {
+    const out = orderByEnd(field(), "index", new Set(["up"]));
+    expect(out.map((s) => s.competitorId)).toEqual(["flat", "down", "up"]);
+  });
+
+  test("a series with no capture is not ranked as a zero", () => {
+    const out = orderByEnd([series("empty", []), ...field()], "index");
+    expect(out[out.length - 1]!.competitorId).toBe("empty");
+  });
+
+  test("it does not reorder the caller's array in place", () => {
+    const input = field();
+    orderByEnd(input, "index");
+    expect(input.map((s) => s.competitorId)).toEqual(["flat", "up", "down"]);
+  });
+});
+
+describe("nothing sits on the edge of the pricing plot", () => {
+  // Every price identical, so decollide has to spread twelve labels that all want
+  // the same y — the case that pushes the stack against both frames at once.
+  const bundle = () =>
+    Array.from({ length: 12 }, (_, i) =>
+      series(`c${i}`, [
+        ["2026-05-01", 20],
+        ["2026-05-10", 20],
+      ]),
+    );
+
+  test("every label stays inside the plot, top edge included", () => {
+    const model = buildSlopeModel(bundle())!;
+    for (const { top } of model.labels) {
+      expect(top).toBeGreaterThanOrEqual(LABEL_GAP / 2);
+      expect(top).toBeLessThanOrEqual(model.height - LABEL_GAP / 2);
+    }
+  });
+
+  test("a pinned value has room for the caret drawn at its rung", () => {
+    // The caret is 14px tall and is drawn clear of the rung, so the ladder has to
+    // start further down than the caret is tall or the marker leaves the plot.
+    const CARET = 14;
+    const model = buildSlopeModel([...bundle(), series("ent", [["2026-05-01", 2400]])])!;
+    expect(model.outside(2400)).toBe("above");
+    expect(model.y(model.max)).toBeGreaterThanOrEqual(CARET);
+    expect(model.y(model.min)).toBeLessThanOrEqual(model.height - CARET);
   });
 });

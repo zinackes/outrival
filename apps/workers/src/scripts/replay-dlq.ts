@@ -8,6 +8,14 @@
 // their signals still unwritten. Dropping them loses twelve days of monitoring;
 // re-sending them by hand is a thousand statements against the queue database.
 //
+// A job reaches this queue by two roads, and they name its origin in two different
+// places. A handler that throws `DeadLetter` goes through our own wrapper, which
+// wraps the payload in a `__dlq` envelope carrying that name. Retry exhaustion goes
+// through pg-boss itself, which copies `data` verbatim and records the origin in the
+// job's `source_name` column instead. The envelope is therefore absent on exactly
+// the jobs an incident produces: read only the envelope and a backlog of 982 reads
+// as 982 jobs nobody can route.
+//
 // Send first, complete second, in that order: a crash mid-run can replay a job
 // twice, never lose one. Handlers are idempotent by rule (.claude/rules/jobs.md) —
 // content hashes and the unique constraint on signals.change_id absorb a duplicate,
@@ -17,9 +25,13 @@
 //   pnpm replay:dlq -- --apply                 # replay all of it
 //   pnpm replay:dlq -- --apply --limit 200     # replay a wave
 //
-// --limit is not decoration: the pool's free providers have a DAILY token quota, so
-// a backlog larger than one day's worth has to go back in waves. Replay it all at
-// once and the tail dead-letters a second time against an exhausted pool.
+// --limit exists because the pool's free providers have a DAILY token quota, so a
+// backlog larger than one day's worth will not all classify today. It is a comfort
+// knob, not a safety one, and the bias should be toward replaying MORE at a time:
+// a dead-lettered job carries a `keep_until` of fourteen days and maintenance
+// deletes it on that date without a word, whereas a job that fails again lands back
+// here with a fresh fourteen days on it. Waiting costs the backlog; retrying does
+// not.
 //
 // Runs against whatever QUEUE_DATABASE_URL is loaded. On a shared environment, read
 // .claude/rules/production.md first.
@@ -62,14 +74,17 @@ async function main(): Promise<void> {
   while (done + skipped < limit) {
     const batch = await boss.fetch<Parked>(deadLetterQueue.name, {
       batchSize: Math.min(100, limit - done - skipped),
+      // For `sourceName`: the only record of where a job pg-boss dead-lettered on
+      // its own came from.
+      includeMetadata: true,
     });
     if (batch.length === 0) break;
 
     for (const job of batch) {
       const { __dlq, ...payload } = jobData(job.data);
-      const target = __dlq?.queue;
+      const target = __dlq?.queue ?? job.sourceName ?? undefined;
       if (!target) {
-        console.warn(`skip ${job.id}: no __dlq envelope, nothing says where it came from`);
+        console.warn(`skip ${job.id}: neither a __dlq envelope nor a source queue`);
         skipped++;
         continue;
       }

@@ -20,8 +20,22 @@
 //
 // Run:  GROQ_API_KEY=… bun run packages/ai/src/eval/model-eval.ts
 // Calls Groq directly (bypasses the pool/cache/grounding); reads only GROQ_API_KEY.
+//
+// To weigh a candidate on ANOTHER provider (a new pool member, a free tier being
+// considered), name the models as `<providerId>:<model>` and the harness resolves the
+// endpoint and key from the pool's own AI_PROVIDER_* env — the same base URL and key
+// production would use, so a pass here is not a pass against a different endpoint:
+//
+//   EVAL_MODELS="groq:openai/gpt-oss-120b,opencode-zen:deepseek-v4-flash-free" \
+//     bun run packages/ai/src/eval/model-eval.ts
+//
+// The FIRST entry is the baseline every other model's categorical agreement is
+// measured against, so name the model production actually runs today. Models given
+// this way carry no price list, so their cost column reads "free" and the verdict
+// falls back to what matters for a free tier: JSON adherence and agreement.
 
 import OpenAI from "openai";
+import { loadProviders } from "../provider/provider-pool";
 import { safeParseJson } from "../lib/parse";
 import { InsightSchema, buildInsightPrompt } from "../tasks/insight";
 import { resolveClassification } from "../tasks/classify";
@@ -42,8 +56,12 @@ interface ModelSpec {
   id: string;
   model: string;
   reasoningEffort?: "low" | "medium" | "high";
-  // USD per 1M tokens (input / output), 2026 Groq list prices.
+  // USD per 1M tokens (input / output), 2026 Groq list prices. Both 0 = free tier,
+  // printed as "free" rather than "$0.000", which reads like a measurement.
   rate: { in: number; out: number };
+  // Endpoint override. Unset = Groq, the default this harness was written against.
+  baseUrl?: string;
+  apiKey?: string;
 }
 
 const MODELS: ModelSpec[] = [
@@ -163,8 +181,52 @@ function resolveGroqKey(): string | null {
   return null;
 }
 
-function client(): OpenAI {
-  const apiKey = resolveGroqKey();
+/**
+ * The models to weigh, and where to reach each one.
+ *
+ * Default: the hardcoded Groq trio this harness was written for. With EVAL_MODELS,
+ * every entry is `<providerId>:<model>` resolved against the pool's own env, so the
+ * eval hits the same endpoint with the same key production would.
+ */
+function resolveSpecs(): ModelSpec[] {
+  const raw = process.env.EVAL_MODELS?.trim();
+  if (!raw) return MODELS;
+
+  const pool = loadProviders();
+  return raw.split(",").map((entry) => {
+    const [providerId, ...rest] = entry.trim().split(":");
+    const model = rest.join(":");
+    if (!providerId || !model) {
+      console.error(`EVAL_MODELS entry "${entry}" is not <providerId>:<model>.`);
+      process.exit(1);
+    }
+    const provider = pool.find((p) => p.id === providerId);
+    if (!provider) {
+      const known = pool.map((p) => p.id).join(", ") || "none configured";
+      console.error(`No AI_PROVIDER_* slot with id "${providerId}". Loaded: ${known}.`);
+      process.exit(1);
+    }
+    return {
+      id: `${providerId}:${model}`,
+      model,
+      baseUrl: provider.baseUrl,
+      apiKey: provider.apiKey,
+      reasoningEffort: provider.reasoningEffort,
+      // No price list for a model named at the command line: report it as free
+      // rather than invent a rate. The cost column is not what this run decides.
+      rate: { in: 0, out: 0 },
+    };
+  });
+}
+
+const clients = new Map<string, OpenAI>();
+
+function clientFor(spec: ModelSpec): OpenAI {
+  const baseURL = spec.baseUrl ?? GROQ_BASE_URL;
+  const cached = clients.get(baseURL);
+  if (cached) return cached;
+
+  const apiKey = spec.apiKey ?? resolveGroqKey();
   if (!apiKey) {
     console.error(
       "No Groq key found (GROQ_API_KEY or an AI_PROVIDER_*_API_KEY on groq.com).\n" +
@@ -172,7 +234,9 @@ function client(): OpenAI {
     );
     process.exit(1);
   }
-  return new OpenAI({ apiKey, baseURL: GROQ_BASE_URL, maxRetries: 1 });
+  const c = new OpenAI({ apiKey, baseURL, maxRetries: 1 });
+  clients.set(baseURL, c);
+  return c;
 }
 
 async function runCase(c: OpenAI, spec: ModelSpec, ev: EvalCase): Promise<CallResult> {
@@ -241,13 +305,20 @@ function mean(xs: number[]): number {
   return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
 }
 
+// No price list for this model, so the cost column would print "$0.000" — a number
+// that reads like a measurement instead of an absence. Say "free" and let the verdict
+// lean on JSON adherence and agreement, which is what a free tier is judged on.
+function isFree(spec: ModelSpec): boolean {
+  return spec.rate.in === 0 && spec.rate.out === 0;
+}
+
 function costPer1kUsd(spec: ModelSpec, promptTok: number, completionTok: number): number {
   return ((promptTok * spec.rate.in + completionTok * spec.rate.out) / 1e6) * 1000;
 }
 
 async function main(): Promise<void> {
-  const c = client();
-  console.log("\n=== Model-swap eval: smart tier (llama-3.3-70b → gpt-oss-120b) ===");
+  const SPECS = resolveSpecs();
+  console.log(`\n=== Model-swap eval: smart tier (baseline ${SPECS[0]!.id}) ===`);
   console.log(
     `Cases: ${CASES.filter((x) => x.task === "insight").length} insight + ` +
       `${CASES.filter((x) => x.task === "classify").length} classify | ` +
@@ -256,10 +327,10 @@ async function main(): Promise<void> {
 
   // results[modelId][caseName] = CallResult
   const results = new Map<string, Map<string, CallResult>>();
-  for (const spec of MODELS) {
+  for (const spec of SPECS) {
     const byCase = new Map<string, CallResult>();
     for (const ev of CASES) {
-      const r = await runCase(c, spec, ev);
+      const r = await runCase(clientFor(spec), spec, ev);
       byCase.set(ev.name, r);
       const tag = r.zodOk ? "ok  " : r.apiError ? "api!" : "FAIL";
       process.stdout.write(`  [${tag}] ${spec.id} · ${ev.name}\n`);
@@ -271,10 +342,11 @@ async function main(): Promise<void> {
 
   // --- Summary table. Token/latency/cost means are over VALID responses only, so a
   //     429 (0 tokens) doesn't deflate the cost. "api!" counts surface separately. ---
+  const idCol = Math.max(28, ...SPECS.map((s) => s.id.length + 2));
   console.log(
-    "\nMODEL".padEnd(28) + "ZOD".padEnd(7) + "api!".padEnd(6) + "PROMPT".padEnd(9) + "COMPL".padEnd(9) + "LAT".padEnd(9) + "~$/1k",
+    "\nMODEL".padEnd(idCol) + "ZOD".padEnd(7) + "api!".padEnd(6) + "PROMPT".padEnd(9) + "COMPL".padEnd(9) + "LAT".padEnd(9) + "~$/1k",
   );
-  for (const spec of MODELS) {
+  for (const spec of SPECS) {
     const rs = [...results.get(spec.id)!.values()];
     const ok = rs.filter((r) => r.zodOk);
     const apiErr = rs.filter((r) => r.apiError).length;
@@ -283,22 +355,22 @@ async function main(): Promise<void> {
     const lat = mean(ok.map((r) => r.latencyMs));
     const cost = costPer1kUsd(spec, pTok, cTok);
     console.log(
-      spec.id.padEnd(28) +
+      spec.id.padEnd(idCol) +
         `${ok.length}/${rs.length}`.padEnd(7) +
         String(apiErr).padEnd(6) +
         Math.round(pTok).toString().padEnd(9) +
         Math.round(cTok).toString().padEnd(9) +
         `${(lat / 1000).toFixed(1)}s`.padEnd(9) +
-        `$${cost.toFixed(3)}`,
+        (isFree(spec) ? "free" : `$${cost.toFixed(3)}`),
     );
   }
 
   // --- Categorical agreement vs baseline (classify cases) ---
-  const baseline = MODELS[0]!;
+  const baseline = SPECS[0]!;
   const baseByCase = results.get(baseline.id)!;
   const classifyCases = CASES.filter((x) => x.task === "classify");
   console.log(`\nCategorical agreement vs baseline (${classifyCases.length} classify cases):`);
-  for (const spec of MODELS.slice(1)) {
+  for (const spec of SPECS.slice(1)) {
     const byCase = results.get(spec.id)!;
     let cat = 0;
     let sev = 0;
@@ -314,7 +386,7 @@ async function main(): Promise<void> {
       if (b.is_significant === m.is_significant) sig++;
     }
     console.log(
-      `  ${spec.id.padEnd(24)} category ${cat}/${comparable}   severity ${sev}/${comparable}   is_significant ${sig}/${comparable}`,
+      `  ${spec.id.padEnd(idCol)} category ${cat}/${comparable}   severity ${sev}/${comparable}   is_significant ${sig}/${comparable}`,
     );
   }
 
@@ -323,21 +395,30 @@ async function main(): Promise<void> {
   console.log("\nVerdict (heuristic — confirm by reading the failures above):");
   const baseOk = [...baseByCase.values()].filter((r) => r.zodOk);
   const baseCost = costPer1kUsd(baseline, mean(baseOk.map((r) => r.promptTokens)), mean(baseOk.map((r) => r.completionTokens)));
-  for (const spec of MODELS.slice(1)) {
+  for (const spec of SPECS.slice(1)) {
     const rs = [...results.get(spec.id)!.values()];
     const ok = rs.filter((r) => r.zodOk);
     const parseFails = rs.filter((r) => !r.zodOk && !r.apiError).length;
     const apiErr = rs.filter((r) => r.apiError).length;
     const cost = costPer1kUsd(spec, mean(ok.map((r) => r.promptTokens)), mean(ok.map((r) => r.completionTokens)));
-    const cheaper = cost < baseCost;
+    // <= so a free candidate against a free baseline is not reported as 'not cheaper'.
+    const cheaper = cost <= baseCost;
+    // A model that never produced ONE valid response is not a pilot candidate, whatever
+    // its cost column says. Measured the hard way: a provider answering "400 Model is
+    // unavailable" to all six cases has no parse failure and a cost of zero, and came
+    // out "PILOT-WORTHY" — a recommendation to adopt a model that never answered.
     const verdict =
       parseFails > 0
         ? `BLOCKED (${parseFails} JSON-adherence failure${parseFails > 1 ? "s" : ""})`
-        : cheaper
-          ? "PILOT-WORTHY"
-          : "REVIEW (not cheaper)";
+        : ok.length === 0
+          ? `INCONCLUSIVE (no valid response: ${apiErr} API error${apiErr > 1 ? "s" : ""})`
+          : cheaper
+            ? "PILOT-WORTHY"
+            : "REVIEW (not cheaper)";
     const note = apiErr > 0 ? `  [${apiErr} API/429 error(s) — re-run with higher EVAL_PACING_MS]` : "";
-    console.log(`  ${spec.id.padEnd(24)} ${verdict}  (~$${cost.toFixed(3)}/1k vs baseline $${baseCost.toFixed(3)})${note}`);
+    const priced = isFree(spec) ? "free" : `~$${cost.toFixed(3)}/1k`;
+    const basePriced = isFree(baseline) ? "free" : `$${baseCost.toFixed(3)}`;
+    console.log(`  ${spec.id.padEnd(idCol)} ${verdict}  (${priced} vs baseline ${basePriced})${note}`);
   }
   console.log("");
 }

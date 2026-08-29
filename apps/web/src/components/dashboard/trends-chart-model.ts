@@ -118,6 +118,68 @@ export function buildCarriedGrid(
   };
 }
 
+/**
+ * How tall the market plot is drawn, for a given number of series.
+ *
+ * 200px held about five lines. Past that the field spends the window inside a few
+ * pixels of itself, the crossings stop being traceable and the plot answers "the
+ * market moved" instead of "who moved" — so it buys vertical separation per
+ * series, up to the height where the chart would push the evidence under it off
+ * the screen.
+ */
+export function plotHeight(seriesCount: number): number {
+  return Math.min(340, Math.max(200, 200 + (seriesCount - 5) * 20));
+}
+
+/**
+ * Where a series ends: what it is worth at the right edge of the plot. Percent
+ * travelled from its own first capture in index mode, the last reading itself in
+ * absolute mode. Null when nothing was captured, which is not a zero.
+ */
+export function endValue(
+  item: TrendsMarketSeries,
+  mode: "index" | "absolute",
+): number | null {
+  const first = item.points[0];
+  const last = item.points[item.points.length - 1];
+  if (!first || !last) return null;
+  if (mode === "absolute") return last.value;
+  return first.value
+    ? Math.round(((last.value - first.value) / first.value) * 1000) / 10
+    : 0;
+}
+
+/**
+ * The series in the order their lines end, top of the plot first.
+ *
+ * The key used to list competitors in roster order, which past five lines leaves
+ * hue as the only thing tying a name to a line — and hue is exactly the channel a
+ * dense plot spends fastest. Ordered by end value, the key is a ranking of the
+ * chart's own right edge: the reader matches the top entry to the top line without
+ * resolving a colour at all, and the hue only has to break ties.
+ *
+ * Hidden competitors sort to the end whatever they are worth. They stay in the key
+ * because that is how they are switched back on, but they are not on the plot, so
+ * putting them among the lines would break the very correspondence this buys.
+ */
+export function orderByEnd(
+  series: TrendsMarketSeries[],
+  mode: "index" | "absolute",
+  hidden?: ReadonlySet<string>,
+): TrendsMarketSeries[] {
+  return [...series].sort((a, b) => {
+    const offA = hidden?.has(a.competitorId) ? 1 : 0;
+    const offB = hidden?.has(b.competitorId) ? 1 : 0;
+    if (offA !== offB) return offA - offB;
+    const ea = endValue(a, mode);
+    const eb = endValue(b, mode);
+    // A series with no capture has no place on the ladder, so it sits under the
+    // ones that do rather than being ranked as a zero.
+    if (ea === null || eb === null) return (ea === null ? 1 : 0) - (eb === null ? 1 : 0);
+    return eb - ea;
+  });
+}
+
 export interface IndexDomain {
   /** Y bounds the lines are read against, outliers trimmed unless `full`. */
   domain: [number, number];
@@ -275,8 +337,16 @@ export interface SlopeModel {
 
 const clamp = (value: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, value));
 
-/** Vertical breathing room so the top and bottom dots aren't on the frame. */
-const PAD = 12;
+/**
+ * Vertical breathing room at each end of the ladder.
+ *
+ * It has to clear more than a 3px dot: an off-ladder value gives its dot up to a
+ * 14px caret drawn at the rung it was pinned to, and at 12px of padding that caret
+ * was bisected by the top grid line and ran into the date row above the plot —
+ * which reads as a marker the chart cut off, on the one row where the reader most
+ * needs to trust it.
+ */
+const PAD = 20;
 /** Minimum distance between two stacked labels, in px. */
 export const LABEL_GAP = 20;
 /** Height the plot gets per competitor, before the floor. */

@@ -11,11 +11,15 @@ contexte : tu peux couper entre deux, dormir, reprendre demain.
 |---|---|---|---|---|---|
 | ☐ | 1. code | 40 à 120 | 40 à 70 min | 1 à 2 | non |
 | ☐ | 2. produit | ~25 | 50 à 70 min | 1 | **oui, sur la prod** |
-| ☐ | 3. réfutation et rapport | 300 à 450 | 60 à 90 min | plusieurs | non |
+| ☐ | 3. réfutation et rapport | 60 à 90 | 50 à 70 min | 1 à 2 | non |
 
-Sessions 1 et 3 : bloquer sur la limite d'usage est **normal** (voir PLAN.md,
-« Quota de requêtes »). Lancer en début de fenêtre ; à la limite, attendre la
-fenêtre suivante et reprendre avec `resumeFromRunId`.
+Session 1 : bloquer sur la limite d'usage est **normal** (voir PLAN.md, « Quota
+de requêtes »). Lancer en début de fenêtre ; à la limite, attendre la fenêtre
+suivante et reprendre avec `resumeFromRunId`.
+
+Un agent coûte ~14 requêtes API, pas une. Le chiffre de la colonne « Agents » se
+multiplie donc par 14 pour donner des requêtes, et le quota est de ~500 par
+fenêtre de 5 h.
 
 ---
 
@@ -78,11 +82,18 @@ comme des bugs applicatifs.
 ## Session 3 — réfutation et rapport
 
 Exige que les deux fichiers précédents existent. Avant de la lancer, exécute
-**toi-même** (le DLQ passe par ton ssh) :
+**toi-même** les deux scripts. Le premier passe par ton ssh pour le DLQ, le
+second n'est que du tri local :
 
 ```
 node docs/audits/2026-08-16/harness/telemetry.mjs
+node docs/audits/2026-08-16/harness/triage.mjs
 ```
+
+`triage.mjs` déduplique, écarte les catégories qui ne deviendront pas un ticket
+(`tests`, `debt`, `docs`, `dependencies`, `polish`) vers une annexe, et empaquette
+le reste par fichier cité. Il imprime le nombre d'agents que la phase 4 coûtera
+et écrit `triage-index.json`, que le workflow attend en `args`.
 
 Attendu : `telemetry/{sentry,dlq,scrape-runs}.json` sous
 `~/.outrival-audit/2026-08-16/`. Un `SKIP` dans la sortie est tolérable, à
@@ -93,7 +104,9 @@ Audit Outrival 2026-08-16, session 3 sur 3: réfutation et rapport.
 
 Lis docs/audits/2026-08-16/PLAN.md en entier avant d'agir.
 
-1. Lance le workflow audit-verify tel quel, sans le réécrire.
+1. Lance le workflow audit-verify tel quel, sans le réécrire, en lui passant
+   le contenu de ~/.outrival-audit/2026-08-16/triage-index.json comme `args`.
+   Sans ça il s'arrête tout de suite avec un message qui le dit.
 
 2. Écris docs/audits/2026-08-16/REPORT.md TOI-MEME. Ne le délègue à aucun
    sous-agent. Lis findings-verified.json, garde la distinction verified
@@ -101,6 +114,9 @@ Lis docs/audits/2026-08-16/PLAN.md en entier avant d'agir.
    refuted telle quelle dans une section "considéré et rejeté".
 
 3. Propose les tickets Linear, ne les crée pas avant mon go.
+
+Le rapport doit dire que les findings de l'annexe (categories tests/debt/docs/
+dependencies et severity polish) n'ont PAS ete refutes, et les lister a part.
 
 Critère de succès: REPORT.md existe; chaque finding porte sa preuve (file:line
 ou URL plus screenshot), son impact, son effort S/M/L, le risque du correctif,

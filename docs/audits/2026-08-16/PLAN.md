@@ -104,7 +104,7 @@ contexte.
 |---|---|---|---|---|
 | 1 | phase 1, code | 40 à 120 | 40 à 70 min | 1 à 2 |
 | 2 | phases 2 et 3, crawl puis produit | ~25 | 50 à 70 min | 1 |
-| 3 | phases 4 et 5, réfutation puis rapport | 300 à 450 | 60 à 90 min | plusieurs |
+| 3 | phases 4 et 5, réfutation puis rapport | 60 à 90 | 50 à 70 min | 1 à 2 |
 
 Découper n'est pas une concession au budget. Une session unique passerait la
 moitié de l'audit au-dessus de 200k de contexte, où chaque tour est refacturé et
@@ -116,9 +116,12 @@ exhaustivité qu'une session longue ne tient pas.
 ### Quota de requêtes, la vraie horloge
 
 Le quota 5 h se compte en **requêtes API** (~500 par fenêtre, mesuré le
-2026-08-08), et chaque tour de chaque sous-agent est une requête. Les sessions
-1 et 3 dépassent donc une fenêtre : **bloquer sur la limite d'usage est le
-déroulement normal, pas une panne.** Lancer chaque session en début de fenêtre,
+2026-08-08), et chaque tour de chaque sous-agent est une requête. Un agent coûte
+donc ~14 requêtes, pas une : mesuré le 2026-08-30, 35 agents épuisent une
+fenêtre. C'est le chiffre qui manquait à la première version de ce plan, qui
+budgétait la phase 4 comme si un agent valait une requête. La session 1 dépasse
+une fenêtre : **bloquer sur la limite d'usage y est le déroulement normal, pas
+une panne.** Lancer chaque session en début de fenêtre,
 et reprendre à la fenêtre suivante avec `resumeFromRunId` ; le préfixe déjà
 exécuté revient du cache sans recoûter. Les durées du tableau sont du temps de
 calcul, pas du temps mural.
@@ -269,35 +272,60 @@ aux cinq critiques. Une erreur prod récurrente qu'aucun finding n'explique est
 elle-même un trou de couverture. Un collecteur en échec est un `SKIP` loggé et
 une lacune à déclarer dans le rapport, jamais un blocage.
 
-### Phase 4, réfutation et balayage (workflow, 300 à 450 agents `sonnet`)
+### Phase 4, réfutation et balayage (workflow, 60 à 90 agents `sonnet`)
 
-**Session 3.** Un modèle principal seul, face à 150 findings à rouvrir un par un,
+**Session 3.** Un modèle principal seul, face à 360 findings à rouvrir un par un,
 fatigue et finit par tamponner. C'est la panne que le rapport peut le moins se
 permettre : un finding rejeté ne coûte rien, un faux coûte une journée à
 quelqu'un.
 
 Trois classes d'échec sont attendues, d'après le skill `improve` lui-même :
 comportement voulu rapporté comme bug, preuve mal attribuée (bon finding,
-mauvais fichier), doublons entre agents. Chacune a son angle dédié.
+mauvais fichier), doublons entre agents. Chacune a sa question dédiée.
 
-1. **Réfutation.** Chaque finding reçoit au moins **deux réfuteurs aux angles
-   distincts**, et trois s'il est à enjeu (sécurité, scoping tenant, perte de
-   données, correctness, ou confiance faible) :
-   - `evidence` rouvre la preuve citée. Le fichier existe ? La ligne dit ça ?
-     Le screenshot montre le défaut ? Une preuve absente est une réfutation,
-     pas une égalité.
-   - `intent` cherche la décision délibérée dans les `CLAUDE.md` et
+0. **Tri déterministe, zéro agent.** `harness/triage.mjs` fait ce qui n'a jamais
+   eu besoin d'un modèle : dédup sur titre normalisé, mise à l'écart des
+   catégories qui ne deviendront pas un ticket (`tests`, `debt`, `docs`,
+   `dependencies`, severity `polish`) vers une **annexe non réfutée**, et
+   empaquetage du reste **par fichier cité**. 360 findings deviennent 152 en
+   annexe et 208 à réfuter, répartis en 32 paquets.
+
+   L'annexe est le seul endroit où ce tri bon marché peut perdre un vrai défaut :
+   une correctness classée `tests` par son auteur ne serait jamais rouverte. Un
+   agent relit les 152 titres et repêche les mal étiquetés.
+
+1. **Réfutation, un agent par paquet.** L'agent ouvre le fichier partagé **une
+   fois** et rend un verdict par finding, en répondant pour chacun aux quatre
+   questions :
+   - `evidence` : rouvre la preuve citée. Le fichier existe ? La ligne dit ça ?
+     Le screenshot montre le défaut ? Une preuve absente est une réfutation, pas
+     une égalité.
+   - `intent` : cherche la décision délibérée dans les `CLAUDE.md` et
      `.claude/rules/`. Un choix assumé rapporté comme défaut est réfuté.
-   - `consequence` accorde le fait et attaque l'impact. Atteignable au runtime,
+   - `consequence` : accorde le fait et attaque l'impact. Atteignable au runtime,
      ou branche morte ? Un vrai fait sans conséquence, gonflé en problème
      sérieux, est réfuté.
+   - `duplication` : deux findings du paquet qui disent la même chose fusionnent.
 
-   La majorité tue le finding. Règle centrale : **l'invérifiable est réfuté**.
-   Un réfuteur n'est pas un juge neutre, c'est la défense ; s'il ne trouve rien
-   après avoir vraiment vérifié, il le dit.
+   Ce qui empêche le tamponnage n'est pas d'isoler chaque question dans son
+   propre process, c'est le **contexte neuf par paquet** et la **citation
+   verbatim obligatoire** : un verdict dont le champ `checked` est vide compte
+   comme une réfutation.
 
-2. **Critique de complétude.** Cinq agents lisent les tableaux `notAudited` et
-   répondent à « qu'est-ce que personne n'a regardé ? » :
+   L'indépendance vraie coûte cher, donc elle va où elle se paie : les **16
+   paquets à enjeu** (security, correctness, blocker, ou confiance faible) sont
+   jugés par un **second agent qui ne voit pas les verdicts du premier**. La
+   majorité tue le finding, l'égalité le laisse vivre, aucun verdict le tue.
+   Règle centrale : **l'invérifiable est réfuté**. Un réfuteur n'est pas un juge
+   neutre, c'est la défense.
+
+   Ce qui est délibérément abandonné : sur les 118 findings hors enjeu, la
+   lentille `consequence` ne vote plus en agent indépendant. Un impact gonflé y
+   est corrigé (`correctedImpact`) plutôt que contesté.
+
+2. **Critique de complétude.** Cinq agents lisent `not-audited.json` et les deux
+   fichiers de findings, puis répondent à « qu'est-ce que personne n'a
+   regardé ? » :
 
    | Critique | Ce qu'il traque |
    |---|---|
@@ -311,19 +339,21 @@ mauvais fichier), doublons entre agents. Chacune a son angle dédié.
    sécurité » est jeté ; « ouvre `apps/api/src/routes/*.ts` et liste les
    handlers dont la requête n'a pas de filtre `orgId` » part en agent.
 
-3. **Balayage, en boucle.** Toutes les sondes sont exécutées, sans plafond.
-   Puis les critiques repassent sur le nouvel état, avec la liste de ce qui est
-   déjà sur la table et des sondes déjà tirées, et proposent ce qui reste. La
-   boucle s'arrête quand un tour ne propose plus rien, plafond à 3 tours. Un
-   tour vide est la seule preuve honnête qu'un audit est fini.
+3. **Balayage, en boucle.** Les sondes sont exécutées, **15 par tour au plus** ;
+   ce qui dépasse le plafond est loggé et déclaré non examiné dans le rapport,
+   jamais tronqué en silence. Puis les critiques repassent sur le nouvel état et
+   proposent ce qui reste. La boucle s'arrête quand un tour ne propose plus rien,
+   **plafond à 2 tours**. Un tour vide est la seule preuve honnête qu'un audit
+   est fini ; avec 2 tours cette preuve reste atteignable, elle n'est simplement
+   plus garantie.
 
    Ce que le balayage remonte est marqué `verified: false` et ne se mélange
    jamais aux survivants de l'étape 1.
 
 Sortie : `findings-verified.json`, contenant les survivants, les nouveaux
-findings non vérifiés, et un tableau `refuted` avec la raison de chaque mort.
-Un finding rejeté est une information, pas un déchet : il évite de re-auditer la
-même chose au passage suivant.
+findings non vérifiés, l'annexe jamais contestée, et un tableau `refuted` avec la
+raison de chaque mort. Un finding rejeté est une information, pas un déchet : il
+évite de re-auditer la même chose au passage suivant.
 
 ### Phase 5, rapport (modèle principal, non délégué)
 

@@ -1,0 +1,62 @@
+# Outrival — paths agents should never read or index.
+# Mirrors .gitignore, plus committed-but-useless-to-read artifacts.
+
+# --- Secrets (also blocked by .claude/hooks/block-secrets.sh) ---
+.env
+.env.local
+.env.*.local
+.env.worker
+**/*.local
+audit/**/*.local
+
+# --- Dependencies & build output ---
+node_modules/
+dist/
+.next/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# --- Lockfiles (413 KB of noise, never edited by hand) ---
+pnpm-lock.yaml
+package-lock.json
+bun.lockb
+
+# --- Generated sources (edit the generator, not the output) ---
+packages/db/drizzle/meta/
+packages/shared/src/geo/dataset.generated.ts
+packages/shared/scripts/.geo-cache/
+**/*.generated.ts
+
+# --- Agent/tool scratch dirs ---
+.codegraph/
+.claude/worktrees/
+.claude-board/
+.design-review/
+.impeccable/
+.playwright-mcp/
+.orca/
+storage/
+.trigger/
+C:\\*
+
+# --- Binary & media ---
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.avif
+*.ico
+*.pdf
+*.woff
+*.woff2
+*.ttf
+*.mp4
+*.zip
+*.tar.gz
+
+# --- Logs & coverage ---
+*.log
+coverage/
+.nyc_output/

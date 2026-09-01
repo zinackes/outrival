@@ -1,30 +1,14 @@
-# Language — English only
+# Runtime language: English only
 
-Applies to the whole repo. Outrival ships in **English**, period.
+Tout ce qui est visible par un utilisateur ou consommé par un modèle est en
+anglais : copy web (labels, toasts, empty states, `aria-label`), prompts de
+`packages/ai` **et** l'instruction explicite « Write all text values in English. »
+dans chaque prompt qui rend du texte libre, emails Resend, notifications in-app,
+PDF (`lang="en"`, `toLocaleDateString("en-US", …)`), et les valeurs d'enum
+persistées qui remontent à l'écran (`temperature` = `low | moderate | high`).
 
-## Rule
+Un prompt écrit en français rend du français. Toute nouvelle vue, prompt, email ou
+export est anglais dès le premier commit.
 
-Everything user-facing, AI-facing, and produced by the product is in English:
-
-- **Web UI** — all copy, labels, buttons, placeholders, toasts, `aria-label`s,
-  empty states, error messages shown to users.
-- **AI prompts** — every prompt in `packages/ai` is written in English **and**
-  must instruct the model to write its output in English (insights, summaries,
-  digests, battle cards, review praises/complaints, candidate reasons, etc.).
-  A French prompt yields French output — don't.
-- **Generated artifacts** — emails (Resend digests + alerts), in-app
-  notifications, and PDFs (battle cards: `lang="en"`, `toLocaleDateString("en-US", …)`).
-- **Persisted enum/data values that surface to users** — e.g. digest
-  `temperature` is `low | moderate | high`, not French words.
-
-## Already enforced by global rules
-
-Code, identifiers, commits, and `docs/` are English per the global Mathys rules
-— this file is specifically about **runtime / user-visible** language.
-
-## When adding a feature
-
-Any new screen, prompt, email, notification, or export is English from the
-first commit. No French strings, no French dates, no French enum values.
-If a prompt returns free text shown to users, add an explicit
-"Write all text values in English." line to it.
+Le code, les identifiants, les commits et `docs/` sont déjà en anglais par les
+règles globales : ce fichier parle du runtime.

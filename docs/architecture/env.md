@@ -33,15 +33,20 @@ RESEND_AUTH_FROM=            # patch-19 — optionnel, défaut "Outrival <auth@o
 INTERNAL_API_SECRET=         # standing queries — shared secret worker→API (POST /api/internal/ask/run),
                             # 16+ chars, MÊME valeur sur api ET workers. Vide → routes internes 404,
                             # queries sauvées mais jamais réévaluées (dégradation propre)
-OAUTH_TOKEN_ENCRYPTION_KEY=  # OUT-176 — AES-256-GCM sur les tokens OAuth tiers stockés dans
-                            # `oauth_connections` (Slack/HubSpot/Salesforce). 32 octets en hex,
-                            # soit 64 caractères : `openssl rand -hex 32`. OPTIONNEL tant qu'aucun
-                            # provider n'est câblé — vide → /api/oauth/*/start répond 500
-                            # `oauth_encryption_unconfigured`, et aucun token n'est jamais écrit en
-                            # clair. À passer boot-bloquant le jour où le premier provider ship.
+OAUTH_TOKEN_ENCRYPTION_KEY=  # AES-256-GCM sur les secrets stockés en base : tokens OAuth tiers
+                            # (`oauth_connections`, OUT-176) ET secret de signature des webhooks
+                            # CRM (`crm_destinations`, code:SEC-08). 32 octets en hex, soit 64
+                            # caractères : `openssl rand -hex 32`. MÊME valeur sur api ET workers,
+                            # la box workers signe le push sortant. OPTIONNEL — vide →
+                            # /api/oauth/*/start répond 500 `oauth_encryption_unconfigured`,
+                            # enregistrer un secret CRM répond 500 `secret_encryption_unconfigured`,
+                            # et rien n'est jamais écrit en clair. Les lignes `crm_destinations`
+                            # antérieures restent en clair jusqu'à
+                            # `pnpm --filter @outrival/db db:backfill-crm-secrets`.
                             # Rotation : les lignes existantes deviennent indéchiffrables
-                            # (`oauth_token_undecryptable`, préfixe de schéma `v1.`) — il faut
-                            # purger la table et faire reconnecter, il n'y a pas de re-chiffrement.
+                            # (`secret_undecryptable`, préfixe de schéma `v1.`) — il faut purger la
+                            # table OAuth et faire reconnecter, ressaisir les secrets CRM ; il n'y a
+                            # pas de re-chiffrement.
 
 # Jobs
 QUEUE_DATABASE_URL=          # pg-boss queue — DEDICATED always-on Postgres, NEVER Neon (cf. docs/trigger-to-pgboss-migration.md)

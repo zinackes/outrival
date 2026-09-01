@@ -27,6 +27,7 @@ export * from "./scheduling";
 export * from "./url";
 export * from "./reviews";
 export * from "./monitor-url";
+export * from "./secrets/at-rest";
 export * from "./candidates";
 export * from "./product-profile";
 export * from "./pricing";

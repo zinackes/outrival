@@ -27,6 +27,13 @@ const EnvSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   EXA_API_KEY: z.string().optional(),
   POSTHOG_API_KEY: z.string().optional(),
+  // AES-256-GCM key (32 bytes, 64 hex chars) decrypting the CRM destination signing
+  // secrets at rest (code:SEC-08). Same value as the API's. Unset → an encrypted
+  // destination is skipped with a logged error instead of pushing unsigned.
+  OAUTH_TOKEN_ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[0-9a-fA-F]{64}$/, "OAUTH_TOKEN_ENCRYPTION_KEY must be 64 hex chars (32 bytes)")
+    .optional(),
   // Trustpilot official API key (Reviews v2). The trustpilot_public scraper reads the
   // surface (score/count/distribution) via the official API — there is no keyless
   // public endpoint and no scraping fallback. Unset → the scraper throws cleanly.

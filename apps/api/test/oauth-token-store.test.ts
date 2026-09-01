@@ -105,8 +105,8 @@ describe("oauth token encryption", () => {
     const payload = crypto_.encryptToken("xoxb-secret");
     const parts = payload.split(".");
     const tampered = `${parts[0]}.${parts[1]}.${parts[2]}.${Buffer.from("nope").toString("base64")}`;
-    expect(() => crypto_.decryptToken(tampered)).toThrow("oauth_token_undecryptable");
-    expect(() => crypto_.decryptToken("not-a-payload")).toThrow("oauth_token_undecryptable");
+    expect(() => crypto_.decryptToken(tampered)).toThrow("secret_undecryptable");
+    expect(() => crypto_.decryptToken("not-a-payload")).toThrow("secret_undecryptable");
   });
 });
 

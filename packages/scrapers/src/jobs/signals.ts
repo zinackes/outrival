@@ -35,7 +35,13 @@ const CAREERS_SIGNAL_PATTERNS: RegExp[] = [
  */
 export function hasCareersSignals(html: string): boolean {
   if (/"@type"\s*:\s*"JobPosting"/i.test(html)) return true;
-  const text = extractVisibleText(html);
+  // Minified SSR markup (Next.js, React) has no whitespace between tags, and the
+  // text helper glues adjacent elements together: rippling.com/careers read
+  // "LoginSee open rolesRippling careers", and every anchored pattern below
+  // missed the "See open roles" it carries. Put a space back between tags first.
+  // Pricing keeps the glued reading on purpose: spacing flips a real pricing
+  // fixture (Linear: public → public_partial), a decision to take on its own.
+  const text = extractVisibleText(html.replace(/>\s*</g, "> <"));
   return CAREERS_SIGNAL_PATTERNS.some((p) => p.test(text));
 }
 

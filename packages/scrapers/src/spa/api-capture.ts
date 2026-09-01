@@ -2,6 +2,7 @@ import { chromium } from "playwright";
 import { browserLaunchOptions } from "../lib/proxy";
 import { realisticHeaders, OUTRIVAL_UA } from "../lib/fingerprint";
 import { collapseAnimatedCounters } from "../lib/normalize-text";
+import { installNavigationGuard } from "../lib/navigation-guard";
 import type { CapturedApiCall } from "./filter";
 
 /**
@@ -36,6 +37,7 @@ export async function scrapeWithApiCapture(url: string): Promise<SpaCaptureResul
       viewport: { width: 1920, height: 1080 },
       extraHTTPHeaders: realisticHeaders(),
     });
+    await installNavigationGuard(context);
     const page = await context.newPage();
     const apiCalls: CapturedApiCall[] = [];
 

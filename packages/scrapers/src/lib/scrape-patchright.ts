@@ -21,6 +21,7 @@ import { isCloudflareChallenge, isSoftBlockShell } from "./block-detection";
 import { collapseAnimatedCounters } from "./normalize-text";
 import { extractContent, isContentCollapsed } from "./extract-content";
 import { EXPAND_LABEL, EXPAND_LABEL_MAX_CHARS } from "./expand-controls";
+import { installNavigationGuard } from "./navigation-guard";
 
 // Cascade level a scrape was served from. 0/1 are free (no proxy); 2 uses the
 // configured datacenter egress. Stored per monitor as `requiresLevel` once learned.
@@ -291,14 +292,14 @@ async function renderWithPatchright(
       "browser.newContext",
     );
 
-    if (options.blockResources) {
-      // Abort heavy subresources before they hit the (paid) proxy.
-      const blocked = blockedResourceTypes(options);
-      await context.route("**/*", (route) => {
-        if (blocked.has(route.request().resourceType())) return route.abort();
-        return route.continue();
-      });
-    }
+    // One route handler for the whole context: the SSRF gate on every navigation
+    // (code:SEC-14) plus, when asked, aborting heavy subresources before they hit
+    // the (paid) proxy. Registering a second `route("**/*")` here would shadow the
+    // gate, so the two policies share one handler.
+    await installNavigationGuard(
+      context,
+      options.blockResources ? blockedResourceTypes(options) : undefined,
+    );
 
     const page = await withTimeout(context.newPage(), poolOpTimeoutMs, "context.newPage");
     const scriptUrls: string[] = [];

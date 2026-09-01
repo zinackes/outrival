@@ -41,6 +41,7 @@ import { isCloudflareChallenge } from "../../lib/block-detection";
 import { pruneHtmlForSelectors } from "../../lib/prune-html";
 import { isAllowed, getCrawlDelayMs } from "../../lib/robots";
 import { awaitDomainSlot } from "../../lib/rate-limit";
+import { installNavigationGuard } from "../../lib/navigation-guard";
 import { pickControl, reachableQuantities, type ControlCandidate, type PickedControl } from "./controls";
 import { pickTotal, parseTotal, readsAsYearly, type TotalCandidate } from "./readings";
 import { findPricePath, readPricePath, type CapturedJson, type PricePath } from "./endpoint";
@@ -189,6 +190,7 @@ export async function probeCalculator(options: ProbeOptions): Promise<ProbeOutco
         viewport: { width: 1440, height: 1000 },
         extraHTTPHeaders: realisticHeaders(),
       });
+      await installNavigationGuard(context);
       const page = await context.newPage();
       const calls: CapturedJson[] = [];
       page.on("response", (response) => {

@@ -88,8 +88,14 @@ feedbackRouter.get("/", async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
 
+  // Tenant-scoped on purpose: "owner" is a per-org role, so it can only ever
+  // gate this org's own rows. The cross-org view is GET /api/admin/feedback,
+  // behind the platform email allowlist (see middleware/admin.ts).
+  const orgId = await ensureUserOrg(user.id);
+
   const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
   const rows = await db.query.feedback.findMany({
+    where: eq(feedback.orgId, orgId),
     orderBy: desc(feedback.createdAt),
     limit,
   });

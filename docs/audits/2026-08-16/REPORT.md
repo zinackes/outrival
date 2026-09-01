@@ -2772,9 +2772,11 @@ truncated to the 50-character Conventional Commits subject limit, so a few read
 shorter than the headings here. Priorities map P0 to Urgent, P1 to High, P2 to
 Medium; all fifteen sit in Backlog.
 
-Fifteen tickets, grouped so each one is a single reviewable PR rather than a
+Nineteen tickets, grouped so each one is a single reviewable PR rather than a
 category dump. Titles follow Conventional Commits so the branch and the commit
-subject fall out of the ticket.
+subject fall out of the ticket. Fifteen come from the verified findings; four more
+(`OUT-271` to `OUT-274`, section 10 bis) were added afterwards from the annex, and
+carry a weaker warrant, stated on each.
 
 ### P0
 
@@ -2880,13 +2882,42 @@ the app's `toast.error()` calls bypass the documented contract in
 Next's bare chromeless 404). L, fix risk low, and the highest ratio of perceived
 quality to risk in the report.
 
+### 10 bis. Four more tickets, cut from the annex
+
+Added 2026-09-01, after the report was first written, on the question "and the
+remaining entries, we do not fix them?". They carry a **weaker warrant than the
+fifteen above**: an annex entry was routed out of scope before phase 4, so nobody
+contested it and nobody confirmed it either. Each ticket says so, and asks for a
+verification pass before any code is written. That caveat is the point; dropping it
+would launder an unverified claim into a work order.
+
+**16. `test: make the bun suite order-independent`** [OUT-271](https://linear.app/zinacke/issue/OUT-271)
+`code:TES-23`, `TES-64`, `TES-76`. First, because until file order stops changing
+results, a new test proves nothing. L, fix risk low, test-only.
+
+**17. `fix: correct the stale UA domain and blind casts`** [OUT-272](https://linear.app/zinacke/issue/OUT-272)
+`code:DEB-44`, `DEB-52`, `DEB-02`, `DEB-08`, `DEB-11`. Filed under `debt`, but they
+read as live defects rather than as duplication, which is why they are pulled out of
+the cleanup ticket. `DEB-44` is outward-facing: a hardcoded stale copy of
+`OUTRIVAL_UA` carrying the wrong domain, presented to every site scraped. S to M.
+
+**18. `chore: delete the Trigger.dev and dead-code residue`** [OUT-273](https://linear.app/zinacke/issue/OUT-273)
+`code:DEP-01` to `DEP-03`, `DEB-18`, `DEB-27`, `DEB-40` to `DEB-42`, `DEB-46`,
+`DEB-50`, `DEB-51`, and `DOC-01` to `DOC-07` as a separate commit in the same PR.
+M, fix risk low.
+
+**19. `test: cover the code behind past prod incidents`** [OUT-274](https://linear.app/zinacke/issue/OUT-274)
+`code:TES-02`, `TES-03`, `TES-04`, `TES-05`, `TES-16`, `TES-18`, `TES-19`, `TES-21`,
+`TES-28`. Nine of the 74, picked for sitting under a documented incident or an
+irreversible write, not for file size. Blocked by `OUT-271`. L.
+
 ### Deliberately not ticketed
 
-- The 139 annex entries (section 9). They were never contested and none of them is
-  a ticket on its own. The `tests` half is worth its own planning conversation:
-  74 untested surfaces, several of them (`circuit-breaker.ts`, `aiActionsPerHour()`,
-  `registerQueues()`, `src/migrate.ts`) sitting directly under documented past
-  production incidents.
+- **The remaining ~110 annex entries** (section 9), after the four tickets above took
+  36 of them. Four are not defects at all: `ux:74`, `ux:75`, `ux:76` and `ux:77` are
+  positive findings, and `code:DEB-53` is the injection note, not a code defect. The
+  other 65 untested surfaces stay a running backlog rather than a sprint; the 30-odd
+  remaining `debt` entries are duplication, real but not urgent.
 - `code:SEC-39`. No repository fix exists. It is an action on this environment, not
   on Outrival.
 - The 26 rejected findings (section 8). Left rejected. If one of them looks wrong,

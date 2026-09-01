@@ -126,6 +126,26 @@ const careersToVanityHtml = `<html><body>
   <a href="https://careers.acme.com/">See job openings</a>
 </body></html>`;
 
+// A careers page as a Next.js site ships it: SSR'd with NO whitespace between tags.
+// Strip the tags and the hiring vocabulary is glued to its neighbours ("LoginSee
+// open rolesWork at Acme"). gem.com/company/careers reads exactly like this
+// (2026-09-01), with its openings linked to a Gem board we have no adapter for.
+const homepageToMinifiedHtml = `<html><body>
+  <h1>Acme — serverless Postgres</h1>
+  <footer><a href="/company/careers">Careers</a></footer>
+</body></html>`;
+
+const minifiedCareersHtml =
+  `<html><body><nav><a href="/product">Product</a><a href="/login">Login</a>` +
+  `<a href="#jobs">See open roles</a></nav><h1>Work at Acme</h1>` +
+  `<p>Shape the future of serverless Postgres. Our vision is to make the database ` +
+  `better for everyone, so companies can build great products and engineers can ` +
+  `find life-changing work.</p><ul id="jobs">` +
+  `<li><a href="https://jobs.gem.com/acme/a1">Founding Engineer - Database Internals</a></li>` +
+  `<li><a href="https://jobs.gem.com/acme/a2">Founding Engineer - Cloud Infrastructure</a></li>` +
+  `<li><a href="https://jobs.gem.com/acme/a3">Founding Engineer - Auth</a></li>` +
+  `</ul></body></html>`;
+
 // The fixture router most tests run on. Named, because half of them replace it with
 // `mockImplementation` (persistent, not Once) and it has to be put back per test.
 const defaultScrapePage = async (u: string): Promise<ScrapeOutcome> => {
@@ -186,6 +206,25 @@ describe("jobs scraper — careers discovery routing", () => {
     scrapePage.mockImplementationOnce(async () => outcome(html, HOMEPAGE));
     const res = await scrape("comp-2", HOMEPAGE);
     expect(res.metadata.careersFollowed).toBe("https://jobs.wttj.com/acme");
+    expect(res.text).toContain("Founding Engineer - Auth");
+  });
+
+  it("keeps a careers page whose vocabulary sits in minified SSR markup", async () => {
+    // Regression (OUT-251, gem.com → /company/careers, 2026-09-01): the page says
+    // "See open roles" and lists its openings, but its Next.js markup has no
+    // whitespace between tags, so the visible text read "LoginSee open rolesWork at
+    // Acme" and no anchored hiring pattern matched. looksLikeCareers rejected the
+    // hop, and the run ended on the homepage with no careers page at all. Same shape
+    // on rippling.com/careers and join.com/en/careers; all three host their roles on
+    // an ATS we have no adapter for, so this vocabulary rung is the only one that
+    // can recognise the page.
+    scrapePage.mockImplementation(async (u: string) =>
+      u.includes("/company/careers")
+        ? outcome(minifiedCareersHtml, u)
+        : outcome(homepageToMinifiedHtml, HOMEPAGE),
+    );
+    const res = await scrape("comp-3", HOMEPAGE);
+    expect(res.metadata.careersFollowed).toBe("https://acme.com/company/careers");
     expect(res.text).toContain("Founding Engineer - Auth");
   });
 

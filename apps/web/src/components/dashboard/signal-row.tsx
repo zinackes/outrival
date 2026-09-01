@@ -80,7 +80,7 @@ export function SignalRow({
         "group relative grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors",
         // No unread rail: the gauge owns the gutter now, and a second thin
         // vertical 6px to its left stuttered. Unread reads from the title (bold,
-        // full-contrast, against a read row's muted medium) plus the trailing dot.
+        // full ink, against a read row's medium at 85% ink) plus the trailing dot.
         selected ? "bg-accent" : "hover:bg-accent/50 focus-visible:bg-accent/50",
       )}
     >
@@ -138,13 +138,15 @@ export function SignalRow({
         {/* The finding leads: it's what the reader is scanning for. */}
         <span
           className={cn(
-            // 700 against 400 — the widest step the family gives. At 600/500 the
-            // two rows were one notch apart and a 62-item backlog read as one
-            // uniform block, which is what the audit measured.
+            // Unread: 700, full ink. Read: 500 at 85% ink. Two notches and a colour
+            // step below the unread row (at 600/500 in one colour a 62-item
+            // backlog read as one uniform block, which is what the audit measured),
+            // and the same two axes above the so-what under it: at 400 muted the
+            // read title was its own description set twice (OUT-245).
             "block truncate text-dense leading-snug",
             unread
               ? "font-bold text-foreground"
-              : "font-normal text-muted-foreground",
+              : "font-medium text-foreground/85",
           )}
         >
           {title}
@@ -301,12 +303,13 @@ export function FoldRow({
       <span className="min-w-0">
         <span
           className={cn(
-            // Same 700/400 step as SignalRow — a fold holding unread members has
-            // to shout as loud as a single unread row, or the backlog hides behind it.
+            // Same 700/500 step as SignalRow — a fold holding unread members has
+            // to shout as loud as a single unread row, or the backlog hides behind
+            // it, and a fully read fold has to sit level with the read rows around it.
             "block truncate text-dense leading-snug",
             unread > 0
               ? "font-bold text-foreground"
-              : "font-normal text-muted-foreground",
+              : "font-medium text-foreground/85",
           )}
         >
           {/* The AI batch summary when the grouping came from the server, else a

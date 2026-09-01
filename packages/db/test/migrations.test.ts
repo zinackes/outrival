@@ -16,6 +16,7 @@ const MIGRATIONS = resolve(import.meta.dir, "../migrations");
 interface JournalEntry {
   idx: number;
   tag: string;
+  when: number;
 }
 
 const journal: { entries: JournalEntry[] } = JSON.parse(
@@ -27,6 +28,22 @@ describe("migration journal integrity", () => {
 
   test("indices are contiguous and ordered from 0", () => {
     expect(journal.entries.map((e) => e.idx)).toEqual(journal.entries.map((_, i) => i));
+  });
+
+  // The runtime migrator applies every entry whose `when` is greater than the
+  // HIGHEST created_at already in the ledger. So an entry whose `when` dips below
+  // its predecessor's is unreachable: the run skips it and still prints success.
+  // 0069 shipped 1 ms behind 0068 exactly that way (code:SEC-01 / code:COR-08).
+  test("`when` timestamps increase with idx", () => {
+    const breaks: string[] = [];
+    let prev: JournalEntry | undefined;
+    for (const e of journal.entries) {
+      if (prev && e.when <= prev.when) {
+        breaks.push(`${e.tag} (${e.when}) is not after ${prev.tag} (${prev.when})`);
+      }
+      prev = e;
+    }
+    expect(breaks).toEqual([]);
   });
 
   test("every journal entry has its .sql file and snapshot", () => {

@@ -87,7 +87,7 @@ export default function PrivacyPage() {
                   <td>Demo / contact form</td>
                   <td>Name, work email, company, team size, message</td>
                   <td>Pre-contractual steps at your request (6.1.b) / legitimate interest (6.1.f)</td>
-                  <td>Up to 3 years from last contact</td>
+                  <td>Emailed to our team inbox; never stored in the product database. Deleted from that inbox on request.</td>
                 </tr>
                 <tr>
                   <td>Product analytics</td>
@@ -289,7 +289,7 @@ export default function PrivacyPage() {
                   <td>Formulaire démo / contact</td>
                   <td>Nom, email professionnel, société, taille d'équipe, message</td>
                   <td>Mesures précontractuelles à votre demande (6.1.b) / intérêt légitime (6.1.f)</td>
-                  <td>Jusqu'à 3 ans après le dernier contact</td>
+                  <td>Envoyé par email à notre boîte d'équipe ; jamais stocké en base. Supprimé de cette boîte sur demande.</td>
                 </tr>
                 <tr>
                   <td>Analytics produit</td>

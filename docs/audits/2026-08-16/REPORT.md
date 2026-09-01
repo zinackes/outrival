@@ -2766,9 +2766,11 @@ live defects and appear in section 7.2 instead.
 
 ## 10. Proposed Linear tickets
 
-**Not created.** `RUN.md` step 3 says propose, do not create before an explicit go.
-Nothing has been written to Linear. Say the word and these get created as written,
-or adjusted first.
+**Created 2026-09-01**, on the user's go, as `OUT-256` through `OUT-270` in the
+`outrival` Linear team. Ticket N below carries its identifier. Linear titles are
+truncated to the 50-character Conventional Commits subject limit, so a few read
+shorter than the headings here. Priorities map P0 to Urgent, P1 to High, P2 to
+Medium; all fifteen sit in Backlog.
 
 Fifteen tickets, grouped so each one is a single reviewable PR rather than a
 category dump. Titles follow Conventional Commits so the branch and the commit
@@ -2776,13 +2778,13 @@ subject fall out of the ticket.
 
 ### P0
 
-**1. `fix: scope GET /api/feedback to the caller's org`**
+**1. `fix: scope GET /api/feedback to the caller's org`** [OUT-256](https://linear.app/zinacke/issue/OUT-256)
 `code:COR-01`. Add the missing `where eq(feedback.orgId, ...)` and replace the
 per-org `owner` role gate with the `isAdminEmail` platform allowlist used by every
 other cross-org read. Add the route test the finding notes does not exist. S, fix
 risk low. **This is the only confirmed cross-tenant read in the audit.**
 
-**2. `fix: fail over on HTTP 402 from an AI provider`**
+**2. `fix: fail over on HTTP 402 from an AI provider`** [OUT-257](https://linear.app/zinacke/issue/OUT-257)
 Gap sweep, unrefuted. Add 402 to `shouldFailover`, make it trip `recordFailure`
 and the breaker, and fire an ops alert distinguishing "provider billing" from
 "provider down". Fix the status banner so a billing outage renders as down rather
@@ -2790,21 +2792,21 @@ than self-healing degraded. M, fix risk medium. **Before writing code: confirm o
 production which provider is 402-ing and top it up.** The eleven-day window is
 still open.
 
-**3. `fix: pin postgres.js prepare behaviour against the Neon pooler`**
+**3. `fix: pin postgres.js prepare behaviour against the Neon pooler`** [OUT-258](https://linear.app/zinacke/issue/OUT-258)
 Gap sweep, unrefuted, ~859 `Failed query` errors in 30 days. First step is
 diagnosis, not a patch: capture one full error payload from Sentry to confirm the
 prepared-statement hypothesis. If confirmed, `prepare: false` on the pooled client
 in `packages/db/src/client.ts`, which `apps/api` shares. S to code, fix risk high,
 because it changes the behaviour of every query in the platform.
 
-**4. `fix: realign the migration journal ordering`**
+**4. `fix: realign the migration journal ordering`** [OUT-259](https://linear.app/zinacke/issue/OUT-259)
 `code:SEC-01` and `code:COR-08`. `idx 69`'s `when` is 1 ms before `idx 68`'s. Use
 the existing `realign-journal.ts`, then add the ordering assertion to the migration
 test (which today checks `idx` contiguity but not `when` monotonicity: that is
 `code:TES-01`, section 7.2). Verify against a fresh Neon branch before touching a
 shared environment. S, fix risk high. **Migration path, so staging first.**
 
-**5. `fix: publish the real publisher identity on the legal pages`**
+**5. `fix: publish the real publisher identity on the legal pages`** [OUT-260](https://linear.app/zinacke/issue/OUT-260)
 `ux:78`. Replace `[À COMPLÉTER]` with the actual company name, legal form, share
 capital, registered office and RCS on Legal Notice, and name the GDPR data
 controller in the Privacy Policy. Content, not code. S, fix risk low. Pairs with
@@ -2815,11 +2817,11 @@ enforces, because the data is emailed and never stored).
 
 ### P1
 
-**6. `fix: stop swallowing the suspended-account lookup error`**
+**6. `fix: stop swallowing the suspended-account lookup error`** [OUT-261](https://linear.app/zinacke/issue/OUT-261)
 `code:COR-02`. `.catch(() => undefined)` turns a transient DB error into a working
 sign-in OTP for a suspended account. Fail closed. S, fix risk high (auth path).
 
-**7. `fix: route every outbound fetch through the SSRF guard`**
+**7. `fix: route every outbound fetch through the SSRF guard`** [OUT-262](https://linear.app/zinacke/issue/OUT-262)
 `code:SEC-02`, `SEC-03`, `SEC-04`, plus `code:SEC-15` and `code:COR-03`. One PR,
 because the shape is identical each time: a second call site that skipped the
 primitive the first one uses. Add the internal-host check to
@@ -2827,36 +2829,36 @@ primitive the first one uses. Add the internal-host check to
 raw fetch error, validate and bound redirects in `sendSlackMessage`. S to M, fix
 risk medium.
 
-**8. `fix: validate redirect targets in the browser-render cascade`**
+**8. `fix: validate redirect targets in the browser-render cascade`** [OUT-263](https://linear.app/zinacke/issue/OUT-263)
 `code:SEC-14`, kept separate from ticket 7 because it lands in Patchright rather
 than in fetch, and its real exploitability depends on egress controls that are not
 visible in the code. M, fix risk medium.
 
-**9. `feat: encrypt the CRM webhook signing secret at rest`**
+**9. `feat: encrypt the CRM webhook signing secret at rest`** [OUT-264](https://linear.app/zinacke/issue/OUT-264)
 `code:SEC-08`. Apply the AES-256-GCM pattern the sibling `oauth_connections` table
 already documents. Needs a migration plus a backfill of existing rows. M, fix risk
 high.
 
-**10. `fix: escape every dynamic value before it reaches emailShell`**
+**10. `fix: escape every dynamic value before it reaches emailShell`** [OUT-265](https://linear.app/zinacke/issue/OUT-265)
 `code:SEC-05`, and while in the file, `ux:19` (em dash in live transactional
 subject lines) and `ux:45` (no unsubscribe path on welcome, celebration and monthly
 recap, while digests have a working one). S to M, fix risk medium.
 
-**11. `fix: remove the dashboard hydration mismatches`**
+**11. `fix: remove the dashboard hydration mismatches`** [OUT-266](https://linear.app/zinacke/issue/OUT-266)
 `ux:00`, `ux:33` and `code:PER-24`. The slope chart interpolates `"88%"` into an
 SVG `points` attribute, and five sites call `isToday()`/`format()` unguarded. Both
 produce React #418 on the pages a returning user hits most. S, fix risk low.
 
 ### P2
 
-**12. `fix: bring the dashboard shell to WCAG AA and to 768px`**
+**12. `fix: bring the dashboard shell to WCAG AA and to 768px`** [OUT-267](https://linear.app/zinacke/issue/OUT-267)
 `ux:14`, `ux:82`, `ux:80`, `ux:83`, `ux:58`, `ux:25`, `ux:28`, `ux:35`, `ux:36`,
 `ux:31`, `ux:34`, `ux:06`, `ux:40`, `ux:59`. One campaign with a re-crawl as its
 acceptance test (`crawl.mjs` is read-only and replayable, so the same axe numbers
 can be measured after the fix). The site publicly claims accessibility; 1345
 contrast-failing nodes across 73 routes contradict it. M to L, fix risk low.
 
-**13. `perf: add the missing indexes on the hot tables`**
+**13. `perf: add the missing indexes on the hot tables`** [OUT-268](https://linear.app/zinacke/issue/OUT-268)
 `code:PER-04`, `PER-06`, `PER-16`, `PER-38`, plus the constraints from
 `code:COR-07` and `code:COR-15`. All in one migration batch, staging first, and
 note `code:PER-53`: no migration in the repo has ever used
@@ -2864,13 +2866,13 @@ note `code:PER-53`: no migration in the repo has ever used
 transaction, so an index on `signals` or `changes` will take a blocking lock for
 its full duration. M, fix risk high.
 
-**14. `perf: batch the N+1 fan-outs in the cron jobs and API routes`**
+**14. `perf: batch the N+1 fan-outs in the cron jobs and API routes`** [OUT-269](https://linear.app/zinacke/issue/OUT-269)
 The bulk of section 6.3, starting with the ones whose cost grows with tenant count
 rather than with one org's data: `code:PER-14`, `PER-44`, `PER-45`, `PER-10`,
 `PER-27`, `PER-40`, `PER-07`. M, fix risk medium, and easy to split further if it
 gets long.
 
-**15. `fix: give failed writes a visible error state`**
+**15. `fix: give failed writes a visible error state`** [OUT-270](https://linear.app/zinacke/issue/OUT-270)
 `ux:04` (form saves fail with zero user-visible feedback, systemic), `ux:56` (82 of
 the app's `toast.error()` calls bypass the documented contract in
 `lib/error-helpers.ts` that 22 files already follow), `code:COR-34`, `code:COR-35`,
@@ -2899,7 +2901,8 @@ From `RUN.md`, still open:
       not wait for that.
 - [ ] **Decide the fate of `axe-core`**, committed as a devDependency of
       `apps/web` and not pushed. Pushing it rebuilds the web image in production.
-- [ ] **Create the validated Linear tickets** from section 10, after review.
+- [x] **Linear tickets created** from section 10 on 2026-09-01: `OUT-256`
+      through `OUT-270`.
 - [ ] **Audit the installed hooks, MCP servers and plugins** for whatever emitted
       the forged `PreToolUse:Read` blocks described in section 4.
 

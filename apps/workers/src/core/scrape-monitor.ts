@@ -54,6 +54,7 @@ import {
   isReviewSource,
   isRotatingListSource,
   extractBrand,
+  validatePublicUrl,
   type PricingStatus,
   type PricingRepositioning,
   type PlatformProfile,
@@ -778,6 +779,17 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
     if (!scrapeUrl) {
       throw new AbortTaskRunError(
         `Monitor ${monitor.id} has no URL to scrape (competitor ${competitor.id} has none)`,
+      );
+    }
+    // This is the path that actually issues the request (and launches Chromium at
+    // L1/L2), so the gate belongs here and not only at save time (code:SEC-15):
+    // an internal address can reach a stored monitor through an older validator,
+    // an edited competitor URL, or a future auto-approval. Non-retriable — a URL
+    // does not become safe on the next attempt.
+    const safeScrapeUrl = validatePublicUrl(scrapeUrl);
+    if (!safeScrapeUrl.ok) {
+      throw new AbortTaskRunError(
+        `Monitor ${monitor.id} has an unsafe URL (${safeScrapeUrl.error})`,
       );
     }
 

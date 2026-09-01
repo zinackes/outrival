@@ -189,3 +189,31 @@ describe("validateMonitorUrl: pinned third-party profiles", () => {
     ).toBe(false);
   });
 });
+
+// code:SEC-03 — validateMonitorUrl used to skip the isUnsafeHost check its two
+// sibling validators run. extractBrand reduces a 3-label host under an unrecognized
+// suffix to its middle label, so `x.<brand>.internal` matched sameBrand and was
+// stored as a valid monitor URL. Every case below fails on the pre-fix function.
+describe("validateMonitorUrl: internal hosts never pass the brand match", () => {
+  const competitor = "https://acme.com";
+
+  test.each([
+    ["*.internal under the competitor's brand", "https://x.acme.internal/"],
+    ["*.local under the competitor's brand", "https://x.acme.local/"],
+    ["*.localhost under the competitor's brand", "https://x.acme.localhost/"],
+  ])("rejects %s", (_label, url) => {
+    const r = validateMonitorUrl("homepage", url, competitor);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("host_not_allowed");
+  });
+
+  test("still accepts the competitor's real domain", () => {
+    expect(validateMonitorUrl("homepage", "https://www.acme.com/", competitor).ok).toBe(true);
+  });
+
+  test("still accepts the off-domain ATS exception for jobs", () => {
+    expect(
+      validateMonitorUrl("jobs", "https://boards.greenhouse.io/acme", competitor).ok,
+    ).toBe(true);
+  });
+});

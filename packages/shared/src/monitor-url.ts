@@ -146,6 +146,11 @@ export function validateMonitorUrl(
   if (parsed.username || parsed.password) return { ok: false, error: "credentials_not_allowed" };
   if (parsed.port && parsed.port !== "443") return { ok: false, error: "port_not_allowed" };
   if (isIpLiteral(parsed.hostname)) return { ok: false, error: "host_not_allowed" };
+  // Before the brand check, not instead of it: `extractBrand` reduces a 3-label
+  // host under an unrecognized suffix to its middle label, so `x.<brand>.internal`
+  // passes `sameBrand` and would be stored as a valid monitor URL (code:SEC-03).
+  // The sibling validators have always had this line.
+  if (isUnsafeHost(parsed.hostname)) return { ok: false, error: "host_not_allowed" };
 
   const urlBrand = extractBrand(parsed.hostname);
   if (!urlBrand) return { ok: false, error: "host_not_allowed" };

@@ -281,7 +281,7 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
           await sendEmail({
             from: ALERT_FROM,
             to: org.digestEmail,
-            subject: `Your Monday Competitive Briefing — all quiet (week of ${isoDate(weekStart)})`,
+            subject: `Your Monday Competitive Briefing: all quiet (week of ${isoDate(weekStart)})`,
             html,
             ...(unsubscribeUrl
               ? {
@@ -531,7 +531,7 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
             to: org.digestEmail,
             // Lever 11 — the weekly send IS the product's habit surface; brand
             // it as the Monday briefing ritual, not a generic digest.
-            subject: `Your Monday Competitive Briefing — week of ${isoDate(weekStart)}`,
+            subject: `Your Monday Competitive Briefing (week of ${isoDate(weekStart)})`,
             html,
             // One-click unsubscribe headers improve inbox placement and let
             // mail clients surface their native unsubscribe affordance.

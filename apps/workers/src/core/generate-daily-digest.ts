@@ -219,7 +219,7 @@ export async function runGenerateDailyDigest(payload?: { timestamp?: Date }) {
           from: ALERT_FROM,
           to: org.digestEmail,
           // Lever 11 — same briefing branding as the weekly send.
-          subject: `Your Daily Briefing — ${deferred.length} competitor update${deferred.length > 1 ? "s" : ""}`,
+          subject: `Your Daily Briefing: ${deferred.length} competitor update${deferred.length > 1 ? "s" : ""}`,
           html,
           ...(unsubscribeUrl
             ? {

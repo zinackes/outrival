@@ -43,6 +43,7 @@ import {
   decideImportance,
   formatDiffForPrompt,
   renderCelebrationEmail,
+  signUnsubscribeToken,
 } from "@outrival/shared";
 import { evaluateAlertConditions } from "../lib/alert-conditions";
 import { insertSignalFeed, loggedAi } from "../lib/analytics";
@@ -816,7 +817,9 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
     // LIVE change only. NEVER for a backfill/archive signal (celebrating reconstructed
     // history is hollow — the monitoring didn't catch anything live). Best-effort.
     // A blocked insight never leaves the product, and this email quotes it verbatim.
-    if (!isBackfill && !faithfulnessBlocked && org?.digestEmail) {
+    // digestEnabled also gates this one: the footer it now carries promises the
+    // digest unsubscribe link stops the lifecycle emails too (ux:45).
+    if (!isBackfill && !faithfulnessBlocked && org?.digestEmail && org.digestEnabled) {
       try {
         const priorLive = await db.query.signals.findFirst({
           where: and(
@@ -829,6 +832,12 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
           columns: { id: true },
         });
         if (!priorLive) {
+          const apiBase = process.env.NEXT_PUBLIC_API_URL ?? process.env.BETTER_AUTH_URL ?? "";
+          const secret = process.env.BETTER_AUTH_SECRET ?? "";
+          const unsubscribeUrl =
+            apiBase && secret
+              ? `${apiBase}/api/digest-feedback/unsubscribe?token=${signUnsubscribeToken(competitor.orgId, secret)}`
+              : undefined;
           const webUrl = process.env.WEB_URL ?? "https://outrival.app";
           const email = renderCelebrationEmail({
             competitorName: competitor.name,
@@ -836,12 +845,21 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
             insight: published.insight,
             soWhat: published.soWhat,
             signalUrl: `${webUrl}/dashboard/signals`,
+            unsubscribeUrl,
           });
           await sendEmail({
             from: ALERT_FROM,
             to: org.digestEmail,
             subject: email.subject,
             html: email.html,
+            ...(unsubscribeUrl
+              ? {
+                  headers: {
+                    "List-Unsubscribe": `<${unsubscribeUrl}>`,
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                  },
+                }
+              : {}),
           });
           logger.log("First-change celebration sent", { orgId: competitor.orgId });
         }

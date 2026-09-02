@@ -1,5 +1,10 @@
-import { ROADMAP_STATUSES, roadmapStatusLabel, type RoadmapStatus } from "@outrival/shared";
-import type { ContentItemRow, ContentTimeline } from "@/lib/api";
+import {
+  hasNoTargetError,
+  ROADMAP_STATUSES,
+  roadmapStatusLabel,
+  type RoadmapStatus,
+} from "@outrival/shared";
+import type { ContentItemRow, ContentTimeline, Monitor } from "@/lib/api";
 
 /**
  * Everything the Content tab DERIVES from its rows, with no React in it.
@@ -21,6 +26,54 @@ export const SOURCES = [
 
 /** What "Re-scan now" on this tab has to run: all four, not whichever came first. */
 export const SOURCE_KEYS = SOURCES.map((s) => s.key);
+
+/**
+ * Why the tab is empty — the three facts the empty state used to collapse into one.
+ *
+ * It claimed "none of them has produced an entry so far" whatever the reason, which
+ * is an accusation the data usually does not support: on prod the dominant case by
+ * far is a site with no readable content surface at all (no blog path that resolves,
+ * no roadmap portal, no enumerable docs index — 466 runs recorded `no_roadmap_portal`
+ * alone), and the second is a competitor added minutes ago whose first pass has not
+ * run. Only the third case is the one the old sentence describes.
+ *
+ * Read off the monitors rather than the rows, because the rows are what is missing:
+ * a monitor's own last outcome is the only evidence of WHY.
+ */
+export type ContentEmptyReason = "not_read_yet" | "nothing_to_read" | "nothing_published";
+
+export function contentEmptyReason(monitors: readonly Monitor[]): ContentEmptyReason {
+  const watched = monitors.filter(
+    (m) => SOURCE_KEYS.some((k) => k === m.sourceType) && m.isActive !== false,
+  );
+  // First, because an unread source means the question is still open: one source we
+  // have never been through outranks three that came back empty, and no monitor at
+  // all is the same state — nothing has been read, and the rows offer the switch.
+  if (watched.length === 0 || watched.some((m) => !m.lastRunAt)) return "not_read_yet";
+  // Terminal on every watched source: either the surface is not there (the worker
+  // records it as a benign skip, same marker the per-source rows read) or we were
+  // refused it. Two different facts, one honest headline — the rows carry which.
+  const unreadable = (m: Monitor) =>
+    hasNoTargetError(m.sourceType, m.lastError) || m.markedUnscrapable === true;
+  if (watched.every(unreadable)) return "nothing_to_read";
+  return "nothing_published";
+}
+
+/** The empty state's heading and body, one per reason. */
+export const CONTENT_EMPTY_COPY: Record<ContentEmptyReason, { title: string; body: string }> = {
+  not_read_yet: {
+    title: "Nothing read yet",
+    body: "This tab reads what they publish: their blog, their changelog, their public roadmap and their developer docs. We have not been through them yet.",
+  },
+  nothing_to_read: {
+    title: "Nothing here we can read",
+    body: "This tab reads what they publish: their blog, their changelog, their public roadmap and their developer docs. This site exposes none of them in a form we can reach.",
+  },
+  nothing_published: {
+    title: "Nothing published that we can read yet",
+    body: "This tab reads what they publish: their blog, their changelog, their public roadmap and their developer docs. None of them has produced an entry so far.",
+  },
+};
 
 export const SOURCE_COLOR: Record<string, string> = Object.fromEntries(
   SOURCES.map((s) => [s.key, s.color]),

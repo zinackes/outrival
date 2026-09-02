@@ -33,6 +33,8 @@ import {
   SOURCE_COLOR,
   SOURCE_KEYS,
   SOURCES,
+  contentEmptyReason,
+  CONTENT_EMPTY_COPY,
 } from "./content-derive";
 import { cn } from "@/lib/utils";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
@@ -1293,6 +1295,12 @@ function TimelineRow({ item, showSource }: { item: ContentItemRow; showSource: b
  * Each source is named with its own state rather than one blanket line, because
  * "we watch it and it has published nothing" and "they have no changelog" and "this
  * is switched off" are three different facts, and only the third is actionable.
+ *
+ * The headline above them answers the same question once, from the same evidence
+ * (`contentEmptyReason`): it used to assert "none of them has produced an entry so
+ * far" on every competitor, including the ones whose site exposes no readable
+ * content surface at all — the majority case on prod — and the ones we had simply
+ * not read yet.
  */
 function NothingPublished({
   monitors,
@@ -1310,17 +1318,13 @@ function NothingPublished({
   runnableKeys: readonly SourceType[];
 }) {
   const [enabling, setEnabling] = useState<string | null>(null);
+  const copy = CONTENT_EMPTY_COPY[contentEmptyReason(monitors)];
 
   return (
     <TabCard>
       <div className="flex flex-col items-center gap-2.5 px-5 py-10 text-center">
-        <h3 className="text-content font-semibold tracking-tight">
-          Nothing published that we can read yet
-        </h3>
-        <p className="max-w-[52ch] text-sm text-muted-foreground">
-          This tab reads what they publish: their blog, their changelog, their public roadmap and
-          their developer docs. None of them has produced an entry so far.
-        </p>
+        <h3 className="text-content font-semibold tracking-tight">{copy.title}</h3>
+        <p className="max-w-[52ch] text-sm text-muted-foreground">{copy.body}</p>
 
         <ul className="mt-1.5 flex w-full max-w-[34rem] flex-col">
           {SOURCES.map((s) => {

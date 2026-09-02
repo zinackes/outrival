@@ -53,6 +53,8 @@ import {
   detectPricingRepositioning,
   isReviewSource,
   isRotatingListSource,
+  hasNoScraper,
+  isMissingScraperError,
   extractBrand,
   type PricingStatus,
   type PricingRepositioning,
@@ -961,6 +963,33 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       if (refusal) {
         await handleRefusal(monitor, refusal, Date.now() - startedAt);
         return { changed: false, refused: true };
+      }
+      // `No scraper for source type: X` on a source the registry DOES bind. Neither
+      // the site's doing nor the competitor's: the worker build that is running lacks
+      // a binding this source has. The workers box is deployed by hand while web/api
+      // auto-deploy, so it trails the release that starts creating the monitors —
+      // prod took this in bursts on docs / roadmap / hackernews / wellknown (226 runs
+      // in one week), every affected monitor also running fine on either side of it.
+      // The generic path below counted those as the competitor's failures and walked
+      // 31 docs monitors into markedUnscrapable, where they stayed: the redeploy that
+      // restores the binding does not un-pause them.
+      //
+      // So reschedule on the cadence without a strike, and log loudly — the monitor
+      // survives the gap and picks itself up on its next run. A source that is
+      // genuinely unbound (retired / unimplemented) keeps the loud path: `hasNoScraper`
+      // says it is gone for good, and pausing it is the right answer.
+      if (isMissingScraperError(err) && !hasNoScraper(monitor.sourceType)) {
+        logger.error("No scraper binding in this worker build — check the deploy", {
+          monitorId: monitor.id,
+          sourceType: monitor.sourceType,
+        });
+        await handleBenignSkip(
+          monitor,
+          "no_scraper_binding",
+          Date.now() - startedAt,
+          effectiveFrequency,
+        );
+        return { changed: false, skipped: true };
       }
       // Not the competitor's fault (no youtube channel, crt.sh down): reschedule
       // without a strike so it stops churning to markedUnscrapable / spamming failures.

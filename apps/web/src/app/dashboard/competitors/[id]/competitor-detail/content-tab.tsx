@@ -235,8 +235,11 @@ export function ContentTab({
     return <Empty text="Couldn't load this data right now. Try again in a moment." />;
   if (!summary || !timeline) return <TabLoading />;
 
-  const everPublished = summary.cadence.reduce((n, m) => n + m.total, 0);
-  if (everPublished === 0) {
+  // All-time, not the 12-month cadence. NothingPublished makes an all-time claim
+  // ("none of them has produced an entry so far") and is a dead end: it renders in
+  // place of the period toggle, so a competitor whose newest item is older than the
+  // cadence window would be unreachable at every period, "All" included.
+  if (summary.totals.allTime === 0) {
     return (
       <NothingPublished
         monitors={monitors}

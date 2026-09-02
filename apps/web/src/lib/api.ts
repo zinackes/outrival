@@ -948,6 +948,9 @@ export interface ContentSummary {
     previousPostsRead: number;
     unread: number;
     namesYou: number;
+    /** Items held at any date. The cadence above spans 12 months only, so this is
+     *  the only field that can answer "have they ever published". */
+    allTime: number;
   };
 }
 

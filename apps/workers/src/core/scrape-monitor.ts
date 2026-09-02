@@ -40,7 +40,7 @@ import { recordMessagingVersion } from "../lib/messaging-versions";
 import { crossesRoundMilestone } from "../lib/claim-milestone";
 import { readAudienceMeta } from "../lib/audience-pages";
 import { readMarketMapMeta } from "../lib/named-competitors";
-import { readIngestFirstRun } from "../lib/ingest-first-run";
+import { pendingContentIngest, readIngestFirstRun } from "../lib/ingest-first-run";
 import {
   clampFrequencyToPlan,
   computeHash,
@@ -1060,6 +1060,32 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
             urls: integrationUrlsOf(result.html),
           });
         }
+      }
+
+      // Content Intelligence v2 — the same hole, on the three content listings. The
+      // blog / changelog / roadmap ingests are enqueued from the changed-capture
+      // branch alone, so a competitor whose FIRST capture never reached one (the job
+      // expired in the concurrency-1 AI lane, the R2 read failed, or the monitor
+      // predates the feature) stays stuck: the listing does not move, the hash does
+      // not move, and we return here every week with an empty Content tab. Only a
+      // manual "Re-scan" recovers it today.
+      //
+      // Gated on the ingest's own marker, so it fires once per source and then goes
+      // quiet; a real new post IS a content change and still takes the diff path
+      // below. `docs` is outside the catch-up — its ingest reads the delta between
+      // two captures, and an unchanged capture has none.
+      const catchupSource = pendingContentIngest(monitor.sourceType, competitor.metadata);
+      if (catchupSource === "blog") {
+        await ingestBlogPosts.enqueue({
+          snapshotId: lastSnapshot.id,
+          competitorId: competitor.id,
+        });
+      } else if (catchupSource) {
+        await ingestContentItems.enqueue({
+          snapshotId: lastSnapshot.id,
+          competitorId: competitor.id,
+          sourceType: catchupSource,
+        });
       }
       const nextRunAt = computeNextRun(
         effectiveFrequency,

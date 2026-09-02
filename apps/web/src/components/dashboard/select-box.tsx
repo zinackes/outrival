@@ -40,6 +40,9 @@ export function SelectBox({
       }}
       className={cn(
         "relative z-10 flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+        // A 16px box is a 16px target. The pseudo-element pushes the hit area out to
+        // a 32px square without moving the box or the column it sits in.
+        "after:absolute after:-inset-2",
         on
           ? "border-primary bg-primary text-primary-foreground"
           : "border-stroke text-transparent hover:border-foreground/50",

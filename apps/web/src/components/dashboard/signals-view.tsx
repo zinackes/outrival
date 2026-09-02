@@ -18,7 +18,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { CheckIcon, CaretDownIcon, TrayIcon, FlaskIcon, ScanIcon } from "@/components/icons";
-import { startOfWeek, endOfWeek, format, isToday, isYesterday } from "date-fns";
+import { startOfWeek, endOfWeek, format, isSameDay, subDays } from "date-fns";
 import { toast } from "@/lib/toast";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -67,6 +67,8 @@ import { ListError } from "@/components/outrival/list-error";
 import { useListKeyboardNav } from "@/hooks/use-list-keyboard-nav";
 import { useSampleMode } from "@/hooks/use-sample-mode";
 import { useSignalsGroup } from "@/hooks/use-signals-group";
+import { useHydrated } from "@/hooks/use-hydrated";
+import { nowOnClock, onClock } from "@/lib/hydration-clock";
 import { getSampleData, getSampleSignalDetail } from "@/lib/sample-data";
 
 // The synthetic list row for the AI brief. It sits above the feed and opens in
@@ -74,11 +76,23 @@ import { getSampleData, getSampleSignalDetail } from "@/lib/sample-data";
 const BRIEF_ID = "brief";
 
 // Day bucket for the "By day" grouping — a stable key + a human label.
-function dayGroup(iso: string): { key: string; label: string } {
-  const d = new Date(iso);
+//
+// `local` is the caller's `useHydrated()`. A day is the VIEWER's day, and the UTC
+// server cannot know theirs while it renders, so cutting the buckets on the local
+// clock during hydration gave the two runtimes a different set of sections — a
+// structural mismatch React can only recover from by throwing the tree away
+// (`code:PER-24`). First paint shares the server's cut; the viewer's own arrives on
+// mount. See `@/lib/hydration-clock`.
+function dayGroup(iso: string, local: boolean): { key: string; label: string } {
+  const d = onClock(iso, local);
+  const now = nowOnClock(local);
   return {
     key: format(d, "yyyy-MM-dd"),
-    label: isToday(d) ? "Today" : isYesterday(d) ? "Yesterday" : format(d, "MMM d"),
+    label: isSameDay(d, now)
+      ? "Today"
+      : isSameDay(d, subDays(now, 1))
+        ? "Yesterday"
+        : format(d, "MMM d"),
   };
 }
 
@@ -219,6 +233,8 @@ export function SignalsView() {
   // alone died the moment they navigated away). A mode named in the URL still
   // wins, so deep links and shared links render what they say.
   const [storedGroup, setStoredGroup] = useSignalsGroup();
+  // False until mount, so "By day" cuts its buckets where the server cut them.
+  const local = useHydrated();
   const group = (GROUP_MODES as readonly string[]).includes(
     searchParams.get("group") ?? "",
   )
@@ -560,7 +576,7 @@ export function SignalsView() {
       const { key, label } =
         group === "competitor"
           ? { key: sig.competitorId, label: sig.competitorName }
-          : dayGroup(sig.createdAt);
+          : dayGroup(sig.createdAt, local);
       let g = map.get(key);
       if (!g) {
         g = { label, items: [] };
@@ -580,7 +596,7 @@ export function SignalsView() {
         subs: [only],
       };
     });
-  }, [filtered, group]);
+  }, [filtered, group, local]);
 
   // What the catch-up strip states, over the unread rows that are LOADED. The
   // headline count beside it is the server's, whole-set — a backlog deeper than

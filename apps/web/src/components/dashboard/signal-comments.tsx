@@ -476,9 +476,16 @@ function Stamp({ iso }: { iso: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
+        {/* An age is measured against the clock at render time, so the server's
+            string is already stale when the browser recomputes it and a bucket
+            boundary in between makes the two differ (`code:PER-24`). `dateTime`
+            carries the instant, as in overview-lead.tsx. The absolute stamp below
+            needs no guard: a Radix tooltip renders its content only once opened, so
+            it never exists during hydration. */}
         <time
           dateTime={iso}
           className="cursor-default text-meta text-muted-foreground"
+          suppressHydrationWarning
         >
           {formatDistanceToNow(d, { addSuffix: true })}
         </time>

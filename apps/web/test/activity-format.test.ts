@@ -60,7 +60,7 @@ describe("day boundaries", () => {
       "2026-07-25T18:45:00.000Z",
       "2026-07-25T23:50:00.000Z",
     ]) {
-      const key = dayKeyOf(iso);
+      const key = dayKeyOf(iso, true);
       const { from, to } = dayBounds(key);
       const t = new Date(iso).getTime();
       expect(t).toBeGreaterThanOrEqual(new Date(from).getTime());

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
+import { format, formatDistanceToNow, isSameDay, subDays } from "date-fns";
 import { PulseIcon, ArrowRightIcon, CaretRightIcon, ArrowSquareOutIcon } from "@/components/icons";
 import type { CompetitorSignal, ChangeRow } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,8 @@ import { SeverityScale } from "@/components/outrival/severity-scale";
 import { CatBadge } from "@/components/outrival/data-marks";
 import { SignalSourceLine } from "@/components/outrival/signal-source-line";
 import { sourceShortLabel } from "@/lib/source-labels";
+import { useHydrated } from "@/hooks/use-hydrated";
+import { nowOnClock, onClock } from "@/lib/hydration-clock";
 import type { SourceType } from "@outrival/shared";
 import { ChangeCard } from "./changes";
 
@@ -26,18 +28,24 @@ const RANK: Record<Severity, number> = { low: 0, medium: 1, high: 2, critical: 3
  *  material the movement, the more of it you see before clicking. */
 const SHOW_SO_WHAT_FROM: Severity = "high";
 
-/** Day bucket key + the heading it renders under. */
-function dayOf(iso: string): { key: string; label: string; date: Date } {
-  const d = new Date(iso);
-  const key = format(d, "yyyy-MM-dd");
-  const label = isToday(d)
+/** Day bucket key + the heading it renders under.
+ *
+ *  `local` is the caller's `useHydrated()`. A day is the VIEWER's day, which the UTC
+ *  server cannot know while it renders: cutting the buckets on the local clock during
+ *  hydration gave the two runtimes a different set of day sections, which React can
+ *  only recover from by discarding the tree (`code:PER-24`). First paint shares the
+ *  server's cut, the viewer's own arrives on mount. See `@/lib/hydration-clock`. */
+function dayOf(iso: string, local: boolean): { key: string; label: string; date: Date } {
+  const d = onClock(iso, local);
+  const now = nowOnClock(local);
+  const label = isSameDay(d, now)
     ? "Today"
-    : isYesterday(d)
+    : isSameDay(d, subDays(now, 1))
       ? "Yesterday"
-      : Date.now() - d.getTime() < 7 * 86_400_000
+      : now.getTime() - d.getTime() < 7 * 86_400_000
         ? format(d, "EEEE")
         : format(d, "d MMM yyyy");
-  return { key, label, date: d };
+  return { key: format(d, "yyyy-MM-dd"), label, date: d };
 }
 
 /**
@@ -99,13 +107,15 @@ export function ActivityTab({
   // Signals and their unclassified siblings share one chronology, bucketed by day.
   const signalChangeIds = new Set(signals.map((s) => s.changeId).filter(Boolean));
   const orphanChanges = changes.filter((c) => !signalChangeIds.has(c.id));
+  // False until mount, so the day sections start where the server's did.
+  const local = useHydrated();
   const days = useMemo(() => {
     const map = new Map<
       string,
       { label: string; date: Date; signals: CompetitorSignal[]; changes: ChangeRow[] }
     >();
     const bucket = (iso: string) => {
-      const { key, label, date } = dayOf(iso);
+      const { key, label, date } = dayOf(iso, local);
       let entry = map.get(key);
       if (!entry) {
         entry = { label, date, signals: [], changes: [] };
@@ -120,7 +130,7 @@ export function ActivityTab({
       for (const c of orphanChanges) bucket(c.detectedAt).changes.push(c);
     }
     return [...map.values()].sort((a, b) => b.date.getTime() - a.date.getTime());
-  }, [visible, orphanChanges, severity, category]);
+  }, [visible, orphanChanges, severity, category, local]);
 
   if (signals.length === 0 && changes.length === 0) {
     // No signal or change is not the same as nothing happening: the sources may
@@ -379,7 +389,14 @@ function SignalRow({
         </span>
         <span className="col-start-2 row-start-1 flex items-center gap-2.5">
           <CatBadge category={s.category} />
-          <span className="inline-flex items-center gap-1.5 text-meta tabular-nums text-muted-foreground">
+          {/* An age is measured against the clock at render time, so the server's
+              string is already stale when the browser recomputes it and a bucket
+              boundary in between makes the two differ (`code:PER-24`). Same call as
+              overview-lead.tsx, and the same answer. */}
+          <span
+            className="inline-flex items-center gap-1.5 text-meta tabular-nums text-muted-foreground"
+            suppressHydrationWarning
+          >
             {unread && (
               <span
                 aria-label="Unread"

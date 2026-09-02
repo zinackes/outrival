@@ -11,6 +11,8 @@ import {
   type SourceType,
 } from "@outrival/shared";
 import { cn } from "@/lib/utils";
+import { useHydrated } from "@/hooks/use-hydrated";
+import { onClock } from "@/lib/hydration-clock";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Static class strings so Tailwind's JIT keeps them. Colours map to the severity
@@ -69,6 +71,15 @@ export function FreshnessDot({
   size = "sm",
 }: FreshnessDotProps) {
   const dotSize = size === "md" ? "h-2.5 w-2.5" : "h-2 w-2";
+  // The stamp below prints an hour, which reads on the runtime's timezone: UTC on
+  // the server, the viewer's in the browser. It rides an `aria-label`, so the
+  // mismatch is an attribute one and lands on a value only a screen reader hears —
+  // suppressing the warning would leave that reader on UTC for good (`code:PER-24`).
+  // First paint prints the UTC reading, the viewer's own arrives on mount.
+  const local = useHydrated();
+  const scanned = lastScrapedAt
+    ? format(onClock(lastScrapedAt, local), "MMM d, yyyy 'at' HH:mm")
+    : null;
 
   // "Next scan in ~3 days" — only when a future schedule is known.
   const nextTs = nextRunAt ? new Date(nextRunAt).getTime() : null;
@@ -108,7 +119,7 @@ export function FreshnessDot({
             tabIndex={0}
             aria-label={
               lastScrapedAt
-                ? `${spoken} · last scan ${format(new Date(lastScrapedAt), "MMM d, yyyy 'at' HH:mm")}`
+                ? `${spoken} · last scan ${scanned}`
                 : spoken
             }
             className={cn(
@@ -124,7 +135,7 @@ export function FreshnessDot({
           {lastScrapedAt && (
             <span className="text-muted-foreground">
               {" · Last scan "}
-              {format(new Date(lastScrapedAt), "MMM d, yyyy 'at' HH:mm")}
+              {scanned}
             </span>
           )}
           {failedLine}
@@ -159,7 +170,7 @@ export function FreshnessDot({
           tabIndex={0}
           aria-label={
             lastScrapedAt
-              ? `${spokenHeadline} · last scan ${format(new Date(lastScrapedAt), "MMM d, yyyy 'at' HH:mm")}`
+              ? `${spokenHeadline} · last scan ${scanned}`
               : spokenHeadline
           }
           className={cn(
@@ -174,7 +185,7 @@ export function FreshnessDot({
         {lastScrapedAt && (
           <span className="text-muted-foreground">
             {" · Last scan "}
-            {format(new Date(lastScrapedAt), "MMM d, yyyy 'at' HH:mm")}
+            {scanned}
           </span>
         )}
         {failedLine}

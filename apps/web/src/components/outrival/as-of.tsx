@@ -1,15 +1,25 @@
 "use client";
 
-import { format, isToday } from "date-fns";
+import { format, isSameDay } from "date-fns";
 import { aggregateCaptureFreshness, type MonitorFreshnessInput } from "@outrival/shared";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PANEL, PanelHead, PanelRow } from "@/components/outrival/signal-proof";
 import { cn } from "@/lib/utils";
+import { useHydrated } from "@/hooks/use-hydrated";
+import { nowOnClock, onClock } from "@/lib/hydration-clock";
 
-/** "today at 09:12" when it is today, "Jul 30, 14:02" when it isn't. */
-function stamp(iso: string): string {
-  const d = new Date(iso);
-  return isToday(d) ? `today, ${format(d, "HH:mm")}` : format(d, "MMM d, HH:mm");
+/** "today at 09:12" when it is today, "Jul 30, 14:02" when it isn't.
+ *
+ *  `local` is the caller's `useHydrated()`: both the hour and the "is this today"
+ *  test read the runtime's timezone, which is UTC on the server and the viewer's in
+ *  the browser, so an unguarded call renders two different strings across hydration
+ *  (`code:PER-24`). The first pass prints the UTC reading both sides derive, the
+ *  viewer's own replaces it on mount. See `@/lib/hydration-clock`. */
+function stamp(iso: string, local: boolean): string {
+  const d = onClock(iso, local);
+  return isSameDay(d, nowOnClock(local))
+    ? `today, ${format(d, "HH:mm")}`
+    : format(d, "MMM d, HH:mm");
 }
 
 /**
@@ -40,6 +50,7 @@ export function AsOf({
   nextRunAt?: string | null;
   className?: string;
 }) {
+  const local = useHydrated();
   const fresh = aggregateCaptureFreshness(monitors);
   // Nothing captured yet is not a date, and "as of never" is not a sentence. The
   // tab's own empty state already says the source has not run.
@@ -58,20 +69,24 @@ export function AsOf({
           className,
         )}
       >
-        as of {stamp(fresh.lastSuccessAt)}
+        as of {stamp(fresh.lastSuccessAt, local)}
         {degraded && " · not verified since"}
       </TooltipTrigger>
       <TooltipContent className={PANEL}>
         <PanelHead>What you are looking at</PanelHead>
-        <PanelRow label="Last successful read" value={stamp(fresh.lastSuccessAt)} />
+        <PanelRow label="Last successful read" value={stamp(fresh.lastSuccessAt, local)} />
         {degraded ? (
           fresh.lastAttemptAt && (
-            <PanelRow label="Last attempt" value={`${stamp(fresh.lastAttemptAt)}, failed`} />
+            <PanelRow label="Last attempt" value={`${stamp(fresh.lastAttemptAt, local)}, failed`} />
           )
         ) : (
           <PanelRow
             label="Next scheduled read"
-            value={next && next.getTime() > Date.now() ? stamp(next.toISOString()) : "within the hour"}
+            value={
+              next && next.getTime() > Date.now()
+                ? stamp(next.toISOString(), local)
+                : "within the hour"
+            }
           />
         )}
         {degraded && (

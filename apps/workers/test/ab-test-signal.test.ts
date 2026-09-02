@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { clearQueueOverrides, recordEnqueues, setQueueOverrides } from "./queue-mock";
 import { and, eq } from "drizzle-orm";
 import { buildDeltaProof } from "@outrival/shared";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
@@ -27,28 +28,18 @@ const INVERSE = ["- Starter plan is $99 per month", "+ Starter plan is $79 per m
 const PROOF = buildDeltaProof({ diffText: DIFF });
 
 beforeAll(async () => {
-  const realQueue = await import("@outrival/queue");
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/queue", () => ({
-    ...realQueue,
-    NonRetriable: realQueue.NonRetriable,
-    generateSignal: {
-      queue: "generate-signal",
-      enqueue: async (payload: Enqueued) => {
-        enqueued.push(payload);
-        return "job-id";
-      },
-    },
-  }));
+  setQueueOverrides({ generateSignal: recordEnqueues(() => enqueued) });
 
   ({ maybeEmitAbTestSignal: maybeEmit } = await import("../src/lib/ab-test-signal"));
 });
 
 afterAll(() => {
   clearSharedOverrides();
+  clearQueueOverrides();
   return closeDb();
 });
 

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { clearQueueOverrides, recordEnqueues, setQueueOverrides } from "./queue-mock";
 import { eq } from "drizzle-orm";
 import { buildDeltaProof, formatExcerpts } from "@outrival/shared";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
@@ -40,30 +41,15 @@ const AFTER_PAGE = "Plans and pricing. Starter plan is $99 per month. Contact sa
 const BEFORE_PAGE = "Plans and pricing. Starter plan is $79 per month. Contact sales for more.";
 
 beforeAll(async () => {
-  const realQueue = await import("@outrival/queue");
   const realScrapers = await import("@outrival/scrapers");
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/queue", () => ({
-    ...realQueue,
-    NonRetriable: realQueue.NonRetriable,
-    generateSignal: {
-      queue: "generate-signal",
-      enqueue: async (payload: Enqueued) => {
-        signalEnqueued.push(payload);
-        return "job-id";
-      },
-    },
-    verifySignalDelta: {
-      queue: "verify-signal-delta",
-      enqueue: async (payload: Enqueued) => {
-        verifyEnqueued.push(payload);
-        return "job-id";
-      },
-    },
-  }));
+  setQueueOverrides({
+    generateSignal: recordEnqueues(() => signalEnqueued),
+    verifySignalDelta: recordEnqueues(() => verifyEnqueued),
+  });
 
   mock.module("@outrival/scrapers", () => ({
     ...realScrapers,
@@ -88,6 +74,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   clearSharedOverrides();
+  clearQueueOverrides();
   return closeDb();
 });
 

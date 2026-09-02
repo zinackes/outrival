@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import { competitors, monitors, snapshots, changes, signals, qualityFeedback } from "@outrival/db";
 import { eq, inArray } from "drizzle-orm";
@@ -13,6 +13,7 @@ import { asUser, installAppMocks, seedOrg } from "./app-harness";
 let app: Hono;
 let testDb: TestDb;
 let closeDb: () => Promise<void>;
+let resetDb: () => Promise<void>;
 
 let A: { orgId: string; userId: string; email: string };
 let B: { orgId: string; userId: string; email: string };
@@ -65,19 +66,28 @@ const rowsOf = (ids: string[]) =>
 afterAll(() => closeDb());
 
 beforeAll(async () => {
-  ({ db: testDb, close: closeDb } = await makeTestDb());
+  ({ db: testDb, close: closeDb, reset: resetDb } = await makeTestDb());
   await installAppMocks(testDb);
   const { signalsRouter } = await import("../src/routes/signals");
   const { feedbackQualityRouter } = await import("../src/routes/feedback-quality");
   app = new Hono()
     .route("/api/signals", signalsRouter)
     .route("/api/feedback-quality", feedbackQualityRouter);
+}, HOOK_TIMEOUT_MS);
 
+// Per TEST, not per file. Every test here writes to `mine`, and four of them read a
+// value a SIBLING left behind: an actionStatus of "doing", a feed total of 3, an
+// empty qualityFeedback for the org. That only holds while bun runs a file in
+// declaration order, so `bun test --randomize` turned four of these red on most
+// seeds (`code:TES-76`). A truncate and a fresh seed per test cost ~30 ms each and
+// remove the only reason the order mattered.
+beforeEach(async () => {
+  await resetDb();
   A = await seedOrg(testDb);
   B = await seedOrg(testDb);
   mine = await seedSignals(A.orgId, 3);
   [theirs = ""] = await seedSignals(B.orgId, 1);
-}, HOOK_TIMEOUT_MS);
+});
 
 const post = (path: string, who: typeof A, body: unknown) =>
   app.request(path, asUser(who.userId, who.email, { method: "POST", body: JSON.stringify(body) }));
@@ -105,9 +115,10 @@ describe("POST /api/signals/bulk-action", () => {
   });
 
   test("an unknown status is refused before any write", async () => {
+    await post("/api/signals/bulk-action", A, { ids: mine, status: "doing" });
     const res = await post("/api/signals/bulk-action", A, { ids: mine, status: "archived" });
     expect(res.status).toBe(400);
-    // The previous test's value is still there: nothing was half-applied.
+    // The value set just above is still there: nothing was half-applied.
     expect((await rowsOf(mine)).every((r) => r.actionStatus === "doing")).toBe(true);
   });
 

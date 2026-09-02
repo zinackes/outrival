@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { clearQueueOverrides, setQueueOverrides } from "./queue-mock";
 import { eq } from "drizzle-orm";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
 import { clearSharedOverrides, setSharedOverrides } from "./shared-mock";
@@ -91,26 +92,19 @@ async function snapshotStatus(): Promise<string | undefined> {
 }
 
 beforeAll(async () => {
-  const realQueue = await import("@outrival/queue");
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
   resetDb = harness.reset;
 
-  mock.module("@outrival/queue", () => ({
-    ...realQueue,
-    NonRetriable: realQueue.NonRetriable,
-    detectReviewThemeShifts: {
-      queue: "detect-review-theme-shifts",
-      enqueue: async () => "job-id",
-    },
-  }));
+  setQueueOverrides({ detectReviewThemeShifts: { enqueue: async () => "job-id" } });
 
   ({ runExtractReviews } = await import("../src/core/extract-reviews"));
 });
 
 afterAll(() => {
   clearSharedOverrides();
+  clearQueueOverrides();
   return closeDb();
 });
 

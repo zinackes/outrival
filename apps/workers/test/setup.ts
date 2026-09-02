@@ -2,6 +2,8 @@ import { afterAll, mock } from "bun:test";
 import { closeSharedDb, sharedDbProxy } from "./db-harness";
 // Side effect: registers the single @outrival/shared mock, before any test file loads.
 import "./shared-mock";
+// Side effect: registers the single @outrival/queue mock, before any test file loads.
+import "./queue-mock";
 
 // Preloaded once per `bun test` process (bunfig.toml -> [test] preload).
 

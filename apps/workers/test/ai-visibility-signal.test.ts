@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { clearQueueOverrides, recordEnqueues, setQueueOverrides } from "./queue-mock";
 import { and, eq } from "drizzle-orm";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
 import { clearSharedOverrides, setSharedOverrides } from "./shared-mock";
@@ -47,7 +48,6 @@ let engineAnswer = "";
 const DAY = 86_400_000;
 
 beforeAll(async () => {
-  const realQueue = await import("@outrival/queue");
   const realAi = await import("@outrival/ai");
   const realAnalytics = await import("../src/lib/analytics");
   const realEngines = await import("../src/lib/ai-visibility/engines");
@@ -55,17 +55,7 @@ beforeAll(async () => {
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/queue", () => ({
-    ...realQueue,
-    NonRetriable: realQueue.NonRetriable,
-    generateSignal: {
-      queue: "generate-signal",
-      enqueue: async (payload: Enqueued) => {
-        enqueued.push(payload);
-        return "job-id";
-      },
-    },
-  }));
+  setQueueOverrides({ generateSignal: recordEnqueues(() => enqueued) });
   // Spread the REAL modules on EVERY mock below: these are process-global and
   // outlive the file, so a partial one breaks whatever later file imports the
   // dropped export, depending only on the order bun picked. Stubbing `engines`
@@ -101,6 +91,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   clearSharedOverrides();
+  clearQueueOverrides();
   return closeDb();
 });
 beforeEach(() => {

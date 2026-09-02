@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { clearQueueOverrides, setQueueOverrides } from "./queue-mock";
 import { eq } from "drizzle-orm";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
 
@@ -52,11 +53,6 @@ beforeAll(async () => {
   // later `import` would hand back the mock and the real gateAppliesTo /
   // suppressesAsCosmetic (which we deliberately keep live) would be lost.
   const realAi = await import("@outrival/ai");
-  // Same reason, for the queue: NonRetriable must stay the REAL class or the
-  // pg-boss `work` wrapper's `instanceof` check silently stops recognising a
-  // terminal failure and retries it three times instead.
-  const realQueue = await import("@outrival/queue");
-
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
@@ -65,17 +61,17 @@ beforeAll(async () => {
   // The job body fans out through the typed pg-boss registry, so the capture lives
   // here. Without a started queue `enqueue` would throw
   // "Queue not started" and every substantive-path assertion would fail on the
-  // fan-out instead of on what it means to test.
-  mock.module("@outrival/queue", () => ({
-    ...realQueue,
+  // fan-out instead of on what it means to test. NonRetriable stays the REAL class
+  // (test/queue-mock.ts spreads the module) or the pg-boss `work` wrapper's
+  // `instanceof` check silently stops recognising a terminal failure and retries it.
+  setQueueOverrides({
     generateSignal: {
-      ...realQueue.generateSignal,
-      enqueue: async (payload: unknown) => {
+      enqueue: async (payload) => {
         triggered.push({ id: "generate-signal", payload });
         return "job-stub";
       },
     },
-  }));
+  });
 
   // lib/analytics is deliberately NOT mocked. Replacing it wholesale broke
   // digest-counts.test.ts (mock.module is process-global and the replacement
@@ -109,6 +105,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  clearQueueOverrides();
   // Guarded: if beforeAll failed, closeDb is undefined and an unguarded call
   // replaces the real setup error with a useless TypeError.
   await closeDb?.();

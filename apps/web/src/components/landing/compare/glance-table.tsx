@@ -44,7 +44,7 @@ export function GlanceTable({
             >
               <div
                 className={`px-4 py-3.5 font-medium ${
-                  it.self ? "text-primary" : ""
+                  it.self ? "text-link" : ""
                 }`}
               >
                 {it.name}

@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { clearQueueOverrides, recordEnqueues, setQueueOverrides } from "./queue-mock";
 import { eq } from "drizzle-orm";
 import { buildDeltaProof } from "@outrival/shared";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
@@ -23,29 +24,21 @@ interface EnqueuedVerify {
 let verifyEnqueued: EnqueuedVerify[] = [];
 
 beforeAll(async () => {
-  const realQueue = await import("@outrival/queue");
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/queue", () => ({
-    ...realQueue,
-    NonRetriable: realQueue.NonRetriable,
-    verifySignalDelta: {
-      queue: "verify-signal-delta",
-      enqueue: async (payload: EnqueuedVerify) => {
-        verifyEnqueued.push(payload);
-        return "job-id";
-      },
-    },
-  }));
+  setQueueOverrides({ verifySignalDelta: recordEnqueues(() => verifyEnqueued) });
 
   ({ interceptEmission: intercept, recordEmission } = await import(
     "../src/lib/emission-verification"
   ));
 });
 
-afterAll(() => closeDb());
+afterAll(() => {
+  clearQueueOverrides();
+  return closeDb();
+});
 beforeEach(() => {
   verifyEnqueued = [];
 });

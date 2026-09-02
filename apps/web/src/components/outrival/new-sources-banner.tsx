@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { SpinnerIcon, SparkleIcon, XIcon } from "@/components/icons";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { PLAN_LABELS } from "@outrival/shared";
 import { api } from "@/lib/api";
 import { sourceDefaultsQuery } from "@/lib/queries";
@@ -52,8 +53,8 @@ export function NewSourcesBanner() {
       toast.success(
         `Now collecting ${res.sources.map((s) => SOURCE_SHORT_LABELS[s]).join(", ")} on ${res.competitorsTouched} competitor${res.competitorsTouched === 1 ? "" : "s"}. First scans are queued.`,
       );
-    } catch {
-      toast.error("Couldn't enable them. Try again from Settings → General.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't enable them" });
     } finally {
       setApplying(false);
     }
@@ -67,7 +68,7 @@ export function NewSourcesBanner() {
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-primary/25 bg-primary/8 px-4 py-3">
-      <SparkleIcon className="size-4 shrink-0 text-primary" />
+      <SparkleIcon className="size-4 shrink-0 text-link" />
       <p className="min-w-0 flex-1 text-sm text-foreground">
         Your {PLAN_LABELS[data.plan]} plan covers{" "}
         {names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`}

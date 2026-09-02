@@ -11,6 +11,7 @@ import {
   PencilIcon,
 } from "@/components/icons";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { api, ApiError, type CrmDestination } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -100,11 +101,11 @@ export function CrmDestinations() {
     try {
       await api.deleteCrmDestination(target.id);
       toast.success(`${target.name} removed. Nothing is pushed there anymore.`);
-    } catch {
+    } catch (e) {
       // The row is already gone from the list, so put it back rather than leave
       // the user believing a destination that still receives pushes is deleted.
       await refresh();
-      toast.error("Couldn't remove the destination. Try again.");
+      toastApiError(e, { title: "Couldn't remove the destination" });
     }
   }
 
@@ -147,8 +148,8 @@ export function CrmDestinations() {
       const r = await api.testCrmDestination(id);
       if (r.ok) toast.success("Test push delivered.");
       else toast.error("Destination didn't accept the test (non-2xx).");
-    } catch {
-      toast.error("Test failed.");
+    } catch (e) {
+      toastApiError(e, { title: "Test failed" });
     } finally {
       setTestingId(null);
     }

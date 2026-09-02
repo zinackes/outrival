@@ -520,7 +520,10 @@ export function AskPanel({
         }}
       >
         <div className="rounded-lg border border-border bg-surface shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring">
+          {/* The placeholder is a worked example, not a name, and it clears on
+              the first keystroke (`ux:06`). */}
           <Textarea
+            aria-label="Ask a question about your competitors"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => {

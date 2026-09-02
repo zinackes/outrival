@@ -88,7 +88,7 @@ export function DemoForm({
         role="status"
         className="flex flex-col items-start justify-center rounded-xl border border-border bg-surface p-8"
       >
-        <CheckCircleIcon className="text-primary" size={24} />
+        <CheckCircleIcon className="text-link" size={24} />
         <h2 className="mt-4 text-xl font-semibold tracking-tight">
           {isSample ? "Thanks, your brief is queued." : "Thanks, we'll be in touch."}
         </h2>

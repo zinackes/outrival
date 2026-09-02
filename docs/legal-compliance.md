@@ -12,7 +12,10 @@ Built to the **EU/FR regulatory baseline as of July 2026**.
 
 ## Parameters this was built against
 
-- **Entity:** not incorporated yet → identity fields are placeholders (`[À COMPLÉTER]`).
+- **Entity:** not incorporated yet → the eight identity fields are placeholders
+  (`[À COMPLÉTER]`) and are published as such on `/legal-notice`, `/privacy` and
+  `/terms-of-sale`. `apps/web/test/legal-contacts.test.ts` pins that list, so
+  filling one of them fails until this checklist is updated with it.
 - **Audience:** B2B **and** B2C → consumer rights included (14-day withdrawal,
   withdrawal button, mediation).
 - **Language:** bilingual **FR + EN** with a per-document toggle.
@@ -56,8 +59,12 @@ SIRET or RCS is a real legal exposure — do **not** ship with placeholders.
 - [ ] `HOST` — confirm the actual website host (prod = OVHcloud per deploy notes;
       architecture doc also mentions Hetzner). OVHcloud public details are
       pre-filled; correct if wrong.
-- [ ] `CONTACT.privacy` (`privacy@`) and `CONTACT.security` (`security@`) —
-      provision these inboxes, or point them at `hello@outrival.app`.
+- [x] `CONTACT.privacy` and `CONTACT.security` — both point at
+      `hello@outrival.app` (the one live inbox). The dedicated `privacy@` /
+      `security@` addresses were published while nothing routed them, so a GDPR
+      request or a vulnerability report sent there reached nobody. Provision the
+      two mailboxes and flip the constants back in the same change;
+      `apps/web/test/legal-contacts.test.ts` guards the order.
 - [ ] CGV: confirm **VAT** treatment at checkout and add the **consumer mediator**
       details (mandatory for B2C) once appointed.
 - [ ] Verify `TURNSTILE_SECRET_KEY` is set on prod (referenced by the cookie table

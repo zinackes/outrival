@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { clearQueueOverrides, recordEnqueues, setQueueOverrides } from "./queue-mock";
 import { and, eq } from "drizzle-orm";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
 
@@ -40,23 +41,12 @@ let fetched: string[] = [];
 const HOST = "https://rival.com";
 
 beforeAll(async () => {
-  const realQueue = await import("@outrival/queue");
   const realContentFetch = await import("@outrival/scrapers/content-fetch");
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/queue", () => ({
-    ...realQueue,
-    NonRetriable: realQueue.NonRetriable,
-    generateSignal: {
-      queue: "generate-signal",
-      enqueue: async (payload: Enqueued) => {
-        enqueued.push(payload);
-        return "job-id";
-      },
-    },
-  }));
+  setQueueOverrides({ generateSignal: recordEnqueues(() => enqueued) });
   // Spread the REAL module: this mock is process-global and outlives the file,
   // so a partial one leaves every later file importing a module that reads
   // POST_FETCH_CAP with a SyntaxError, depending only on the order bun picked.
@@ -72,7 +62,10 @@ beforeAll(async () => {
   ({ runIngestAudiencePages: runIngest } = await import("../src/core/ingest-audience-pages"));
 });
 
-afterAll(() => closeDb());
+afterAll(() => {
+  clearQueueOverrides();
+  return closeDb();
+});
 beforeEach(() => {
   enqueued = [];
   pages = new Map();

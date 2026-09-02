@@ -185,7 +185,7 @@ export function EditableList({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
           {items.map((it, i) => (
             <div key={`${it}-${i}`} className="flex items-center gap-2 text-content">
-              <CheckIcon className="size-4 text-primary shrink-0" />
+              <CheckIcon className="size-4 text-link shrink-0" />
               <span className="break-words">{it}</span>
             </div>
           ))}

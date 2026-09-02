@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { clearQueueOverrides, recordEnqueues, setQueueOverrides } from "./queue-mock";
 import { and, eq } from "drizzle-orm";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
 import { clearSharedOverrides, setSharedOverrides } from "./shared-mock";
@@ -76,31 +77,21 @@ function capture(entries: Entry[]): string {
 }
 
 beforeAll(async () => {
-  const realQueue = await import("@outrival/queue");
     const realAi = await import("@outrival/ai");
   const realAnalytics = await import("../src/lib/analytics");
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/queue", () => ({
-    ...realQueue,
-    NonRetriable: realQueue.NonRetriable,
-    generateSignal: {
-      queue: "generate-signal",
-      enqueue: async (payload: Enqueued) => {
-        enqueued.push(payload);
-        return "job-id";
-      },
-    },
+  setQueueOverrides({
+    generateSignal: recordEnqueues(() => enqueued),
     classifyChange: {
-      queue: "classify-change",
-      enqueue: async (payload: { changeId: string }) => {
-        classified.push(payload.changeId);
+      enqueue: async (payload) => {
+        classified.push((payload as { changeId: string }).changeId);
         return "job-id";
       },
     },
-  }));
+  });
   mock.module("@outrival/ai", () => ({
     ...realAi,
     typeContentItems: async (batch: ReadonlyArray<{ title: string }>) => {
@@ -122,6 +113,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   clearSharedOverrides();
+  clearQueueOverrides();
   return closeDb();
 });
 beforeEach(() => {

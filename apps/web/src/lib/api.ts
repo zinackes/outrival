@@ -3316,6 +3316,13 @@ export interface QualityFeedbackInput {
   metadata?: Record<string, unknown>;
 }
 
+// The same verdict on many targets in one request — the shape the signals feed's
+// bulk dismiss sends (`code:PER-40`). No npsScore: a score is about one target.
+export interface QualityFeedbackBulkInput
+  extends Omit<QualityFeedbackInput, "targetId" | "npsScore"> {
+  targetIds: string[];
+}
+
 export interface QualityImmediateAction {
   type: string;
   description: string;
@@ -4012,6 +4019,18 @@ export const api = {
     request<{ ok: true }>(`/api/signals/${id}/snooze`, {
       method: "PATCH",
       body: JSON.stringify({ until }),
+    }),
+  // Bulk triage / snooze over a selection — one request for the whole set instead of
+  // one per row (`code:PER-40`). `until: null` un-snoozes, which is the Undo path.
+  setSignalsAction: (ids: string[], status: ActionStatus | null, note?: string) =>
+    request<{ ok: true; count: number }>(`/api/signals/bulk-action`, {
+      method: "POST",
+      body: JSON.stringify({ ids, status, note }),
+    }),
+  snoozeSignals: (ids: string[], until: string | null) =>
+    request<{ ok: true; count: number }>(`/api/signals/bulk-snooze`, {
+      method: "POST",
+      body: JSON.stringify({ ids, until }),
     }),
   getSignalDetail: (id: string) =>
     request<{ signal: SignalDetail }>(`/api/signals/${id}/detail`),
@@ -4828,6 +4847,19 @@ export const api = {
   getNpsStatus: () => request<{ eligible: boolean }>(`/api/feedback-quality/nps-status`),
   deleteQualityFeedback: (id: string) =>
     request<{ ok: true }>(`/api/feedback-quality/${id}`, { method: "DELETE" }),
+  // One verdict over many targets, and the Undo that cancels them all (`code:PER-40`).
+  // bulk-delete is a POST because the ids travel in a body.
+  submitQualityFeedbackBulk: (input: QualityFeedbackBulkInput) =>
+    request<{
+      ok: true;
+      feedbackIds: string[];
+      immediateAction: QualityImmediateAction | null;
+    }>(`/api/feedback-quality/bulk`, { method: "POST", body: JSON.stringify(input) }),
+  deleteQualityFeedbackBulk: (ids: string[]) =>
+    request<{ ok: true; count: number }>(`/api/feedback-quality/bulk-delete`, {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
 
   // --- Anti-hallucination (patch-24): user acknowledges a flagged output ---
   acknowledgeAiQuality: (targetType: "signal" | "battle_card" | "digest", targetId: string) =>

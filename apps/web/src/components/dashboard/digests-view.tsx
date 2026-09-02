@@ -403,7 +403,7 @@ function LeadBrief({
           stops being a sentence you can read in one pass. */}
       <div className="flex max-w-[78ch] flex-col p-5">
         <div className="flex items-center gap-2.5 text-dense text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5 text-meta font-semibold uppercase tracking-wider text-primary">
+          <span className="inline-flex items-center gap-1.5 text-meta font-semibold uppercase tracking-wider text-link">
             <span aria-hidden className="size-1.5 rounded-full bg-primary" />
             {kicker}
           </span>

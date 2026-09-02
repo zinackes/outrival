@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   qualityFeedback,
   signals,
@@ -61,20 +61,23 @@ interface ImmediateAction {
   description: string;
 }
 
-// Fires the visible side-effect of a "not_useful" verdict. Every mutation is
+// Fires the visible side-effect of a "not_useful" verdict, over a SET of targets:
+// the feed dismisses a whole selection at once, and one statement per row meant one
+// request per row from the browser (`code:PER-40`). The single-verdict route calls it
+// with a one-element list, so there is one code path either way. Every mutation is
 // scoped to the user's org so feedback can never touch another workspace's data.
 async function triggerImmediateAction(
-  input: FeedbackInput,
+  input: Omit<FeedbackInput, "targetId"> & { targetIds: string[] },
   ctx: { userId: string; orgId: string },
 ): Promise<ImmediateAction | null> {
-  if (input.verdict !== "not_useful") return null;
+  if (input.verdict !== "not_useful" || input.targetIds.length === 0) return null;
 
   switch (input.targetType) {
     case "signal": {
       await db
         .update(signals)
         .set({ hiddenForUserAt: new Date() })
-        .where(and(eq(signals.id, input.targetId), eq(signals.orgId, ctx.orgId)));
+        .where(and(inArray(signals.id, input.targetIds), eq(signals.orgId, ctx.orgId)));
       return {
         type: "signal_hidden",
         description: "This signal has been hidden from your feed.",
@@ -87,7 +90,7 @@ async function triggerImmediateAction(
         .set({ status: "dismissed" })
         .where(
           and(
-            eq(competitorCandidates.id, input.targetId),
+            inArray(competitorCandidates.id, input.targetIds),
             eq(competitorCandidates.orgId, ctx.orgId),
           ),
         );
@@ -102,7 +105,7 @@ async function triggerImmediateAction(
         .update(battleCards)
         .set({ flaggedForRegenerationAt: new Date() })
         .where(
-          and(eq(battleCards.id, input.targetId), eq(battleCards.orgId, ctx.orgId)),
+          and(inArray(battleCards.id, input.targetIds), eq(battleCards.orgId, ctx.orgId)),
         );
       return {
         type: "battle_card_flagged",
@@ -121,7 +124,7 @@ async function triggerImmediateAction(
         await db
           .update(signals)
           .set({ severityOverride: targetSeverity, severityOverriddenBy: ctx.userId })
-          .where(and(eq(signals.id, input.targetId), eq(signals.orgId, ctx.orgId)));
+          .where(and(inArray(signals.id, input.targetIds), eq(signals.orgId, ctx.orgId)));
         return { type: "severity_adjusted", description: "The severity has been adjusted." };
       }
       return null;
@@ -136,17 +139,17 @@ async function triggerImmediateAction(
 // Undoes the immediate action when a user cancels their feedback, so the UI stays
 // coherent ("not useful" hid it → deleting un-hides it). Org-scoped like above.
 async function revertImmediateAction(
-  row: { targetType: string; targetId: string; verdict: string },
+  row: { targetType: string; targetIds: string[]; verdict: string },
   orgId: string,
 ): Promise<void> {
-  if (row.verdict !== "not_useful") return;
+  if (row.verdict !== "not_useful" || row.targetIds.length === 0) return;
 
   switch (row.targetType) {
     case "signal":
       await db
         .update(signals)
         .set({ hiddenForUserAt: null })
-        .where(and(eq(signals.id, row.targetId), eq(signals.orgId, orgId)));
+        .where(and(inArray(signals.id, row.targetIds), eq(signals.orgId, orgId)));
       return;
     case "discovery_suggestion":
       await db
@@ -154,7 +157,7 @@ async function revertImmediateAction(
         .set({ status: "new" })
         .where(
           and(
-            eq(competitorCandidates.id, row.targetId),
+            inArray(competitorCandidates.id, row.targetIds),
             eq(competitorCandidates.orgId, orgId),
           ),
         );
@@ -163,13 +166,13 @@ async function revertImmediateAction(
       await db
         .update(battleCards)
         .set({ flaggedForRegenerationAt: null })
-        .where(and(eq(battleCards.id, row.targetId), eq(battleCards.orgId, orgId)));
+        .where(and(inArray(battleCards.id, row.targetIds), eq(battleCards.orgId, orgId)));
       return;
     case "severity_classification":
       await db
         .update(signals)
         .set({ severityOverride: null, severityOverriddenBy: null })
-        .where(and(eq(signals.id, row.targetId), eq(signals.orgId, orgId)));
+        .where(and(inArray(signals.id, row.targetIds), eq(signals.orgId, orgId)));
       return;
     default:
       return;
@@ -192,48 +195,47 @@ feedbackQualityRouter.post("/", async (c) => {
   const data = parsed.data;
 
   // Upsert on (user, targetType, targetId): a second verdict on the same target
-  // replaces the first so the user can change their mind.
-  const existing = await db.query.qualityFeedback.findFirst({
-    where: and(
-      eq(qualityFeedback.userId, user.id),
-      eq(qualityFeedback.targetType, data.targetType),
-      eq(qualityFeedback.targetId, data.targetId),
-    ),
-  });
-
-  let feedbackId: string;
-  if (existing) {
-    feedbackId = existing.id;
-    await db
-      .update(qualityFeedback)
-      .set({
+  // replaces the first so the user can change their mind. One statement, onto the
+  // unique index that now backs that triple — the read-then-branch it replaces let
+  // a double-click see "no row" twice and insert twice, and every reader
+  // downstream counts rows without deduping (`code:COR-15`).
+  const [row] = await db
+    .insert(qualityFeedback)
+    .values({
+      userId: user.id,
+      orgId,
+      targetType: data.targetType,
+      targetId: data.targetId,
+      verdict: data.verdict,
+      reason: data.reason ?? null,
+      npsScore: data.npsScore ?? null,
+      freeText: data.freeText ?? null,
+      metadata: data.metadata ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [
+        qualityFeedback.userId,
+        qualityFeedback.targetType,
+        qualityFeedback.targetId,
+      ],
+      // orgId stays as first written: the pair is scoped by user, and a user
+      // cannot move org without the row being cascaded away with them.
+      set: {
         verdict: data.verdict,
         reason: data.reason ?? null,
         npsScore: data.npsScore ?? null,
         freeText: data.freeText ?? null,
         metadata: data.metadata ?? null,
         createdAt: new Date(),
-      })
-      .where(eq(qualityFeedback.id, existing.id));
-  } else {
-    const [inserted] = await db
-      .insert(qualityFeedback)
-      .values({
-        userId: user.id,
-        orgId,
-        targetType: data.targetType,
-        targetId: data.targetId,
-        verdict: data.verdict,
-        reason: data.reason ?? null,
-        npsScore: data.npsScore ?? null,
-        freeText: data.freeText ?? null,
-        metadata: data.metadata ?? null,
-      })
-      .returning({ id: qualityFeedback.id });
-    feedbackId = inserted!.id;
-  }
+      },
+    })
+    .returning({ id: qualityFeedback.id });
+  const feedbackId = row!.id;
 
-  const immediateAction = await triggerImmediateAction(data, { userId: user.id, orgId });
+  const immediateAction = await triggerImmediateAction(
+    { ...data, targetIds: [data.targetId] },
+    { userId: user.id, orgId },
+  );
 
   // PostHog server capture is a no-op when the key is absent (consent gating lives
   // in the web client; the server only records when configured).
@@ -244,6 +246,112 @@ feedbackQualityRouter.post("/", async (c) => {
   });
 
   return c.json({ ok: true, feedbackId, immediateAction });
+});
+
+// POST /api/feedback-quality/bulk — the same verdict on many targets at once.
+// The signals feed dismisses a shift-selected range, and it did so by firing one POST
+// per row plus one DELETE per row on Undo (`code:PER-40`). One upsert and one
+// side-effect statement instead; the returned ids are what the Undo sends back.
+const bulkFeedbackSchema = feedbackInputSchema
+  .omit({ targetId: true, npsScore: true })
+  .extend({ targetIds: z.array(z.string().min(1)).min(1).max(500) });
+
+feedbackQualityRouter.post("/bulk", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = bulkFeedbackSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json(
+      errorBody("invalid_input", parsed.error.issues[0]?.message ?? "Invalid input"),
+      400,
+    );
+  }
+  const data = parsed.data;
+  // De-duplicated: the same target twice in one payload would be two conflicting
+  // rows in a single statement, which Postgres refuses outright.
+  const targetIds = [...new Set(data.targetIds)];
+
+  const rows = await db
+    .insert(qualityFeedback)
+    .values(
+      targetIds.map((targetId) => ({
+        userId: user.id,
+        orgId,
+        targetType: data.targetType,
+        targetId,
+        verdict: data.verdict,
+        reason: data.reason ?? null,
+        freeText: data.freeText ?? null,
+        metadata: data.metadata ?? null,
+      })),
+    )
+    .onConflictDoUpdate({
+      target: [
+        qualityFeedback.userId,
+        qualityFeedback.targetType,
+        qualityFeedback.targetId,
+      ],
+      set: {
+        verdict: data.verdict,
+        reason: data.reason ?? null,
+        freeText: data.freeText ?? null,
+        metadata: data.metadata ?? null,
+        createdAt: new Date(),
+      },
+    })
+    .returning({ id: qualityFeedback.id });
+
+  const immediateAction = await triggerImmediateAction(
+    { ...data, targetIds },
+    { userId: user.id, orgId },
+  );
+
+  await captureServerEvent(user.id, "quality_feedback_given_bulk", {
+    target_type: data.targetType,
+    verdict: data.verdict,
+    reason: data.reason,
+    count: rows.length,
+  });
+
+  return c.json({ ok: true, feedbackIds: rows.map((r) => r.id), immediateAction });
+});
+
+// POST /api/feedback-quality/bulk-delete — cancel many verdicts and revert their
+// actions. POST rather than DELETE: the ids travel in a body, which DELETE cannot
+// carry portably. Grouped by (targetType, verdict) so a mixed batch still reverts
+// with one statement per kind rather than one per row.
+feedbackQualityRouter.post("/bulk-delete", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown };
+  const ids = Array.isArray(body.ids)
+    ? body.ids.filter((x): x is string => typeof x === "string").slice(0, 500)
+    : [];
+  if (!ids.length) return c.json({ ok: true, count: 0 });
+
+  // Only the author's own rows, so a forged id list cannot revert someone else's.
+  const rows = await db
+    .delete(qualityFeedback)
+    .where(and(eq(qualityFeedback.userId, user.id), inArray(qualityFeedback.id, ids)))
+    .returning({
+      targetType: qualityFeedback.targetType,
+      targetId: qualityFeedback.targetId,
+      verdict: qualityFeedback.verdict,
+    });
+
+  const groups = new Map<string, { targetType: string; verdict: string; targetIds: string[] }>();
+  for (const row of rows) {
+    const key = `${row.targetType}|${row.verdict}`;
+    const group = groups.get(key);
+    if (group) group.targetIds.push(row.targetId);
+    else groups.set(key, { ...row, targetIds: [row.targetId] });
+  }
+  for (const group of groups.values()) await revertImmediateAction(group, orgId);
+
+  return c.json({ ok: true, count: rows.length });
 });
 
 // GET /api/feedback-quality/nps-status — whether the periodic NPS prompt may show.
@@ -332,7 +440,7 @@ feedbackQualityRouter.delete("/:id", async (c) => {
   }
 
   await db.delete(qualityFeedback).where(eq(qualityFeedback.id, id));
-  await revertImmediateAction(row, orgId);
+  await revertImmediateAction({ ...row, targetIds: [row.targetId] }, orgId);
 
   return c.json({ ok: true });
 });

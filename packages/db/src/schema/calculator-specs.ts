@@ -1,4 +1,5 @@
 import { pgTable, text, integer, jsonb, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { competitors } from "./competitors";
 
 // How to drive ONE competitor's public pricing calculator (Pricing Intelligence
 // P4) — the same "cache de parser" idea as parser_extractors, applied to an
@@ -20,7 +21,12 @@ export const calculatorSpecs = pgTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
-    competitorId: text("competitor_id").notNull(),
+    // FK, like every other competitor-scoped table: without it a deleted
+    // competitor left its calculator recipe behind, keyed to an id that resolves
+    // to nothing and is replayed by the pricing probe (`code:COR-07` batch).
+    competitorId: text("competitor_id")
+      .notNull()
+      .references(() => competitors.id, { onDelete: "cascade" }),
     /** The page the spec was discovered on — a spec is only replayed there. */
     url: text("url").notNull(),
     /** CalculatorSpec (@outrival/shared): { version, control, total }. */

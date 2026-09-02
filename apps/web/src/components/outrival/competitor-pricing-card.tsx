@@ -193,7 +193,7 @@ export function CompetitorPricingCard({
           href={competitor.pricingDemoUrl}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1 text-dense text-primary hover:underline"
+          className="inline-flex items-center gap-1 text-dense text-link hover:underline"
         >
           <ArrowSquareOutIcon className="size-3.5" /> Demo / contact page
         </a>

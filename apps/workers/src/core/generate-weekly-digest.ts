@@ -150,14 +150,33 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
     // schedule retries them instead of silently skipping their week.
     const genFailures: string[] = [];
 
+    // This week's digest row for every org, in one read. It needs nothing per-org —
+    // the week and the period are the same for every row — so asking for it org by
+    // org was a round trip per tenant before any work could start (`code:PER-10`).
+    // Rows with no sentAt are kept: an unsent row from a failed attempt is what the
+    // generation below updates instead of inserting a second one.
+    const digestThisWeek = new Map(
+      orgs.length === 0
+        ? []
+        : (
+            await db
+              .select({ id: digests.id, orgId: digests.orgId, sentAt: digests.sentAt })
+              .from(digests)
+              .where(
+                and(
+                  inArray(
+                    digests.orgId,
+                    orgs.map((o) => o.id),
+                  ),
+                  eq(digests.weekStart, isoDate(weekStart)),
+                  eq(digests.period, "weekly"),
+                ),
+              )
+          ).map((d) => [d.orgId, d] as const),
+    );
+
     for (const org of orgs) {
-      const existing = await db.query.digests.findFirst({
-        where: and(
-          eq(digests.orgId, org.id),
-          eq(digests.weekStart, isoDate(weekStart)),
-          eq(digests.period, "weekly"),
-        ),
-      });
+      const existing = digestThisWeek.get(org.id);
       if (existing?.sentAt) {
         logger.log("Digest already sent for org/week, skipping", {
           orgId: org.id,
@@ -281,7 +300,7 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
           await sendEmail({
             from: ALERT_FROM,
             to: org.digestEmail,
-            subject: `Your Monday Competitive Briefing — all quiet (week of ${isoDate(weekStart)})`,
+            subject: `Your Monday Competitive Briefing: all quiet (week of ${isoDate(weekStart)})`,
             html,
             ...(unsubscribeUrl
               ? {
@@ -531,7 +550,7 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
             to: org.digestEmail,
             // Lever 11 — the weekly send IS the product's habit surface; brand
             // it as the Monday briefing ritual, not a generic digest.
-            subject: `Your Monday Competitive Briefing — week of ${isoDate(weekStart)}`,
+            subject: `Your Monday Competitive Briefing (week of ${isoDate(weekStart)})`,
             html,
             // One-click unsubscribe headers improve inbox placement and let
             // mail clients surface their native unsubscribe affordance.

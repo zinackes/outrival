@@ -8,6 +8,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { InferSelectModel, InferInsertModel } from "drizzle-orm";
 import { organizations } from "./organizations";
 import { competitors } from "./competitors";
@@ -51,6 +52,19 @@ export const products = pgTable(
   (t) => [
     index("products_org_idx").on(t.orgId),
     uniqueIndex("products_self_competitor_uq").on(t.selfCompetitorId),
+    // "Exactly one primary per org" was a comment, and two concurrent promotes
+    // could each demote the other's target and set their own, leaving an org with
+    // two primaries (`code:COR-07`). A partial unique index makes the DB refuse
+    // the second one.
+    //
+    // It enforces AT MOST one, which is the half a constraint can express — "at
+    // least one" would need a trigger or a deferred check, and the zero case only
+    // ever arose from the demote and the promote being two separate statements.
+    // They are one transaction now (apps/api/src/routes/products.ts), so the
+    // window is closed on that side rather than papered over here.
+    uniqueIndex("products_org_primary_uq")
+      .on(t.orgId)
+      .where(sql`${t.isPrimary}`),
   ],
 );
 

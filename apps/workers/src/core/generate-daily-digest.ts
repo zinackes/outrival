@@ -98,6 +98,30 @@ export async function runGenerateDailyDigest(payload?: { timestamp?: Date }) {
       where: eq(organizations.digestEnabled, true),
     });
 
+    // One read for every org's timezone instead of one per org. The prefs are the
+    // due-check's INPUT — the local morning hour cannot be known without them — so
+    // this cannot be narrowed to the orgs that turn out to be due; what it can be is
+    // a single round trip on a job that runs every hour (`code:PER-10`).
+    const prefsByOrg = new Map(
+      orgs.length === 0
+        ? []
+        : (
+            await db
+              .select({
+                orgId: orgNotificationPreferences.orgId,
+                timezone: orgNotificationPreferences.timezone,
+                quietHoursEnd: orgNotificationPreferences.quietHoursEnd,
+              })
+              .from(orgNotificationPreferences)
+              .where(
+                inArray(
+                  orgNotificationPreferences.orgId,
+                  orgs.map((o) => o.id),
+                ),
+              )
+          ).map((p) => [p.orgId, p] as const),
+    );
+
     let sent = 0;
     let skipped = 0;
 
@@ -107,9 +131,7 @@ export async function runGenerateDailyDigest(payload?: { timestamp?: Date }) {
         continue;
       }
 
-      const prefs = await db.query.orgNotificationPreferences.findFirst({
-        where: eq(orgNotificationPreferences.orgId, org.id),
-      });
+      const prefs = prefsByOrg.get(org.id);
       const timezone = prefs?.timezone ?? "UTC";
       const morningHour = prefs?.quietHoursEnd ?? defaultEnd;
 
@@ -219,7 +241,7 @@ export async function runGenerateDailyDigest(payload?: { timestamp?: Date }) {
           from: ALERT_FROM,
           to: org.digestEmail,
           // Lever 11 — same briefing branding as the weekly send.
-          subject: `Your Daily Briefing — ${deferred.length} competitor update${deferred.length > 1 ? "s" : ""}`,
+          subject: `Your Daily Briefing: ${deferred.length} competitor update${deferred.length > 1 ? "s" : ""}`,
           html,
           ...(unsubscribeUrl
             ? {

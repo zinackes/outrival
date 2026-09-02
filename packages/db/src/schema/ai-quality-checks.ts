@@ -79,6 +79,12 @@ export const aiQualityChecks = pgTable(
     index("ai_quality_checks_flagged_idx").on(t.flaggedForHumanReview, t.createdAt),
     // Metrics: hallucination rate per task over a window.
     index("ai_quality_checks_task_idx").on(t.aiTask, t.createdAt),
+    // The three above all LEAD with something else, so a date-only range scan can
+    // use none of them — and the ops dashboard's three aggregates
+    // (getQualityReviewStats / getQualityByTask / getConfidenceDistribution) filter
+    // on nothing but `created_at >= since`, one row per graded generation
+    // (`code:PER-16`).
+    index("ai_quality_checks_created_idx").on(t.createdAt),
   ],
 );
 

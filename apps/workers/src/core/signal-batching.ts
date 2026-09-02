@@ -1,5 +1,5 @@
 import { logger } from "../lib/job-logger";
-import { and, eq, gte, inArray, isNull, notInArray } from "drizzle-orm";
+import { and, asc, count, eq, gte, inArray, isNull, min, notInArray } from "drizzle-orm";
 import {
   db,
   signals,
@@ -40,6 +40,7 @@ interface Candidate {
 export async function runSignalBatching() {
     const windowHours = Number(process.env.BATCHING_WINDOW_HOURS ?? 24);
     const minSignals = Number(process.env.BATCHING_MIN_SIGNALS ?? 3);
+    const maxGroups = Number(process.env.BATCHING_MAX_GROUPS ?? 500);
     const windowStart = new Date(Date.now() - windowHours * 3600_000);
 
     // Orgs that explicitly turned batching off (the default is on, so orgs without
@@ -48,8 +49,53 @@ export async function runSignalBatching() {
       where: eq(orgNotificationPreferences.batchingEnabled, false),
       columns: { orgId: true },
     });
-    const disabled = new Set(disabledRows.map((r) => r.orgId));
+    const disabled = disabledRows.map((r) => r.orgId);
 
+    // One filter object, used by both queries below: they must select exactly the
+    // same candidate rows or the group counts would be measured on one population
+    // and the batches built from another.
+    const candidateFilter = and(
+      isNull(signals.batchedIntoId),
+      notInArray(signals.severity, ["critical", "high"]),
+      gte(signals.createdAt, windowStart),
+      // In SQL, not in the JS grouping loop: a disabled org's signals used to be
+      // fetched platform-wide and then dropped, and they would now spend the run's
+      // group budget too.
+      disabled.length > 0 ? notInArray(signals.orgId, disabled) : undefined,
+    );
+
+    // Which (org, competitor, category) groups actually qualify — aggregated in the
+    // database, oldest first, capped. The select this replaces shipped EVERY
+    // unbatched signal on the platform to the worker and grouped them in memory, so
+    // its cost grew with total platform volume rather than with the work to be done
+    // (`code:PER-14`), and the AI call per group made the run itself unbounded.
+    // FIFO by age, so the cap defers a group rather than starving it: everything
+    // batched here leaves the candidate pool for the next run.
+    const qualifying = await db
+      .select({
+        orgId: signals.orgId,
+        competitorId: signals.competitorId,
+        category: signals.category,
+      })
+      .from(signals)
+      .where(candidateFilter)
+      .groupBy(signals.orgId, signals.competitorId, signals.category)
+      .having(gte(count(), minSignals))
+      .orderBy(asc(min(signals.createdAt)))
+      .limit(maxGroups);
+
+    if (qualifying.length === 0) {
+      logger.log("Completed signal-batching", { batchesCreated: 0, candidates: 0 });
+      return { batchesCreated: 0 };
+    }
+
+    const wanted = new Set(
+      qualifying.map((g) => `${g.orgId}|${g.competitorId}|${g.category}`),
+    );
+
+    // Narrowed to the competitors that carry a qualifying group. That can still
+    // over-fetch — another category of the same competitor — so `wanted` below is
+    // what decides, and the count is re-checked on the rows actually returned.
     const candidates: Candidate[] = await db
       .select({
         id: signals.id,
@@ -65,17 +111,18 @@ export async function runSignalBatching() {
       .innerJoin(competitors, eq(signals.competitorId, competitors.id))
       .where(
         and(
-          isNull(signals.batchedIntoId),
-          notInArray(signals.severity, ["critical", "high"]),
-          gte(signals.createdAt, windowStart),
+          candidateFilter,
+          inArray(signals.competitorId, [
+            ...new Set(qualifying.map((g) => g.competitorId)),
+          ]),
         ),
       );
 
     // Group by (org, competitor, category).
     const groups = new Map<string, Candidate[]>();
     for (const c of candidates) {
-      if (disabled.has(c.orgId)) continue;
       const key = `${c.orgId}|${c.competitorId}|${c.category}`;
+      if (!wanted.has(key)) continue;
       const arr = groups.get(key);
       if (arr) arr.push(c);
       else groups.set(key, [c]);

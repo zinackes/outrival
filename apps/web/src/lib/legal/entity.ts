@@ -39,20 +39,31 @@ export const ENTITY = {
   country: "France",
 } as const;
 
-/** Contact addresses. `general` exists today; the others should be provisioned. */
+/**
+ * Contact addresses. All three resolve to the single inbox that exists today.
+ *
+ * `privacy@` and `security@` were published as the channel for GDPR requests
+ * ("we respond within one month" — the art. 12(3) deadline) and for
+ * vulnerability disclosure, while no DNS or forwarding rule ever created them:
+ * mail sent to either address reached nobody, so the pages advertised a right
+ * that could not be exercised (`ux:15`). A published address has to receive; a
+ * dedicated mailbox does not.
+ *
+ * Once the two inboxes are provisioned, point these back at
+ * `privacy@outrival.app` / `security@outrival.app` in the same change. Every
+ * page reads these constants, so nothing else moves.
+ *
+ * A DPO is deliberately absent: one is not mandatory for an activity that is
+ * not large-scale monitoring of special-category data, and `/privacy` says so
+ * in as many words.
+ */
 export const CONTACT = {
-  /** Live inbox used across the site today. */
+  /** Live inbox, monitored today. */
   general: "hello@outrival.app",
-  /** Data-protection / GDPR requests. TODO: provision this inbox (recommended). */
-  privacy: "privacy@outrival.app",
-  /** Security disclosures. TODO: provision (recommended). */
-  security: "security@outrival.app",
-  /**
-   * Data Protection Officer. A DPO is NOT mandatory for a micro-entity whose
-   * core activity is not large-scale monitoring of special-category data, so
-   * this stays a general privacy contact unless/until a DPO is appointed.
-   */
-  dpo: TODO,
+  /** Data-protection / GDPR requests. Dedicated inbox not provisioned yet. */
+  privacy: "hello@outrival.app",
+  /** Security disclosures. Dedicated inbox not provisioned yet. */
+  security: "hello@outrival.app",
 } as const;
 
 /** Domains operated by Outrival. `outrival.app` is the canonical domain. */

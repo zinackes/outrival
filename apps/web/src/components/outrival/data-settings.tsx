@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { DownloadSimpleIcon, SpinnerIcon } from "@/components/icons";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { PLAN_LIMITS } from "@outrival/shared";
 import { api } from "@/lib/api";
 import { planQuery } from "@/lib/queries";
@@ -46,8 +47,8 @@ export function DataSettings() {
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Export ready");
-    } catch {
-      toast.error("Could not export your data");
+    } catch (e) {
+      toastApiError(e, { title: "Could not export your data" });
     } finally {
       setBusy(false);
     }

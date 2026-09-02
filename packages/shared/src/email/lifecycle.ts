@@ -6,10 +6,20 @@ import { escapeHtml } from "./escape-html";
 // render functions (no DB, no Resend) so they stay in @outrival/shared and are easy
 // to test; the worker sends the result. Same shell + palette as the digest.
 
+// Every lifecycle email goes to organizations.digestEmail and its send is gated on
+// the same organizations.digestEnabled flag as the digests, so it carries the same
+// one-click footer the digest does (ux:45) — one link that stops all of them.
+// Absent URL → no footer, the same degradation contract as renderDigestEmail's.
+function unsubscribeFooter(unsubscribeUrl?: string): string {
+  if (!unsubscribeUrl) return "";
+  return `<div ${e("faint", t("meta", "margin-top:32px;letter-spacing:normal;"))}>Outrival · Automated competitive intelligence · <a href="${escapeHtml(unsubscribeUrl)}" ${e("faint", "text-decoration:underline;")}>Unsubscribe</a></div>`;
+}
+
 // Brick 1 — D0 welcome digest: "here's your starting position; we'll email when it moves."
 export function renderWelcomeEmail(input: {
   competitorNames: string[];
   dashboardUrl: string;
+  unsubscribeUrl?: string;
 }): { subject: string; html: string } {
   const count = input.competitorNames.length;
   const list =
@@ -23,14 +33,15 @@ export function renderWelcomeEmail(input: {
 <h1 ${e("text", t("title", "margin:0 0 12px;"))}>You're all set.</h1>
 <div ${e("muted", t("body", "margin-bottom:20px;"))}>
   We're now tracking ${count} competitor${count === 1 ? "" : "s"} and have captured where they
-  stand today — pricing, hiring, reviews and more. From here, we watch for changes and email
+  stand today: pricing, hiring, reviews and more. From here, we watch for changes and email
   you the moment something moves.
 </div>
 ${list}
 ${emailButton(input.dashboardUrl, "Open your dashboard")}
-<div ${e("faint", t("dense", "margin-top:28px;"))}>You'll only hear from us when it matters.</div>`;
+<div ${e("faint", t("dense", "margin-top:28px;"))}>You'll only hear from us when it matters.</div>
+${unsubscribeFooter(input.unsubscribeUrl)}`;
   return {
-    subject: "You're all set — here's your competitive starting position",
+    subject: "You're all set. Here's your competitive starting position",
     html: emailShell(inner, 520, "We're watching your competitors from today."),
   };
 }
@@ -43,6 +54,7 @@ export function renderCelebrationEmail(input: {
   insight: string;
   soWhat?: string | null;
   signalUrl: string;
+  unsubscribeUrl?: string;
 }): { subject: string; html: string } {
   // The one change IS the email, so it keeps a card: a single object to look at,
   // where the digest's boxless run of rows would have nothing to separate.
@@ -55,9 +67,10 @@ export function renderCelebrationEmail(input: {
   ${input.soWhat ? `<div ${e("muted", t("body"))}>→ ${escapeHtml(input.soWhat)}</div>` : ""}
 </div>
 ${emailButton(input.signalUrl, "See what changed")}
-<div ${e("faint", t("dense", "margin-top:28px;"))}>This is the first of many. We'll keep watching.</div>`;
+<div ${e("faint", t("dense", "margin-top:28px;"))}>This is the first of many. We'll keep watching.</div>
+${unsubscribeFooter(input.unsubscribeUrl)}`;
   return {
-    subject: `Your monitoring just paid off — ${input.competitorName} moved`,
+    subject: `Your monitoring just paid off. ${input.competitorName} moved`,
     html: emailShell(inner, 520, input.insight),
   };
 }
@@ -71,6 +84,7 @@ export function renderMonthlyRecapEmail(input: {
   busiestName?: string | null;
   biggestInsight?: string | null;
   recapUrl: string;
+  unsubscribeUrl?: string;
 }): { subject: string; html: string } {
   // Figures the product measured: sans + tabular-nums, never mono (DESIGN.md §3).
   const stat = (n: number, label: string) =>
@@ -92,7 +106,8 @@ ${
     : ""
 }
 ${emailButton(input.recapUrl, "See your full recap →")}
-<div ${e("faint", t("dense", "margin-top:28px;"))}>A quick look back — tap through your month.</div>`;
+<div ${e("faint", t("dense", "margin-top:28px;"))}>A quick look back. Tap through your month.</div>
+${unsubscribeFooter(input.unsubscribeUrl)}`;
   return {
     subject: `Your ${input.monthLabel} competitive recap`,
     html: emailShell(inner, 520, `${input.totalMoves} moves across ${input.competitorsTracked} competitors.`),

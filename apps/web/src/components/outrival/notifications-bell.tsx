@@ -251,7 +251,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
                     variant="ghost"
                     size="sm"
                     onClick={markAllRead}
-                    className="h-7 px-2 text-xs text-primary hover:text-primary"
+                    className="h-7 px-2 text-xs text-link hover:text-link"
                   >
                     <CheckIcon size={16} /> Mark all read
                   </Button>

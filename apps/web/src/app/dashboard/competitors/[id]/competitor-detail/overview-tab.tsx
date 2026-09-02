@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { classifyLogoName, storySummary, type AnalysisStatus } from "@outrival/shared";
-import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import {
   ArrowSquareOutIcon,
   CaretRightIcon,
@@ -401,8 +401,8 @@ export function OverviewTab({
       const res = await api.translateCompetitorOverview(competitorId);
       setTranslated(res.translated);
       setShowOriginal(false);
-    } catch {
-      toast.error("Couldn't translate right now. Showing the original.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't translate right now" });
     } finally {
       setTranslating(false);
     }

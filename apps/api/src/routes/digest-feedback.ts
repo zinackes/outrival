@@ -130,27 +130,26 @@ digestFeedbackRouter.post("/", async (c) => {
     return c.html(page("Thanks for your feedback!"));
   }
 
-  const existing = await db.query.qualityFeedback.findFirst({
-    where: and(
-      eq(qualityFeedback.userId, owner.id),
-      eq(qualityFeedback.targetType, "digest"),
-      eq(qualityFeedback.targetId, payload.digestId),
-    ),
-  });
-  if (existing) {
-    await db
-      .update(qualityFeedback)
-      .set({ verdict: payload.verdict, createdAt: new Date() })
-      .where(eq(qualityFeedback.id, existing.id));
-  } else {
-    await db.insert(qualityFeedback).values({
+  // Upsert, not read-then-branch. The link lives in an email, so the two clicks
+  // that race are the normal case — a second tab, or a mail client prefetching
+  // the URL — and both used to see "no row" and both insert (`code:COR-15`).
+  await db
+    .insert(qualityFeedback)
+    .values({
       userId: owner.id,
       orgId: payload.orgId,
       targetType: "digest",
       targetId: payload.digestId,
       verdict: payload.verdict,
+    })
+    .onConflictDoUpdate({
+      target: [
+        qualityFeedback.userId,
+        qualityFeedback.targetType,
+        qualityFeedback.targetId,
+      ],
+      set: { verdict: payload.verdict, createdAt: new Date() },
     });
-  }
 
   return c.html(
     page(

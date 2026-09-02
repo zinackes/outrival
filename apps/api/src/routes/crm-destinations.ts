@@ -6,12 +6,20 @@ import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, isFeatureAllowed } from "../lib/plan";
 import { isSafeWebhookUrl, sendWebhook } from "../lib/crm-webhook";
+import { encryptSecret, isSecretEncryptionConfigured, readStoredSecret } from "@outrival/shared";
 
 type Variables = { user: { id: string } };
 
 export const crmDestinationsRouter = new Hono<{ Variables: Variables }>();
 
 crmDestinationsRouter.use("*", authMiddleware);
+
+// The signing secret is stored AES-256-GCM-encrypted, like the OAuth tokens in the
+// sibling `oauth_connections` (code:SEC-08): it authenticates every webhook this
+// product sends, so a Neon backup or branch leak would otherwise hand an attacker
+// the ability to forge signed payloads. No key configured means no secret stored —
+// refusing is the only alternative to writing plaintext.
+const ENCRYPTION_UNCONFIGURED = "secret_encryption_unconfigured";
 
 // Outbound webhook destinations (Phase C). Org-scoped. Secrets are never returned;
 // the list exposes only `hasSecret`. See docs/distribution-team.md.
@@ -54,7 +62,12 @@ crmDestinationsRouter.post("/", async (c) => {
   const url = typeof body.url === "string" ? body.url.trim() : "";
   if (!name) return c.json({ error: "name_required" }, 400);
   if (!isSafeWebhookUrl(url)) return c.json({ error: "invalid_url" }, 400);
-  const secret = typeof body.secret === "string" && body.secret ? body.secret.slice(0, 200) : null;
+  const plainSecret =
+    typeof body.secret === "string" && body.secret ? body.secret.slice(0, 200) : null;
+  if (plainSecret && !isSecretEncryptionConfigured()) {
+    return c.json({ error: ENCRYPTION_UNCONFIGURED }, 500);
+  }
+  const secret = plainSecret ? encryptSecret(plainSecret) : null;
 
   const [row] = await db
     .insert(crmDestinations)
@@ -102,8 +115,12 @@ crmDestinationsRouter.patch("/:id", async (c) => {
     update.url = url;
   }
   if (body.secret !== undefined) {
-    update.secret =
+    const plainSecret =
       typeof body.secret === "string" && body.secret ? body.secret.slice(0, 200) : null;
+    if (plainSecret && !isSecretEncryptionConfigured()) {
+      return c.json({ error: ENCRYPTION_UNCONFIGURED }, 500);
+    }
+    update.secret = plainSecret ? encryptSecret(plainSecret) : null;
   }
   if (body.enabled !== undefined) {
     if (typeof body.enabled !== "boolean") return c.json({ error: "invalid_enabled" }, 400);
@@ -149,7 +166,7 @@ crmDestinationsRouter.post("/:id/test", async (c) => {
   });
   if (!dest) return c.json({ error: "not_found" }, 404);
 
-  const ok = await sendWebhook(dest.url, dest.secret, {
+  const ok = await sendWebhook(dest.url, readStoredSecret(dest.secret), {
     type: "test",
     message: "Outrival test push — your destination is wired up.",
     at: new Date().toISOString(),

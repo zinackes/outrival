@@ -76,7 +76,7 @@ export function DiyPage() {
               >
                 <div className="px-4 py-3" />
                 <div className="px-4 py-3">Doing it yourself</div>
-                <div className="bg-primary/[0.05] px-4 py-3 text-primary">
+                <div className="bg-primary/[0.05] px-4 py-3 text-link">
                   Outrival
                 </div>
               </div>
@@ -122,7 +122,7 @@ export function DiyPage() {
                     <span className="lp-tool-best">{a.role}</span>
                   </div>
                   <p className="lp-tool-line">
-                    <CheckIcon size={16} className="text-primary" aria-hidden />
+                    <CheckIcon size={16} className="text-link" aria-hidden />
                     <span>{a.doesWell}</span>
                   </p>
                   <p className="lp-tool-line lp-tool-trade">
@@ -181,7 +181,7 @@ export function DiyPage() {
               <ul>
                 {DIY.whenDiyWins.map((w) => (
                   <li key={w.title}>
-                    <CheckIcon size={16} className="text-primary" aria-hidden />
+                    <CheckIcon size={16} className="text-link" aria-hidden />
                     <p>
                       <b>{w.title}.</b> {w.body}
                     </p>

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { clearQueueOverrides, setQueueOverrides } from "./queue-mock";
 import { eq } from "drizzle-orm";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
 
@@ -77,29 +78,23 @@ function installFetch() {
 }
 
 beforeAll(async () => {
-  const realQueue = await import("@outrival/queue");
   const harness = await makeTestDb();
   testDb = harness.db;
   closeDb = harness.close;
 
 
-  // Every enqueue is recorded rather than performed: "no signal" means no
-  // classify-change and no generate-signal reached the queue either.
-  const stub = (queue: string) => ({
-    queue,
+  const record = (queue: string) => ({
     enqueue: async (payload: unknown) => {
       enqueued.push({ queue, payload });
       return "job-id";
     },
   });
-  mock.module("@outrival/queue", () => ({
-    ...realQueue,
-    NonRetriable: realQueue.NonRetriable,
-    classifyChange: stub("classify-change"),
-    generateSignal: stub("generate-signal"),
-    extractPricing: stub("extract-pricing"),
-    backfillPricingHistory: stub("backfill-pricing-history"),
-  }));
+  setQueueOverrides({
+    classifyChange: record("classify-change"),
+    generateSignal: record("generate-signal"),
+    extractPricing: record("extract-pricing"),
+    backfillPricingHistory: record("backfill-pricing-history"),
+  });
 
   const realAi = await import("@outrival/ai");
   mock.module("@outrival/ai", () => ({
@@ -116,6 +111,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  clearQueueOverrides();
   await closeDb();
 });
 

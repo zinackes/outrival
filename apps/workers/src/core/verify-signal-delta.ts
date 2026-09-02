@@ -6,6 +6,7 @@ import { db, changes, competitors, monitors, signalVerifications, snapshots } fr
 import {
   checkDeltaAgainst,
   parseExcerpts,
+  validatePublicUrl,
   type DeltaCheckResult,
   type DeltaProof,
 } from "@outrival/shared";
@@ -134,8 +135,14 @@ export async function runVerifySignalDelta(payload: z.input<typeof InputSchema>)
     const proof = parseExcerpts(verification.firstExcerpt, verification.deltaFingerprint);
 
     // The interception already established both of these; re-checking here costs one
-    // comparison and closes the window where a monitor was edited in between.
-    if (!url || (original?.captureMethod !== "static" && original?.captureMethod !== "rendered")) {
+    // comparison and closes the window where a monitor was edited in between. The
+    // URL gate is that window's other half (code:SEC-15): this is a second path
+    // that fetches a monitor URL, so it re-validates rather than trusting save time.
+    if (
+      !url ||
+      !validatePublicUrl(url).ok ||
+      (original?.captureMethod !== "static" && original?.captureMethod !== "rendered")
+    ) {
       await settle("skipped", null);
       await emitNow(input);
       return { outcome: "skipped", reason: "not_replayable" };

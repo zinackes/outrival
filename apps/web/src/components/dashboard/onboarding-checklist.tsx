@@ -84,7 +84,7 @@ export function OnboardingChecklistCard() {
           return (
             <li key={s.key} className="flex items-center gap-2.5">
               {s.done ? (
-                <CheckIcon size={16} className="text-primary shrink-0" aria-hidden />
+                <CheckIcon size={16} className="text-link shrink-0" aria-hidden />
               ) : (
                 <CircleIcon size={16} className="text-muted-foreground/40 shrink-0" aria-hidden />
               )}

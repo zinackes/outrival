@@ -46,7 +46,7 @@ export function SignalRow({
   signal: Signal;
   selected: boolean;
   onSelect: () => void;
-  // Roving tabindex: exactly one row in the listbox is the Tab entry point (0);
+  // Roving tabindex: exactly one row in the feed is the Tab entry point (0);
   // the rest are -1 (still programmatically focusable by the arrow/j-k handler).
   tabStop?: boolean;
   onFocus?: () => void;
@@ -68,8 +68,14 @@ export function SignalRow({
       type="button"
       id={`row-${signal.id}`}
       tabIndex={tabStop ? 0 : -1}
-      role="option"
-      aria-selected={selected}
+      // aria-current, not role="option"/aria-selected: an option is only valid
+      // inside a listbox, and the feed above is no longer one — it interleaves
+      // rows with tier headings, competitor headings, fold rows and banners, none
+      // of which a listbox may own (`ux:28`, axe aria-required-children). The row
+      // stays a button, which is what it behaves like, and "current item" is the
+      // announcement that actually matters here: which signal the detail pane is
+      // showing.
+      aria-current={selected ? "true" : undefined}
       // Hover disclosure for the rows whose meta line does not carry the name (a
       // competitor heading stands over them, and it scrolls away — only the tier
       // header above it sticks). It cannot live on the avatar: that fades out under

@@ -18,7 +18,6 @@
     "replay:dlq": "bun run src/scripts/replay-dlq.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.98.0",
     "@outrival/ai": "workspace:*",
     "@outrival/db": "workspace:*",
     "@outrival/queue": "workspace:*",

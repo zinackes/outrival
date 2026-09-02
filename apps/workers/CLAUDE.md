@@ -45,3 +45,12 @@ hors de `loggedAi` n'apparaît nulle part dans les coûts.
 PGlite par process, truncate à l'acquire. Ne pas en instancier une par fichier, la
 suite est passée de 3,35 Go à 1,09 Go grâce à ça. Le teardown est préchargé par
 `apps/workers/bunfig.toml` ; sans lui, bun sort en 99 sur une suite verte.
+
+`test/setup.ts` porte les mocks process-globaux : `@outrival/db`, `shared-mock.ts`,
+`queue-mock.ts`. Un fichier ne fait **jamais** son propre `mock.module` sur ces
+modules — `mock.module` ne se désenregistre pas, donc le dernier fichier chargé
+gagne pour tous les suivants. Poser un stub via `setQueueOverrides` /
+`setSharedOverrides` dans un `beforeAll`, le rendre dans l'`afterAll`.
+
+L'ordre des fichiers ne doit rien changer : `bun test test/ --randomize --seed=N`
+donne le même résultat que `bun test test/`.

@@ -250,6 +250,7 @@ export function SignalComments({ signalId }: { signalId: string }) {
                     <li>
                       <Composer
                         autoFocus
+                        label="Reply to this comment"
                         placeholder="Reply…"
                         submitLabel="Reply"
                         onSubmit={(body) => submit(body, idOf(root))}
@@ -291,6 +292,7 @@ export function SignalComments({ signalId }: { signalId: string }) {
 
       <Composer
         autoFocus={empty}
+        label="Add a comment"
         placeholder="Add a comment…"
         submitLabel="Comment"
         onSubmit={(body) => submit(body, null)}
@@ -343,6 +345,7 @@ function Comment({
           <Composer
             autoFocus
             initial={posted.body}
+            label="Edit your comment"
             placeholder="Edit your comment…"
             submitLabel="Save"
             onSubmit={(body) => onSaveEdit(posted, body)}
@@ -476,9 +479,16 @@ function Stamp({ iso }: { iso: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
+        {/* An age is measured against the clock at render time, so the server's
+            string is already stale when the browser recomputes it and a bucket
+            boundary in between makes the two differ (`code:PER-24`). `dateTime`
+            carries the instant, as in overview-lead.tsx. The absolute stamp below
+            needs no guard: a Radix tooltip renders its content only once opened, so
+            it never exists during hydration. */}
         <time
           dateTime={iso}
           className="cursor-default text-meta text-muted-foreground"
+          suppressHydrationWarning
         >
           {formatDistanceToNow(d, { addSuffix: true })}
         </time>
@@ -496,6 +506,7 @@ function Stamp({ iso }: { iso: string }) {
  */
 function Composer({
   initial = "",
+  label,
   placeholder,
   submitLabel,
   autoFocus = false,
@@ -503,6 +514,10 @@ function Composer({
   onCancel,
 }: {
   initial?: string;
+  // Required, not derived from the placeholder: the placeholder is a prompt that
+  // clears on the first keystroke, so the field was unnamed exactly while it held
+  // the reader's text (`ux:06`). Three call sites, three different jobs.
+  label: string;
   placeholder: string;
   submitLabel: string;
   autoFocus?: boolean;
@@ -530,6 +545,7 @@ function Composer({
     <div className="rounded-md border border-border bg-surface-2 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring">
       <Textarea
         ref={ref}
+        aria-label={label}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {

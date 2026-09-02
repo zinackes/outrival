@@ -13,10 +13,6 @@ import { ensureQueue } from "./queue";
 // pg-boss partitions its job table per queue; `pgboss.job` is the parent, so a
 // cross-queue read works as a plain SELECT.
 
-/** Rough Trigger-status parity for the existing /admin filters. pg-boss states are
- * created | active | completed | cancelled | failed. */
-export const FAILED_STATES = ["failed"] as const;
-
 export type QueueRow = {
   name: string;
   queued: number;

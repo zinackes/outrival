@@ -299,7 +299,10 @@ export function SettingsSidebar({
             </SidebarGroup>
             <SidebarSeparator className="my-1" />
             <SidebarGroup>
-              <SidebarGroupLabel className="font-normal uppercase tracking-wide text-critical/80">
+              {/* Full opacity, not /80: --critical at 80% measured 4.27:1 on a card in dark
+                  theme, under AA for a label this small (`ux:14`). The tier reads as a
+                  warning from the hue, not from being faded. */}
+              <SidebarGroupLabel className="font-normal uppercase tracking-wide text-critical">
                 Danger zone
               </SidebarGroupLabel>
               <SidebarGroupContent>

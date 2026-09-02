@@ -11,7 +11,7 @@ export const metadata: Metadata = pageMetadata({
     "The cookies and similar technologies Outrival uses, and how to control them.",
 });
 
-const manageClass = "text-primary underline underline-offset-2 hover:opacity-80";
+const manageClass = "text-link underline underline-offset-2 hover:opacity-80";
 
 export default function CookiesPage() {
   return (

@@ -22,11 +22,29 @@ box queue.
 
 ## Erreurs
 
+Quatre issues, dans l'ordre où le wrapper `work()` les teste :
+
 - Échec transitoire : `throw` normal, pg-boss réessaie selon `retryLimit`.
 - Échec métier ou terminal : `throw new NonRetriable("raison")`, complété sans retry.
-  Le wrapper `work()` le détecte par `instanceof`, donc une erreur maison qui n'en
-  hérite pas sera réessayée 3 fois.
-- Retries épuisés : le job atterrit dans `outrival-dlq`.
+  Le wrapper le détecte par `instanceof`, donc une erreur maison qui n'en hérite pas
+  sera réessayée 3 fois.
+- Échec terminal **et anormal** : `throw new DeadLetter(reason, message)` (construit
+  par `apps/workers/src/lib/classify-errors.ts`) — le payload est posté dans la
+  dead-letter queue du job, puis le job est complété. Sans `deadLetter` déclaré il
+  n'y a nulle part où le garer : il retombe sur la politique de retry normale.
+- Ressource indisponible pour un moment (pool IA rate-limité) : le
+  `deferralResolver` passé à `startQueue()` (`resolveAiDeferral` côté workers) rend
+  un nombre de secondes, et `work()` ré-enfile le job avec `startAfter` au lieu de
+  brûler ses tentatives dans la fenêtre encore throttlée. `priority` et
+  `singletonKey` sont recopiés depuis `JobWithMetadata`, la sortie est
+  `{ deferred: true, seconds, attempt, reason }` (`DeferredOutput`), et un compteur
+  caché dans le payload borne le total à `QUEUE_MAX_DEFERRALS` (3 par défaut) :
+  au-delà, l'erreur repart sur le retry normal.
+
+⚠️ **Retries épuisés ≠ `outrival-dlq`.** Seuls 5 jobs sur 53 déclarent
+`deadLetter` (`scrape-monitor`, `classify-change`, `generate-signal`,
+`verify-signal-delta`, `send-alert`). Pour tous les autres, un job à bout de retries
+finit `failed` dans `pgboss.job` : rien ne le rejoue et personne n'est prévenu.
 
 ## Pas de tests ici
 

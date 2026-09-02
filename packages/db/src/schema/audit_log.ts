@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, index } from "drizzle-orm/pg-core";
 import type { InferSelectModel } from "drizzle-orm";
 
 // Sensitive admin actions (patch-02). Append-only trail: which operator did what
@@ -11,6 +11,12 @@ export const auditLog = pgTable("audit_log", {
   targetId: text("target_id"),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // The table had no index at all, on an append-only trail that never gets purged
+  // (deliberately — it is operator data). One index, on the one access path that
+  // exists: /admin/audit-log reads ORDER BY created_at DESC LIMIT 100. No
+  // actor/target index, because no route filters on those yet (`code:PER-38`).
+  index("audit_log_created_idx").on(t.createdAt),
+]);
 
 export type AuditLogEntry = InferSelectModel<typeof auditLog>;

@@ -18,8 +18,9 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { CheckIcon, CaretDownIcon, TrayIcon, FlaskIcon, ScanIcon } from "@/components/icons";
-import { startOfWeek, endOfWeek, format, isToday, isYesterday } from "date-fns";
+import { startOfWeek, endOfWeek, format, isSameDay, subDays } from "date-fns";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { AnimatePresence, motion } from "motion/react";
 import {
   api,
@@ -67,6 +68,8 @@ import { ListError } from "@/components/outrival/list-error";
 import { useListKeyboardNav } from "@/hooks/use-list-keyboard-nav";
 import { useSampleMode } from "@/hooks/use-sample-mode";
 import { useSignalsGroup } from "@/hooks/use-signals-group";
+import { useHydrated } from "@/hooks/use-hydrated";
+import { nowOnClock, onClock } from "@/lib/hydration-clock";
 import { getSampleData, getSampleSignalDetail } from "@/lib/sample-data";
 
 // The synthetic list row for the AI brief. It sits above the feed and opens in
@@ -86,11 +89,23 @@ function withPinnedRow(rows: Signal[], pin: PinnedRow): Signal[] {
 }
 
 // Day bucket for the "By day" grouping — a stable key + a human label.
-function dayGroup(iso: string): { key: string; label: string } {
-  const d = new Date(iso);
+//
+// `local` is the caller's `useHydrated()`. A day is the VIEWER's day, and the UTC
+// server cannot know theirs while it renders, so cutting the buckets on the local
+// clock during hydration gave the two runtimes a different set of sections — a
+// structural mismatch React can only recover from by throwing the tree away
+// (`code:PER-24`). First paint shares the server's cut; the viewer's own arrives on
+// mount. See `@/lib/hydration-clock`.
+function dayGroup(iso: string, local: boolean): { key: string; label: string } {
+  const d = onClock(iso, local);
+  const now = nowOnClock(local);
   return {
     key: format(d, "yyyy-MM-dd"),
-    label: isToday(d) ? "Today" : isYesterday(d) ? "Yesterday" : format(d, "MMM d"),
+    label: isSameDay(d, now)
+      ? "Today"
+      : isSameDay(d, subDays(now, 1))
+        ? "Yesterday"
+        : format(d, "MMM d"),
   };
 }
 
@@ -231,6 +246,8 @@ export function SignalsView() {
   // alone died the moment they navigated away). A mode named in the URL still
   // wins, so deep links and shared links render what they say.
   const [storedGroup, setStoredGroup] = useSignalsGroup();
+  // False until mount, so "By day" cuts its buckets where the server cut them.
+  const local = useHydrated();
   const group = (GROUP_MODES as readonly string[]).includes(
     searchParams.get("group") ?? "",
   )
@@ -333,16 +350,20 @@ export function SignalsView() {
   const queryClient = useQueryClient();
   const sampleData = useMemo(() => getSampleData(), []);
   const feedOpts = signalsFeedQuery(feedParams);
-  // Poll every 30s so a freshly-generated signal lands on its own; keepPreviousData
-  // avoids a skeleton flash when filters/sort change. Disabled in sample mode (fixtures).
+  // NOT polled: a useInfiniteQuery refetch re-runs the queryFn for EVERY page already
+  // loaded, and this feed is OFFSET-paginated — a user scrolled to five pages was
+  // issuing five sequential requests every 30s, each skipping deeper than the last,
+  // from a tab nobody was looking at (`code:PER-07`). The freshness comes from the
+  // facets poll below instead. keepPreviousData avoids a skeleton flash when
+  // filters/sort change. Disabled in sample mode (fixtures).
   const feedQ = useInfiniteQuery({
     ...feedOpts,
     enabled: !sample,
     placeholderData: keepPreviousData,
-    refetchInterval: 30_000,
   });
   // Facets back the tab counts + the filter dropdowns — product-scoped, filter-agnostic,
-  // so switching a tab never recounts. Polled alongside the feed.
+  // so switching a tab never recounts. This is the one polled query: a single
+  // constant-cost request per tick, whatever the scroll depth.
   const facetsQ = useQuery({
     ...signalsFacetsQuery(productId ?? undefined),
     enabled: !sample,
@@ -393,6 +414,22 @@ export function SignalsView() {
     });
   }
 
+  // The freshness half of `code:PER-07`. The facets counts move whenever a signal is
+  // created, read, dismissed or snoozed, so a change in them is exactly "the feed is
+  // stale" — and only then are the loaded pages refetched, together, so the OFFSET
+  // windows stay consistent with each other. An idle tab now polls once per tick and
+  // refetches nothing.
+  const countsKey = facetsQ.data ? JSON.stringify(facetsQ.data.counts) : null;
+  const lastCountsRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!countsKey) return;
+    const previous = lastCountsRef.current;
+    lastCountsRef.current = countsKey;
+    // First reading is the baseline, not a change: the feed was just fetched.
+    if (previous === null || previous === countsKey) return;
+    queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
+  }, [countsKey, queryClient, feedOpts.queryKey]);
+
   // The sidebar competitor counting this signal — null when the row isn't loaded
   // or the flip is a no-op (re-reading a read row moves no count).
   function unreadOwner(id: string, nextRead: boolean) {
@@ -409,13 +446,13 @@ export function SignalsView() {
     if (owner) adjustCompetitorUnread(queryClient, owner, -1);
     try {
       await api.markSignalRead(id);
-    } catch {
+    } catch (e) {
       // Revert, or the row reads "read" until the next poll contradicts it — and
       // selectRow fires this without awaiting, so an uncaught rejection would be
       // silent. Mark-unread below has always done this.
       mutateSignals((prev) => prev.map((s) => (s.id === id ? { ...s, isRead: false } : s)));
       if (owner) adjustCompetitorUnread(queryClient, owner, 1);
-      toast.error("Couldn't mark read. Try again.");
+      toastApiError(e, { title: "Couldn't mark read" });
     }
   }
 
@@ -426,11 +463,11 @@ export function SignalsView() {
     if (owner) adjustCompetitorUnread(queryClient, owner, 1);
     try {
       await api.markSignalRead(id, false);
-    } catch {
+    } catch (e) {
       // The row itself stays optimistically unread here, so leave the count with
       // it: both reconcile on the next poll, and a half-reverted pair would read
       // as a sidebar that disagrees with the feed.
-      toast.error("Couldn't mark unread. Try again.");
+      toastApiError(e, { title: "Couldn't mark unread" });
     }
   }
 
@@ -477,8 +514,8 @@ export function SignalsView() {
             }
           : undefined,
       );
-    } catch {
-      toast.error("Couldn't mark all read. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't mark all read" });
       queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
     }
   }
@@ -589,7 +626,7 @@ export function SignalsView() {
       const { key, label } =
         group === "competitor"
           ? { key: sig.competitorId, label: sig.competitorName }
-          : dayGroup(sig.createdAt);
+          : dayGroup(sig.createdAt, local);
       let g = map.get(key);
       if (!g) {
         g = { label, items: [] };
@@ -609,7 +646,7 @@ export function SignalsView() {
         subs: [only],
       };
     });
-  }, [filtered, group]);
+  }, [filtered, group, local]);
 
   // What the catch-up strip states, over the unread rows that are LOADED. The
   // headline count beside it is the server's, whole-set — a backlog deeper than
@@ -746,13 +783,15 @@ export function SignalsView() {
       await api.setSignalsRead(ids, read);
       queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
       queryClient.invalidateQueries({ queryKey: ["competitors"] });
-    } catch {
-      toast.error("Couldn't update those signals. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't update those signals" });
       queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
     }
   }
 
-  // Bulk track/dismiss — no bulk endpoint, so fan out setSignalAction per id.
+  // Bulk track/dismiss — one request for the whole selection. This used to fan out
+  // setSignalAction per id, and a shift-selected range spans every loaded page, so a
+  // single click could open a hundred concurrent POSTs (`code:PER-40`).
   async function bulkSetAction(status: ActionStatus | null) {
     const ids = [...selected];
     if (!ids.length) return;
@@ -767,12 +806,12 @@ export function SignalsView() {
       return;
     }
     try {
-      await Promise.all(ids.map((id) => api.setSignalAction(id, status)));
+      await api.setSignalsAction(ids, status);
       toast.success(
         `${n} signal${n > 1 ? "s" : ""} ${status ? "updated" : "cleared"}`,
       );
-    } catch {
-      toast.error("Couldn't update those signals. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't update those signals" });
       queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
     }
   }
@@ -833,20 +872,17 @@ export function SignalsView() {
     }
     let feedbackIds: string[];
     try {
-      const results = await Promise.all(
-        ids.map((id) =>
-          api.submitQualityFeedback({
-            targetType: "signal",
-            targetId: id,
-            verdict: "not_useful",
-            reason: "irrelevant",
-          }),
-        ),
-      );
-      feedbackIds = results.map((r) => r.feedbackId);
+      // One verdict over the whole selection, and one Undo that cancels it — both
+      // were a request per row before (`code:PER-40`).
+      ({ feedbackIds } = await api.submitQualityFeedbackBulk({
+        targetType: "signal",
+        targetIds: ids,
+        verdict: "not_useful",
+        reason: "irrelevant",
+      }));
       queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
-    } catch {
-      toast.error("Couldn't dismiss those signals. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't dismiss those signals" });
       queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
       return;
     }
@@ -858,7 +894,8 @@ export function SignalsView() {
         action: {
           label: "Undo",
           onClick: () => {
-            Promise.all(feedbackIds.map((fid) => api.deleteQualityFeedback(fid)))
+            api
+              .deleteQualityFeedbackBulk(feedbackIds)
               .then(() => {
                 queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
                 queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
@@ -889,10 +926,10 @@ export function SignalsView() {
       return;
     }
     try {
-      await Promise.all(ids.map((id) => api.snoozeSignal(id, until)));
+      await api.snoozeSignals(ids, until);
       queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
-    } catch {
-      toast.error("Couldn't snooze those signals. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't snooze those signals" });
       queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
       return;
     }
@@ -900,7 +937,8 @@ export function SignalsView() {
       action: {
         label: "Undo",
         onClick: () => {
-          Promise.all(ids.map((id) => api.snoozeSignal(id, null)))
+          api
+            .snoozeSignals(ids, null)
             .then(() => {
               queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
               queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
@@ -1284,8 +1322,8 @@ export function SignalsView() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-    } catch {
-      toast.error("Couldn't export signals. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't export signals" });
     }
   }
 
@@ -1474,8 +1512,15 @@ export function SignalsView() {
               />
             )}
 
+          {/* A named group, not a listbox: what follows is a feed, not a set of
+              options — tier headings, competitor headings, fold rows, the
+              catch-up banner and the skeletons all live in here, and a listbox
+              may own none of them. The rows carried role="option" two wrappers
+              down, so the relationship was broken anyway and the position
+              announcements it was there for never arrived (`ux:28`, axe
+              aria-required-children, 4 nodes). */}
           <div
-            role="listbox"
+            role="group"
             aria-label="Signals"
             className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain p-1.5"
           >
@@ -1870,7 +1915,7 @@ function GroupHeader({
         // Dot first, so the two numerals on this line can never be read as one:
         // the tinted pair is what is left to read, the muted one is the total. The
         // dot is the row's unread dot, one size down.
-        <span className="flex shrink-0 items-center gap-1 text-meta font-semibold text-primary tabular-nums">
+        <span className="flex shrink-0 items-center gap-1 text-meta font-semibold text-link tabular-nums">
           <span className="size-1.5 rounded-full bg-primary" aria-hidden />
           {unread}
           <span className="sr-only">

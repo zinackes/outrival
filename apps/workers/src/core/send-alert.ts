@@ -14,6 +14,7 @@ import {
 } from "@outrival/db";
 import {
   PLAN_LIMITS,
+  readStoredSecret,
   sendWebhook,
   VERIFIED_OUTCOME,
   verificationGapLabel,
@@ -280,7 +281,21 @@ export async function runSendAlert(payload: z.input<typeof InputSchema>) {
         };
         const results = await Promise.all(
           destinations.map(async (d) => {
-            const ok = await pushWebhook(d.url, d.secret, crmPayload);
+            // The column holds AES-256-GCM ciphertext (code:SEC-08), or legacy
+            // plaintext until db:backfill-crm-secrets has run. An undecryptable row
+            // (rotated key, corruption) drops THAT destination and leaves the rest
+            // of the fan-out alone — this block is best-effort by contract.
+            let secret: string | null;
+            try {
+              secret = readStoredSecret(d.secret);
+            } catch (err) {
+              logger.error("CRM destination secret is undecryptable", {
+                destinationId: d.id,
+                err: String(err),
+              });
+              return false;
+            }
+            const ok = await pushWebhook(d.url, secret, crmPayload);
             if (ok) {
               await db
                 .update(crmDestinations)

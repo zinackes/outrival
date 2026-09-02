@@ -1,7 +1,7 @@
 import postgres from "postgres";
-import { readFileSync } from "fs";
 import { resolve4 } from "node:dns/promises";
 import { connect } from "node:net";
+import { loadProdUrl } from "./src/prod-url";
 
 // Idempotent, position-agnostic enum additions for migrations 0041 + 0042. No
 // BEFORE clause: enum order is cosmetic and prod may lack 'custom' (0039). Safe to
@@ -13,12 +13,7 @@ const STATEMENTS = [
   `ALTER TYPE "public"."category" ADD VALUE IF NOT EXISTS 'api_developer'`,
 ];
 
-const env = readFileSync(new URL("../../.env.local", import.meta.url), "utf8");
-const raw = env.match(/DATABASE_URL_PROD=(.+)/)?.[1]?.trim().replace(/^["']|["']$/g, "");
-if (!raw) {
-  console.error("no prod url");
-  process.exit(1);
-}
+const raw = loadProdUrl();
 const u = new URL(raw);
 const host = u.hostname;
 const port = Number(u.port || 5432);
@@ -40,7 +35,7 @@ function probe(ip: string, ms = 4000): Promise<boolean> {
 async function tryConnect(): Promise<ReturnType<typeof postgres> | null> {
   // 1) plain hostname (works when the network path is healthy).
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const sql = postgres(raw!, { ssl: "require", max: 1, connect_timeout: 20, prepare: false });
+    const sql = postgres(raw, { ssl: "require", max: 1, connect_timeout: 20, prepare: false });
     try {
       await sql`select 1`;
       console.log(`connected via hostname (attempt ${attempt})`);

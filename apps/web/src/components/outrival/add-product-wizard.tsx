@@ -135,7 +135,7 @@ function DiscoverProgress() {
             {done ? (
               <CheckIcon size={16} className="shrink-0 text-positive" />
             ) : active ? (
-              <SpinnerIcon size={16} className="shrink-0 animate-spin text-primary" />
+              <SpinnerIcon size={16} className="shrink-0 animate-spin text-link" />
             ) : (
               <CircleIcon size={16} className="shrink-0 text-muted-foreground/40" />
             )}
@@ -699,7 +699,7 @@ export function AddProductWizard({
             {/* Onboarding's full field set, so the modal can outgrow the viewport. */}
             <div className="flex max-h-[55vh] flex-col gap-3 overflow-y-auto py-2 pr-1">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <SparkleIcon size={14} className="text-primary" /> Extracted by AI
+                <SparkleIcon size={14} className="text-link" /> Extracted by AI
               </div>
               {PROFILE_FIELDS.map((f) => (
                 <div key={f.key} className="flex flex-col gap-1.5">
@@ -845,7 +845,7 @@ export function AddProductWizard({
                 // detection dedupes against the org's existing competitors — so don't
                 // assert the market is empty.
                 <div className="flex flex-col items-center gap-3 py-6 text-center">
-                  <SparkleIcon size={24} className="text-primary" />
+                  <SparkleIcon size={24} className="text-link" />
                   <p className="text-content font-medium">Nothing new to review yet</p>
                   <p className="text-sm text-muted-foreground">
                     We found no competitor for this product that you aren&apos;t already

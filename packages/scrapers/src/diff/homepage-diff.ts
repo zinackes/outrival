@@ -45,6 +45,20 @@ export interface StructuredChange {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * `changes.structured_diff` read back as changes, or `[]` when the column holds
+ * anything else.
+ *
+ * The column is jsonb typed `unknown` — @outrival/db is a leaf package and cannot
+ * name this type — so every reader has to narrow it, and the four readers had
+ * drifted into four different shapes. Two of them (classify-change, generate-signal)
+ * narrowed by casting behind a bare truthiness check, which turns a row holding an
+ * object into a TypeError inside a job instead of a fall-through (`code:DEB-08`).
+ */
+export function asStructuredChanges(raw: unknown): StructuredChange[] {
+  return Array.isArray(raw) ? (raw as StructuredChange[]) : [];
+}
+
 // A paired section's body must move by more than this fraction of its prior
 // content to count as a real change — absorbs minor copy churn.
 const BODY_CHANGE_RATIO = 0.1;

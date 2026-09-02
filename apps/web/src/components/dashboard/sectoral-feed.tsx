@@ -12,10 +12,11 @@ import {
   type SectoralEligibility,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FilterTab, FilterTabList, FilterTabs } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ListRowsSkeleton } from "@/components/dashboard/skeletons";
 import { feedItemMotion } from "@/lib/motion";
+import { toastApiError } from "@/lib/error-helpers";
 import { CATEGORY_META, EvidenceModal, SectoralRow } from "./sectoral-signals";
 import { PageHead } from "./page-head";
 import { EmptyState } from "./empty-state";
@@ -99,18 +100,42 @@ export function SectoralFeed({
   function openDetail(s: SectoralSignal) {
     setActive(s);
     if (s.readAt === null) {
-      api.markSectoralRead(s.id).catch(() => {});
       setSignals((prev) =>
         prev
           ? prev.map((x) => (x.id === s.id ? { ...x, readAt: new Date().toISOString() } : x))
           : prev,
       );
+      // Rolled back rather than announced: a failed mark-read costs nothing but
+      // the dot, and the row going back to unread is the honest answer. The empty
+      // catch left it looking read until the next fetch said otherwise
+      // (`code:COR-35`).
+      api.markSectoralRead(s.id).catch(() => {
+        setSignals((prev) =>
+          prev ? prev.map((x) => (x.id === s.id ? { ...x, readAt: null } : x)) : prev,
+        );
+      });
     }
   }
 
   function dismiss(id: string) {
+    // Optimistic, then put back where it was on failure. The row used to vanish
+    // whatever happened, so a failed dismiss was indistinguishable from a
+    // successful one until the item reappeared unexplained on the next page
+    // (`code:COR-35`).
+    const index = signals?.findIndex((x) => x.id === id) ?? -1;
+    const removed = index >= 0 ? signals?.[index] : undefined;
     setSignals((prev) => (prev ? prev.filter((x) => x.id !== id) : prev));
-    api.dismissSectoral(id).catch(() => {});
+    api.dismissSectoral(id).catch((e: unknown) => {
+      if (removed) {
+        setSignals((prev) => {
+          if (!prev) return prev;
+          const next = [...prev];
+          next.splice(Math.min(index, next.length), 0, removed);
+          return next;
+        });
+      }
+      toastApiError(e, { title: "Couldn't dismiss that trend" });
+    });
   }
 
   // A plan that can't reach the competitor floor (free, max 2 < 4) can never
@@ -165,19 +190,18 @@ export function SectoralFeed({
       />
 
       <div className="flex items-center gap-2 flex-wrap">
-        <Tabs
-          value={category ?? "all"}
-          onValueChange={(v) => setCategory(v === "all" ? null : (v as SectoralCategory))}
-        >
-          <TabsList>
-            <TabsTrigger value="all">All</TabsTrigger>
+        <FilterTabs>
+          <FilterTabList>
+            <FilterTab active={category === null} onClick={() => setCategory(null)}>
+              All
+            </FilterTab>
             {CATEGORIES.map((c) => (
-              <TabsTrigger key={c} value={c}>
+              <FilterTab key={c} active={category === c} onClick={() => setCategory(c)}>
                 {CATEGORY_META[c].label}
-              </TabsTrigger>
+              </FilterTab>
             ))}
-          </TabsList>
-        </Tabs>
+          </FilterTabList>
+        </FilterTabs>
 
         <ToggleGroup
           type="single"

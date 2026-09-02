@@ -25,8 +25,7 @@ export default function PrivacyPage() {
             The controller for the processing described here is {ENTITY.legalName}{" "}
             ({ENTITY.legalForm}), {ENTITY.address}. For any privacy question or to
             exercise your rights, contact us at{" "}
-            <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a> (or{" "}
-            <a href={`mailto:${CONTACT.general}`}>{CONTACT.general}</a>).
+            <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>.
           </p>
           <p className="fine">
             No Data Protection Officer is mandatory for our activity; the address
@@ -87,7 +86,7 @@ export default function PrivacyPage() {
                   <td>Demo / contact form</td>
                   <td>Name, work email, company, team size, message</td>
                   <td>Pre-contractual steps at your request (6.1.b) / legitimate interest (6.1.f)</td>
-                  <td>Up to 3 years from last contact</td>
+                  <td>Emailed to our team inbox; never stored in the product database. Deleted from that inbox on request.</td>
                 </tr>
                 <tr>
                   <td>Product analytics</td>
@@ -226,8 +225,7 @@ export default function PrivacyPage() {
             Le responsable des traitements décrits ici est {ENTITY.legalName}{" "}
             ({ENTITY.legalForm}), {ENTITY.address}. Pour toute question relative à
             la protection des données ou pour exercer vos droits, écrivez-nous à{" "}
-            <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a> (ou{" "}
-            <a href={`mailto:${CONTACT.general}`}>{CONTACT.general}</a>).
+            <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>.
           </p>
           <p className="fine">
             La désignation d'un délégué à la protection des données n'est pas
@@ -289,7 +287,7 @@ export default function PrivacyPage() {
                   <td>Formulaire démo / contact</td>
                   <td>Nom, email professionnel, société, taille d'équipe, message</td>
                   <td>Mesures précontractuelles à votre demande (6.1.b) / intérêt légitime (6.1.f)</td>
-                  <td>Jusqu'à 3 ans après le dernier contact</td>
+                  <td>Envoyé par email à notre boîte d'équipe ; jamais stocké en base. Supprimé de cette boîte sur demande.</td>
                 </tr>
                 <tr>
                   <td>Analytics produit</td>

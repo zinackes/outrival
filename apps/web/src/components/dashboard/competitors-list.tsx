@@ -24,6 +24,10 @@ import { EmptyState } from "./empty-state";
 import { toast } from "@/lib/toast";
 import { api, type Competitor } from "@/lib/api";
 import { competitorsQuery } from "@/lib/queries";
+import {
+  validateCompetitorForm,
+  type CompetitorFormErrors,
+} from "@/lib/competitor-form";
 import { track } from "@/lib/posthog/events";
 import {
   PaywallDialog,
@@ -539,7 +543,12 @@ export function CompetitorsList() {
               size={16}
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
+            {/* A placeholder is not a name: it is gone the moment the field has
+                text, and a screen reader reads the field as unnamed before that
+                (`ux:06`). aria-label rather than a visible <Label> — the strip is
+                a toolbar, the magnifier already says what the box is. */}
             <Input
+              aria-label="Search competitors"
               placeholder="Search…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -1155,21 +1164,32 @@ function AddCompetitorDialog({
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Per-field messages, cleared as the field is edited. Separate from `err`, which
+  // holds what the server refused.
+  const [fieldErrors, setFieldErrors] = useState<CompetitorFormErrors>({});
 
   useEffect(() => {
     if (!open) {
       setName("");
       setUrl("");
       setErr(null);
+      setFieldErrors({});
     }
   }, [open]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    // The form is `noValidate`: the browser's own refusal is invisible inside a
+    // dialog, so this is the only thing standing between a bad value and the API
+    // (`ux:04`). It also accepts a schemeless host and returns it normalised,
+    // which `type="url"` used to reject without saying so.
+    const { errors, values } = validateCompetitorForm({ name, url });
+    setFieldErrors(errors);
+    if (!values) return;
     setBusy(true);
     setErr(null);
     try {
-      await api.createCompetitor({ name, url, productId });
+      await api.createCompetitor({ ...values, productId });
       track("competitor_added", { source: "manual" });
       await onAdded();
       onOpenChange(false);
@@ -1194,30 +1214,48 @@ function AddCompetitorDialog({
             Enter the name and URL. Monitoring starts as soon as it&apos;s created.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="flex flex-col gap-4">
+        <form onSubmit={submit} noValidate className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="competitor-name">Name</Label>
             <Input
               id="competitor-name"
-              required
               maxLength={COMPETITOR_NAME_MAX_LENGTH}
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                setFieldErrors((p) => ({ ...p, name: undefined }));
+              }}
+              aria-invalid={Boolean(fieldErrors.name)}
+              aria-describedby={fieldErrors.name ? "competitor-name-error" : undefined}
               autoFocus
             />
+            {fieldErrors.name && (
+              <p id="competitor-name-error" role="alert" className="text-sm text-critical">
+                {fieldErrors.name}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="competitor-url">URL</Label>
             <Input
               id="competitor-url"
-              required
-              type="url"
+              inputMode="url"
               placeholder="https://example.com"
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              onChange={(e) => {
+                setUrl(e.target.value);
+                setFieldErrors((p) => ({ ...p, url: undefined }));
+              }}
+              aria-invalid={Boolean(fieldErrors.url)}
+              aria-describedby={fieldErrors.url ? "competitor-url-error" : undefined}
             />
+            {fieldErrors.url && (
+              <p id="competitor-url-error" role="alert" className="text-sm text-critical">
+                {fieldErrors.url}
+              </p>
+            )}
           </div>
-          {err && <p className="text-sm text-critical">{err}</p>}
+          {err && <p role="alert" className="text-sm text-critical">{err}</p>}
           <DialogFooter>
             <Button
               type="button"

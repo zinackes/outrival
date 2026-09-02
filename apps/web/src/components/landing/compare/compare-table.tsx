@@ -64,7 +64,13 @@ export function CompareTable({ competitorKey }: { competitorKey: CompetitorKey }
 
   return (
     <div>
-      <div className="lp-ctx-wrap">
+      {/* Same tab stop as the pricing table's scroll box (`ux:31`). */}
+      <div
+        className="lp-ctx-wrap"
+        tabIndex={0}
+        role="region"
+        aria-label={`Outrival and ${c.name} compared, feature by feature`}
+      >
         <table className="lp-ctx">
           <caption className="sr-only">
             Outrival and {c.name} compared, feature by feature

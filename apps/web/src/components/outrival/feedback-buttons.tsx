@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ThumbsUpIcon, ThumbsDownIcon, XIcon } from "@/components/icons";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import {
   api,
   type QualityFeedbackReason,
@@ -136,8 +137,8 @@ export function FeedbackButtons({
               ? "Noted. Outrival will tune what it sends you."
               : "Thanks for the feedback."),
       );
-    } catch {
-      toast.error("Couldn't save your feedback. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't save your feedback" });
     } finally {
       setBusy(false);
     }
@@ -158,8 +159,8 @@ export function FeedbackButtons({
       setReason(next);
       setShowReasons(false);
       toast(`Noted: “${REASON_LABELS[next]}”. Thanks.`);
-    } catch {
-      toast.error("Couldn't save your feedback. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't save your feedback" });
     } finally {
       setBusy(false);
     }

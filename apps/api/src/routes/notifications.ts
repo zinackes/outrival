@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { and, asc, count, desc, eq, gt } from "drizzle-orm";
 import { notifications, organizations } from "@outrival/db";
+import { sendSlackMessageOrThrow, sendWebhook } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
@@ -86,6 +87,12 @@ notificationsRouter.delete("/", async (c) => {
 
 type ChannelResult = "sent" | "not_configured" | "error";
 
+// The destination is user-supplied, so the raw fetch error is an internal-network
+// probe oracle: status, latency and connection-refused vs timeout all leak back to
+// the caller. One opaque string instead (code:SEC-02) — the detail belongs in the
+// server log, not the response.
+const DELIVERY_FAILED = "delivery_failed";
+
 // Connectivity check: deliver a fixed test message straight to whichever
 // channels the org has configured, reporting each one's result. Deliberately
 // bypasses the signal pipeline (no signal, no AI, no alertsEnabled gating) so
@@ -112,32 +119,18 @@ notificationsRouter.post("/test", async (c) => {
 
   if (org.slackWebhookUrl) {
     try {
-      const r = await fetch(org.slackWebhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      if (!r.ok) throw new Error(`${r.status} ${await r.text().catch(() => "")}`);
+      await sendSlackMessageOrThrow(org.slackWebhookUrl, text);
       results.slack = "sent";
-    } catch (e) {
+    } catch {
       results.slack = "error";
-      errors.slack = String(e);
+      errors.slack = DELIVERY_FAILED;
     }
   }
 
   if (org.webhookUrl) {
-    try {
-      const r = await fetch(org.webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ test: true, message: text }),
-      });
-      if (!r.ok) throw new Error(`${r.status} ${await r.text().catch(() => "")}`);
-      results.webhook = "sent";
-    } catch (e) {
-      results.webhook = "error";
-      errors.webhook = String(e);
-    }
+    const delivered = await sendWebhook(org.webhookUrl, null, { test: true, message: text });
+    results.webhook = delivered ? "sent" : "error";
+    if (!delivered) errors.webhook = DELIVERY_FAILED;
   }
 
   if (org.digestEmail) {

@@ -1,9 +1,6 @@
 import postgres from "postgres";
-import { readFileSync } from "fs";
-const env = readFileSync(new URL("../../.env.local", import.meta.url), "utf8");
-const url = env.match(/DATABASE_URL_PROD=(.+)/)?.[1]?.trim().replace(/^["']|["']$/g, "");
-if (!url) { console.error("no prod url"); process.exit(1); }
-const sql = postgres(url, { ssl: "require" });
+import { loadProdUrl } from "./src/prod-url";
+const sql = postgres(loadProdUrl(), { ssl: "require" });
 const migs = await sql`select hash, created_at from drizzle.__drizzle_migrations order by created_at desc limit 6`.catch(
   () => sql`select id, hash, created_at from "__drizzle_migrations" order by id desc limit 6`.catch((e) => [{ err: String(e) }]),
 );

@@ -104,10 +104,15 @@
   --accent-dim: oklch(0.45 0.15 200);
   --accent-bright: oklch(0.49 0.15 200);
   --accent-foreground: oklch(1 0 0);
-  /* L trimmed from .55 so links clear 4.5:1 on the CANVAS, not just on a card:
-     .55 measured 4.45:1 against --background once gamut-mapped to sRGB, and the
-     canvas is most of the dashboard. On --surface it always cleared. */
-  --link: oklch(0.547 0.14 200);
+  /* Accent AS TEXT — the token every accent-colored word, link and icon resolves
+     to, because --accent itself is a FILL (tuned to carry white, never to be read
+     against the page: it measured 4.42:1 on the canvas and 3.66:1 on its own
+     bg-primary/12 tint, which is where `text-primary` put it on 73 routes).
+     L trimmed .547 -> .48: .547 cleared 4.5:1 nowhere once gamut-mapped to sRGB —
+     4.13 on the canvas, 3.51 on --surface-3 — so the old comment's claim was
+     already false when it was written. .48 clears every surface AND every accent
+     tint a highlighted row paints underneath it (worst case 4.59). */
+  --link: oklch(0.48 0.14 200);
 
   /* Severity scale — Tailwind 700-level on light: each step clears ≥4.5:1 both as
      text on the near-white canvas AND under white as a solid fill, with wide hue
@@ -248,7 +253,11 @@
   /* muted-2/3 lightened so the tertiary tiers clear WCAG AA (4.5:1) as small text on
      the canvas + cards (was #7c828c/#5a626e → 2.5–4.4:1, failed). Stays muted. */
   --muted-2: #868d99;
-  --muted-3: #79808c; /* faint — tertiary text / labels */
+  /* #7f8693, not the old #79808c: the faintest step type is set in read 4.24:1 on
+     --surface-2, which is the popover ground — under AA for text while sitting on a
+     surface it is routinely dropped on (`ux:14` family). 4.60:1 now, and still a
+     clear step below --muted-2. scripts/check-contrast.mjs holds it there. */
+  --muted-3: #7f8693; /* faint — tertiary text / labels */
   --muted-foreground: #9aa2ad;
 
   /* Accent — Iris Indigo. Rationed to CTA / links / focus / selection / signal
@@ -790,6 +799,24 @@
   --lp-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
+/* The graphite regions have no --lp-ink ramp of their own: they dim the off-white
+   inline, as rgba(242, 245, 248, a). Twenty-six of those alphas sat between .32 and
+   .45, which is 3.0-4.2:1 on the graphite grounds — under AA for text, and the
+   single largest block of `ux:14` after `text-primary` (the /pricing and /vs row
+   labels alone were 176 nodes). .48 is the floor: 4.65:1 on #0a0a0a and 4.63:1 on
+   #16161c, the lightest ground any of them lands on. scripts/check-contrast.mjs
+   scans this file for every `color:` in the family and asserts both grounds, so the
+   next ghosted label is caught here rather than by a crawl. Ghosting still reads — .48 against a mark
+   at full opacity is the same hierarchy, one step less faint.
+
+   The blocks that dim with color-mix(currentColor N%, transparent) instead have a
+   HIGHER floor, 62%: they run in the paper bands too, and --lp-ink on --lp-paper is
+   a far tighter pairing than off-white on graphite — 58% measured 4.19:1 there while
+   the same alpha reads 6.37:1 on #0a0a0a. Whatever passes on paper passes on
+   graphite, so one floor covers both. Two of those rules also nested inside another
+   dimmed rule, where a percentage of an inherited alpha multiplies; both now take
+   currentColor whole. */
+
 /* Landing: smooth in-page anchor scrolling with an offset for the fixed nav.
    Scoped to pages that render .landing-canvas so the dashboard is untouched, and
    disabled under reduced-motion. */
@@ -906,7 +933,11 @@ html:has(.landing-canvas) {
 }
 .prose-blog pre {
   overflow-x: auto;
-  background: var(--surface-2);
+  /* --surface, not --surface-2: the syntax tokens are the tightest pairing on the
+     page, and this token is the lightest ground in light and the one that leaves
+     the most room in dark. It buys ~0.5:1 on every token for a step the eye does
+     not register — the block is read by its border (`ux:59`). */
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 1rem 1.25rem;
@@ -2849,6 +2880,15 @@ html:has(.landing-canvas) {
   margin-top: 2.4rem;
   overflow-x: auto;
 }
+/* Both comparison tables pan sideways and are now tab stops, so the focus has to
+   be visible — a keyboard user has to see what the arrow keys will scroll
+   (`ux:31`). Nothing renders at rest: :focus-visible is keyboard-only. */
+.lp-hot-table:focus-visible,
+.lp-ctx-wrap:focus-visible {
+  outline: 2px solid var(--lp-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
 .lp-ht-grid {
   min-width: 640px;
   display: grid;
@@ -3040,8 +3080,11 @@ html:has(.landing-canvas) {
   text-align: center;
   font-size: var(--text-meta);
 }
+/* The offset was set but the underline never was, so the link read as coloured
+   text only (`ux:34`). */
 .lp-plan .plan-note a {
   color: rgba(242, 245, 248, 0.62);
+  text-decoration: underline;
   text-underline-offset: 2px;
 }
 .lp-plans-foot {
@@ -3091,7 +3134,7 @@ html:has(.landing-canvas) {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: rgba(242, 245, 248, 0.42);
+  color: rgba(242, 245, 248, 0.48);
   vertical-align: middle;
 }
 .lp-ctx thead th {
@@ -3166,13 +3209,13 @@ html:has(.landing-canvas) {
    rival's entry price is a third-party estimate and has to say so. */
 .lp-ctx .ctx-mark {
   margin-left: 0.15rem;
-  color: rgba(242, 245, 248, 0.42);
+  color: rgba(242, 245, 248, 0.48);
 }
 .lp-ctx-note {
   margin-top: 1rem;
   font-size: var(--text-dense);
   line-height: 1.55;
-  color: rgba(242, 245, 248, 0.45);
+  color: rgba(242, 245, 248, 0.48);
   text-wrap: pretty;
 }
 
@@ -3282,7 +3325,7 @@ html:has(.landing-canvas) {
 .lp-fo .fo-list li::before {
   content: "–";
   flex: none;
-  color: rgba(242, 245, 248, 0.35);
+  color: rgba(242, 245, 248, 0.48);
 }
 /* The ladder. One hairline row per plan, price flushed right so the four
    numbers read as a column. */
@@ -3309,7 +3352,7 @@ html:has(.landing-canvas) {
 .lp-fo .fo-plans .fo-note {
   min-width: 0;
   flex: 1;
-  color: rgba(242, 245, 248, 0.45);
+  color: rgba(242, 245, 248, 0.48);
 }
 .lp-fo .fo-plans .fo-amt {
   flex: none;
@@ -3320,7 +3363,7 @@ html:has(.landing-canvas) {
   margin-top: auto;
   padding-top: 1.6rem;
   font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.42);
+  color: rgba(242, 245, 248, 0.48);
 }
 .lp-fo .fo-foot {
   margin-top: auto;
@@ -3348,7 +3391,7 @@ html:has(.landing-canvas) {
   margin-top: 0.8rem;
   text-align: center;
   font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.45);
+  color: rgba(242, 245, 248, 0.48);
   text-wrap: pretty;
 }
 
@@ -3439,8 +3482,18 @@ html:has(.landing-canvas) {
   line-height: 1.6;
   color: var(--lp-ink-muted);
 }
+/* Underlined at rest, not on hover: this is an inline mailto inside a paragraph,
+   and colour alone is not a distinction a colourblind reader can use (`ux:34`,
+   axe link-in-text-block). Same treatment as .lp-doc-body a. */
 .lp-faq-lead a {
   color: var(--lp-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in oklab, currentColor 45%, transparent);
+  transition: text-decoration-color 150ms var(--lp-ease);
+}
+.lp-faq-lead a:hover {
+  text-decoration-color: currentColor;
 }
 .lp-faq-list {
   border-top: 1px solid var(--lp-line);
@@ -3894,7 +3947,7 @@ html:has(.landing-canvas) {
 .lp-proof-shot figcaption {
   margin-top: 1rem;
   font-size: var(--text-dense);
-  color: color-mix(in oklab, currentColor 55%, transparent);
+  color: color-mix(in oklab, currentColor 62%, transparent);
 }
 .lp-proof-points {
   list-style: none;
@@ -3914,7 +3967,7 @@ html:has(.landing-canvas) {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: color-mix(in oklab, currentColor 52%, transparent);
+  color: color-mix(in oklab, currentColor 62%, transparent);
 }
 .lp-proof-points p {
   margin-top: 0.5rem;
@@ -3968,7 +4021,7 @@ html:has(.landing-canvas) {
   font-size: var(--text-meta);
   letter-spacing: 0.06em;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in oklab, currentColor 45%, transparent);
+  color: color-mix(in oklab, currentColor 62%, transparent);
 }
 .lp-tools > li.is-self .lp-tool-rank {
   color: var(--lp-accent);
@@ -3999,7 +4052,7 @@ html:has(.landing-canvas) {
 }
 .lp-tool-best {
   margin-left: auto;
-  color: color-mix(in oklab, currentColor 45%, transparent);
+  color: color-mix(in oklab, currentColor 62%, transparent);
 }
 .lp-tool-body p {
   margin-top: 0.9rem;
@@ -4017,11 +4070,13 @@ html:has(.landing-canvas) {
   flex: none;
 }
 .lp-tool-body .lp-tool-trade {
-  color: color-mix(in oklab, currentColor 48%, transparent);
+  color: color-mix(in oklab, currentColor 62%, transparent);
 }
+/* Same multiplication as .lp-tool-foot a: 64% of the trade line's own mix. The
+   weight already carries the emphasis. */
 .lp-tool-body .lp-tool-trade b {
   font-weight: 500;
-  color: color-mix(in oklab, currentColor 64%, transparent);
+  color: currentColor;
 }
 .lp-tool-foot {
   margin-top: 1.15rem;
@@ -4031,13 +4086,17 @@ html:has(.landing-canvas) {
   gap: 0.5rem 1.5rem;
   font-size: var(--text-dense);
   font-variant-numeric: tabular-nums;
-  color: color-mix(in oklab, currentColor 45%, transparent);
+  color: color-mix(in oklab, currentColor 62%, transparent);
 }
+/* currentColor, not a percentage of it: this rule sits INSIDE .lp-tool-foot, whose
+   own colour is already a mix, and a percentage of an inherited alpha multiplies —
+   64% of the row's 45% rendered at .29, far under AA (`ux:14`). The link reads as a
+   link from its icon and its hover, and on our own row from --lp-accent below. */
 .lp-tool-foot a {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  color: color-mix(in oklab, currentColor 64%, transparent);
+  color: currentColor;
   text-decoration: none;
   transition: color 150ms var(--lp-ease);
 }
@@ -4104,7 +4163,7 @@ html:has(.landing-canvas) {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in oklab, currentColor 45%, transparent);
+  color: color-mix(in oklab, currentColor 62%, transparent);
 }
 .lp-posts h2 {
   font-family: var(--font-sans);
@@ -4132,7 +4191,7 @@ html:has(.landing-canvas) {
   font-size: var(--text-meta);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: color-mix(in oklab, currentColor 40%, transparent);
+  color: color-mix(in oklab, currentColor 62%, transparent);
 }
 
 /* An article is read, not scanned: its column is measure-width, narrower
@@ -4188,7 +4247,7 @@ html:has(.landing-canvas) {
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
-  text-decoration-color: color-mix(in oklab, currentColor 35%, transparent);
+  text-decoration-color: color-mix(in oklab, currentColor 62%, transparent);
   transition: text-decoration-color 150ms var(--lp-ease);
 }
 .lp-doc-body a:hover {
@@ -4286,7 +4345,7 @@ html:has(.landing-canvas) {
   margin-top: 2rem;
   font-size: var(--text-dense);
   line-height: 1.6;
-  color: color-mix(in oklab, currentColor 58%, transparent);
+  color: color-mix(in oklab, currentColor 62%, transparent);
 }
 .lp-form-note + .lp-form-note {
   margin-top: 0.75rem;
@@ -4295,7 +4354,7 @@ html:has(.landing-canvas) {
   color: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;
-  text-decoration-color: color-mix(in oklab, currentColor 35%, transparent);
+  text-decoration-color: color-mix(in oklab, currentColor 62%, transparent);
   transition: text-decoration-color 150ms var(--lp-ease);
 }
 .lp-form-note a:hover {
@@ -4331,7 +4390,7 @@ html:has(.landing-canvas) {
   margin-top: 2.5rem;
   font-size: var(--text-dense);
   line-height: 1.6;
-  color: color-mix(in oklab, currentColor 52%, transparent);
+  color: color-mix(in oklab, currentColor 62%, transparent);
 }
 .lp-sources p + p {
   margin-top: 0.5rem;

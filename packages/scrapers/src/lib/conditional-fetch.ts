@@ -1,4 +1,7 @@
 import { safeFetch } from "./guarded-fetch";
+import { OUTRIVAL_UA } from "./fingerprint";
+import { getCrawlDelayMs, isAllowed } from "./robots";
+import { awaitDomainSlot } from "./rate-limit";
 
 export interface ConditionalFetchResult {
   status: number;
@@ -15,6 +18,11 @@ export interface ConditionalFetchResult {
  * falls through to a real scrape — we never skip on uncertainty.
  *
  * Native fetch only (no crawlee import) so importing this never pulls Chromium.
+ *
+ * Cheap does not mean exempt: this is a real GET, so it goes through robots.txt and
+ * the per-domain rate limiter like every other request the package makes
+ * (code:COR-03). A robots_disallowed pre-flight returns notModified=false, and the
+ * caller's full scrape then hits the same check and stops there.
  */
 export async function conditionalFetch(
   url: string,
@@ -22,13 +30,16 @@ export async function conditionalFetch(
   prevLastModified?: string | null,
 ): Promise<ConditionalFetchResult> {
   const headers: Record<string, string> = {
-    "User-Agent": "OutrivalBot/1.0 (+https://outrival.io/bot)",
+    "User-Agent": OUTRIVAL_UA,
     Accept: "text/html,application/xhtml+xml",
   };
   if (prevEtag) headers["If-None-Match"] = prevEtag;
   if (prevLastModified) headers["If-Modified-Since"] = prevLastModified;
 
   try {
+    if (!(await isAllowed(url))) return { status: 0, notModified: false };
+    await awaitDomainSlot(url, await getCrawlDelayMs(url));
+
     const res = await safeFetch(url, {
       method: "GET",
       headers,

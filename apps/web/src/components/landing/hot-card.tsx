@@ -30,7 +30,16 @@ export function HotCard() {
             <a href="/vs/klue">Outrival vs Klue</a>
           </p>
         </div>
-        <div className="lp-hot-table">
+        {/* Focusable, and a named region: a div that scrolls sideways is
+            unreachable without a pointer, and on a phone this one crops the
+            Outrival column out of frame entirely (`ux:31`, axe
+            scrollable-region-focusable, 18 nodes across 9 routes). */}
+        <div
+          className="lp-hot-table"
+          tabIndex={0}
+          role="region"
+          aria-label="Manual, legacy CI and Outrival compared"
+        >
           <div className="lp-ht-grid">
             <div className="ht-h" />
             <div className="ht-h">Manual</div>

@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { emailShell, emailButton, e, t } from "@outrival/shared";
+import { emailShell, emailButton, e, t, escapeHtml } from "@outrival/shared";
 
 // Sign-in email — sent from the API process (Better Auth's emailOTP
 // sendVerificationOTP runs here, not in the workers). One email carries BOTH a
@@ -27,12 +27,16 @@ const renderShell = (inner: string): string => emailShell(inner, 440);
 
 // Solid surface/border colors (not rgba-on-transparent) so the code box reads even
 // if a client ignores the wrapper background.
-function renderCodeBox(code: string): string {
+// Exported for the escaping regression test (code:SEC-05); nothing else calls it.
+export function renderCodeBox(code: string): string {
   // The one place mono is correct: a string read glyph by glyph, where a mistaken
   // character changes the meaning (DESIGN.md §3, the Machine-Truth Rule). Radius
   // drops to the 6px card step so it matches every other surface we send.
+  // `code` is a Better Auth OTP, digits today, so the escape below is a runtime
+  // no-op. It is here so "every value interpolated into email HTML is escaped"
+  // holds without a reader having to re-derive this code's alphabet.
   return `<div ${e(["panel", "rule"], "border-radius:6px;border-width:1px;border-style:solid;padding:22px 20px;text-align:center;margin:0 0 28px;")}>
-        <div ${e("text", "font-size:32px;font-weight:600;letter-spacing:0.3em;line-height:1.1;font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace;")}>${code}</div>
+        <div ${e("text", "font-size:32px;font-weight:600;letter-spacing:0.3em;line-height:1.1;font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace;")}>${escapeHtml(code)}</div>
       </div>`;
 }
 
@@ -59,7 +63,7 @@ function renderSignInEmail(
       <hr ${e("rule", "border-width:0;border-top-width:1px;border-top-style:solid;margin:28px 0 20px;")} />
 
       <p ${e("faint", t("dense", "margin:0;"))}>
-        If you didn't request this, you can ignore this email — your account stays secure.
+        If you didn't request this, you can ignore this email. Your account stays secure.
       </p>`);
 }
 
@@ -74,7 +78,7 @@ function renderEmailChangeEmail(code: string, expiresInMinutes: number): string 
       ${renderCodeBox(code)}
 
       <p ${e("faint", t("dense", "margin:0;"))}>
-        If you didn't request this change, you can ignore this email — your account
+        If you didn't request this change, you can ignore this email. Your account
         email stays the same.
       </p>`);
 }
@@ -90,8 +94,8 @@ function renderReauthEmail(code: string, expiresInMinutes: number): string {
       ${renderCodeBox(code)}
 
       <p ${e("faint", t("dense", "margin:0;"))}>
-        If you didn't start this, ignore this email and consider changing how you sign in —
-        nothing has been deleted.
+        If you didn't start this, ignore this email and consider changing how you sign in.
+        Nothing has been deleted.
       </p>`);
 }
 
@@ -136,7 +140,7 @@ function renderSetPasswordEmail(code: string, expiresInMinutes: number): string 
       ${renderCodeBox(code)}
 
       <p ${e("faint", t("dense", "margin:0;"))}>
-        If you didn't request this, ignore this email — your password stays unchanged.
+        If you didn't request this, ignore this email. Your password stays unchanged.
       </p>`);
 }
 

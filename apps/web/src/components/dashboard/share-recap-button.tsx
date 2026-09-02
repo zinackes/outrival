@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { ShareNetworkIcon, CheckIcon } from "@/components/icons";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -23,8 +24,8 @@ export function ShareRecapButton({ month }: { month: string }) {
         description:
           "Anyone with the link can view your recap. Revoke it in Settings → Data; it stops opening within 5 minutes.",
       });
-    } catch {
-      toast.error("Couldn’t create the share link. Please try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn’t create the share link" });
     } finally {
       setBusy(false);
     }

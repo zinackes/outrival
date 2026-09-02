@@ -15,7 +15,8 @@ export const changes = pgTable("changes", {
   // reads it to reason per-field and later enriches each entry with a significance
   // ("major" | "minor" | "trivial") for the "Why this insight?" breakdown. Null
   // for lexical (non-homepage / fallback) changes. Untyped here to keep
-  // @outrival/db a leaf package — cast at the call site.
+  // @outrival/db a leaf package: read it through `asStructuredChanges`
+  // (@outrival/scrapers/homepage-diff) rather than casting per call site.
   structuredDiff: jsonb("structured_diff"),
   // Max composite relevance of the significant structured changes that produced
   // this change (patch-17 scoring, persisted for patch-26 moderation). Set only
@@ -38,4 +39,9 @@ export const changes = pgTable("changes", {
   // FK to snapshots: lets a snapshot delete find referencing changes by index
   // instead of scanning, and backs the before/after join on the diff view.
   index("changes_snapshot_after_idx").on(t.snapshotAfterId),
+  // The other half of that pair. Only the _after_ arm was ever indexed, so the
+  // retention purge's `NOT EXISTS (snapshot_before_id = sn.id OR snapshot_after_id
+  // = sn.id)` had one arm on an index and one on a scan of the largest table in
+  // the schema, per candidate snapshot, on every scheduled run (`code:PER-04`).
+  index("changes_snapshot_before_idx").on(t.snapshotBeforeId),
 ]);

@@ -295,11 +295,15 @@ function CustomMonitorRow({
           <span title={label} className="w-[132px] shrink-0 truncate text-sm font-medium">
             {label}
           </span>
+          {/* "Scanned 2 hours ago" is measured against the clock at render time, so
+              the server's string and the browser's differ across a bucket boundary
+              (`code:PER-24`). */}
           <span
             className={cn(
               "min-w-0 flex-1 truncate text-xs",
               status === "failed" ? "text-critical" : "text-muted-foreground",
             )}
+            suppressHydrationWarning
           >
             {lastScanLabel(monitor, status)}
           </span>

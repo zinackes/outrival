@@ -33,15 +33,20 @@ RESEND_AUTH_FROM=            # patch-19 — optionnel, défaut "Outrival <auth@o
 INTERNAL_API_SECRET=         # standing queries — shared secret worker→API (POST /api/internal/ask/run),
                             # 16+ chars, MÊME valeur sur api ET workers. Vide → routes internes 404,
                             # queries sauvées mais jamais réévaluées (dégradation propre)
-OAUTH_TOKEN_ENCRYPTION_KEY=  # OUT-176 — AES-256-GCM sur les tokens OAuth tiers stockés dans
-                            # `oauth_connections` (Slack/HubSpot/Salesforce). 32 octets en hex,
-                            # soit 64 caractères : `openssl rand -hex 32`. OPTIONNEL tant qu'aucun
-                            # provider n'est câblé — vide → /api/oauth/*/start répond 500
-                            # `oauth_encryption_unconfigured`, et aucun token n'est jamais écrit en
-                            # clair. À passer boot-bloquant le jour où le premier provider ship.
+OAUTH_TOKEN_ENCRYPTION_KEY=  # AES-256-GCM sur les secrets stockés en base : tokens OAuth tiers
+                            # (`oauth_connections`, OUT-176) ET secret de signature des webhooks
+                            # CRM (`crm_destinations`, code:SEC-08). 32 octets en hex, soit 64
+                            # caractères : `openssl rand -hex 32`. MÊME valeur sur api ET workers,
+                            # la box workers signe le push sortant. OPTIONNEL — vide →
+                            # /api/oauth/*/start répond 500 `oauth_encryption_unconfigured`,
+                            # enregistrer un secret CRM répond 500 `secret_encryption_unconfigured`,
+                            # et rien n'est jamais écrit en clair. Les lignes `crm_destinations`
+                            # antérieures restent en clair jusqu'à
+                            # `pnpm --filter @outrival/db db:backfill-crm-secrets`.
                             # Rotation : les lignes existantes deviennent indéchiffrables
-                            # (`oauth_token_undecryptable`, préfixe de schéma `v1.`) — il faut
-                            # purger la table et faire reconnecter, il n'y a pas de re-chiffrement.
+                            # (`secret_undecryptable`, préfixe de schéma `v1.`) — il faut purger la
+                            # table OAuth et faire reconnecter, ressaisir les secrets CRM ; il n'y a
+                            # pas de re-chiffrement.
 
 # Jobs
 QUEUE_DATABASE_URL=          # pg-boss queue — DEDICATED always-on Postgres, NEVER Neon (cf. docs/trigger-to-pgboss-migration.md)
@@ -151,7 +156,6 @@ SHIPPING_VELOCITY_THRESHOLD=0.5         # Content Intelligence v2 P1, relative m
 SHIPPING_VELOCITY_MIN_ITEMS=8           # entries the trailing 3-month window must TOTAL before it counts as a baseline. Under it a changelog of three entries would swing ±50% on a single release, which is arithmetic, not cadence
 
 # AI
-ANTHROPIC_API_KEY=           # provider abstrait — Claude fallback (provider="claude")
 GROQ_API_KEY=                # back-compat : synthétise un provider Groq si aucun AI_PROVIDER_N
 
 # AI provider pool (patch-22) — pool de PROVIDERS légaux OpenAI-compatibles, essayés
@@ -328,6 +332,7 @@ RELEVANCE_AUTO_ADJUST_MIN_FEEDBACKS=10 # min feedbacks org avant auto-ajustement
 RELEVANCE_RECALC_INTERVAL_HOURS=168    # cadence recalc (hebdo)
 BATCHING_WINDOW_HOURS=24               # fenêtre de regroupement
 BATCHING_MIN_SIGNALS=3                 # min signals similaires pour un batch
+BATCHING_MAX_GROUPS=500                # max groupes batchés par run (1 appel IA chacun)
 
 # Stale-data actions (patch-27)
 STALENESS_THRESHOLDS_PRICING=7,14,30   # seuils jaune,orange,rouge par type de source (jours)

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { clearQueueOverrides, recordEnqueues, setQueueOverrides } from "./queue-mock";
 import { eq } from "drizzle-orm";
 import { makeTestDb, schema, type TestDb } from "./db-harness";
 
@@ -70,7 +71,6 @@ function storyPage(title: string, body: string): string {
 }
 
 beforeAll(async () => {
-  const realQueue = await import("@outrival/queue");
   const realContentFetch = await import("@outrival/scrapers/content-fetch");
   const realAi = await import("@outrival/ai");
   const realAnalytics = await import("../src/lib/analytics");
@@ -78,17 +78,7 @@ beforeAll(async () => {
   testDb = harness.db;
   closeDb = harness.close;
 
-  mock.module("@outrival/queue", () => ({
-    ...realQueue,
-    NonRetriable: realQueue.NonRetriable,
-    generateSignal: {
-      queue: "generate-signal",
-      enqueue: async (payload: Enqueued) => {
-        enqueued.push(payload);
-        return "job-id";
-      },
-    },
-  }));
+  setQueueOverrides({ generateSignal: recordEnqueues(() => enqueued) });
   mock.module("@outrival/ai", () => ({
     ...realAi,
     extractCaseStudies: async (batch: ReadonlyArray<{ title: string; text: string }>) => ({
@@ -123,7 +113,10 @@ beforeAll(async () => {
   ({ runIngestCaseStudies: runIngest } = await import("../src/core/ingest-case-studies"));
 });
 
-afterAll(() => closeDb());
+afterAll(() => {
+  clearQueueOverrides();
+  return closeDb();
+});
 beforeEach(() => {
   enqueued = [];
   pages = new Map();

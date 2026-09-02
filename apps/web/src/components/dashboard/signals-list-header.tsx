@@ -13,7 +13,7 @@ import {
 import type { SavedViewFilters, Signal } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FilterTab, FilterTabList, FilterTabs } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -401,14 +401,15 @@ export function SignalsListHeader({
       )}
 
       {/* The tab underline doubles as the header's bottom rule — one line, two jobs. */}
-      <Tabs
-        className="min-w-0 gap-0"
-        value={quickView}
-        onValueChange={(v) => setParam({ view: v === "all" ? null : v })}
-      >
-        <TabsList variant="line" className="justify-start px-2.5">
+      <FilterTabs className="min-w-0 gap-0">
+        <FilterTabList variant="line" className="justify-start px-2.5">
           {QUICK_VIEWS.map((v) => (
-            <TabsTrigger key={v.value} value={v.value} className="px-2.5">
+            <FilterTab
+              key={v.value}
+              active={quickView === v.value}
+              onClick={() => setParam({ view: v.value === "all" ? null : v.value })}
+              className="px-2.5"
+            >
               {v.label}
               {/* A zero is not worth a figure: "Unread 0" advertised an empty view
                   on every render. The tab stays reachable, just unlabelled. */}
@@ -417,10 +418,10 @@ export function SignalsListHeader({
                   {quickCounts[v.value]}
                 </span>
               )}
-            </TabsTrigger>
+            </FilterTab>
           ))}
-        </TabsList>
-      </Tabs>
+        </FilterTabList>
+      </FilterTabs>
     </div>
   );
 }

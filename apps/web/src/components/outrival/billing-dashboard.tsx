@@ -380,6 +380,7 @@ export function BillingDashboard() {
               <>
                 <Progress
                   value={usagePct}
+                  aria-label="Tracked competitors used on your plan"
                   className={cn(
                     "h-1.5",
                     usagePct >= 100 && "[&>div]:bg-destructive",
@@ -510,7 +511,7 @@ export function BillingDashboard() {
                   <div
                     className={cn(
                       "text-xs uppercase tracking-wider",
-                      isPopular ? "text-primary" : "text-text-subtle",
+                      isPopular ? "text-link" : "text-text-subtle",
                     )}
                   >
                     {PLAN_LABELS[plan]}
@@ -556,7 +557,7 @@ export function BillingDashboard() {
                 >
                   {card.features.map((f, i) => (
                     <li key={i} className="flex items-start gap-2">
-                      <CheckIcon size={16} className="mt-0.5 shrink-0 text-primary" />
+                      <CheckIcon size={16} className="mt-0.5 shrink-0 text-link" />
                       <span>{f}</span>
                     </li>
                   ))}

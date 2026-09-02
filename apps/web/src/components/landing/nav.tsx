@@ -168,7 +168,7 @@ export function Nav({ tone = "app" }: { tone?: "app" | "landing" | "marketing" }
             <span>Outrival</span>
           ) : (
             <span>
-              Out<span className="text-primary">rival</span>
+              Out<span className="text-link">rival</span>
             </span>
           )}
         </a>

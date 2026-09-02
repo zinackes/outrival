@@ -17,7 +17,7 @@ Claude Code pour `EnterPlanMode`.
 | Package | Tu y vas quand… | Peut importer |
 |---|---|---|
 | `apps/web` | page, composant, design system | `shared` |
-| `apps/api` | route HTTP, auth, gating de plan | `db`, `ai`, `shared`, `queue` (enqueue seul) |
+| `apps/api` | route HTTP, auth, gating de plan | `db`, `ai`, `shared`, `queue` (enqueue seul), `scrapers` (sous-chemins `quick-fetch`, `pricing`, `positioning`, `discovery`) |
 | `apps/workers` | corps d'un job, cron, orchestration d'un scrape | `db`, `ai`, `scrapers`, `shared`, `queue` |
 | `packages/db` | table, colonne, enum, migration | — |
 | `packages/ai` | prompt, tâche IA, grounding | — |

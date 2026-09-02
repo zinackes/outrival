@@ -38,3 +38,8 @@ ZONE 'UTC')`, sinon la valeur rendue dépend du TZ du process.
 - `test/app-harness.ts` monte l'app Hono réelle pour les tests de route.
 - Le teardown est préchargé par `apps/api/bunfig.toml`. Sans lui, bun sort en 99
   sur une suite verte : un client WASM ouvert est un handle vivant.
+- Le truncate tombe à l'acquire, donc **par fichier**. Un test qui lit une ligne
+  écrite par son voisin ne tient que dans l'ordre de déclaration : seeder par test
+  (`reset()` puis seed dans un `beforeEach`) dès que deux tests touchent les mêmes
+  lignes. `bun test test/ --randomize --seed=N` doit donner le même résultat que
+  `bun test test/`.

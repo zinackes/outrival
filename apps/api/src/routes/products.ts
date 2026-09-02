@@ -952,24 +952,33 @@ productsRouter.patch("/:id", async (c) => {
   }
   const { name, position, isPrimary } = parsed.data;
 
-  // Promote to primary: demote the current primary first (exactly one per org).
-  if (isPrimary && !product.isPrimary) {
-    await db
-      .update(products)
-      .set({ isPrimary: false, updatedAt: new Date() })
-      .where(and(eq(products.orgId, orgId), eq(products.isPrimary, true)));
-  }
-
   const update: Partial<typeof products.$inferInsert> = { updatedAt: new Date() };
   if (name !== undefined) update.name = name;
   if (position !== undefined) update.position = position;
   if (isPrimary) update.isPrimary = true;
 
-  const [updated] = await db
-    .update(products)
-    .set(update)
-    .where(eq(products.id, product.id))
-    .returning();
+  // Promote to primary: demote the current primary first (exactly one per org).
+  // The two statements run in one transaction, serialized per org by the same
+  // advisory lock the POST path takes. Apart, two concurrent promotes each
+  // demoted the other's target and then set their own, and the org ended with two
+  // primaries; with `products_org_primary_uq` now enforcing the invariant, the
+  // same race would end as a 500 instead (`code:COR-07`). Together, the window
+  // between the demote and the promote never exists.
+  const promoting = isPrimary === true && !product.isPrimary;
+  const [updated] = promoting
+    ? await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${orgId}))`);
+        await tx
+          .update(products)
+          .set({ isPrimary: false, updatedAt: new Date() })
+          .where(and(eq(products.orgId, orgId), eq(products.isPrimary, true)));
+        return tx
+          .update(products)
+          .set(update)
+          .where(eq(products.id, product.id))
+          .returning();
+      })
+    : await db.update(products).set(update).where(eq(products.id, product.id)).returning();
   return c.json({ product: updated });
 });
 

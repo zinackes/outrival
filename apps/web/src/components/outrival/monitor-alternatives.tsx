@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import {
   ArrowRightIcon,
   CaretDownIcon,
@@ -131,8 +132,8 @@ export function MonitorAlternatives({
       toast.success(`${label} resumed. A fresh scrape is on its way.`);
       setAlternatives([]);
       onResolved?.();
-    } catch {
-      toast.error("Couldn't resume this source. Please try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't resume this source" });
     } finally {
       setResuming(false);
     }
@@ -143,8 +144,8 @@ export function MonitorAlternatives({
     try {
       await api.dismissMonitorAlternatives(monitorId);
       setAlternatives([]);
-    } catch {
-      toast.error("Couldn't dismiss this. Please try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't dismiss this" });
       setDismissing(false);
     }
   }
@@ -179,8 +180,8 @@ export function MonitorAlternatives({
       );
       setAlternatives((prev) => prev?.filter((a) => a.id !== alt.id) ?? null);
       onResolved?.();
-    } catch {
-      toast.error("Couldn't apply that option. Please try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't apply that option" });
     } finally {
       setBusyId(null);
     }
@@ -191,8 +192,8 @@ export function MonitorAlternatives({
     try {
       await api.rejectAlternative(alt.id);
       setAlternatives((prev) => prev?.filter((a) => a.id !== alt.id) ?? null);
-    } catch {
-      toast.error("Couldn't dismiss that option.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't dismiss that option" });
     } finally {
       setBusyId(null);
     }

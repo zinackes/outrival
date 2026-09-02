@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { WarningIcon } from "@/components/icons";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -36,8 +37,8 @@ export function AiOutputWarning({ targetType, targetId, onResolved, className }:
       await api.submitQualityFeedback({ targetType, targetId, verdict: "not_useful", reason: "incorrect" });
       setDone("reported");
       toast("Thanks, flagged as inaccurate. We'll review it.");
-    } catch {
-      toast.error("Couldn't save that. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't save that" });
     } finally {
       setBusy(false);
     }
@@ -54,8 +55,8 @@ export function AiOutputWarning({ targetType, targetId, onResolved, className }:
       setDone("confirmed");
       toast("Thanks, marked as verified.");
       onResolved?.();
-    } catch {
-      toast.error("Couldn't save that. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't save that" });
     } finally {
       setBusy(false);
     }

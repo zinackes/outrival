@@ -1,5 +1,5 @@
 import { logger } from "../lib/job-logger";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import {
   db,
   competitors,
@@ -31,9 +31,12 @@ type StructuralChangeType = "pivot" | "site_dead" | "acquired" | "category_shift
 export async function runDetectStructuralChanges() {
     logger.log("Starting detect-structural-changes");
 
-    // Real competitors only: never the user's own product (type = "self").
+    // Real competitors only: never the user's own product (type = "self"). The
+    // type filter moved into the WHERE: it used to be a `continue` at the top of
+    // the loop, which meant self-competitors were still fetched and still counted
+    // toward the ids the batched reads below have to carry.
     const comps = await db.query.competitors.findMany({
-      where: isNull(competitors.deletedAt),
+      where: and(isNull(competitors.deletedAt), ne(competitors.type, "self")),
       columns: {
         id: true,
         orgId: true,
@@ -41,45 +44,96 @@ export async function runDetectStructuralChanges() {
         category: true,
         description: true,
         aiSummary: true,
-        type: true,
       },
     });
 
     let analysed = 0;
     let detected = 0;
 
-    for (const comp of comps) {
-      if (comp.type === "self") continue;
+    if (comps.length === 0) {
+      logger.log("Completed detect-structural-changes", { analysed, detected });
+      return { analysed, detected };
+    }
 
-      // The homepage monitor carries the strongest pivot signal.
-      const monitor = await db.query.monitors.findFirst({
-        where: and(
-          eq(monitors.competitorId, comp.id),
-          eq(monitors.sourceType, "homepage"),
-        ),
-        columns: { id: true },
-      });
-      if (!monitor) continue;
+    // Everything the loop needs, read up front. The three lookups below used to sit
+    // INSIDE the loop, so a weekly cron over N tracked competitors platform-wide
+    // paid 3N sequential round trips to answer three questions that are one query
+    // each (`code:PER-45`).
+    const compIds = comps.map((c) => c.id);
 
-      const snaps = await db.query.snapshots.findMany({
-        where: and(
-          eq(snapshots.monitorId, monitor.id),
-          eq(snapshots.status, "success"),
-        ),
-        orderBy: desc(snapshots.scrapedAt),
-        limit: MIN_SCRAPES,
-        columns: { r2Key: true, screenshotPhash: true },
-      });
-      if (snaps.length < MIN_SCRAPES) continue;
+    // The homepage monitor carries the strongest pivot signal.
+    const homepageMonitors = await db
+      .select({ id: monitors.id, competitorId: monitors.competitorId })
+      .from(monitors)
+      .where(
+        and(inArray(monitors.competitorId, compIds), eq(monitors.sourceType, "homepage")),
+      );
+    const monitorByCompetitor = new Map(homepageMonitors.map((m) => [m.competitorId, m.id]));
 
-      // Already an open structural change for this competitor → don't pile on.
-      const open = await db.query.structuralChanges.findFirst({
-        where: and(
-          eq(structuralChanges.competitorId, comp.id),
+    // Already an open structural change for this competitor → don't pile on.
+    const open = await db
+      .select({ competitorId: structuralChanges.competitorId })
+      .from(structuralChanges)
+      .where(
+        and(
+          inArray(structuralChanges.competitorId, compIds),
           eq(structuralChanges.status, "detected"),
         ),
-      });
-      if (open) continue;
+      );
+    const alreadyOpen = new Set(open.map((o) => o.competitorId));
+
+    // The MIN_SCRAPES newest successful snapshots of each homepage monitor. "Top N
+    // per group" is the one of the three that a plain IN(...) cannot express: a
+    // window function ranks within each monitor, and the outer filter keeps the
+    // same rows the per-monitor ORDER BY + LIMIT returned.
+    const snapsByMonitor = new Map<string, { r2Key: string; screenshotPhash: string | null }[]>();
+    if (homepageMonitors.length > 0) {
+      const ranked = db
+        .select({
+          monitorId: snapshots.monitorId,
+          r2Key: snapshots.r2Key,
+          screenshotPhash: snapshots.screenshotPhash,
+          rank: sql<number>`row_number() over (
+            partition by ${snapshots.monitorId} order by ${snapshots.scrapedAt} desc
+          )`.as("rank"),
+        })
+        .from(snapshots)
+        .where(
+          and(
+            inArray(
+              snapshots.monitorId,
+              homepageMonitors.map((m) => m.id),
+            ),
+            eq(snapshots.status, "success"),
+          ),
+        )
+        .as("ranked");
+
+      const rows = await db
+        .select({
+          monitorId: ranked.monitorId,
+          r2Key: ranked.r2Key,
+          screenshotPhash: ranked.screenshotPhash,
+        })
+        .from(ranked)
+        .where(lte(ranked.rank, MIN_SCRAPES))
+        .orderBy(asc(ranked.rank));
+
+      for (const row of rows) {
+        const bucket = snapsByMonitor.get(row.monitorId);
+        if (bucket) bucket.push(row);
+        else snapsByMonitor.set(row.monitorId, [row]);
+      }
+    }
+
+    for (const comp of comps) {
+      const monitorId = monitorByCompetitor.get(comp.id);
+      if (!monitorId) continue;
+
+      const snaps = snapsByMonitor.get(monitorId) ?? [];
+      if (snaps.length < MIN_SCRAPES) continue;
+
+      if (alreadyOpen.has(comp.id)) continue;
 
       let points: SnapshotPoint[];
       try {

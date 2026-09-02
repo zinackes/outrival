@@ -22,11 +22,11 @@
  *   DATABASE_URL=... bun run src/realign-journal.ts           # dry run
  *   DATABASE_URL=... bun run src/realign-journal.ts --apply
  */
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { createHash } from "node:crypto";
 import { config } from "dotenv";
 import postgres from "postgres";
+import { compareLedger, readCommittedMigrations } from "./ledger";
 
 const rootEnv = resolve(__dirname, "../../../.env.local");
 if (existsSync(rootEnv)) config({ path: rootEnv });
@@ -35,47 +35,36 @@ const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
 const APPLY = process.argv.includes("--apply");
 
-const migrationsDir = resolve(__dirname, "../migrations");
-const journal = JSON.parse(
-  readFileSync(resolve(migrationsDir, "meta/_journal.json"), "utf8"),
-) as { entries: Array<{ tag: string; when: number }> };
+const { committed } = readCommittedMigrations(resolve(__dirname, "../migrations"));
 
 const sql = postgres(url, { max: 1 });
 
 async function main(): Promise<void> {
-  const byHash = new Map<string, { tag: string; when: number }>();
-  for (const entry of journal.entries) {
-    const file = resolve(migrationsDir, `${entry.tag}.sql`);
-    if (!existsSync(file)) continue;
-    byHash.set(createHash("sha256").update(readFileSync(file, "utf8")).digest("hex"), entry);
-  }
-
   const rows = await sql<{ id: number; hash: string; created_at: string }[]>`
     SELECT id, hash, created_at FROM "drizzle"."__drizzle_migrations" ORDER BY id`;
 
-  let drifted = 0;
-  for (const row of rows) {
-    const entry = byHash.get(row.hash);
-    if (!entry) continue; // a row whose SQL file is gone: not ours to touch
-    if (Number(row.created_at) === entry.when) continue;
-    drifted++;
-    console.log(`${entry.tag}: created_at ${row.created_at} -> ${entry.when}`);
+  // `misdated` is exactly the repairable set: rows whose hash IS one of ours but whose
+  // timestamp no longer matches the journal. Rows matching nothing we hold land in
+  // `drift` and are deliberately left alone — not ours to touch.
+  const { misdated } = compareLedger(committed, rows);
+  for (const m of misdated) {
+    console.log(`${m.tag}: created_at ${m.was} -> ${m.now}`);
     if (APPLY) {
       await sql`
         UPDATE "drizzle"."__drizzle_migrations"
-        SET created_at = ${entry.when} WHERE id = ${row.id}`;
+        SET created_at = ${m.now} WHERE id = ${m.row.id}`;
     }
   }
 
   await sql.end();
-  if (drifted === 0) {
+  if (misdated.length === 0) {
     console.log("Ledger already agrees with the journal — nothing to do.");
     return;
   }
   console.log(
     APPLY
-      ? `Realigned ${drifted} row(s).`
-      : `${drifted} row(s) drifted. Re-run with --apply to write.`,
+      ? `Realigned ${misdated.length} row(s).`
+      : `${misdated.length} row(s) drifted. Re-run with --apply to write.`,
   );
 }
 

@@ -21,7 +21,6 @@
     "eval:faithfulness": "bun run src/eval/faithfulness-eval.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.98.0",
     "@outrival/shared": "workspace:*",
     "openai": "^6.41.0",
     "zod": "^4.4.3"

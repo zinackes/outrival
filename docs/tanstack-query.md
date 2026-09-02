@@ -4,10 +4,12 @@ Reference for how the web app uses TanStack Query (React Query v5), how far the
 server-side story goes, and the rules for migrating the rest of the app.
 
 - **Versions**: `@tanstack/react-query` 5.x · Next.js 16 App Router · React 19.
-- **Status**: **client-only pilot**. Introduced to kill the per-tab skeleton flash
-  on the competitor detail page (`pricing` / `hiring` / `reviews` tabs). The rest
-  of the app still self-fetches with `useState` + `useEffect`; those migrate
-  incrementally (see [Roadmap](#incremental-migration-roadmap)).
+- **Status**: **adopted app-wide**. It started as a pilot on the competitor detail
+  tabs (`pricing` / `hiring` / `reviews`) to kill the per-tab skeleton flash, then
+  generalized: 101 files under `apps/web/src` use a Query hook, 55 key factories
+  live in `src/lib/queries.ts`, and 23 RSC pages hydrate a server-seeded cache. Ten
+  client components still hand-roll `useState` + `useEffect` + `api.*` (see
+  [Roadmap](#incremental-migration-roadmap)).
 
 ---
 
@@ -47,97 +49,113 @@ const [client] = useState(
           staleTime: 60_000,          // hydrated/cached data is "fresh" for 60s → no
                                        // refetch on remount, no flash on tab re-switch
           refetchOnWindowFocus: false, // the dashboard polls scrapes explicitly
+          retry: shouldRetryQuery,     // 4xx is final → surface it on the first answer
         },
       },
     }),
 );
 ```
 
-`staleTime: 60_000` is the load-bearing default — with the v5 default of `0`,
-data is stale on arrival and refetches immediately, defeating both the cache and
-(later) server hydration.
+`staleTime: 60_000` is the load-bearing default — with the v5 default of `0`, data
+is stale on arrival and refetches immediately, defeating both the cache and server
+hydration. `retry: shouldRetryQuery` (`lib/error-helpers.ts`) is the other one: v5
+retries everything three times, so a stale id fired the same 404 four times before
+the screen said anything.
 
 ---
 
 ## 3. Client usage pattern
 
-Replace a `useState(null)` + `useEffect(fetch)` block with `useQuery`. The three
-piloted tabs follow this shape:
+**Never write a `queryKey` inline.** Every endpoint gets one `queryOptions` factory
+in `src/lib/queries.ts` (55 today), and both sides call it — the client `useQuery`
+and the RSC that seeds the cache (§4). The key is the hydration contract, so a
+retyped array that drifts by one element hydrates nothing, silently:
 
 ```tsx
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+// src/lib/queries.ts
+export function productsSettingsQuery() {
+  return queryOptions({
+    queryKey: ["products", "settings"] as const,
+    queryFn: () => api.listProducts(),
+  });
+}
 
-const jobsQuery = useQuery({
-  queryKey: ["competitor", competitorId, "jobs", refreshTick],
-  queryFn: () => api.getCompetitorJobs(competitorId),
-  placeholderData: keepPreviousData,
-});
-const jobs = jobsQuery.data ?? null;
-if (jobsQuery.isError) return <Empty … />;
-if (!jobs) return <TabLoading />;
+// the client component
+const productsQ = useQuery(productsSettingsQuery());
+const products = productsQ.data?.products ?? null;
+if (productsQ.isError) return <Empty … />;
+if (!products) return <TabLoading />;
 ```
 
-Two deliberate choices:
+Paginated endpoints use `infiniteQueryOptions` in the same file (`signalsFeedQuery`,
+`activityFeedQuery`) so the SSR seed of page 1 and the client's first page land on
+one cache entry.
 
-- **`refreshTick` in the `queryKey`.** The parent still bumps `refreshTick` after a
-  forced re-scan to invalidate; folding it into the key was the smallest change
-  (zero parent edits). When more of the app moves onto Query, replace this with
-  `queryClient.invalidateQueries({ queryKey: ["competitor", id] })`.
-- **`placeholderData: keepPreviousData`.** On a key change (post-scrape) the
-  previous result stays on screen during the refetch → no empty skeleton. On a
-  plain remount (tab re-switch) the shared cache already serves the data, so a
-  skeleton only ever shows on the genuine first load.
+`placeholderData: keepPreviousData` on a filter-bearing key keeps the previous result
+on screen during the refetch → no empty skeleton on a filter change. On a plain
+remount the shared cache already serves the data, so a skeleton only shows on a
+genuine first load.
 
 ### queryKey conventions
 
-Hierarchical, most-general → most-specific, so partial invalidation works:
+Hierarchical, most-general → most-specific, so partial invalidation works. Params go
+in the key as an object — TanStack hashes it stably, so seed and read need equal
+params, not the same object identity:
 
 ```
-["competitor", competitorId, <slice>, …]   // "jobs", "pricingHistory", "reviews", "reviewScores"
-["myProduct"]                                // org-wide singletons
+["competitor", competitorId, <slice>]   // "detail", "battleCardStaleness", …
+["signals", { limit, productId, sort }]   // params embedded → distinct cache entries
+["products", "settings"]                  // org-wide singletons
 ```
 
 Invalidating `["competitor", id]` drops every slice of one competitor;
-`["competitor", id, "jobs"]` drops just hiring.
+`["signals"]` drops the feed, its pages and its facets.
 
 ---
 
 ## 4. Server-side prefetch + hydration (App Router)
 
 **Yes, TanStack Query has a first-class server story** and it's the recommended
-App Router pattern. We are **not using it yet** — the pilot is client-only. Here
-is how it works and, importantly, **how far it's worth taking in our case**.
+App Router pattern. It is now the default for first-paint data: 23 RSC pages seed a
+per-request client and hand it down through `<HydrationBoundary>`.
 
 ### The pattern
 
-A Server Component prefetches into a throwaway server `QueryClient`, dehydrates it,
-and wraps the client subtree in `<HydrationBoundary>`. The client `useQuery` then
-reads the hydrated cache instead of fetching:
+A Server Component builds a throwaway server `QueryClient` via
+`makeServerQueryClient()` (`src/lib/server-query.ts` — never `new QueryClient()`
+inline, and never one shared across requests), seeds it, dehydrates it, and wraps
+the client subtree. The client `useQuery` then reads the hydrated cache instead of
+fetching:
 
 ```tsx
-// app/.../page.tsx  (Server Component)
-import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
+// app/dashboard/products/page.tsx  (Server Component)
+import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { makeServerQueryClient } from "@/lib/server-query";
 
 export default async function Page() {
-  const queryClient = new QueryClient();
-  await queryClient.prefetchQuery({
-    queryKey: ["competitor", id, "jobs"],   // MUST match the client key byte-for-byte
-    queryFn: () => getCompetitorJobsServer(id), // server fn (cookie-forwarded, see §5)
-  });
+  const list = await getProductsList();          // api-server.ts, cookie-forwarded (§5)
+  const queryClient = makeServerQueryClient();
+  queryClient.setQueryData(productsSettingsQuery().queryKey, list);
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
-      <HiringTab competitorId={id} … />       {/* its useQuery is now hydrated → no client fetch */}
+      <ProductsPortfolio />                       {/* its useQuery is hydrated → no client fetch */}
     </HydrationBoundary>
   );
 }
 ```
 
+We seed with `setQueryData` off an already-awaited `api-server.ts` call rather than
+`prefetchQuery`: the page needs the payload itself (gating, `notFound()`, metadata),
+so fetching it twice — once for the page, once through a `queryFn` — would double the
+round trip. `prefetchQuery` is the right call when only the client subtree reads it.
+
 Key rules:
 
 - **The contract is the `queryKey`** — the client must call `useQuery` with the
-  exact same key it was prefetched under, or it refetches.
+  exact same key the server seeded, which is why both sides go through the factory
+  in `lib/queries.ts` (§3).
 - **`staleTime > 0` is mandatory** (we have 60s globally) or the client refetches
-  on hydration and the prefetch was wasted.
+  on hydration and the seed was wasted.
 - The browser provider from §2 stays as-is — `HydrationBoundary` injects the
   dehydrated state into the existing per-tab client. **No provider refactor is
   needed to start prefetching.** A shared `getQueryClient()` factory (server =
@@ -156,28 +174,25 @@ non-streaming prefetch above covers the need.
 
 ---
 
-## 5. Relationship to the existing server prefetch (`lib/api-server.ts`)
+## 5. The RSC fetch layer (`lib/api-server.ts`)
 
-We already have a **home-grown server prefetch**: `lib/api-server.ts` exposes RSC
-functions that `fetch(API_BASE + path, { headers: cookie })` (forwarding the Better
-Auth session cookie), and pages pass the result as an `initialData` prop. Example:
-`competitors/[id]/page.tsx` → `getCompetitorDetailData(id)` → `<CompetitorDetailView
-initialData={…} />`, where the client view seeds `useState` from it and skips its
-first client fetch.
+`lib/api-server.ts` is the RSC fetch layer: functions that
+`fetch(API_BASE + path, { headers: cookie })`, forwarding the Better Auth session
+cookie. It predates Query — pages used to pass its result down as an `initialData`
+prop and the client view seeded `useState` from it.
 
-This is conceptually the same thing as Query hydration, done by hand. The two
-**coexist** during migration, and `api-server.ts` is the natural **server queryFn**
-when a page moves to hydration:
+The seed-props step is **done** — no `initialData` prop is left in `apps/web/src`.
+What survives, and should, is `api-server.ts` itself: 25 RSC files still call it, now
+as the source of the value they seed into the hydrated cache.
 
 ```
-Today (seed-props):   RSC api-server.ts → initialData prop → useState(initialData)
-Hydration (target):   RSC api-server.ts → prefetchQuery → dehydrate → HydrationBoundary → useQuery(sameKey)
+Before:   RSC api-server.ts → initialData prop → useState(initialData)
+Now:      RSC api-server.ts → setQueryData(sameKey) → dehydrate → HydrationBoundary → useQuery(sameKey)
 ```
 
-When converging a page, reuse the existing `api-server.ts` function as the
-`queryFn` inside `prefetchQuery`, and the client `lib/api.ts` call as the browser
-`queryFn`, under one shared `queryKey`. Don't rip out `api-server.ts` — it's the
-cookie-forwarding server fetch layer either way.
+The `queryKey` is the contract on both sides, so take it from the factory in
+`lib/queries.ts` (`productsSettingsQuery().queryKey`) rather than retyping the array
+— a hand-written key that drifts by one element hydrates nothing and fails silently.
 
 ---
 
@@ -188,7 +203,7 @@ Skip it (client-only `useQuery` is correct) when:
 
 - the data backs a **secondary / on-demand view** — e.g. the competitor tabs:
   prefetching all of pricing+hiring+reviews on page render would fire requests for
-  tabs the user may never open. The pilot is deliberately client-only here.
+  tabs the user may never open. These stay deliberately client-only.
 - a brief **loading state is acceptable**;
 - the data **changes often** (prefetched value is stale immediately);
 - the `queryFn` would call a **Server Action** — they run serially and fight
@@ -198,16 +213,18 @@ Skip it (client-only `useQuery` is correct) when:
 
 ## 7. Incremental migration roadmap
 
-Not a big-bang. ~39 client components still self-fetch; migrate **when you touch a
-zone**, not as a sweep (the app can't be fully exercised locally — WSL2 RAM).
+Nearly done, and never a big-bang. Ten client components still hand-roll
+`useState` + `useEffect` + `api.*`; migrate **when you touch a zone**, not as a
+sweep (the app can't be fully exercised locally — WSL2 RAM).
 
 Per zone:
 
 1. Client component: `useState`/`useEffect` fetch → `useQuery` (§3), hierarchical key.
 2. Drop the now-dead `refreshTick`-style props in favor of `invalidateQueries`
    once the parent is also on Query.
-3. If the data is first-paint-critical: add `prefetchQuery` + `HydrationBoundary`
-   in the RSC page (§4), reusing `api-server.ts` as the server `queryFn` (§5).
+3. If the data is first-paint-critical: seed `makeServerQueryClient()` +
+   `HydrationBoundary` in the RSC page (§4), off the `api-server.ts` call the page
+   already awaits (§5).
 
 Provider refactor to a shared `getQueryClient()` factory is only required if/when
 we adopt streaming — track it then, not now.
@@ -229,9 +246,6 @@ because the pattern doesn't fit or adds no value:
 - **`update-profile-dialog`** — a fetch-on-open that seeds **~10 editable draft
   fields** from two endpoints. One-shot form init, no cache to share, no re-render on
   data → a plain effect is clearer than `useQuery` + a seed effect.
-- **`battle-card-tab`** — **generate-polling** with 404-as-pending: the custom state
-  machine (loading/absent/generating/ready) is clearer than bending `useQuery`
-  retry/refetchInterval around it.
 - **`nps-prompt`** (one-shot eligibility gate) and **`feedback-widget`** (no GET) —
   nothing to cache.
 

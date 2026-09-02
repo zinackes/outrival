@@ -35,10 +35,6 @@ export const RATE_STRUCTURES = [
 ] as const;
 export type RateStructure = (typeof RATE_STRUCTURES)[number];
 
-export function isRateStructure(value: unknown): value is RateStructure {
-  return typeof value === "string" && (RATE_STRUCTURES as readonly string[]).includes(value);
-}
-
 /** One published volume band. */
 export interface CostTier {
   fromQty: number;

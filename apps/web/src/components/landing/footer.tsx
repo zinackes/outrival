@@ -40,7 +40,7 @@ export function Footer() {
               className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight"
             >
               <LogoMark size={26} />
-              Out<span className="text-primary">rival</span>
+              Out<span className="text-link">rival</span>
             </a>
             <p className="mt-3 max-w-xs text-sm text-text-muted">
               Competitive intelligence isn&apos;t a weekly calendar slot

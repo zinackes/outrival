@@ -66,20 +66,28 @@ const SLACK_ERROR_THROTTLE_MS = 5 * 60_000;
 let _lastSlackErrorAt = 0;
 
 /**
+ * The decision half of `alertQueueError`: the message to post, or null for "stay
+ * quiet, one already went out this window". Split from the sending so the throttle
+ * — the thing standing between a queue outage and hundreds of Slack messages an
+ * hour — can be tested against a clock instead of against Slack. `now` is a
+ * parameter for the same reason; production always passes the real one.
+ */
+export function queueErrorAlert(err: unknown, now: number = Date.now()): string | null {
+  if (now - _lastSlackErrorAt < SLACK_ERROR_THROTTLE_MS) return null;
+  _lastSlackErrorAt = now;
+  const message = err instanceof Error ? err.message : String(err);
+  return `:rotating_light: pg-boss queue error on \`${process.env.WORKER_ROLE ?? "api"}\`: ${message}`;
+}
+
+/**
  * Best-effort ops alert on a queue-level failure. Never awaited by the caller and
  * never throws: an alerting failure must not add a second fault to the first one.
  */
 function alertQueueError(err: unknown): void {
   const webhook = process.env.OPS_SLACK_WEBHOOK_URL;
   if (!webhook) return;
-  const now = Date.now();
-  if (now - _lastSlackErrorAt < SLACK_ERROR_THROTTLE_MS) return;
-  _lastSlackErrorAt = now;
-  const message = err instanceof Error ? err.message : String(err);
-  void sendSlackMessage(
-    webhook,
-    `:rotating_light: pg-boss queue error on \`${process.env.WORKER_ROLE ?? "api"}\`: ${message}`,
-  );
+  const text = queueErrorAlert(err);
+  if (text) void sendSlackMessage(webhook, text);
 }
 
 function requireQueueUrl(): string {
@@ -245,7 +253,6 @@ export interface JobConfig {
   deadLetter?: string;
   /** rolling worker concurrency for this queue (was `queue({concurrencyLimit})`). */
   concurrency?: number;
-  pollingIntervalSeconds?: number;
 }
 
 export interface JobDef<P extends object> {
@@ -294,9 +301,10 @@ export function defineJob<P extends object>(name: string, config: JobConfig = {}
     // Pinned back to the pre-notify cadence so enabling NOTIFY is a pure gain:
     // instant pickup for live jobs, unchanged catch-up for a queue that is behind.
     // (burstWhenBatchFull is the documented cure but is ignored at batchSize 1.)
-    notifyPollingIntervalSeconds: config.pollingIntervalSeconds ?? 2,
+    // Not per-job configurable: no job ever overrode it, and a queue that opted out
+    // of the backstop would go back to sleeping 30s on a backlog.
+    notifyPollingIntervalSeconds: 2,
     ...(config.concurrency ? { localConcurrency: config.concurrency } : {}),
-    ...(config.pollingIntervalSeconds ? { pollingIntervalSeconds: config.pollingIntervalSeconds } : {}),
   };
 
   const def: JobDef<P> = {
@@ -323,9 +331,11 @@ export function defineJob<P extends object>(name: string, config: JobConfig = {}
  *
  * So reconcile after creating: `updateQueue` writes retry/expiry/retention/notify
  * onto the existing row, making jobs.ts the source of truth on every boot. `policy`
- * and `partition` are excluded because pg-boss refuses to change them after
- * creation (they decide the queue's table shape) — a policy change still needs the
- * queue dropped and recreated, deliberately.
+ * is the one key stripped out below, because pg-boss refuses to change it after
+ * creation (it decides the queue's table shape) — a policy change still needs the
+ * queue dropped and recreated, deliberately. `partition` is the same kind of
+ * immutable, but no `defineJob` sets it, so it never reaches `updateQueue` and
+ * needs no exclusion.
  */
 export async function registerQueues(): Promise<void> {
   const boss = getBoss();
@@ -345,23 +355,49 @@ export async function registerQueues(): Promise<void> {
     logger.error({ err }, "queue option reconciliation skipped");
     return;
   }
-  const byName = new Map(live.map((q) => [q.name, q as unknown as Record<string, unknown>]));
+  for (const { name, desired, changed } of planQueueReconciliation(registry, live)) {
+    await boss.updateQueue(name, desired);
+    logger.warn({ queue: name, changed }, "queue options reconciled from the job registry");
+  }
+}
 
-  for (const def of registry) {
+/** One queue that has to be repaired, and what exactly is being repaired on it. */
+export interface QueueDrift {
+  name: string;
+  /** what to hand `updateQueue` — the declared options minus the immutable `policy` */
+  desired: Omit<Queue, "name" | "policy">;
+  /** only the keys that actually differ, for the log line */
+  changed: Record<string, { was: unknown; now: unknown }>;
+}
+
+/**
+ * The comparison half of `registerQueues`, split out so it can be tested without a
+ * live pg-boss. Pure: it decides WHICH queues drifted and in which keys, and never
+ * writes anything.
+ *
+ * A queue absent from `live` is skipped rather than updated — `getQueues` answering
+ * short means the row is not there to update, and calling `updateQueue` on it would
+ * throw and take the boot down for a queue `createQueue` will make on the next one.
+ */
+export function planQueueReconciliation(
+  defs: readonly { name: string; queueOptions: Omit<Queue, "name"> }[],
+  live: readonly QueueResult[],
+): QueueDrift[] {
+  const byName = new Map(live.map((q) => [q.name, q as unknown as Record<string, unknown>]));
+  const plan: QueueDrift[] = [];
+  for (const def of defs) {
     const current = byName.get(def.name);
     if (!current) continue;
     const { policy: _policy, ...desired } = def.queueOptions;
     const drift = Object.entries(desired).filter(([k, v]) => current[k] !== v);
     if (drift.length === 0) continue;
-    await boss.updateQueue(def.name, desired);
-    logger.warn(
-      {
-        queue: def.name,
-        changed: Object.fromEntries(drift.map(([k, v]) => [k, { was: current[k], now: v }])),
-      },
-      "queue options reconciled from the job registry",
-    );
+    plan.push({
+      name: def.name,
+      desired,
+      changed: Object.fromEntries(drift.map(([k, v]) => [k, { was: current[k], now: v }])),
+    });
   }
+  return plan;
 }
 
 /**
@@ -398,10 +434,6 @@ export function isAbortedOutput(output: unknown): output is AbortedOutput {
 /** What a deferral leaves on the job row it replaced, so "rescheduled because the
  *  AI pool was throttled" is queryable and never reads as a plain success. */
 export type DeferredOutput = { deferred: true; seconds: number; attempt: number; reason: string };
-
-export function isDeferredOutput(output: unknown): output is DeferredOutput {
-  return !!output && typeof output === "object" && (output as DeferredOutput).deferred === true;
-}
 
 /**
  * Register a worker handler for a job. Adapts pg-boss's `(Job[]) => Promise`

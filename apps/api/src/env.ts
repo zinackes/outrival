@@ -27,11 +27,14 @@ export const EnvSchema = z
     // public endpoint. Unset → the enable route refuses trustpilot_public (clean
     // degradation) and the scraper throws; never a scraping fallback.
     TRUSTPILOT_API_KEY: z.string().min(1).optional(),
-    // AES-256-GCM key (32 bytes, 64 hex chars) encrypting third-party OAuth tokens at
-    // rest in `oauth_connections`. Optional on purpose: no provider is wired yet, so a
-    // boot-blocking refine would break every deploy for a surface nobody can reach.
-    // Unset → the connect routes answer 500 `oauth_encryption_unconfigured` and no token
-    // is ever written in plaintext. Make it required here the day a provider ships.
+    // AES-256-GCM key (32 bytes, 64 hex chars) encrypting the secrets this product
+    // stores: third-party OAuth tokens in `oauth_connections`, and the CRM webhook
+    // signing secret in `crm_destinations` (code:SEC-08). The workers box needs the
+    // SAME value — it signs the outbound push. Optional on purpose: a boot-blocking
+    // refine would break the deploy of every env that has no secret to protect yet.
+    // Unset → the connect routes answer 500 `oauth_encryption_unconfigured`, saving a
+    // CRM secret answers 500 `secret_encryption_unconfigured`, and nothing is ever
+    // written in plaintext.
     OAUTH_TOKEN_ENCRYPTION_KEY: z
       .string()
       .regex(/^[0-9a-fA-F]{64}$/, "OAUTH_TOKEN_ENCRYPTION_KEY must be 64 hex chars (32 bytes)")

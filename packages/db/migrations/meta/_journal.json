@@ -481,14 +481,14 @@
     {
       "idx": 68,
       "version": "7",
-      "when": 1785614303243,
+      "when": 1785614303242,
       "tag": "0068_complete_microchip",
       "breakpoints": true
     },
     {
       "idx": 69,
       "version": "7",
-      "when": 1785614303242,
+      "when": 1785614303243,
       "tag": "0069_military_thunderball",
       "breakpoints": true
     },
@@ -588,6 +588,13 @@
       "version": "7",
       "when": 1786783958740,
       "tag": "0083_red_natasha_romanoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1788351082550,
+      "tag": "0084_zippy_luminals",
       "breakpoints": true
     }
   ]

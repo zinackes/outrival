@@ -294,7 +294,7 @@ export function AuthForm() {
           <LogoMark size={44} />
           <span>
             <span className="text-foreground">out</span>
-            <span className="text-primary">rival</span>
+            <span className="text-link">rival</span>
           </span>
         </Link>
 
@@ -528,7 +528,7 @@ function CodeStep({
   const invalid = status === "error" && Boolean(error);
   return (
     <div className="text-center">
-      <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+      <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-primary/10 text-link">
         <EnvelopeIcon size={20} />
       </div>
       <h2 className="mt-5 text-base font-medium text-foreground">Check your email</h2>
@@ -608,7 +608,7 @@ function TotpStep({
   const invalid = status === "error" && Boolean(error);
   return (
     <div className="text-center">
-      <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+      <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-primary/10 text-link">
         <ShieldCheckIcon size={20} />
       </div>
       <h2 className="mt-5 text-base font-medium text-foreground">

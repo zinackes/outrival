@@ -869,7 +869,7 @@ compareRouter.get("/", async (c) => {
               severity: sig.severity,
               category: sig.category,
               insight: sig.insight,
-              createdAt: sig.createdAt as unknown as string,
+              createdAt: sig.createdAt.toISOString(),
             }
           : null,
       };

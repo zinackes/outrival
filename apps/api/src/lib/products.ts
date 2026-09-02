@@ -172,21 +172,33 @@ export async function ensurePrimaryProductForSelf(
   });
   if (existing) return;
 
-  const anyProduct = await db.query.products.findFirst({
-    where: eq(products.orgId, orgId),
-    columns: { id: true },
-  });
+  // The `anyProduct` read decides `isPrimary`, so it and the insert are one
+  // transaction, serialized per org by the same advisory lock the create and
+  // promote paths take. Apart, two first products of the same org both read
+  // "none" and both claimed primary; with `products_org_primary_uq` in place the
+  // second would now hit the untargeted onConflictDoNothing below and vanish
+  // without a product row at all, which is worse than the duplicate it replaces
+  // (`code:COR-07`). The conflict clause stays for what it was always for: the
+  // unique selfCompetitorId index, i.e. calling this twice for the same anchor.
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${orgId}))`);
 
-  await db
-    .insert(products)
-    .values({
-      orgId,
-      name: name || DEFAULT_PRODUCT_NAME,
-      selfCompetitorId,
-      isPrimary: !anyProduct,
-      position: 0,
-    })
-    .onConflictDoNothing();
+    const anyProduct = await tx.query.products.findFirst({
+      where: eq(products.orgId, orgId),
+      columns: { id: true },
+    });
+
+    await tx
+      .insert(products)
+      .values({
+        orgId,
+        name: name || DEFAULT_PRODUCT_NAME,
+        selfCompetitorId,
+        isPrimary: !anyProduct,
+        position: 0,
+      })
+      .onConflictDoNothing();
+  });
 }
 
 /**

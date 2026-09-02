@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { WarningCircleIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { api, type StructuralChangeRow } from "@/lib/api";
@@ -39,8 +39,8 @@ export function StructuralChangeBanner() {
     try {
       await api.resolveStructuralChange(change.id, resolution);
       setChanges((prev) => prev.filter((c) => c.id !== change.id));
-    } catch {
-      toast.error("Couldn't update this. Please try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't update this" });
     } finally {
       setBusyId(null);
     }

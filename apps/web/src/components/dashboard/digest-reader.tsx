@@ -12,6 +12,7 @@ import {
 } from "@/components/icons";
 import { format } from "date-fns";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { api, ApiError, type DigestDetail } from "@/lib/api";
 import { digestDetailQuery, digestsQuery } from "@/lib/queries";
 import { digestToMarkdown } from "@/lib/digest-markdown";
@@ -68,7 +69,7 @@ export function DigestReader({ id }: { id: string }) {
       if (e instanceof ApiError && e.code === "no_recipient") {
         toast.info("Add a recipient email in Delivery settings first.");
       } else {
-        toast.error("Couldn't send the brief. Try again.");
+        toastApiError(e, { title: "Couldn't send the brief" });
       }
     } finally {
       setSending(false);

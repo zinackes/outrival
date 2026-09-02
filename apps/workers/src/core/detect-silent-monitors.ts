@@ -9,7 +9,7 @@ import {
   notifications,
   organizations,
 } from "@outrival/db";
-import { sendSlackMessage, emailButton } from "@outrival/shared";
+import { sendSlackMessage, emailButton, escapeHtml } from "@outrival/shared";
 import { decideDispatch } from "../lib/notification-dispatcher";
 import { emailShell, e, t } from "../lib/email-shell";
 import { sendEmail, ALERT_FROM } from "../lib/resend";
@@ -201,10 +201,16 @@ async function notifyOrg(orgId: string, list: SilentMonitor[]): Promise<void> {
   }
 }
 
-function silentEmailHtml(title: string, body: string, href: string): string {
+// Exported for the escaping regression test (code:SEC-05); nothing else calls it.
+export function silentEmailHtml(title: string, body: string, href: string): string {
+  // `body` quotes competitor names, which are scraped from the competitor's own
+  // pages — attacker-influenced text (code:SEC-05). emailShell's `inner` is raw
+  // HTML by contract, so every interpolation escapes at the call site. The
+  // preheader argument is the exception: emailShell escapes that one itself, so
+  // it takes the unescaped string.
   return emailShell(
-    `<h1 ${e("text", t("title", "margin:0 0 12px;"))}>${title}</h1>
-      <p ${e("muted", t("body", "margin:0 0 24px;"))}>${body}</p>
+    `<h1 ${e("text", t("title", "margin:0 0 12px;"))}>${escapeHtml(title)}</h1>
+      <p ${e("muted", t("body", "margin:0 0 24px;"))}>${escapeHtml(body)}</p>
       ${emailButton(href, "Review the source")}`,
     520,
     body,

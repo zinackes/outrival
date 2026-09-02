@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SpinnerIcon, LockIcon } from "@/components/icons";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import {
   PLAN_LABELS,
   minPlanForSource,
@@ -58,8 +59,8 @@ export function MonitoringDefaultsCard() {
     try {
       await api.updateSourceDefaults([...current]);
       await qc.invalidateQueries({ queryKey: sourceDefaultsQuery().queryKey });
-    } catch {
-      toast.error("Couldn't save that. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't save that" });
     } finally {
       setSaving(null);
     }
@@ -75,8 +76,8 @@ export function MonitoringDefaultsCard() {
           ? "Every competitor already has these sources."
           : `Added ${res.created} source${res.created === 1 ? "" : "s"} across ${res.competitorsTouched} competitor${res.competitorsTouched === 1 ? "" : "s"}. First scans are queued.`,
       );
-    } catch {
-      toast.error("Couldn't apply the defaults. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't apply the defaults" });
     } finally {
       setApplying(false);
     }

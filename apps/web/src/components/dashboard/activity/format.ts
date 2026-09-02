@@ -1,4 +1,5 @@
-import { format, isToday, isYesterday } from "date-fns";
+import { format, isSameDay, subDays } from "date-fns";
+import { nowOnClock, onClock } from "@/lib/hydration-clock";
 import type {
   ActivityCaptured,
   ActivityEvent,
@@ -23,17 +24,26 @@ export function eventOutcome(e: ActivityEvent): Outcome {
 // ── Days ─────────────────────────────────────────────────────────────────────
 // The log groups by the viewer's day, and the summary's tallies are bucketed by
 // the same offset server-side, so a header and its rows always agree.
+//
+// `local` is the caller's `useHydrated()`: false on the server and on the first
+// client render, so both derive the SAME buckets, true from the mount effect on.
+// Without it the two runtimes cut the day at two different instants and produce a
+// different set of sections — a structural hydration failure, not a text one
+// (`code:PER-24`). See `@/lib/hydration-clock`.
 
-/** Local day key (YYYY-MM-DD) of an instant. */
-export function dayKeyOf(iso: string): string {
-  return format(new Date(iso), "yyyy-MM-dd");
+/** Day key (YYYY-MM-DD) of an instant, on the caller's clock. */
+export function dayKeyOf(iso: string, local: boolean): string {
+  return format(onClock(iso, local), "yyyy-MM-dd");
 }
 
-/** "Today" / "Yesterday" / "Fri, Jul 18" for a local day key. */
-export function dayLabel(key: string): string {
+/** "Today" / "Yesterday" / "Fri, Jul 18" for a day key cut on the same clock. */
+export function dayLabel(key: string, local: boolean): string {
+  // A key is already a calendar day, so it parses at local midnight and never moves;
+  // only the "now" it is measured against has to follow the caller's clock.
   const d = new Date(`${key}T00:00:00`);
-  if (isToday(d)) return "Today";
-  if (isYesterday(d)) return "Yesterday";
+  const now = nowOnClock(local);
+  if (isSameDay(d, now)) return "Today";
+  if (isSameDay(d, subDays(now, 1))) return "Yesterday";
   return format(d, "EEE, MMM d");
 }
 

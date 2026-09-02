@@ -5,15 +5,16 @@ import { defineJob, getBoss } from "./boss";
 // policy (retry/expire/concurrency/dead-letter). Imported by @outrival/api
 // (enqueue) and @outrival/workers (enqueue + work + schedule).
 //
-// Retry mapping: pg-boss retryLimit = number of RETRIES; Trigger maxAttempts N
-// → retryLimit N-1. expireInSeconds = old Trigger `maxDuration`. concurrency =
-// old `queue({concurrencyLimit})`, now a rolling per-node worker count.
-// Payloads marked "refine in Phase 2" are typed minimally until their handler
-// is wired against its zod InputSchema.
+// Retry mapping: pg-boss retryLimit = number of RETRIES, so the values below are
+// one less than the maxAttempts the pre-cutover Trigger.dev config declared.
+// expireInSeconds was that config's `maxDuration`; concurrency was its
+// `queue({concurrencyLimit})`, and is now a rolling per-node worker count.
 // ---------------------------------------------------------------------------
 
-// Shared dead-letter sink for the critical scrape→signal pipeline. Jobs that
-// exhaust retries land here for inspection / redrive; no worker consumes it.
+// Shared dead-letter sink for the critical scrape→signal pipeline. Only the jobs
+// that declare `deadLetter: PIPELINE_DLQ` below reach it — on exhausted retries, or
+// on a `DeadLetter` throw. Every other job's exhausted retries just end as `failed`.
+// For inspection / redrive; no worker consumes it.
 const PIPELINE_DLQ = "outrival-dlq";
 export const deadLetterQueue = defineJob<Record<string, never>>(PIPELINE_DLQ);
 

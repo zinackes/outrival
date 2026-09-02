@@ -687,6 +687,10 @@ export function SourcesView({
                       "text-muted-foreground",
                       state === "not_available" ? "text-sm" : "text-xs",
                     )}
+                    // A freshness stamp is measured against the clock at render time,
+                    // so the server's string and the browser's differ across a bucket
+                    // boundary (`code:PER-24`).
+                    suppressHydrationWarning
                   >
                     {message}
                   </span>

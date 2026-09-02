@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { SpinnerIcon } from "@/components/icons";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { api } from "@/lib/api";
 import {
   getRecentErrors,
@@ -96,8 +97,8 @@ export function FeedbackWidget() {
       toast.success("Thanks, got it");
       setOpen(false);
       reset();
-    } catch {
-      toast.error("Send failed, try again in a moment");
+    } catch (e) {
+      toastApiError(e, { title: "Send failed" });
     } finally {
       setSubmitting(false);
     }
@@ -129,7 +130,7 @@ export function FeedbackWidget() {
                   onClick={() => setType(opt.value)}
                   className={`flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors ${
                     type === opt.value
-                      ? "border-primary text-primary"
+                      ? "border-primary text-link"
                       : "border-border text-text-muted hover:border-border-strong"
                   }`}
                 >

@@ -228,6 +228,7 @@ const ALL_QUIET = renderAllQuietDigest({
 const WELCOME = renderWelcomeEmail({
   competitorNames: ["Linear", "Notion", "Height", "Shortcut", "Supabase", "Citus Data"],
   dashboardUrl: "#dashboard",
+  unsubscribeUrl: "#unsubscribe",
 }).html;
 
 const CELEBRATION = renderCelebrationEmail({
@@ -236,6 +237,7 @@ const CELEBRATION = renderCelebrationEmail({
   insight: "Business tier moved from $16 to $20 per seat, with AI credits bundled.",
   soWhat: "Your $18 tier is no longer the mid-market anchor.",
   signalUrl: "#signal",
+  unsubscribeUrl: "#unsubscribe",
 }).html;
 
 const RECAP = renderMonthlyRecapEmail({
@@ -245,6 +247,7 @@ const RECAP = renderMonthlyRecapEmail({
   busiestName: "Linear",
   biggestInsight: "Linear bundled AI credits into its Business tier.",
   recapUrl: "#recap",
+  unsubscribeUrl: "#unsubscribe",
 }).html;
 
 // --- the design-system artefact -------------------------------------------------

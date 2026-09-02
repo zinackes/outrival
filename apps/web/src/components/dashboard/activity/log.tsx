@@ -8,6 +8,7 @@ import type { ActivityDay, ActivityEvent } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { activityQuietDayQuery } from "@/lib/queries";
 import { usePersistedOpen } from "@/hooks/use-persisted-open";
+import { useHydrated } from "@/hooks/use-hydrated";
 import { feedItemMotion } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { RunRow } from "./run-row";
@@ -61,10 +62,16 @@ export function ActivityLog({
       return next;
     });
 
+  // The day a run belongs to is the VIEWER's day, which the UTC server cannot know
+  // while it renders. Cutting the buckets on the viewer's clock during hydration
+  // gave the two runtimes a different set of sections (`code:PER-24`): first paint
+  // shares the server's, the viewer's own arrive on mount.
+  const local = useHydrated();
+
   const groups = useMemo(() => {
     const byDay = new Map<string, ActivityEvent[]>();
     for (const e of events) {
-      const key = dayKeyOf(e.recordedAt);
+      const key = dayKeyOf(e.recordedAt, local);
       const bucket = byDay.get(key);
       if (bucket) bucket.push(e);
       else byDay.set(key, [e]);
@@ -78,12 +85,13 @@ export function ActivityLog({
     // still appears (with its fold) instead of vanishing from a findings feed.
     // Stop at the oldest day already loaded while more pages remain, or the page
     // would print empty headers for days it has not fetched yet.
-    const oldestLoaded = events.length > 0 ? dayKeyOf(events[events.length - 1]!.recordedAt) : null;
+    const oldestLoaded =
+      events.length > 0 ? dayKeyOf(events[events.length - 1]!.recordedAt, local) : null;
     const dayByKey = new Map(days.map((d) => [d.date, d]));
     const keys = [...new Set([...days.map((d) => d.date), ...byDay.keys()])].sort().reverse();
     const visible = hasMore && oldestLoaded ? keys.filter((k) => k >= oldestLoaded) : keys;
     return visible.map((key) => ({ key, rows: byDay.get(key) ?? [], day: dayByKey.get(key) ?? null }));
-  }, [events, days, foldable, hasMore]);
+  }, [events, days, foldable, hasMore, local]);
 
   if (groups.length === 0) return null;
 
@@ -94,7 +102,12 @@ export function ActivityLog({
           new place, instead of the whole log swapping under a single fade. */}
       <AnimatePresence initial={false} mode="popLayout">
         {groups.map(({ key, rows, day }) => (
-          <motion.section key={key} aria-label={dayLabel(key)} {...feedItemMotion} layout="position">
+          <motion.section
+            key={key}
+            aria-label={dayLabel(key, local)}
+            {...feedItemMotion}
+            layout="position"
+          >
             <DaySection
               dayKey={key}
               rows={rows}
@@ -152,6 +165,7 @@ function DaySection({
   onToggleRow: (key: string) => void;
 }) {
   const [open, setOpen] = usePersistedOpen(`outrival.activity.day.${dayKey}.open`);
+  const local = useHydrated();
   const quiet = day ? Math.max(0, day.checks - day.changes - day.failures - day.firstCaptures) : 0;
   const bodyId = `activity-day-${dayKey}`;
 
@@ -184,7 +198,7 @@ function DaySection({
             )}
             aria-hidden
           />
-          <h3 className="truncate text-sm font-semibold tracking-tight">{dayLabel(dayKey)}</h3>
+          <h3 className="truncate text-sm font-semibold tracking-tight">{dayLabel(dayKey, local)}</h3>
         </span>
         {day && <DayTally day={day} />}
       </button>

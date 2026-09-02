@@ -2,7 +2,7 @@ import { logger } from "../lib/job-logger";
 import { z } from "zod";
 import { and, eq, ne, isNull, gte, lt } from "drizzle-orm";
 import { db, organizations, competitors, signals } from "@outrival/db";
-import { renderMonthlyRecapEmail } from "@outrival/shared";
+import { renderMonthlyRecapEmail, signUnsubscribeToken } from "@outrival/shared";
 import { sendEmail, ALERT_FROM } from "../lib/resend";
 
 // Lever 9 — monthly "Competitive Recap" teaser email. Triggered (idempotency-keyed per
@@ -26,6 +26,9 @@ export async function runSendMonthlyRecap(payload: z.input<typeof InputSchema>) 
 
     const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId) });
     if (!org?.digestEmail) return { skipped: "no_email" };
+    // Honour the digest unsubscribe: the footer this email now carries promises it
+    // stops the lifecycle sends too, so the flag has to gate them (ux:45).
+    if (!org.digestEnabled) return { skipped: "unsubscribed" };
 
     const [y, m] = month.split("-").map(Number);
     const start = new Date(Date.UTC(y!, m! - 1, 1));
@@ -79,6 +82,15 @@ export async function runSendMonthlyRecap(payload: z.input<typeof InputSchema>) 
         b.createdAt.getTime() - a.createdAt.getTime(),
     )[0];
 
+    // Same one-click unsubscribe the digests carry (ux:45): one link, one flag
+    // (organizations.digestEnabled), every recurring email off.
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? process.env.BETTER_AUTH_URL ?? "";
+    const secret = process.env.BETTER_AUTH_SECRET ?? "";
+    const unsubscribeUrl =
+      apiBase && secret
+        ? `${apiBase}/api/digest-feedback/unsubscribe?token=${signUnsubscribeToken(orgId, secret)}`
+        : undefined;
+
     const webUrl = process.env.WEB_URL ?? "https://outrival.app";
     const email = renderMonthlyRecapEmail({
       monthLabel,
@@ -87,12 +99,21 @@ export async function runSendMonthlyRecap(payload: z.input<typeof InputSchema>) 
       busiestName,
       biggestInsight: biggest?.insight ?? null,
       recapUrl: `${webUrl}/dashboard/recap?month=${month}`,
+      unsubscribeUrl,
     });
     await sendEmail({
       from: ALERT_FROM,
       to: org.digestEmail,
       subject: email.subject,
       html: email.html,
+      ...(unsubscribeUrl
+        ? {
+            headers: {
+              "List-Unsubscribe": `<${unsubscribeUrl}>`,
+              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            },
+          }
+        : {}),
     });
 
     logger.log("Monthly recap sent", { orgId, month, moves: rows.length });

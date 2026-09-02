@@ -200,7 +200,7 @@ export function SidebarCompetitors() {
                         <span className="ml-auto flex shrink-0 items-center gap-1.5">
                           {c.pausedByPlan === true && <PlanLimitMark />}
                           {unread > 0 && (
-                            <span className="text-meta font-medium tabular-nums text-primary">
+                            <span className="text-meta font-medium tabular-nums text-link">
                               {unread}
                               <span className="sr-only">
                                 {unread === 1 ? " unread signal" : " unread signals"}

@@ -102,10 +102,25 @@ authRouter.post("/check-and-send-magic-link", authRateLimit, async (c) => {
     void captureServerEvent(email, "signup_suspicious_localpart", { domain });
   }
 
-  // Best-effort analytics only — never branches the HTTP response below.
-  const existing = await db.query.users
-    .findFirst({ where: eq(users.email, email) })
-    .catch(() => undefined);
+  // NOT best-effort: the suspension gate below branches on this row, so a failed
+  // lookup must never read as "no such account" — that is exactly how a suspended
+  // operator lock-out got handed a working sign-in code (code:COR-02). Fail closed:
+  // no code goes out, and the response talks about the server, not the account, so
+  // the anti-enumeration contract above still holds.
+  let existing: typeof users.$inferSelect | undefined;
+  try {
+    existing = await db.query.users.findFirst({ where: eq(users.email, email) });
+  } catch (err) {
+    console.error("sign-in account lookup failed", { err });
+    return c.json(
+      errorBody(
+        "lookup_failed",
+        "We couldn't complete that just now. Try again in a moment.",
+        { userAction: "retry" },
+      ),
+      503,
+    );
+  }
 
   // Per-IP new-account cap — enforced ONLY for would-be sign-ups (unknown email),
   // so a shared NAT IP that has hit the cap never blocks real LOGINS. Returns the

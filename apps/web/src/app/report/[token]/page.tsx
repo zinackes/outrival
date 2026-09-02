@@ -376,7 +376,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
                       key={i}
                       className="flex items-start gap-3 rounded-lg border border-border bg-card px-4 py-3.5"
                     >
-                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-accent/40 text-primary">
+                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-accent/40 text-link">
                         <Icon size={16} aria-hidden />
                       </span>
                       <span className="text-sm leading-snug">{ins.text}</span>

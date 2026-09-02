@@ -134,7 +134,7 @@ export function VsPage({ competitorKey }: { competitorKey: CompetitorKey }) {
             <ul>
               {OUTRIVAL_WINS.map((b) => (
                 <li key={b.title}>
-                  <CheckIcon size={16} className="text-primary" aria-hidden />
+                  <CheckIcon size={16} className="text-link" aria-hidden />
                   <p>
                     <b>{b.title}.</b> {b.body}
                   </p>

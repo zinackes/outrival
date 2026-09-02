@@ -6,6 +6,7 @@ import {
   pgEnum,
   integer,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { InferSelectModel, InferInsertModel } from "drizzle-orm";
 import { users } from "./users";
@@ -67,8 +68,14 @@ export const qualityFeedback = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [
-    // One verdict per (user, target): the API upserts on this triplet.
-    index("quality_feedback_user_target_idx").on(
+    // One verdict per (user, target). UNIQUE, not a plain index: both writers
+    // (feedback-quality.ts and digest-feedback.ts) used to read-then-branch, so a
+    // double-click or two clicks on the same digest email both saw "no row" and
+    // both inserted — and every reader downstream (monthly-recap,
+    // notification-preferences, admin NPS) counts rows without deduping, so the
+    // duplicate silently skewed the metric the invariant was there to protect
+    // (`code:COR-15`). Both writers now upsert onto this index.
+    uniqueIndex("quality_feedback_user_target_uq").on(
       t.userId,
       t.targetType,
       t.targetId,

@@ -403,8 +403,8 @@ systemRouter.get("/capabilities", async (c) => {
 
 // --- B1: host (web + API) resources ---
 // This is the VPS that runs Next.js (web) + Hono (API) — NOT scraping. Scraping
-// browsers run on isolated Trigger.dev Cloud machines, so the scraping-capacity
-// signal is the queue backlog (see /queue-health), not RAM here. os.* reads the
+// browsers run on the separate workers box (WORKER_ROLE=browser), so the
+// scraping-capacity signal is the queue backlog (see /queue-health), not RAM here. os.* reads the
 // host; on a cgroup-limited container totalmem may report the host, not the
 // container limit — fine for a single-tenant VPS.
 systemRouter.get("/host-health", (c) => {

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   PLANS,
   PLAN_LIMITS,
+  aiActionsPerHour,
   clampFrequencyToPlan,
   forcedRescansPerDay,
   isGatedSource,
@@ -114,6 +115,52 @@ describe("forcedRescansPerDay", () => {
     expect(forcedRescansPerDay("pro")).toBe(20);
     process.env.FORCED_RESCAN_LIMIT_PRO = "abc";
     expect(forcedRescansPerDay("pro")).toBe(20);
+  });
+});
+
+describe("aiActionsPerHour", () => {
+  const KEY = "AI_INTENSIVE_RATE_LIMIT";
+  const saved = process.env[KEY];
+
+  afterEach(() => {
+    if (saved === undefined) delete process.env[KEY];
+    else process.env[KEY] = saved;
+  });
+
+  test("unset env → the per-tier table, which is not flat", () => {
+    delete process.env[KEY];
+    expect(aiActionsPerHour("free")).toBe(20);
+    expect(aiActionsPerHour("starter")).toBe(40);
+    expect(aiActionsPerHour("pro")).toBe(120);
+    expect(aiActionsPerHour("business")).toBe(300);
+  });
+
+  // The landmine this function carries: AI_INTENSIVE_RATE_LIMIT was THE cap from
+  // patch-22 to 2026-07-31, so a prod env still holding its old `10` re-imposes a
+  // flat cap on every tier — a business account silently capped at 10 actions/h.
+  // The override is deliberate (a single-value ops kill switch), so the test pins
+  // the behaviour rather than forbidding it: it must apply to ALL FOUR tiers, so a
+  // future "override only the free tier" reading of this code fails here first.
+  test("a set env flattens every tier onto one value", () => {
+    process.env[KEY] = "10";
+    for (const plan of PLANS) expect(aiActionsPerHour(plan)).toBe(10);
+  });
+
+  test("ignores a non-positive / garbage override, per tier", () => {
+    for (const bad of ["0", "-5", "abc", ""]) {
+      process.env[KEY] = bad;
+      for (const plan of PLANS) {
+        expect(aiActionsPerHour(plan)).toBe(PLAN_LIMITS[plan].aiActionsPerHour);
+      }
+    }
+  });
+
+  // The web reads the ceiling straight off this function to render "N left this
+  // hour" without an API round-trip. In the browser `process.env.X` is undefined,
+  // which must read as "no override", not as a cap of NaN or 0.
+  test("an undefined env (the browser) reads as no override", () => {
+    delete process.env[KEY];
+    expect(aiActionsPerHour("pro")).toBe(PLAN_LIMITS.pro.aiActionsPerHour);
   });
 });
 

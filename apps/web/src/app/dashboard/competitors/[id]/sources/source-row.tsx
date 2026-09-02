@@ -417,12 +417,17 @@ export function SourceRow({
           {/* "Scanned 2 days ago" is a status stamp, not prose: it sits a step below
               the messages that ask something of the user (blocked, broken, locked),
               which stay at reading size. */}
+          {/* On a tracked source this reads an age and an hour, both measured on the
+              runtime's clock — the server's UTC one, then the viewer's a moment later
+              (`code:PER-24`). The value is cosmetic and re-renders with the next poll;
+              the hydration failure it caused was not. */}
           <span
             className={cn(
               "min-w-0 flex-1 truncate",
               canSchedule ? "text-xs" : "text-sm",
               TONE_CLASS[copy.tone],
             )}
+            suppressHydrationWarning
           >
             {copy.message}
           </span>

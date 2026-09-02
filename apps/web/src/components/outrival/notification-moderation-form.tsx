@@ -355,6 +355,7 @@ export function NotificationModerationForm() {
                   </span>
                   <Progress
                     value={Math.round(threshold.threshold * 100)}
+                    aria-label="Relevance floor"
                     className="h-1.5 w-full"
                   />
                 </div>

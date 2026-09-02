@@ -731,32 +731,30 @@ function MarketMapSection({
         return (
           <div
             key={c.id}
-            className="flex flex-col gap-2.5 rounded-lg border border-critical/30 bg-critical/[0.06] px-4 py-3.5"
+            className="flex flex-col gap-1 rounded-md border border-border bg-surface-2 px-3 py-2.5"
           >
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               {signal && <SeverityScale severity={signal.severity} size="compact" />}
-              <h4 className="text-content font-semibold tracking-tight">
+              <h4 className="m-0 text-sm font-semibold tracking-tight">
                 They published a comparison page
               </h4>
-            </div>
-            <p className="m-0 max-w-[72ch] text-sm leading-relaxed text-muted-foreground">
-              {signal?.insight ??
-                c.summary ??
-                `${competitorName} added a comparison page to their sitemap. Whoever writes the comparison chooses the criteria.`}
-            </p>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
-              <span>
-                detected {formatDistanceToNow(new Date(c.detectedAt), { addSuffix: true })}
+              <span className="text-xs text-muted-foreground">
+                {formatDistanceToNow(new Date(c.detectedAt), { addSuffix: true })}
               </span>
               <a
                 href={c.monitorUrl ?? competitorUrl}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="inline-flex items-center gap-1 text-link hover:underline"
+                className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs text-link hover:underline"
               >
-                Read their page <ArrowSquareOutIcon size={14} />
+                Read it <ArrowSquareOutIcon size={13} />
               </a>
             </div>
+            <p className="m-0 line-clamp-2 text-dense text-muted-foreground">
+              {signal?.insight ??
+                c.summary ??
+                `${competitorName} added a comparison page to their sitemap. Whoever writes the comparison chooses the criteria.`}
+            </p>
           </div>
         );
       })}
@@ -767,15 +765,13 @@ function MarketMapSection({
         <div className="flex flex-col gap-5 sm:gap-7">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-7">
           {targets.length > 0 && (
-            <div className="flex flex-col gap-2.5 sm:only:col-span-2">
-              <div className="flex flex-col gap-0.5">
-                <h4 className="m-0 text-sm font-semibold tracking-tight">They compare against</h4>
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {map?.targetsTotal ?? targets.length}{" "}
-                  {(map?.targetsTotal ?? targets.length) === 1 ? "rival" : "rivals"} they publish a
-                  comparison page against
-                </span>
-              </div>
+            <div className="flex flex-col gap-2 sm:only:col-span-2">
+              <MapHeading
+                title="They compare against"
+                meta={`${map?.targetsTotal ?? targets.length} ${
+                  (map?.targetsTotal ?? targets.length) === 1 ? "rival" : "rivals"
+                }`}
+              />
               <TargetList
                 targets={targets}
                 showAll={showAllTargets}
@@ -785,66 +781,37 @@ function MarketMapSection({
           )}
 
           {(map?.namedBy.length ?? 0) > 0 && (
-            <div className="flex flex-col gap-2.5 sm:only:col-span-2">
-              <div className="flex flex-col gap-0.5">
-                <h4 className="m-0 text-sm font-semibold tracking-tight">Named by</h4>
-                <span className="text-xs text-muted-foreground">
-                  competitors you track that name them in public
-                </span>
-              </div>
+            <div className="flex flex-col gap-2 sm:only:col-span-2">
+              <MapHeading
+                title="Named by"
+                meta={`${map?.namedBy.length ?? 0} you track`}
+              />
               <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(15rem,100%),1fr))] gap-x-6 p-0">
-                {(map?.namedBy ?? []).map((n) => (
-                  <li
-                    key={n.competitorId}
-                    className="flex flex-col gap-0.5 border-t border-border py-2"
-                  >
-                    <span className="text-sm font-medium">{n.competitorName}</span>
-                    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-                      <span>matched on {n.matchedOn}</span>
-                      <span aria-hidden className="text-border-strong">
-                        ·
-                      </span>
-                      <span className="tabular-nums">
-                        {n.evidenceUrls.length || 1}{" "}
-                        {(n.evidenceUrls.length || 1) === 1 ? "page" : "pages"}
-                      </span>
-                      {n.evidenceUrls[0] && (
-                        <>
-                          <span aria-hidden className="text-border-strong">
-                            ·
-                          </span>
-                          <a
-                            href={n.evidenceUrls[0]}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            title={n.evidenceUrls[0]}
-                            className="inline-flex items-center gap-1 text-link hover:underline"
-                          >
-                            <span className="font-mono">{linkHost(n.evidenceUrls[0])}</span>
-                            <ArrowSquareOutIcon size={12} />
-                          </a>
-                        </>
-                      )}
-                    </span>
-                  </li>
-                ))}
+                {(map?.namedBy ?? []).map((n) => {
+                  const pages = n.evidenceUrls.length || 1;
+                  return (
+                    <MapRow
+                      key={n.competitorId}
+                      name={n.competitorName}
+                      nameTitle={`matched on ${n.matchedOn}`}
+                      meta={`${pages} ${pages === 1 ? "page" : "pages"}`}
+                      evidenceUrl={n.evidenceUrls[0]}
+                    />
+                  );
+                })}
               </ul>
             </div>
           )}
         </div>
 
         {mentions.length > 0 && (
-          <div className="flex flex-col gap-2.5">
-            <div className="flex flex-col gap-0.5">
-              <h4 className="m-0 text-sm font-semibold tracking-tight">
-                Also named in their content
-              </h4>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {map?.mentionsTotal ?? mentions.length}{" "}
-                {(map?.mentionsTotal ?? mentions.length) === 1 ? "company" : "companies"} a post or
-                a doc page names, with no comparison page behind them. A mention is not a rivalry.
-              </span>
-            </div>
+          <div className="flex flex-col gap-2">
+            <MapHeading
+              title="Also named in their content"
+              meta={`${map?.mentionsTotal ?? mentions.length} ${
+                (map?.mentionsTotal ?? mentions.length) === 1 ? "company" : "companies"
+              } named with no comparison page behind them`}
+            />
             <TargetList
               targets={mentions}
               showAll={showAllMentions}
@@ -879,42 +846,18 @@ function TargetList({
     <>
       <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(15rem,100%),1fr))] gap-x-6 p-0">
         {shown.map((t) => (
-          <li key={t.name} className="flex flex-col gap-0.5 border-t border-border py-2">
-            <span className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium">{t.name}</span>
-              {t.announced && <Badge className="rounded-sm px-1.5 py-0 text-meta font-medium">New</Badge>}
-            </span>
-            <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-              <span>{t.sources.map(sourceLabel).join(", ")}</span>
-              {t.firstSeenAt && (
-                <>
-                  <span aria-hidden className="text-border-strong">
-                    ·
-                  </span>
-                  <span className="tabular-nums">
-                    first seen {format(new Date(t.firstSeenAt), "d MMM yyyy")}
-                  </span>
-                </>
-              )}
-              {t.evidenceUrls[0] && (
-                <>
-                  <span aria-hidden className="text-border-strong">
-                    ·
-                  </span>
-                  <a
-                    href={t.evidenceUrls[0]}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    title={t.evidenceUrls[0]}
-                    className="inline-flex items-center gap-1 text-link hover:underline"
-                  >
-                    <span className="font-mono">{linkHost(t.evidenceUrls[0])}</span>
-                    <ArrowSquareOutIcon size={12} />
-                  </a>
-                </>
-              )}
-            </span>
-          </li>
+          <MapRow
+            key={t.name}
+            name={t.name}
+            nameTitle={
+              t.firstSeenAt
+                ? `first seen ${format(new Date(t.firstSeenAt), "d MMM yyyy")}`
+                : undefined
+            }
+            isNew={t.announced}
+            meta={t.sources.map(sourceLabel).join(", ")}
+            evidenceUrl={t.evidenceUrls[0]}
+          />
         ))}
       </ul>
       {targets.length > TARGETS_SHOWN && !showAll && (
@@ -930,6 +873,79 @@ function TargetList({
   );
 }
 
+/**
+ * A block heading and its count on one line.
+ *
+ * The count used to trail a sentence explaining the heading again ("12 rivals
+ * they publish a comparison page against"), which cost two wrapped lines above
+ * every list to restate what the heading had just said.
+ */
+function MapHeading({ title, meta }: { title: string; meta: string }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2">
+      <h4 className="m-0 text-sm font-semibold tracking-tight">{title}</h4>
+      <span aria-hidden className="text-border-strong">
+        ·
+      </span>
+      <span className="text-xs text-muted-foreground tabular-nums">{meta}</span>
+    </div>
+  );
+}
+
+/**
+ * One named company, on one line: name left, meta right, evidence link last.
+ *
+ * The three lists of this section now render through here, so a front, a mention
+ * and a cross reference can only ever differ in the meta they pass. The meta is
+ * the same field down a whole list, so right-aligning it makes a column to scan
+ * instead of the dot-separated clauses that wrapped at a different point on
+ * every row.
+ *
+ * What the second line used to carry — the first-seen date, how a name was
+ * matched, the evidence host — sits on a title. The row already names the thing
+ * those fields qualify, and the host in particular repeated identically down a
+ * list read from a single site.
+ */
+function MapRow({
+  name,
+  nameTitle,
+  isNew = false,
+  meta,
+  evidenceUrl,
+}: {
+  name: string;
+  nameTitle?: string;
+  isNew?: boolean;
+  meta: string;
+  evidenceUrl?: string;
+}) {
+  return (
+    <li className="flex items-center gap-x-2 border-t border-border py-1.5">
+      <span className="min-w-0 flex-1 truncate text-sm font-medium" title={nameTitle}>
+        {name}
+      </span>
+      {isNew && (
+        <Badge className="shrink-0 rounded-sm px-1.5 py-0 text-meta font-medium">New</Badge>
+      )}
+      <span className="shrink-0 text-xs text-muted-foreground">{meta}</span>
+      <span className="flex w-4 shrink-0 justify-end">
+        {evidenceUrl && (
+          <a
+            href={evidenceUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            title={evidenceUrl}
+            aria-label={`Open ${linkHost(evidenceUrl)}`}
+            className="rounded-sm text-muted-foreground transition-colors hover:text-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ArrowSquareOutIcon size={13} />
+          </a>
+        )}
+      </span>
+    </li>
+  );
+}
+
 const SOURCE_LABELS: Record<string, string> = {
   vs_page: "vs page",
   alternatives_page: "alternatives page",
@@ -939,11 +955,11 @@ const SOURCE_LABELS: Record<string, string> = {
 const sourceLabel = (s: string) => SOURCE_LABELS[s] ?? s;
 
 /**
- * An evidence link reads as its host, not as its path.
+ * A link's host — the readable name of a URL.
  *
- * The path is what made these links wrap over two lines next to the name they
- * document; the host is the part that says whose page it is. The full URL stays
- * on the anchor's title and, of course, in its href.
+ * The evidence links render as an icon, so this is what names one for a screen
+ * reader instead of the full URL read out character by character. The URL itself
+ * stays on the anchor's title and href.
  */
 function linkHost(url: string): string {
   try {

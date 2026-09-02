@@ -82,6 +82,7 @@ function UsageRow({ item }: { item: UsageItem }) {
       </div>
       <Progress
         value={pct(item.used, item.limit)}
+        aria-label={`${DIMENSION_LABEL[item.dimension]} usage`}
         className={`mt-2 h-1.5 ${atLimit ? "[&>*]:bg-critical" : ""}`}
       />
       {DIMENSION_HINT[item.dimension] && (

@@ -352,7 +352,7 @@ export function UpdateProfileDialog({
                       size={20}
                       className={cn(
                         active
-                          ? "text-primary"
+                          ? "text-link"
                           : "text-muted-foreground group-hover:text-foreground",
                       )}
                     />
@@ -373,7 +373,7 @@ export function UpdateProfileDialog({
             {/* Selected stage recap — change it via Back */}
             {activeStage && ActiveStageIcon && (
               <div className="flex items-center gap-2 text-dense">
-                <ActiveStageIcon size={14} className="text-primary" />
+                <ActiveStageIcon size={14} className="text-link" />
                 <span className="font-medium text-foreground">{activeStage.label}</span>
                 <span className="text-muted-foreground">stage</span>
               </div>
@@ -450,13 +450,13 @@ export function UpdateProfileDialog({
             {reanalysis && diffRows.length > 0 && (
               <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/[0.04] px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-meta font-medium text-primary">
+                  <div className="flex items-center gap-1.5 text-meta font-medium text-link">
                     <SparkleIcon size={14} /> Re-analysis · review {diffRows.length} change
                     {diffRows.length > 1 ? "s" : ""}
                   </div>
                   <button
                     type="button"
-                    className="text-meta font-medium text-primary underline-offset-2 hover:underline"
+                    className="text-meta font-medium text-link underline-offset-2 hover:underline"
                     onClick={() => diffRows.forEach((key) => pickDiff(key, "new"))}
                   >
                     Use all new

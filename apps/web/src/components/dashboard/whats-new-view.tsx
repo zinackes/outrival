@@ -22,7 +22,7 @@ const KIND_LABEL: Record<WhatsNewKind, string> = {
 // medium severity amber (fixed). No hardcoded colors.
 const KIND_CLASS: Record<WhatsNewKind, string> = {
   new: "bg-positive/12 text-positive border-positive/30",
-  improved: "bg-primary/12 text-primary border-primary/30",
+  improved: "bg-primary/12 text-link border-primary/30",
   fixed: "bg-medium/12 text-medium border-medium/30",
 };
 

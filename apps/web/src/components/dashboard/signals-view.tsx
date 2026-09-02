@@ -1442,8 +1442,15 @@ export function SignalsView() {
               />
             )}
 
+          {/* A named group, not a listbox: what follows is a feed, not a set of
+              options — tier headings, competitor headings, fold rows, the
+              catch-up banner and the skeletons all live in here, and a listbox
+              may own none of them. The rows carried role="option" two wrappers
+              down, so the relationship was broken anyway and the position
+              announcements it was there for never arrived (`ux:28`, axe
+              aria-required-children, 4 nodes). */}
           <div
-            role="listbox"
+            role="group"
             aria-label="Signals"
             className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain p-1.5"
           >
@@ -1838,7 +1845,7 @@ function GroupHeader({
         // Dot first, so the two numerals on this line can never be read as one:
         // the tinted pair is what is left to read, the muted one is the total. The
         // dot is the row's unread dot, one size down.
-        <span className="flex shrink-0 items-center gap-1 text-meta font-semibold text-primary tabular-nums">
+        <span className="flex shrink-0 items-center gap-1 text-meta font-semibold text-link tabular-nums">
           <span className="size-1.5 rounded-full bg-primary" aria-hidden />
           {unread}
           <span className="sr-only">

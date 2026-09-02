@@ -23,4 +23,9 @@ jobs:
       - run: pnpm audit --prod --audit-level=high || true
       - run: pnpm typecheck
       - run: pnpm check:lint
+      # The contrast gate. It existed since #518 and nothing ran it, which is how a
+      # palette change reintroduced text under 4.5:1 twice (`ux:14`, `ux:59`). No
+      # install of its own: it is dependency-free apart from shiki, which apps/web
+      # already depends on.
+      - run: pnpm check:contrast
       - run: pnpm test

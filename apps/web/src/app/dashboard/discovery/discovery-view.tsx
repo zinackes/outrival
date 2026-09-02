@@ -54,7 +54,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FilterTab, FilterTabList, FilterTabs } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DetectionConfigSheet } from "@/components/outrival/detection-config-sheet";
 import { PageHead } from "@/components/dashboard/page-head";
@@ -409,13 +409,11 @@ function CandidateRow({
   const dismissed = tab === "dismissed";
 
   // J and K walk the list without leaving the keyboard, T and X settle the row.
-  // The row is a div, not a button: it carries buttons of its own.
-  function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      onToggle();
-      return;
-    }
+  // Mounted on the identity button, not on the row: the row is a div carrying
+  // buttons of its own, so it cannot be the tab stop (`ux:83`, see below). Enter
+  // and Space need no branch here either — the button fires a click for both, and
+  // that click bubbles to the row's own handler.
+  function onKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
     if (e.key === "j" || e.key === "k") {
       e.preventDefault();
       const rows = Array.from(
@@ -439,23 +437,33 @@ function CandidateRow({
 
   return (
     <div className="border-t border-border">
+      {/* A plain div, not role="button": it holds the Track, Dismiss and Delete
+          buttons, and a control that contains other controls is unreachable —
+          a screen reader announces the row and swallows what is inside it, and
+          the buttons are unreachable in browse mode (`ux:83`/`ux:58`, axe
+          nested-interactive, 72 nodes). The disclosure moved to the identity
+          cell, which is a real button; the click here is pointer convenience
+          that the button's own click bubbles into, so the row still toggles
+          wherever you hit it. */}
       <div
-        data-candidate-row
-        role="button"
-        tabIndex={0}
-        aria-expanded={open}
         onClick={onToggle}
-        onKeyDown={onKeyDown}
         className={cn(
           ROW_GRID,
           "group cursor-pointer py-2.5 pl-0.5 pr-2 transition-colors hover:bg-surface-2",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+          "has-[[data-candidate-row]:focus-visible]:ring-2 has-[[data-candidate-row]:focus-visible]:ring-ring has-[[data-candidate-row]:focus-visible]:ring-inset",
           open && "bg-surface-2",
         )}
       >
         <ScoreMeter score={candidate.overlapScore} />
 
-        <span className="flex min-w-0 items-center gap-2.5">
+        <button
+          type="button"
+          data-candidate-row
+          aria-expanded={open}
+          aria-controls={`candidate-evidence-${candidate.id}`}
+          onKeyDown={onKeyDown}
+          className="flex min-w-0 items-center gap-2.5 text-left focus-visible:outline-none"
+        >
           <CompAvatar name={name} url={candidate.url} size={22} />
           <span className="flex min-w-0 flex-col">
             <span className="truncate text-sm font-medium tracking-tight">{name}</span>
@@ -463,7 +471,7 @@ function CandidateRow({
               {prettyUrl(candidate.url)}
             </span>
           </span>
-        </span>
+        </button>
 
         {/* The product badge rides at the end of the description, not in the action
             column: that column is 7.5rem and the Track + Dismiss buttons already fill
@@ -522,11 +530,11 @@ function CandidateRow({
               <Button
                 size="sm"
                 disabled={busy}
-                /* focus-VISIBLE, not focus-within: the row is a tabbable div, so a
-                   plain click leaves it focused and the button stayed pinned open
+                /* focus-VISIBLE, not focus-within: a plain click leaves the row's
+                   identity button focused, and the Track button stayed pinned open
                    long after the row was collapsed again. An open row shows it. */
                 className={cn(
-                  "transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100",
+                  "transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100",
                   open ? "opacity-100" : "opacity-0",
                 )}
                 onClick={(e) => {
@@ -566,7 +574,7 @@ function CandidateRow({
           only its POSITION animated (see the wrappers), so nothing is scaled. */}
       <AnimatePresence initial={false}>
         {open && (
-          <motion.div {...disclosureMotion}>
+          <motion.div id={`candidate-evidence-${candidate.id}`} {...disclosureMotion}>
             <Evidence candidate={candidate} name={name} />
           </motion.div>
         )}
@@ -1256,28 +1264,31 @@ export function DiscoveryView() {
         />
       </div>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
-        <TabsList variant="line" className="w-full justify-start">
-          <TabsTrigger value="queue">
+      {/* Filter buttons, not tabs: the list they filter is rendered below, outside
+          this element, so Radix's triggers pointed aria-controls at panels that
+          were never rendered (`ux:25`). */}
+      <FilterTabs>
+        <FilterTabList variant="line" className="w-full justify-start">
+          <FilterTab active={tab === "queue"} onClick={() => setTab("queue")}>
             Queue
             <span className="text-meta tabular-nums text-muted-foreground">
               {counts?.new ?? 0}
             </span>
-          </TabsTrigger>
-          <TabsTrigger value="dismissed">
+          </FilterTab>
+          <FilterTab active={tab === "dismissed"} onClick={() => setTab("dismissed")}>
             Dismissed
             <span className="text-meta tabular-nums text-muted-foreground">
               {counts?.dismissed ?? 0}
             </span>
-          </TabsTrigger>
-          <TabsTrigger value="added">
+          </FilterTab>
+          <FilterTab active={tab === "added"} onClick={() => setTab("added")}>
             Added
             <span className="text-meta tabular-nums text-muted-foreground">
               {counts?.added ?? 0}
             </span>
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+          </FilterTab>
+        </FilterTabList>
+      </FilterTabs>
 
       {items === null && tab !== "added" && <TableSkeleton rows={6} columns={4} />}
 

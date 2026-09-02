@@ -1041,7 +1041,7 @@ function Header({
           className="shrink-0 text-base font-semibold font-[var(--font-display)] tracking-tight"
         >
           <span className="text-foreground">out</span>
-          <span className="text-primary">rival</span>
+          <span className="text-link">rival</span>
         </Link>
 
         <HeaderSteps step={step} />
@@ -1143,7 +1143,7 @@ function HeaderSteps({ step }: { step: number }) {
               {i > 0 && <span aria-hidden className="mx-2.5 h-px w-5 shrink-0 bg-border" />}
               <span aria-hidden className="grid size-5 shrink-0 place-items-center">
                 {done ? (
-                  <CheckIcon size={16} className="text-primary" />
+                  <CheckIcon size={16} className="text-link" />
                 ) : (
                   <span
                     className={cn(
@@ -1256,7 +1256,7 @@ function WaitChecklist({
             <li key={label} className="flex items-center gap-2.5">
               <span aria-hidden className="grid size-4 shrink-0 place-items-center">
                 {done ? (
-                  <CheckIcon size={14} className="text-primary" />
+                  <CheckIcon size={14} className="text-link" />
                 ) : current ? (
                   <SpinnerIcon size={14} className="animate-spin text-foreground" />
                 ) : (
@@ -1836,7 +1836,7 @@ function ProfileForm({
         {/* The marker used to float between two cards at 12px, attached to neither.
             It describes this card, so it is a caption inside it. */}
         <p className="mt-4 flex items-center gap-1.5 border-t border-border pt-3 text-dense text-muted-foreground">
-          <SparkleIcon size={14} className="text-primary shrink-0" /> Extracted by AI from what
+          <SparkleIcon size={14} className="text-link shrink-0" /> Extracted by AI from what
           you gave us
         </p>
       </Card>
@@ -2210,7 +2210,7 @@ function OverlapBadge({ score }: { score: number }) {
   const tone = score > 75 ? "positive" : score > 50 ? "accent" : "muted";
   const classes = {
     positive: "bg-positive/15 text-positive border-positive/30",
-    accent: "bg-primary/10 text-primary border-primary/30",
+    accent: "bg-primary/10 text-link border-primary/30",
     muted: "bg-transparent text-muted-foreground border-border",
   }[tone];
   return (

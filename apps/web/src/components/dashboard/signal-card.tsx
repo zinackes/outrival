@@ -276,7 +276,7 @@ export function SignalCard({
                   type="button"
                   onClick={() => onMarkRead(signal.id)}
                   aria-label="Mark as read"
-                  className="-m-1 rounded-full p-1 text-primary transition-colors hover:text-primary/60 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="-m-1 rounded-full p-1 text-link transition-colors hover:text-link/60 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="block size-2 rounded-full bg-current" />
                 </button>
@@ -300,7 +300,7 @@ export function SignalCard({
                 type="button"
                 onClick={() => onMarkUnread?.(signal.id)}
                 aria-label="Mark as unread"
-                className="-m-1 rounded-full p-1 text-muted-foreground transition-colors hover:text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="-m-1 rounded-full p-1 text-muted-foreground transition-colors hover:text-link outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span className="block size-2 rounded-full border border-current" />
               </button>

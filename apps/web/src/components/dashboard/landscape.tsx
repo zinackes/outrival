@@ -168,7 +168,7 @@ function InsightCards({
           const comp = ins.competitorId ? nameById.get(ins.competitorId) : null;
           const body = (
             <>
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-accent/40 text-primary">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-accent/40 text-link">
                 <Icon size={16} aria-hidden />
               </span>
               <span className="text-sm leading-snug">{ins.text}</span>
@@ -300,7 +300,7 @@ function SourcesCoverage({
                       className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-meta text-muted-foreground"
                     >
                       {s.status === "captured" ? (
-                        <CheckIcon size={14} className="text-primary" aria-hidden />
+                        <CheckIcon size={14} className="text-link" aria-hidden />
                       ) : s.status === "pending" ? (
                         <ClockIcon size={14} aria-hidden />
                       ) : (

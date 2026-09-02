@@ -687,7 +687,7 @@ function PricingComparison({
         <p className="text-sm font-medium">Pricing comparison</p>
         <p className="text-dense text-muted-foreground">
           Add your own plans in{" "}
-          <Link href="/dashboard/products" className="text-primary hover:underline">
+          <Link href="/dashboard/products" className="text-link hover:underline">
             Products
           </Link>{" "}
           to see how {competitorName} stacks up against your pricing.

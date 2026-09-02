@@ -12,7 +12,7 @@ import {
   type SectoralEligibility,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FilterTab, FilterTabList, FilterTabs } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ListRowsSkeleton } from "@/components/dashboard/skeletons";
 import { feedItemMotion } from "@/lib/motion";
@@ -165,19 +165,18 @@ export function SectoralFeed({
       />
 
       <div className="flex items-center gap-2 flex-wrap">
-        <Tabs
-          value={category ?? "all"}
-          onValueChange={(v) => setCategory(v === "all" ? null : (v as SectoralCategory))}
-        >
-          <TabsList>
-            <TabsTrigger value="all">All</TabsTrigger>
+        <FilterTabs>
+          <FilterTabList>
+            <FilterTab active={category === null} onClick={() => setCategory(null)}>
+              All
+            </FilterTab>
             {CATEGORIES.map((c) => (
-              <TabsTrigger key={c} value={c}>
+              <FilterTab key={c} active={category === c} onClick={() => setCategory(c)}>
                 {CATEGORY_META[c].label}
-              </TabsTrigger>
+              </FilterTab>
             ))}
-          </TabsList>
-        </Tabs>
+          </FilterTabList>
+        </FilterTabs>
 
         <ToggleGroup
           type="single"

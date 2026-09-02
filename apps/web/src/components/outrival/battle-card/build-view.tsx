@@ -83,7 +83,7 @@ export function BattleCardProgress({
           {queued ? (
             <ClockIcon size={16} className="shrink-0 text-muted-foreground" />
           ) : (
-            <SpinnerIcon size={16} className="shrink-0 animate-spin text-primary" />
+            <SpinnerIcon size={16} className="shrink-0 animate-spin text-link" />
           )}
           <span className="text-content font-medium">
             {active >= 0 ? STAGES[active]!.label : "Working on it"}

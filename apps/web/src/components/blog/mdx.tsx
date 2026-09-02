@@ -7,8 +7,16 @@ import rehypePrettyCode, { type Options as PrettyCodeOptions } from "rehype-pret
 // highlighting costs zero client JS. Dual theme → the token colors carry both a
 // --shiki-light and --shiki-dark variable; globals.css (.prose-blog) picks the
 // right one per theme. keepBackground:false leaves the <pre> surface to our tokens.
+//
+// The -default pair, not the legacy "github-light"/"github-dark": those two are
+// tuned for GitHub's own code surfaces, and on ours the comment token measured
+// 3.50:1 in dark (28 nodes on the one post with fenced code) and 4.29:1 in light —
+// the light half was failing too, which the audit only saw in dark (`ux:59`).
+// Every token in this pair clears 4.5:1 on --surface, which is what the block is
+// painted on; scripts/check-contrast.mjs re-measures both themes against that
+// token so a theme swap here cannot silently go back under.
 const prettyCodeOptions: PrettyCodeOptions = {
-  theme: { light: "github-light", dark: "github-dark" },
+  theme: { light: "github-light-default", dark: "github-dark-default" },
   keepBackground: false,
   defaultLang: "plaintext",
 };

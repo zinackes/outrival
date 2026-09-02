@@ -551,7 +551,9 @@ function ReviewBody({
                 addExtra();
               }}
             >
+              {/* "Add your own…" names nothing once it is gone (`ux:06`). */}
               <Input
+                aria-label="Add your own item"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder="Add your own…"

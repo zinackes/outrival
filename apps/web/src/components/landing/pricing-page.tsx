@@ -103,7 +103,15 @@ const PRICING_FAQS = [
 // phone, so a value never loses its row.
 function ContextTable() {
   return (
-    <div className="lp-ctx-wrap">
+    /* tabIndex + a name on the SCROLL box, not on the table: the box is what
+       pans, and without a tab stop its cropped columns are unreachable by
+       keyboard (`ux:31`). */
+    <div
+      className="lp-ctx-wrap"
+      tabIndex={0}
+      role="region"
+      aria-label="What competitive intelligence tools cost, compared"
+    >
       <table className="lp-ctx">
         <caption className="sr-only">
           What competitive intelligence tools cost, compared
@@ -191,11 +199,19 @@ export function PricingPage() {
           <p className="mt-6 text-dense text-text-subtle">
             Competitor figures are third-party estimates, not list prices, and
             are attributed on{" "}
-            <Link href="/vs/crayon" className="text-primary hover:underline">
+            {/* Underlined at rest: an inline link inside a paragraph cannot be
+                distinguished by colour alone (`ux:34`, axe link-in-text-block). */}
+            <Link
+              href="/vs/crayon"
+              className="text-link underline underline-offset-2"
+            >
               Outrival vs Crayon
             </Link>{" "}
             and{" "}
-            <Link href="/vs/klue" className="text-primary hover:underline">
+            <Link
+              href="/vs/klue"
+              className="text-link underline underline-offset-2"
+            >
               Outrival vs Klue
             </Link>
             . Last reviewed {LAST_REVIEWED}.

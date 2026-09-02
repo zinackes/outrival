@@ -129,7 +129,7 @@ export function FeedbackWidget() {
                   onClick={() => setType(opt.value)}
                   className={`flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors ${
                     type === opt.value
-                      ? "border-primary text-primary"
+                      ? "border-primary text-link"
                       : "border-border text-text-muted hover:border-border-strong"
                   }`}
                 >

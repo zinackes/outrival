@@ -144,6 +144,7 @@ export function ProductsSettings() {
               </span>
               <Progress
                 value={Math.round((used / Math.max(1, limit)) * 100)}
+                aria-label="Products used on your plan"
                 className="h-1.5 w-24"
               />
               {atLimit && (

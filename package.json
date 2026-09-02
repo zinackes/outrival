@@ -7,6 +7,7 @@
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "check:lint": "oxlint apps packages",
+    "check:contrast": "pnpm --filter @outrival/web check:contrast",
     "test": "turbo test",
     "test:local": "turbo test --concurrency=1",
     "test:fast": "turbo test --concurrency=1 --filter=...[origin/main]",

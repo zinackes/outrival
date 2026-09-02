@@ -200,7 +200,7 @@ export function SavedViewsMenu({
                   <CheckIcon
                     size={16}
                     className={cn(
-                      "shrink-0 text-primary",
+                      "shrink-0 text-link",
                       activeView?.id === v.id ? "opacity-100" : "opacity-0",
                     )}
                   />

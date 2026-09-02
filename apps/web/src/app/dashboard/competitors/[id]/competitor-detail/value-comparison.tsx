@@ -101,7 +101,7 @@ export function ValueComparison({
         <p className="text-dense text-muted-foreground">
           {competitorName}&rsquo;s pricing page lists what each plan includes, yours has no
           captured feature list yet. Add a pricing page to your product in{" "}
-          <Link href="/dashboard/products" className="text-primary hover:underline">
+          <Link href="/dashboard/products" className="text-link hover:underline">
             Products
           </Link>{" "}
           to compare what a price buys, not only what it costs.

@@ -51,7 +51,13 @@ export function Topbar({ user }: { user: User }) {
             }
           >
             <SparkleIcon className="size-4 text-[var(--link)]" />
-            <span className="hidden sm:inline">Ask</span>
+            {/* sr-only rather than hidden below sm: `hidden` took the button's ONLY
+                label out of the accessibility tree too, leaving the app's primary AI
+                entry point unnamed on every mobile /dashboard/* route (`ux:80`, axe
+                button-name, 104 nodes). Kept as text rather than an aria-label so the
+                visible name and the accessible name stay the same word for voice
+                control. */}
+            <span className="sr-only sm:not-sr-only">Ask</span>
           </Button>
         </TooltipTrigger>
         <TooltipContent>

@@ -503,8 +503,11 @@ export function MyProductView({
                   void enableMonitoring();
                 }}
               >
+                {/* Named, not just hinted: the placeholder is an example URL and
+                    disappears on the first keystroke (`ux:06`). */}
                 <Input
                   type="url"
+                  aria-label="Product website URL"
                   value={siteUrl}
                   onChange={(e) => setSiteUrl(e.target.value)}
                   placeholder="https://yourproduct.com"
@@ -540,6 +543,7 @@ export function MyProductView({
                   >
                     <Input
                       type="url"
+                      aria-label="Public repository URL"
                       value={repoUrl}
                       onChange={(e) => setRepoUrl(e.target.value)}
                       placeholder="https://github.com/you/your-repo"

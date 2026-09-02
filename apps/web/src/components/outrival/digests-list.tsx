@@ -106,7 +106,7 @@ export function DigestsList() {
                         {s.competitor} · {s.category}
                       </div>
                       <p className="text-sm mb-1">{s.insight}</p>
-                      <p className="flex gap-1 text-sm text-primary">
+                      <p className="flex gap-1 text-sm text-link">
                         <ArrowRightIcon className="size-3.5 mt-0.5 shrink-0" />
                         {s.so_what}
                       </p>

@@ -539,7 +539,12 @@ export function CompetitorsList() {
               size={16}
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
+            {/* A placeholder is not a name: it is gone the moment the field has
+                text, and a screen reader reads the field as unnamed before that
+                (`ux:06`). aria-label rather than a visible <Label> — the strip is
+                a toolbar, the magnifier already says what the box is. */}
             <Input
+              aria-label="Search competitors"
               placeholder="Search…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}

@@ -122,11 +122,17 @@ export function DetectionConfigSheet({
               className="flex flex-col gap-6"
             >
               <div className="flex flex-col gap-1.5">
-                <Label>Sensitivity</Label>
+                {/* A <Label> that neither wraps its control nor names one via
+                    htmlFor is decoration: tabbing into the group announced the
+                    current preset and nothing about what it sets (`ux:36`). A
+                    ToggleGroup and a Select trigger are both unlabelable
+                    elements, so the association goes through aria-labelledby. */}
+                <Label id="detection-sensitivity-label">Sensitivity</Label>
                 <ToggleGroup
                   type="single"
                   variant="outline"
                   size="sm"
+                  aria-labelledby="detection-sensitivity-label"
                   value={String(config.minOverlap)}
                   onValueChange={(v) =>
                     v && setConfig({ ...config, minOverlap: Number(v) })
@@ -167,11 +173,12 @@ export function DetectionConfigSheet({
               </label>
 
               <div className="flex flex-col gap-1.5">
-                <Label>Cadence</Label>
+                <Label id="detection-cadence-label">Cadence</Label>
                 <ToggleGroup
                   type="single"
                   variant="outline"
                   size="sm"
+                  aria-labelledby="detection-cadence-label"
                   disabled={!config.autoDetect}
                   value={config.cadence}
                   onValueChange={(v) =>
@@ -185,14 +192,19 @@ export function DetectionConfigSheet({
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label>Primary market</Label>
+                <Label id="detection-region-label">Primary market</Label>
                 <Select
                   value={config.region ?? "global"}
                   onValueChange={(v) =>
                     setConfig({ ...config, region: v === "global" ? null : v })
                   }
                 >
-                  <SelectTrigger>
+                  {/* Label first, then the trigger's own id so the selected
+                      market is still read after the name. */}
+                  <SelectTrigger
+                    id="detection-region"
+                    aria-labelledby="detection-region-label detection-region"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

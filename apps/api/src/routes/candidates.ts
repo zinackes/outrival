@@ -11,7 +11,12 @@ import {
   signals,
   selfProfileLastEditedAt,
 } from "@outrival/db";
-import { PLAN_LIMITS, deriveCompetitorName } from "@outrival/shared";
+import {
+  PLAN_LIMITS,
+  deriveCompetitorName,
+  type Plan,
+  type SourceType,
+} from "@outrival/shared";
 import {
   DetectionConfigSchema,
   resolveDetectionConfig,
@@ -512,26 +517,17 @@ candidatesRouter.get("/added", async (c) => {
   });
 });
 
-candidatesRouter.post("/:id/add", async (c) => {
-  const id = c.req.param("id");
-  const user = c.get("user");
-  const orgId = await ensureUserOrg(user.id);
-
-  const candidate = await db.query.competitorCandidates.findFirst({
-    where: and(eq(competitorCandidates.id, id), eq(competitorCandidates.orgId, orgId)),
-  });
-  if (!candidate) return c.json({ error: "Not found" }, 404);
-  if (candidate.status === "added") return c.json({ error: "Already added" }, 400);
-
-  const plan = await getOrgPlan(orgId);
-  const quota = await checkCompetitorQuota(orgId, plan);
-  if (!quota.allowed) {
-    return c.json(
-      { error: "plan_limit_competitors", used: quota.used, limit: quota.limit, plan },
-      403,
-    );
-  }
-
+/**
+ * Track one candidate: create the competitor, tag it into the product it was
+ * discovered for, seed its monitors and queue their first scrapes. Shared by the
+ * single add and the bulk one, so the two paths cannot drift.
+ */
+async function trackCandidate(
+  orgId: string,
+  candidate: typeof competitorCandidates.$inferSelect,
+  plan: Plan,
+  orgDefaultSources: SourceType[] | null,
+) {
   const [competitor] = await db
     .insert(competitors)
     .values({
@@ -541,7 +537,7 @@ candidatesRouter.post("/:id/add", async (c) => {
       overlapScore: candidate.overlapScore,
     })
     .returning();
-  if (!competitor) return c.json({ error: "Failed to create competitor" }, 500);
+  if (!competitor) return null;
 
   // patch-28 — tag this competitor into the product it was discovered for (shared),
   // so it lands in that SKU's feed, not always the primary. Legacy candidates with no
@@ -564,14 +560,10 @@ candidatesRouter.post("/:id/add", async (c) => {
 
   // Same seeding as the manual-add path (one helper, so the two can no longer
   // drift — this path was still missing the sitemap anchor).
-  const orgRow = await db.query.organizations.findFirst({
-    where: eq(organizations.id, orgId),
-    columns: { defaultSources: true },
-  });
   const monitorRows = await seedCompetitorMonitors({
     competitorId: competitor.id,
     plan,
-    orgDefaultSources: orgRow?.defaultSources ?? null,
+    orgDefaultSources,
   });
 
   await db
@@ -581,7 +573,99 @@ candidatesRouter.post("/:id/add", async (c) => {
 
   await enqueueFirstScrapes(monitorRows);
 
-  return c.json({ competitor, monitors: monitorRows });
+  return { competitor, monitors: monitorRows };
+}
+
+/** The org's seed sources for a competitor created from discovery. */
+async function orgDefaultSources(orgId: string): Promise<SourceType[] | null> {
+  const orgRow = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { defaultSources: true },
+  });
+  return orgRow?.defaultSources ?? null;
+}
+
+candidatesRouter.post("/:id/add", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const candidate = await db.query.competitorCandidates.findFirst({
+    where: and(eq(competitorCandidates.id, id), eq(competitorCandidates.orgId, orgId)),
+  });
+  if (!candidate) return c.json({ error: "Not found" }, 404);
+  if (candidate.status === "added") return c.json({ error: "Already added" }, 400);
+
+  const plan = await getOrgPlan(orgId);
+  const quota = await checkCompetitorQuota(orgId, plan);
+  if (!quota.allowed) {
+    return c.json(
+      { error: "plan_limit_competitors", used: quota.used, limit: quota.limit, plan },
+      403,
+    );
+  }
+
+  const tracked = await trackCandidate(orgId, candidate, plan, await orgDefaultSources(orgId));
+  if (!tracked) return c.json({ error: "Failed to create competitor" }, 500);
+
+  return c.json(tracked);
+});
+
+// Bulk track (discovery multi-select): one round-trip for a whole selection. Candidates
+// are taken in the order they were sent and tracked until the competitor seat cap is
+// reached, so an over-sized selection tracks what fits and REPORTS the rest instead of
+// failing whole. Already-tracked ids are filtered out, never re-added.
+candidatesRouter.post("/add", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const parsed = IdsBodySchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+  }
+
+  const rows = await db.query.competitorCandidates.findMany({
+    where: and(
+      eq(competitorCandidates.orgId, orgId),
+      ne(competitorCandidates.status, "added"),
+      inArray(competitorCandidates.id, parsed.data.ids),
+    ),
+  });
+  if (rows.length === 0) return c.json({ added: 0, competitors: [], skipped: [] });
+
+  const plan = await getOrgPlan(orgId);
+  const quota = await checkCompetitorQuota(orgId, plan);
+  // Not one seat free: the same 403 the single add sends, so the web paywall reads it.
+  if (!quota.allowed) {
+    return c.json(
+      { error: "plan_limit_competitors", used: quota.used, limit: quota.limit, plan },
+      403,
+    );
+  }
+
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const ordered = parsed.data.ids
+    .map((id) => byId.get(id))
+    .filter((r): r is (typeof rows)[number] => r !== undefined);
+
+  const room = Math.max(0, quota.limit - quota.used);
+  const defaults = await orgDefaultSources(orgId);
+  const created: Array<(typeof competitors.$inferSelect)> = [];
+  const skipped: Array<{ id: string; reason: "plan_limit" | "failed" }> = [];
+  for (const row of ordered) {
+    if (created.length >= room) {
+      skipped.push({ id: row.id, reason: "plan_limit" });
+      continue;
+    }
+    const tracked = await trackCandidate(orgId, row, plan, defaults);
+    if (!tracked) {
+      skipped.push({ id: row.id, reason: "failed" });
+      continue;
+    }
+    created.push(tracked.competitor);
+  }
+
+  return c.json({ added: created.length, competitors: created, skipped });
 });
 
 candidatesRouter.post("/detect", aiIntensiveRateLimit, async (c) => {

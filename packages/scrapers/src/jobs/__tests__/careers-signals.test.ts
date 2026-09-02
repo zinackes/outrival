@@ -31,6 +31,18 @@ describe("hasCareersSignals", () => {
     expect(hasCareersSignals(html)).toBe(false);
   });
 
+  it("reads the vocabulary off minified SSR markup (no whitespace between tags)", () => {
+    // Regression (OUT-251): rippling.com/careers, gem.com/company/careers and
+    // join.com/en/careers all say "See open roles", but their Next.js markup puts no
+    // whitespace between tags, so the visible text came out as
+    // "LoginSee open rolesRippling careers" and every anchored pattern missed.
+    // Discovery then rejected the real careers page and fell back to the homepage.
+    const html =
+      `<html><body><nav><a href="/login">Login</a><a href="/careers/open-roles">See open roles</a></nav>` +
+      `<h1>Rippling careers</h1><p>Work will never be the same.</p></body></html>`;
+    expect(hasCareersSignals(html)).toBe(true);
+  });
+
   it("accepts a French listing (nous recrutons / offres d'emploi)", () => {
     expect(hasCareersSignals(`<body><h2>Nous recrutons</h2></body>`)).toBe(true);
     expect(hasCareersSignals(`<body><p>Nos offres d'emploi</p></body>`)).toBe(true);

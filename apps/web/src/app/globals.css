@@ -1480,6 +1480,11 @@ html:has(.landing-canvas) {
   background: #0a0a0a;
   color: #f2f5f8;
   padding-top: 5.5rem;
+  /* The category marquees bleed to 100vw, and vw counts the classic scrollbar
+     the viewport does not give the layout: the lane ended half a scrollbar past
+     the right edge and the whole page scrolled sideways. Clipped here rather
+     than narrowed there — clip, not hidden, so nothing becomes a scroll box. */
+  overflow-x: clip;
 }
 .lp-dark-inner {
   max-width: 66rem;
@@ -1521,7 +1526,7 @@ html:has(.landing-canvas) {
   justify-self: end;
   font-size: var(--text-lead);
   line-height: 1.6;
-  color: rgba(242, 245, 248, 0.64);
+  color: rgba(242, 245, 248, 0.68);
   text-wrap: pretty;
 }
 @media (max-width: 860px) {
@@ -1608,8 +1613,11 @@ html:has(.landing-canvas) {
   flex-direction: column;
   overflow: hidden;
   border-radius: 12px;
-  background: #0e0e10;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  /* 1.11:1 against the body's #0a0a0a, up from 1.03: the old plate and the
+     ground were the same grey on a dim screen, so the six cards read as one
+     field. The hairline carries the rest of the step. */
+  background: #17171b;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
 /* Under the pipeline's 0.55: these cards carry dense fragments, and the fill is
    the ground they read on, not the subject. The tint per card is passed to the
@@ -1644,7 +1652,7 @@ html:has(.landing-canvas) {
   height: 28px;
   margin-right: 0.5rem;
   vertical-align: -0.42em;
-  color: rgba(242, 245, 248, 0.5);
+  color: rgba(242, 245, 248, 0.62);
 }
 .pb-signal .pb-sigil {
   width: 32px;
@@ -1744,7 +1752,7 @@ html:has(.landing-canvas) {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.6);
 }
 .pb-brow span {
   grid-column: 2 / -1;
@@ -1752,7 +1760,7 @@ html:has(.landing-canvas) {
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.55);
+  color: rgba(242, 245, 248, 0.64);
 }
 
 /* The anchor: one signal, opened. A meta line on top, the diff filling the
@@ -1794,7 +1802,7 @@ html:has(.landing-canvas) {
 .pb-cat {
   padding: 0.14rem 0.4rem;
   border-radius: 4px;
-  color: rgba(242, 245, 248, 0.6);
+  color: rgba(242, 245, 248, 0.66);
   background: rgba(255, 255, 255, 0.05);
 }
 .pb-sig-top em {
@@ -1802,7 +1810,7 @@ html:has(.landing-canvas) {
   font-style: normal;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.6);
 }
 /* The change as a picture: two panes side by side, each filling half the card,
    the price that was against the price that is. Stacked, the same two numbers
@@ -1824,7 +1832,7 @@ html:has(.landing-canvas) {
   flex-direction: column;
   justify-content: space-between;
   padding: 1.5rem 1.4rem;
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.58);
 }
 .pb-pane > span {
   display: flex;
@@ -1848,7 +1856,7 @@ html:has(.landing-canvas) {
   font-weight: 500;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.58);
 }
 .pb-pane.is-now i {
   color: color-mix(in oklab, var(--critical) 60%, white);
@@ -1864,7 +1872,7 @@ html:has(.landing-canvas) {
 .pb-pane:not(.is-now) b {
   text-decoration: line-through;
   text-decoration-thickness: 2px;
-  text-decoration-color: rgba(242, 245, 248, 0.48);
+  text-decoration-color: rgba(242, 245, 248, 0.52);
 }
 .pb-pane.is-now b {
   color: color-mix(in oklab, var(--critical) 70%, white);
@@ -1886,12 +1894,12 @@ html:has(.landing-canvas) {
   margin-top: 0.3rem;
   font-style: normal;
   font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.6);
 }
 .pb-pane u {
   font-size: var(--text-dense);
   text-decoration: none;
-  color: rgba(242, 245, 248, 0.5);
+  color: rgba(242, 245, 248, 0.62);
 }
 .pb-pane.is-now u {
   color: rgba(242, 245, 248, 0.72);
@@ -1915,7 +1923,7 @@ html:has(.landing-canvas) {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   font-size: var(--text-dense);
   line-height: 1.5;
-  color: rgba(242, 245, 248, 0.6);
+  color: rgba(242, 245, 248, 0.66);
 }
 .pb-sig-so b {
   margin-right: 0.35rem;
@@ -1923,7 +1931,7 @@ html:has(.landing-canvas) {
   font-weight: 500;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.6);
 }
 
 /* One battle card, not a deck: the stack said "there are several", which the
@@ -1945,12 +1953,12 @@ html:has(.landing-canvas) {
   font-weight: 500;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.6);
 }
-/* The eyebrow is dimmed to 0.45 and the mark would vanish with it, so it keeps
+/* The eyebrow is dimmed to 0.6 and the mark would vanish with it, so it keeps
    its own value: the card belongs to a company before it belongs to a topic. */
 .pb-bc i .pb-mark {
-  color: rgba(242, 245, 248, 0.68);
+  color: rgba(242, 245, 248, 0.7);
 }
 /* The sentence takes the middle, the same grammar the anchor uses: label on
    top, object in the middle, freshness on the bottom edge. Spaced by the column
@@ -1972,7 +1980,7 @@ html:has(.landing-canvas) {
   font-weight: 500;
 }
 .pb-bc p s {
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.58);
 }
 /* The freshness line is the whole promise of the card: this section was
    rewritten while you were not looking. It sits on the bottom edge. */
@@ -1980,7 +1988,7 @@ html:has(.landing-canvas) {
   padding-top: 0.9rem;
   font-style: normal;
   font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.6);
 }
 .pb-bc em::before {
   content: "";
@@ -2013,7 +2021,7 @@ html:has(.landing-canvas) {
 }
 .pb-ask-bar svg {
   flex-shrink: 0;
-  color: rgba(242, 245, 248, 0.5);
+  color: rgba(242, 245, 248, 0.62);
 }
 .pb-caret {
   width: 1px;
@@ -2028,7 +2036,7 @@ html:has(.landing-canvas) {
   padding: 0.9rem 1.4rem 1.1rem;
   font-size: var(--text-dense);
   line-height: 1.55;
-  color: rgba(242, 245, 248, 0.62);
+  color: rgba(242, 245, 248, 0.67);
 }
 .pb-ask-ans ul {
   margin-top: 0.35rem;
@@ -2056,7 +2064,7 @@ html:has(.landing-canvas) {
   flex-shrink: 0;
   padding: 0 1.4rem 0.7rem;
   font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.5);
+  color: rgba(242, 245, 248, 0.62);
 }
 /* A floor under the row: four rows splitting a short cell would otherwise line
    up tighter than the text inside them. */
@@ -2080,7 +2088,7 @@ html:has(.landing-canvas) {
 .pb-lrow u {
   text-decoration: none;
   font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.58);
 }
 .pb-lrow b {
   font-weight: 500;
@@ -2089,12 +2097,12 @@ html:has(.landing-canvas) {
    card: the ladder is about where you sit, so your mark is the only one at full
    contrast and the others recede to texture. */
 .pb-lrow .pb-mark {
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.57);
 }
 .pb-lrow em {
   margin-left: auto;
   font-style: normal;
-  color: rgba(242, 245, 248, 0.6);
+  color: rgba(242, 245, 248, 0.66);
 }
 /* Direct child only: the letter fallback inside a mark is an <i> too, and it
    would otherwise be turned into a second bar pinned to the row's floor. */
@@ -2144,7 +2152,7 @@ html:has(.landing-canvas) {
 .pb-qstat span {
   font-size: var(--text-meta);
   line-height: 1.45;
-  color: rgba(242, 245, 248, 0.5);
+  color: rgba(242, 245, 248, 0.62);
 }
 .pb-weeks {
   display: flex;
@@ -2231,12 +2239,12 @@ html:has(.landing-canvas) {
   background: rgba(255, 255, 255, 0.08);
   font-size: 0.65625rem; /* replica miniature */
   font-weight: 500;
-  color: rgba(242, 245, 248, 0.6);
+  color: rgba(242, 245, 248, 0.66);
 }
 .lp-pstep .dg-row .txt {
   overflow: hidden;
   text-overflow: ellipsis;
-  color: rgba(242, 245, 248, 0.6);
+  color: rgba(242, 245, 248, 0.66);
 }
 .lp-pstep .dg-row .txt b {
   color: #f2f5f8;
@@ -2289,13 +2297,7 @@ html:has(.landing-canvas) {
   margin-top: 0.35rem;
   font-size: var(--text-dense);
   line-height: 1.4;
-  color: rgba(242, 245, 248, 0.55);
-}
-.lp-stats-note {
-  max-width: 66rem;
-  margin: 2.2rem auto 0;
-  font-size: var(--text-dense);
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.64);
 }
 
 /* ---- Pipeline — five step cards, everything visible -------------------- */
@@ -2314,8 +2316,10 @@ html:has(.landing-canvas) {
   overflow: hidden;
   border-radius: 8px;
   grid-column: span 4;
-  background: #131316;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.11);
+  /* Same lift as the bento plate, one notch above it: the steps stay the
+     lighter of the two card families. */
+  background: #1a1a1f;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
   padding: 1.3rem 1.3rem 1.2rem;
   display: flex;
   flex-direction: column;
@@ -2366,7 +2370,7 @@ html:has(.landing-canvas) {
   margin-top: 0.7rem;
   font-size: 0.84375rem; /* step copy, between dense and sm — kept raw */
   line-height: 1.5;
-  color: rgba(242, 245, 248, 0.62);
+  color: rgba(242, 245, 248, 0.67);
 }
 .lp-pstep .pstep-viz {
   position: relative;
@@ -2446,19 +2450,19 @@ html:has(.landing-canvas) {
   font-size: var(--text-lead);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: rgba(242, 245, 248, 0.55);
+  color: rgba(242, 245, 248, 0.64);
 }
 .lp-pstep .cls-n.is-keep {
   color: var(--pc);
 }
 .lp-pstep .cls-l {
   font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.5);
+  color: rgba(242, 245, 248, 0.62);
 }
 .lp-pstep .cls-arw {
   margin: 0 0.15rem;
   font-size: var(--text-dense);
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.54);
 }
 /* 5 of 61 as a single rule: the kept slice is the accent, the rest runs off
    under the mask, which is what "the other 56" looks like. */
@@ -2505,13 +2509,13 @@ html:has(.landing-canvas) {
 .lp-pstep .cls-tag b {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: rgba(242, 245, 248, 0.5);
+  color: rgba(242, 245, 248, 0.62);
 }
 .lp-pstep .cls-rest {
   display: block;
   margin-top: 0.6rem;
   font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.59);
 }
 /* Write: the sentence first, then the raw diff it was written from — the
    receipt, not a second paragraph of prose. */
@@ -2527,7 +2531,7 @@ html:has(.landing-canvas) {
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.58);
 }
 .lp-pstep .wr-diff {
   display: flex;
@@ -2575,7 +2579,7 @@ html:has(.landing-canvas) {
 }
 .lp-pstep .dg-bar i {
   font-style: normal;
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.6);
 }
 /* Act: a thread, not a card — the decision lives in what you reacted with. */
 .lp-pstep .act-thread {
@@ -2605,7 +2609,7 @@ html:has(.landing-canvas) {
 .lp-pstep .act-meta i {
   font-style: normal;
   font-size: var(--text-meta);
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.58);
 }
 .lp-pstep .act-txt {
   margin-top: 0.1rem;
@@ -2668,10 +2672,10 @@ html:has(.landing-canvas) {
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.58);
 }
 .lp-sig-card .txt-muted {
-  color: rgba(242, 245, 248, 0.68);
+  color: rgba(242, 245, 248, 0.7);
 }
 /* ---- Category marquees + fixed severities ------------------------------ */
 .lp-cats {
@@ -2773,7 +2777,7 @@ html:has(.landing-canvas) {
 .lp-sev-fixed .s-gloss {
   font-size: var(--text-dense);
   line-height: 1.5;
-  color: rgba(242, 245, 248, 0.6);
+  color: rgba(242, 245, 248, 0.66);
 }
 
 /* ---- Hot price card — the one warm moment in the dark body ------------- */
@@ -2910,7 +2914,7 @@ html:has(.landing-canvas) {
   color: rgba(250, 248, 243, 0.85);
 }
 .lp-ht-grid .ht-no {
-  color: rgba(250, 248, 243, 0.45);
+  color: rgba(250, 248, 243, 0.62);
 }
 .lp-ht-grid .ht-mid {
   color: rgba(250, 248, 243, 0.68);
@@ -3011,19 +3015,19 @@ html:has(.landing-canvas) {
 }
 .lp-plan .plan-price span {
   font-size: var(--text-dense);
-  color: rgba(242, 245, 248, 0.5);
+  color: rgba(242, 245, 248, 0.62);
 }
 .lp-plan .plan-desc {
   margin-top: 0.7rem;
   font-size: var(--text-dense);
   line-height: 1.55;
-  color: rgba(242, 245, 248, 0.6);
+  color: rgba(242, 245, 248, 0.66);
 }
 .lp-plan .plan-inc {
   margin-top: 1.1rem;
   font-size: var(--text-meta);
   font-weight: 500;
-  color: rgba(242, 245, 248, 0.48);
+  color: rgba(242, 245, 248, 0.6);
 }
 .lp-plan ul {
   list-style: none;
@@ -3079,7 +3083,7 @@ html:has(.landing-canvas) {
 /* The offset was set but the underline never was, so the link read as coloured
    text only (`ux:34`). */
 .lp-plan .plan-note a {
-  color: rgba(242, 245, 248, 0.5);
+  color: rgba(242, 245, 248, 0.62);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -3087,7 +3091,7 @@ html:has(.landing-canvas) {
   margin-top: 2rem;
   text-align: center;
   font-size: var(--text-dense);
-  color: rgba(242, 245, 248, 0.5);
+  color: rgba(242, 245, 248, 0.62);
 }
 
 /* ---- Market-context board (/pricing, graphite band) -------------------

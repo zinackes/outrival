@@ -40,7 +40,7 @@ import { recordMessagingVersion } from "../lib/messaging-versions";
 import { crossesRoundMilestone } from "../lib/claim-milestone";
 import { readAudienceMeta } from "../lib/audience-pages";
 import { readMarketMapMeta } from "../lib/named-competitors";
-import { readIngestFirstRun } from "../lib/ingest-first-run";
+import { pendingContentIngest, readIngestFirstRun } from "../lib/ingest-first-run";
 import {
   clampFrequencyToPlan,
   computeHash,
@@ -53,6 +53,8 @@ import {
   detectPricingRepositioning,
   isReviewSource,
   isRotatingListSource,
+  hasNoScraper,
+  isMissingScraperError,
   extractBrand,
   validatePublicUrl,
   type PricingStatus,
@@ -975,6 +977,33 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         await handleRefusal(monitor, refusal, Date.now() - startedAt);
         return { changed: false, refused: true };
       }
+      // `No scraper for source type: X` on a source the registry DOES bind. Neither
+      // the site's doing nor the competitor's: the worker build that is running lacks
+      // a binding this source has. The workers box is deployed by hand while web/api
+      // auto-deploy, so it trails the release that starts creating the monitors —
+      // prod took this in bursts on docs / roadmap / hackernews / wellknown (226 runs
+      // in one week), every affected monitor also running fine on either side of it.
+      // The generic path below counted those as the competitor's failures and walked
+      // 31 docs monitors into markedUnscrapable, where they stayed: the redeploy that
+      // restores the binding does not un-pause them.
+      //
+      // So reschedule on the cadence without a strike, and log loudly — the monitor
+      // survives the gap and picks itself up on its next run. A source that is
+      // genuinely unbound (retired / unimplemented) keeps the loud path: `hasNoScraper`
+      // says it is gone for good, and pausing it is the right answer.
+      if (isMissingScraperError(err) && !hasNoScraper(monitor.sourceType)) {
+        logger.error("No scraper binding in this worker build — check the deploy", {
+          monitorId: monitor.id,
+          sourceType: monitor.sourceType,
+        });
+        await handleBenignSkip(
+          monitor,
+          "no_scraper_binding",
+          Date.now() - startedAt,
+          effectiveFrequency,
+        );
+        return { changed: false, skipped: true };
+      }
       // Not the competitor's fault (no youtube channel, crt.sh down): reschedule
       // without a strike so it stops churning to markedUnscrapable / spamming failures.
       const benign = benignSkipFrom(err, monitor.sourceType);
@@ -1074,6 +1103,32 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
             urls: integrationUrlsOf(result.html),
           });
         }
+      }
+
+      // Content Intelligence v2 — the same hole, on the three content listings. The
+      // blog / changelog / roadmap ingests are enqueued from the changed-capture
+      // branch alone, so a competitor whose FIRST capture never reached one (the job
+      // expired in the concurrency-1 AI lane, the R2 read failed, or the monitor
+      // predates the feature) stays stuck: the listing does not move, the hash does
+      // not move, and we return here every week with an empty Content tab. Only a
+      // manual "Re-scan" recovers it today.
+      //
+      // Gated on the ingest's own marker, so it fires once per source and then goes
+      // quiet; a real new post IS a content change and still takes the diff path
+      // below. `docs` is outside the catch-up — its ingest reads the delta between
+      // two captures, and an unchanged capture has none.
+      const catchupSource = pendingContentIngest(monitor.sourceType, competitor.metadata);
+      if (catchupSource === "blog") {
+        await ingestBlogPosts.enqueue({
+          snapshotId: lastSnapshot.id,
+          competitorId: competitor.id,
+        });
+      } else if (catchupSource) {
+        await ingestContentItems.enqueue({
+          snapshotId: lastSnapshot.id,
+          competitorId: competitor.id,
+          sourceType: catchupSource,
+        });
       }
       const nextRunAt = computeNextRun(
         effectiveFrequency,

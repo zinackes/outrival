@@ -948,6 +948,9 @@ export interface ContentSummary {
     previousPostsRead: number;
     unread: number;
     namesYou: number;
+    /** Items held at any date. The cadence above spans 12 months only, so this is
+     *  the only field that can answer "have they ever published". */
+    allTime: number;
   };
 }
 
@@ -4643,6 +4646,14 @@ export const api = {
       `/api/candidates/${id}/add`,
       { method: "POST" },
     ),
+  // Bulk track (discovery multi-select). Tracks what the competitor seat cap allows,
+  // in the order the ids are sent, and names what it left behind.
+  addCandidates: (ids: string[]) =>
+    request<{
+      added: number;
+      competitors: Competitor[];
+      skipped: Array<{ id: string; reason: "plan_limit" | "failed" }>;
+    }>(`/api/candidates/add`, { method: "POST", body: JSON.stringify({ ids }) }),
   dismissCandidate: (id: string) =>
     request<{ ok: true }>(`/api/candidates/${id}/dismiss`, { method: "POST" }),
   dismissCandidates: (ids: string[]) =>

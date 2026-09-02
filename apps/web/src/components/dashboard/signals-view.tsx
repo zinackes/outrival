@@ -76,6 +76,18 @@ import { getSampleData, getSampleSignalDetail } from "@/lib/sample-data";
 // the detail pane, so it needs an id in the keyboard-nav order like any row.
 const BRIEF_ID = "brief";
 
+// The row the reader has open, kept in the feed after the server stops returning
+// it. `index` is the slot it last held, so re-inserting leaves it under their eye
+// instead of at the top.
+type PinnedRow = { id: string; index: number; signal: Signal };
+
+function withPinnedRow(rows: Signal[], pin: PinnedRow): Signal[] {
+  if (rows.some((s) => s.id === pin.id)) return rows;
+  const out = [...rows];
+  out.splice(Math.min(pin.index, out.length), 0, pin.signal);
+  return out;
+}
+
 // Day bucket for the "By day" grouping — a stable key + a human label.
 //
 // `local` is the caller's `useHydrated()`. A day is the VIEWER's day, and the UTC
@@ -358,11 +370,20 @@ export function SignalsView() {
     refetchInterval: 30_000,
   });
   const loadedPages = feedQ.data?.pages;
-  const signals = sample
+  // The open row, held across refetches — see the merge just below.
+  const [pinned, setPinned] = useState<PinnedRow | null>(null);
+  const feedSignals = sample
     ? sampleData.signals
     : loadedPages
       ? loadedPages.flatMap((pg) => pg.signals)
       : null;
+  // Selecting a signal marks it read, so under the Unread view the next 30s poll
+  // comes back without it: the row left the feed, the keyboard nav dropped the
+  // focus it could no longer find, and the detail pane closed under the reader
+  // mid-read. Pin the OPEN row into the feed — read, like any other read row —
+  // until they move off it. Every other row a poll drops still goes.
+  const signals =
+    pinned && feedSignals ? withPinnedRow(feedSignals, pinned) : feedSignals;
   // Total matching the current filters (from the server, whole set); sample counts its
   // fixtures.
   const total = sample
@@ -383,6 +404,14 @@ export function SignalsView() {
         ? { ...data, pages: data.pages.map((pg) => ({ ...pg, signals: updater(pg.signals) })) }
         : data,
     );
+    // The pinned row can sit outside the cache (the feed stopped returning it),
+    // so run the same updater over it — otherwise mark-unread and action changes
+    // land everywhere except the row the reader has open.
+    setPinned((p) => {
+      if (!p) return p;
+      const next = updater([p.signal])[0];
+      return next && next !== p.signal ? { ...p, signal: next } : p;
+    });
   }
 
   // The freshness half of `code:PER-07`. The facets counts move whenever a signal is
@@ -791,6 +820,8 @@ export function SignalsView() {
   // totals roughly right; the next poll reconciles with the server, which filters
   // hiddenForUserAt out of the feed anyway.
   function removeFromFeed(ids: Set<string>) {
+    // A dismissed / snoozed row must not be kept on screen by the open-row pin.
+    setPinned((p) => (p && ids.has(p.id) ? null : p));
     queryClient.setQueryData<InfiniteData<SignalsPage>>(
       feedOpts.queryKey,
       (data) => {
@@ -984,7 +1015,11 @@ export function SignalsView() {
     (id: string) => {
       setFocusedId(id);
       if (id !== BRIEF_ID) {
-        const s = (signals ?? []).find((x) => x.id === id);
+        const idx = (signals ?? []).findIndex((x) => x.id === id);
+        const s = idx === -1 ? null : signals![idx]!;
+        // Pin before the read flips: from here the server feed may stop
+        // returning this row, and the pin is what keeps it on screen.
+        if (s) setPinned({ id, index: idx, signal: s });
         if (s && !s.isRead) markRead(id);
       }
     },
@@ -1079,6 +1114,19 @@ export function SignalsView() {
     focusedRef.current = null;
     setFocusedId(null);
   }, [focusedId, signals, brief, setFocusedId]);
+
+  // Release the pin as soon as the reader moves off the row (another signal, the
+  // brief, Esc): from there it is an ordinary row the next poll may drop.
+  useEffect(() => {
+    if (pinned && focusedId !== pinned.id) setPinned(null);
+  }, [pinned, focusedId]);
+
+  // A different feed (filter, sort, product, search) is a different list, and the
+  // pin belongs to the one the row was opened in — holding it across would splice
+  // the signal into a view that excludes it.
+  useEffect(() => {
+    setPinned(null);
+  }, [feedParams]);
 
   // The signal backing the detail pane (null when the brief is open, or nothing is).
   // Resolved against the whole loaded feed rather than the filtered view: in the
@@ -1603,7 +1651,7 @@ export function SignalsView() {
                   >
                     {feedQ.isFetchingNextPage
                       ? "Loading…"
-                      : `Load more · ${total - signals.length} left`}
+                      : `Load more · ${total - (feedSignals?.length ?? 0)} left`}
                   </Button>
                 )}
               </>

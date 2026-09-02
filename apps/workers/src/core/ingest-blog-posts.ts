@@ -39,6 +39,7 @@ import { fetchPostTexts, POST_FETCH_CAP, POST_FETCH_MAX_ATTEMPTS } from "@outriv
 import { loggedAi } from "../lib/analytics";
 import { resolveSelfIdentity } from "../lib/self-identity";
 import { mergeNamedFromMentions } from "../lib/named-competitors";
+import { readIngestFirstRun, stampIngestFirstRun } from "../lib/ingest-first-run";
 
 /**
  * Turn a captured blog into POSTS THAT HAVE BEEN READ (Content Intelligence v2 P2).
@@ -97,6 +98,16 @@ export async function runIngestBlogPosts(payload: z.input<typeof InputSchema>) {
 
   const html = await getFromR2(`${snapshot.r2Key}.html`);
   const parsed = parseBlogItems(html);
+
+  // The marker scrape-monitor's no-change catch-up reads: this ingest HAS looked at
+  // this competitor's blog. Stamped before the early return below, not after the
+  // rows, because a blog with neither a feed nor a recognisable listing parses to
+  // nothing for life — gating the catch-up on a row count would re-enqueue this run
+  // on every scrape, forever.
+  if (!readIngestFirstRun(competitor.metadata, "blogFirstRunAt")) {
+    await stampIngestFirstRun(competitor.id, "blogFirstRunAt");
+  }
+
   if (parsed.length === 0) {
     // A blog with neither a feed nor a recognisable post listing. The rendered
     // index still diffs and still classifies — the pre-P2 path, unchanged.

@@ -3334,7 +3334,7 @@ competitorsRouter.get("/:id/content-summary", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  const [rows, named] = await Promise.all([
+  const [rows, named, allTime] = await Promise.all([
     db
       .select({
         sourceType: contentItems.sourceType,
@@ -3366,6 +3366,15 @@ competitorsRouter.get("/:id/content-summary", async (c) => {
           sql`${changes.detectedAt} >= now() - make_interval(days => ${EDITORIAL_WINDOW_DAYS})`,
         ),
       ),
+    // Everything we hold, no window. The tab's "they have never published" empty
+    // state is an ALL-TIME claim, and the cadence above only spans the last
+    // CADENCE_MONTHS: without this count a competitor whose newest item predates
+    // that window reads as a competitor with no content at all, and the reader
+    // never reaches the period toggle that would show it.
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(contentItems)
+      .where(eq(contentItems.competitorId, competitor.id)),
   ]);
 
   const items: EditorialItem[] = rows;
@@ -3422,6 +3431,8 @@ competitorsRouter.get("/:id/content-summary", async (c) => {
       /** Items in the window we have not typed yet. The honest denominator. */
       unread: inCurrent.filter((i) => i.itemType === null).length,
       namesYou: named[0]?.n ?? 0,
+      /** Items held for this competitor at any date — the empty state's denominator. */
+      allTime: allTime[0]?.n ?? 0,
     },
   });
 });

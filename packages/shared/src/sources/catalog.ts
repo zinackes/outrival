@@ -227,6 +227,23 @@ export function hasNoScraper(source: SourceType): boolean {
   return NO_SCRAPER_SET.has(source);
 }
 
+/** The message getScraper throws — a plain Error, so this is the only handle on it. */
+const NO_SCRAPER_MESSAGE = "No scraper for source type:";
+
+/**
+ * Whether a scrape failed because the registry bound nothing to its source.
+ *
+ * On a source `hasNoScraper` names, that is the permanent truth above. On any OTHER
+ * source it means the running build is behind: workers deploy separately from web
+ * and api, so a worker can be asked for a source whose binding only exists in a
+ * later image. The two need opposite handling — pause the first, wait out the
+ * second — which is why the caller pairs this with `hasNoScraper`.
+ */
+export function isMissingScraperError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.startsWith(NO_SCRAPER_MESSAGE);
+}
+
 /** Flat list of every source that gets a configurable row, in display order. */
 export const ALL_CONFIGURABLE_SOURCES: readonly SourceType[] = SOURCE_GROUPS.flatMap(
   (g) => CONFIGURABLE_SOURCES[g],

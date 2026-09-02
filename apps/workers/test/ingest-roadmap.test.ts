@@ -446,3 +446,34 @@ describe("our own product", () => {
     expect((await items(ctx.competitorId)).length).toBe(2);
   });
 });
+
+describe("the catch-up marker (OUT-246)", () => {
+  const firstRunAt = async (competitorId: string) => {
+    const [row] = await testDb
+      .select({ metadata: schema.competitors.metadata })
+      .from(schema.competitors)
+      .where(eq(schema.competitors.id, competitorId));
+    return (row?.metadata as { roadmapFirstRunAt?: string } | null)?.roadmapFirstRunAt;
+  };
+
+  test("a portal with no entries at all is still marked as read", async () => {
+    const ctx = await seed();
+    // A portal we cannot parse produces zero rows on every capture, for life. Gating
+    // scrape-monitor's no-change catch-up on a row count would therefore re-enqueue
+    // this run every week forever; the marker is what says "we looked".
+    await ingest(ctx, []);
+
+    expect((await items(ctx.competitorId)).length).toBe(0);
+    expect(await firstRunAt(ctx.competitorId)).toBeString();
+  });
+
+  test("the marker is stamped once and never moves again", async () => {
+    const ctx = await seed();
+    await ingest(ctx, [{ id: "a", title: "SSO", status: "Planned", votes: 10 }]);
+    const first = await firstRunAt(ctx.competitorId);
+    expect(first).toBeString();
+
+    await ingest(ctx, [{ id: "a", title: "SSO", status: "In progress", votes: 12 }]);
+    expect(await firstRunAt(ctx.competitorId)).toBe(first!);
+  });
+});

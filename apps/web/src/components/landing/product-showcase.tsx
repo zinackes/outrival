@@ -39,7 +39,6 @@ export function ProductShowcase() {
             <span>data storage</span>
           </div>
         </div>
-        <p className="lp-stats-note">Measured on production, July 2026.</p>
       </div>
     </>
   );

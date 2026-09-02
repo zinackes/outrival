@@ -36,6 +36,12 @@ import {
 } from "@outrival/scrapers/content";
 import { isVerbatim } from "@outrival/scrapers/jobs-jd-facts";
 import { loggedAi } from "../lib/analytics";
+import {
+  catchupContentSource,
+  contentFirstRunKey,
+  readIngestFirstRun,
+  stampIngestFirstRun,
+} from "../lib/ingest-first-run";
 
 /**
  * Turn a captured changelog, roadmap or docs surface into ROWS (Content
@@ -133,6 +139,15 @@ export async function runIngestContentItems(payload: z.input<typeof InputSchema>
 
   const html = await getFromR2(`${snapshot.r2Key}.html`);
   const parsed = await parseCapture(input, html);
+
+  // Same marker, same reason as the blog reader's: it tells scrape-monitor's
+  // no-change catch-up that this ingest HAS looked, which a row count cannot — a
+  // changelog with no feed carries no entries to read on any capture. `docs` is
+  // outside the catch-up (it reads a delta, not a listing) and stamps nothing.
+  const catchupSource = catchupContentSource(input.sourceType);
+  if (catchupSource && !readIngestFirstRun(competitor.metadata, contentFirstRunKey(catchupSource))) {
+    await stampIngestFirstRun(competitor.id, contentFirstRunKey(catchupSource));
+  }
 
   if (parsed.length === 0) {
     // A changelog with no feed falls back to plain HTML change-detection, which

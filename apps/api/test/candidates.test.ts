@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import {
   changes,
   competitorCandidates,
@@ -282,6 +282,70 @@ describe("POST /api/candidates/:id/add", () => {
       asUser(B.userId, B.email, { method: "POST" }),
     );
     expect(res.status).toBe(404);
+  });
+});
+
+// The Discovery multi-select sends one selection, not N clicks. What it must never do
+// is half-fail: the seat cap is a known outcome, so the batch tracks what fits, in the
+// order it was sent, and reports the rest instead of erroring the whole call away.
+describe("POST /api/candidates/add", () => {
+  const bulkAdd = (ids: string[], who = A) =>
+    app.request(
+      "/api/candidates/add",
+      asUser(who.userId, who.email, { method: "POST", body: JSON.stringify({ ids }) }),
+    );
+
+  test("tracks the whole selection in one call", async () => {
+    const res = await bulkAdd(["cnd-strong", "cnd-weak"]);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.added).toBe(2);
+    expect(body.skipped).toEqual([]);
+
+    const rows = await testDb.query.competitorCandidates.findMany({
+      where: inArray(competitorCandidates.id, ["cnd-strong", "cnd-weak"]),
+    });
+    expect(rows.length).toBe(2);
+    expect(rows.every((r) => r.status === "added" && r.competitorId !== null)).toBe(true);
+
+    // Each one got its monitors seeded, like the single add does.
+    for (const competitor of body.competitors) {
+      const seeded = await testDb.query.monitors.findMany({
+        where: eq(monitors.competitorId, competitor.id),
+      });
+      expect(seeded.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("stops at the competitor seat cap and names what did not fit", async () => {
+    // B is on free: two seats, none used.
+    await testDb.insert(competitorCandidates).values([
+      { id: "cnd-b-2", orgId: B.orgId, url: "https://kompyte.com", status: "new" },
+      { id: "cnd-b-3", orgId: B.orgId, url: "https://klue.com", status: "new" },
+    ]);
+
+    const res = await bulkAdd(["cnd-other-org", "cnd-b-2", "cnd-b-3"], B);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.added).toBe(PLAN_LIMITS.free.maxCompetitors);
+    expect(body.skipped).toEqual([{ id: "cnd-b-3", reason: "plan_limit" }]);
+
+    // The one that did not fit is untouched, still waiting in the queue.
+    const left = await testDb.query.competitorCandidates.findFirst({
+      where: eq(competitorCandidates.id, "cnd-b-3"),
+    });
+    expect(left?.status).toBe("new");
+  });
+
+  test("another tenant's ids are never in the batch", async () => {
+    const res = await bulkAdd(["cnd-strong"], B);
+    expect(res.status).toBe(200);
+    expect((await res.json()).added).toBe(0);
+
+    const row = await testDb.query.competitorCandidates.findFirst({
+      where: eq(competitorCandidates.id, "cnd-strong"),
+    });
+    expect(row?.status).toBe("new");
   });
 });
 

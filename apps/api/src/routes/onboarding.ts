@@ -2,13 +2,14 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { captureServerEvent } from "../lib/posthog";
-import { and, eq, count, inArray, isNull } from "drizzle-orm";
+import { and, eq, count, desc, inArray, isNull, isNotNull, min } from "drizzle-orm";
 import {
   organizations,
   competitors,
   monitors,
   signals,
-  orgNotificationPreferences,
+  askHistory,
+  battleCards,
   competitorCandidates,
   onboardingSessions,
   type SelfProfile,
@@ -209,44 +210,118 @@ onboardingRouter.get("/status", async (c) => {
   });
 });
 
-// Activation checklist (Phase B) — booleans derived from existing data, no new
-// schema. Drives the dismissible checklist card on the overview.
+// Get-started dock (post-onboarding). The dock derives its steps from these
+// facts, all read off existing rows: no schema, no manual checkboxes. Org-level
+// facts (cards, channel, decisions) count for the whole team; askedByMe is per
+// user, since asking is the one habit each person has to form alone.
+const GET_STARTED_PREFIX = "get_started_";
+const GET_STARTED_MILESTONES = ["landscape_seen", "cadence_seen", "dismissed"] as const;
+
+function getStartedMilestones(
+  timings: Record<string, number> | null | undefined,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const key of GET_STARTED_MILESTONES) {
+    const v = timings?.[GET_STARTED_PREFIX + key];
+    if (typeof v === "number") out[key] = v;
+  }
+  return out;
+}
+
+// Per-user milestones live in the user's own onboarding session timings (the
+// row is theirs, PATCH already merges into it). An invited teammate has no
+// session; the dock then keeps the milestone in localStorage rather than a
+// synthetic row here, which the admin onboarding funnel would count as a run.
+function latestSession(userId: string) {
+  return db.query.onboardingSessions.findFirst({
+    where: eq(onboardingSessions.userId, userId),
+    orderBy: desc(onboardingSessions.startedAt),
+    columns: { id: true, timings: true },
+  });
+}
+
 onboardingRouter.get("/checklist", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
-  const comps = await db
-    .select({ id: competitors.id, type: competitors.type })
-    .from(competitors)
-    .where(and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)));
-  const hasSelf = comps.some((x) => x.type === "self");
-  const competitorCount = comps.filter((x) => x.type !== "self").length;
-  const competitorIds = comps.map((x) => x.id);
+  const [org, comps, askRows, cardRows, signalRows, decidedRows, session] =
+    await Promise.all([
+      db.query.organizations.findFirst({
+        where: eq(organizations.id, orgId),
+        columns: { slackWebhookUrl: true, webhookUrl: true },
+      }),
+      db
+        .select({ id: competitors.id, type: competitors.type })
+        .from(competitors)
+        .where(and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt))),
+      db
+        .select({ id: askHistory.id })
+        .from(askHistory)
+        .where(and(eq(askHistory.orgId, orgId), eq(askHistory.userId, user.id)))
+        .limit(1),
+      db
+        .select({ id: battleCards.id })
+        .from(battleCards)
+        .where(eq(battleCards.orgId, orgId))
+        .limit(1),
+      db.select({ v: count() }).from(signals).where(eq(signals.orgId, orgId)),
+      db
+        .select({ id: signals.id })
+        .from(signals)
+        .where(and(eq(signals.orgId, orgId), isNotNull(signals.actionStatus)))
+        .limit(1),
+      latestSession(user.id),
+    ]);
 
-  const [monitorRows, signalRows, prefRows] = await Promise.all([
-    competitorIds.length
-      ? db
-          .select({ v: count() })
-          .from(monitors)
-          .where(inArray(monitors.competitorId, competitorIds))
-      : Promise.resolve([{ v: 0 }]),
-    db.select({ v: count() }).from(signals).where(eq(signals.orgId, orgId)),
-    db
-      .select({ id: orgNotificationPreferences.id })
-      .from(orgNotificationPreferences)
-      .where(eq(orgNotificationPreferences.orgId, orgId))
-      .limit(1),
-  ]);
+  const competitorIds = comps.filter((x) => x.type !== "self").map((x) => x.id);
+  // The honest horizon for the locked "Decide" tier: when the next scan runs,
+  // never when a signal will land (a scan that finds nothing is the common case).
+  const nextRun = competitorIds.length
+    ? await db
+        .select({ v: min(monitors.nextRunAt) })
+        .from(monitors)
+        .where(and(inArray(monitors.competitorId, competitorIds), eq(monitors.isActive, true)))
+    : [];
+  const nextRunAt = nextRun[0]?.v;
 
-  const steps = [
-    { key: "product", done: hasSelf },
-    { key: "competitor", done: competitorCount > 0 },
-    { key: "monitoring", done: (monitorRows[0]?.v ?? 0) > 0 },
-    { key: "notifications", done: prefRows.length > 0 },
-    { key: "signal", done: (signalRows[0]?.v ?? 0) > 0 },
-  ];
+  return c.json({
+    competitorCount: competitorIds.length,
+    askedByMe: askRows.length > 0,
+    hasBattleCard: cardRows.length > 0,
+    // "Chose a channel" is a Slack/webhook URL, not a preferences row: that row is
+    // created by the first GET and by the timezone sync, so it proves nothing.
+    channelConfigured: Boolean(org?.slackWebhookUrl || org?.webhookUrl),
+    signalCount: signalRows[0]?.v ?? 0,
+    hasDecision: decidedRows.length > 0,
+    nextScanAt: nextRunAt ? new Date(nextRunAt).toISOString() : null,
+    milestones: getStartedMilestones(session?.timings),
+  });
+});
 
-  return c.json({ steps, complete: steps.every((s) => s.done) });
+const MilestoneSchema = z.object({
+  key: z.enum(GET_STARTED_MILESTONES),
+  clear: z.boolean().optional(),
+});
+
+onboardingRouter.post("/checklist/milestone", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = MilestoneSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+  }
+  const user = c.get("user");
+  const session = await latestSession(user.id);
+  if (!session) return c.json({ stored: false, milestones: {} });
+
+  const timings = { ...session.timings };
+  const key = GET_STARTED_PREFIX + parsed.data.key;
+  if (parsed.data.clear) delete timings[key];
+  else timings[key] = Date.now();
+  await db
+    .update(onboardingSessions)
+    .set({ timings })
+    .where(eq(onboardingSessions.id, session.id));
+  return c.json({ stored: true, milestones: getStartedMilestones(timings) });
 });
 
 // ── Mode: live (existing flow, renamed from /analyze) ──────────────────────

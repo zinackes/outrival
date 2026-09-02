@@ -17,6 +17,10 @@ export function Toaster() {
     <SonnerToaster
       theme={theme as "light" | "dark" | "system" | undefined}
       position="bottom-right"
+      // The get-started pill owns the corner (bottom 16px, 36px tall); toasts
+      // start above it instead of landing on it.
+      offset={{ bottom: 60 }}
+      mobileOffset={{ bottom: 60 }}
       closeButton
       // How long a toast stays is decided per KIND in lib/toast.ts, which every
       // call site goes through; this is only the floor for anything that reaches

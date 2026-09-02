@@ -88,7 +88,6 @@ export async function getOverviewData(productId?: string): Promise<{
   competitors: Competitor[];
   sectoral: SectoralSignal[] | null;
   battleCards: BattleCardSummary[] | null;
-  checklist: OnboardingChecklist | null;
   health: { sources: ActivitySource[]; upcoming: ActivityUpcoming[] } | null;
   digests: Digest[] | null;
 } | null> {
@@ -98,19 +97,18 @@ export async function getOverviewData(productId?: string): Promise<{
   try {
     // signals + competitors gate the whole seed (their failure nulls it, keeping
     // the prior contract). The secondary Overview sections are best-effort
-    // (tryGet → null), so a plan-gated sectoral teaser or a checklist blip never
+    // (tryGet → null), so a plan-gated sectoral teaser or a health blip never
     // sinks the hero feeds; each falls back to its own client fetch.
     //
     // sort=recent must match overviewSignalsQuery, or the seed writes a cache entry
     // the view never reads (and the view then fetches anyway).
-    const [s, c, sectoral, cards, checklist, health, digests] = await Promise.all([
+    const [s, c, sectoral, cards, health, digests] = await Promise.all([
       serverGet<{ signals: Signal[] }>(
         `/api/signals?limit=${OVERVIEW_SIGNALS_LIMIT}&sort=recent${scope}`,
       ),
       serverGet<{ competitors: Competitor[] }>(`/api/competitors${compScope}`),
       tryGet<{ signals: SectoralSignal[] }>(`/api/sectoral?limit=3`),
       tryGet<{ battleCards: BattleCardSummary[] }>(`/api/battle-cards`),
-      tryGet<OnboardingChecklist>(`/api/onboarding/checklist`),
       tryGet<{ sources: ActivitySource[]; upcoming: ActivityUpcoming[] }>(
         `/api/activity/health${compScope}`,
       ),
@@ -121,7 +119,6 @@ export async function getOverviewData(productId?: string): Promise<{
       competitors: c.competitors,
       sectoral: sectoral?.signals ?? null,
       battleCards: cards?.battleCards ?? null,
-      checklist: checklist ?? null,
       health: health ?? null,
       digests: digests?.digests ?? null,
     };
@@ -143,12 +140,14 @@ export async function getShellData(productId?: string): Promise<{
   aiStatus: AiStatus | null;
   competitors: Competitor[] | null;
   notifications: { items: AppNotification[]; unreadCount: number } | null;
+  checklist: OnboardingChecklist | null;
 }> {
   // Same query string the page-level seeds build, so React.cache collapses the two
   // into ONE round-trip when a page seeds the roster too (overview, competitors,
   // compare) rather than fetching it twice per render.
   const compScope = productId ? `?productId=${encodeURIComponent(productId)}` : "";
-  const [products, structural, aiStatus, competitors, notifList, unread] = await Promise.all([
+  const [products, structural, aiStatus, competitors, notifList, unread, checklist] =
+    await Promise.all([
     tryGet<{ products: ProductSummary[] }>(`/api/products`),
     tryGet<{ changes: StructuralChangeRow[] }>(
       `/api/structural-changes?status=detected`,
@@ -164,6 +163,8 @@ export async function getShellData(productId?: string): Promise<{
     // the dropdown were empty through the whole first paint, on every cold load.
     tryGet<{ notifications: AppNotification[] }>(`/api/notifications?limit=20`),
     tryGet<{ count: number }>(`/api/notifications/unread-count`),
+    // The get-started dock mounts on every page too.
+    tryGet<OnboardingChecklist>(`/api/onboarding/checklist`),
   ]);
   return {
     products: products?.products ?? null,
@@ -176,6 +177,7 @@ export async function getShellData(productId?: string): Promise<{
       notifList && unread
         ? { items: notifList.notifications, unreadCount: unread.count }
         : null,
+    checklist: checklist ?? null,
   };
 }
 

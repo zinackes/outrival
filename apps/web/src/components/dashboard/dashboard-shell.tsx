@@ -9,6 +9,7 @@ import { SettingsSidebar } from "@/components/dashboard/settings-sidebar";
 import { Topbar } from "@/components/dashboard/topbar";
 import { AskContextProvider } from "@/components/dashboard/ask-context";
 import { AskDock } from "@/components/dashboard/ask-dock";
+import { GetStartedDock } from "@/components/dashboard/get-started-dock";
 import { ProductScopeProvider } from "@/components/dashboard/product-scope-provider";
 import { cn } from "@/lib/utils";
 
@@ -80,6 +81,7 @@ export function DashboardShell({
                 </div>
               </div>
               <AskDock />
+              <GetStartedDock />
             </SidebarInset>
           </SidebarProvider>
         </AskContextProvider>

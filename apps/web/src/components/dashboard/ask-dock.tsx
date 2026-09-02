@@ -13,7 +13,8 @@ import {
 import { AskPanel } from "./ask-panel";
 import { useAskContext } from "./ask-context";
 
-/** Opens the contextual Ask sheet from anywhere (the topbar button, ⌘J). */
+/** Opens the contextual Ask sheet from anywhere (the topbar button, ⌘J). The
+ *  event's `detail.question`, when present, lands in the textarea. */
 export const ASK_OPEN_EVENT = "outrival-ask-open";
 
 // "Ask Outrival" as a right-side sheet, pre-scoped to the page's entity
@@ -25,6 +26,7 @@ export const ASK_OPEN_EVENT = "outrival-ask-open";
 export function AskDock() {
   const entity = useAskContext();
   const [open, setOpen] = React.useState(false);
+  const [prefill, setPrefill] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -33,7 +35,9 @@ export function AskDock() {
         setOpen((o) => !o);
       }
     }
-    function onOpen() {
+    function onOpen(e: Event) {
+      const q = (e as CustomEvent<{ question?: unknown }>).detail?.question;
+      setPrefill(typeof q === "string" ? q : null);
       setOpen(true);
     }
     document.addEventListener("keydown", onKey);
@@ -50,7 +54,14 @@ export function AskDock() {
 
   return (
     <>
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o);
+          // Cleared on close so the same question can be handed in again later.
+          if (!o) setPrefill(null);
+        }}
+      >
         <SheetContent
           side="right"
           className="w-full gap-0 overflow-y-auto p-0 sm:max-w-xl"
@@ -65,7 +76,7 @@ export function AskDock() {
             </SheetDescription>
           </SheetHeader>
           <div className="p-4">
-            <AskPanel embedded context={context} />
+            <AskPanel embedded context={context} initialQuestion={prefill} />
           </div>
         </SheetContent>
       </Sheet>

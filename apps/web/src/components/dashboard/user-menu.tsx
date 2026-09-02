@@ -7,6 +7,7 @@ import {
   CaretDownIcon,
   SignOutIcon,
   ChatCenteredDotsIcon,
+  ListChecksIcon,
   GearIcon,
   UserIcon,
 } from "@/components/icons";
@@ -14,6 +15,7 @@ import { signOut } from "@/lib/auth-client";
 import { resetUser } from "@/lib/posthog/events";
 import { UserAvatar } from "@/components/dashboard/user-avatar";
 import { FEEDBACK_OPEN_EVENT } from "@/components/outrival/feedback-widget";
+import { GET_STARTED_OPEN_EVENT } from "@/components/dashboard/get-started-dock";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -94,6 +96,13 @@ export function UserMenu({ user }: { user: User }) {
           }
         >
           <ChatCenteredDotsIcon className="size-4" /> Send feedback
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() =>
+            document.dispatchEvent(new CustomEvent(GET_STARTED_OPEN_EVENT))
+          }
+        >
+          <ListChecksIcon className="size-4" /> Get started
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={handleSignOut}>

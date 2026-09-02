@@ -1820,20 +1820,22 @@ export interface CompareColumn {
   } | null;
 }
 
-// Activation checklist (Phase B) — booleans derived from existing data.
-export type ChecklistStepKey =
-  | "product"
-  | "competitor"
-  | "monitoring"
-  | "notifications"
-  | "signal";
-export interface ChecklistStep {
-  key: ChecklistStepKey;
-  done: boolean;
-}
+// Get-started dock: usage facts read off existing rows (org-wide unless noted),
+// plus the milestones the dock stamps itself (a page visit, a dismiss).
+export type GetStartedMilestone = "landscape_seen" | "cadence_seen" | "dismissed";
 export interface OnboardingChecklist {
-  steps: ChecklistStep[];
-  complete: boolean;
+  competitorCount: number;
+  /** Per user: asking is the one habit each person forms alone. */
+  askedByMe: boolean;
+  hasBattleCard: boolean;
+  /** A Slack or webhook URL on the org. */
+  channelConfigured: boolean;
+  signalCount: number;
+  /** Some signal has an action status, whoever set it. */
+  hasDecision: boolean;
+  /** ISO instant of the next scheduled scan; null when nothing is scheduled. */
+  nextScanAt: string | null;
+  milestones: Partial<Record<GetStartedMilestone, number>>;
 }
 
 // Saved Signals-feed filter sets (Phase B).
@@ -4265,6 +4267,13 @@ export const api = {
     request<{ ranking: Record<string, number> }>("/api/compare/ranking"),
   getOnboardingChecklist: () =>
     request<OnboardingChecklist>("/api/onboarding/checklist"),
+  // Stored in the user's onboarding session when they have one (stored: false
+  // otherwise; the dock keeps a local copy either way).
+  stampGetStartedMilestone: (key: GetStartedMilestone, clear = false) =>
+    request<{ stored: boolean; milestones: Partial<Record<GetStartedMilestone, number>> }>(
+      "/api/onboarding/checklist/milestone",
+      { method: "POST", body: JSON.stringify({ key, clear }) },
+    ),
   // Alert conditions (OUT-192) — the sentences that decide what gets flagged.
   listAlertConditions: () =>
     request<{ data: { conditions: AlertCondition[]; max: number } }>("/api/alert-conditions"),

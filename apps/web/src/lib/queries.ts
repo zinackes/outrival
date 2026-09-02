@@ -401,7 +401,7 @@ export function sectoralTeaserQuery() {
   });
 }
 
-// Onboarding checklist (Overview card; null/complete hides it).
+// Get-started dock facts (shell-seeded; the dock derives its steps from them).
 export function onboardingChecklistQuery() {
   return queryOptions({
     queryKey: ["onboardingChecklist"] as const,

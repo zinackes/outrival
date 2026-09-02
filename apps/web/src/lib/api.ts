@@ -1831,8 +1831,8 @@ export interface OnboardingChecklist {
   /** A Slack or webhook URL on the org. */
   channelConfigured: boolean;
   signalCount: number;
-  /** Some signal has an action status, whoever set it. */
-  hasDecision: boolean;
+  /** Some signal has been opened, whoever opened it. */
+  hasReadSignal: boolean;
   /** ISO instant of the next scheduled scan; null when nothing is scheduled. */
   nextScanAt: string | null;
   milestones: Partial<Record<GetStartedMilestone, number>>;

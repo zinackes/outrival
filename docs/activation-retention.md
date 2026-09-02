@@ -41,7 +41,7 @@ that narrates the loop of moves (Watch, Ask, Brief, Decide) after onboarding.
 
 - `GET /api/onboarding/checklist` → usage facts: `competitorCount`, `askedByMe`
   (per user, `ask_history`), `hasBattleCard`, `channelConfigured` (Slack/webhook
-  URL on the org), `signalCount`, `hasDecision` (`signals.action_status`),
+  URL on the org), `signalCount`, `hasReadSignal` (`signals.is_read`),
   `nextScanAt` (min active `monitors.next_run_at`, the honest horizon for the
   locked Decide tier), and `milestones`.
 - `POST /api/onboarding/checklist/milestone` `{ key, clear? }` stamps a

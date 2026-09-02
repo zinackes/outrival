@@ -193,7 +193,7 @@ describe("GET /onboarding/checklist — get-started facts", () => {
     });
     return id;
   }
-  async function seedSignal(orgId: string, competitorId: string, actionStatus?: string) {
+  async function seedSignal(orgId: string, competitorId: string, isRead = false) {
     const id = `gs-${++n}`;
     await testDb.insert(monitors).values({
       id: `mon-${id}`,
@@ -218,7 +218,7 @@ describe("GET /onboarding/checklist — get-started facts", () => {
       severity: "low",
       category: "product",
       insight: "insight",
-      ...(actionStatus ? { actionStatus } : {}),
+      isRead,
     });
   }
   async function facts(userId: string, email: string) {
@@ -235,7 +235,7 @@ describe("GET /onboarding/checklist — get-started facts", () => {
       hasBattleCard: false,
       channelConfigured: false,
       signalCount: 0,
-      hasDecision: false,
+      hasReadSignal: false,
       nextScanAt: null,
       milestones: {},
     });
@@ -252,7 +252,7 @@ describe("GET /onboarding/checklist — get-started facts", () => {
       .update(organizations)
       .set({ slackWebhookUrl: "https://hooks.slack.com/services/x" })
       .where(eq(organizations.id, orgId));
-    await seedSignal(orgId, cid, "todo");
+    await seedSignal(orgId, cid, true);
 
     const f = await facts(userId, email);
     expect(f.competitorCount).toBe(1);
@@ -260,18 +260,18 @@ describe("GET /onboarding/checklist — get-started facts", () => {
     expect(f.hasBattleCard).toBe(true);
     expect(f.channelConfigured).toBe(true);
     expect(f.signalCount).toBe(1);
-    expect(f.hasDecision).toBe(true);
+    expect(f.hasReadSignal).toBe(true);
     // The horizon is the next scan, rendered as an ISO instant in UTC.
     expect(f.nextScanAt).toBe("2030-01-02T03:04:05.000Z");
   });
 
-  test("a signal nobody triaged is not a decision", async () => {
+  test("a signal nobody opened is not read", async () => {
     const { orgId, userId, email } = await seedOrg(testDb);
     const cid = await seedCompetitor(orgId);
     await seedSignal(orgId, cid);
     const f = await facts(userId, email);
     expect(f.signalCount).toBe(1);
-    expect(f.hasDecision).toBe(false);
+    expect(f.hasReadSignal).toBe(false);
   });
 
   test("a teammate's question does not count as mine", async () => {

@@ -7,6 +7,8 @@ import {
   AUTOMATIC_SOURCE_MAX_FREQUENCY,
   CONFIGURABLE_SOURCES,
   ALL_CONFIGURABLE_SOURCES,
+  hasNoScraper,
+  isMissingScraperError,
   RETIRED_SOURCES,
   UNIMPLEMENTED_SOURCES,
   automaticFrequencyOptions,
@@ -152,5 +154,34 @@ describe("always-on cadence", () => {
         }
       }
     }
+  });
+});
+
+describe("a scrape that found no binding (OUT-246)", () => {
+  // The message getScraper actually throws. If that string ever moves, this is the
+  // test that says so rather than prod silently pausing healthy monitors again.
+  const thrown = (source: string) => new Error(`No scraper for source type: ${source}`);
+
+  test("the throw is recognised, whatever the source in it", () => {
+    expect(isMissingScraperError(thrown("docs"))).toBe(true);
+    expect(isMissingScraperError(thrown("linkedin"))).toBe(true);
+  });
+
+  test("no other scrape failure is mistaken for it", () => {
+    expect(isMissingScraperError(new Error("blocked_403"))).toBe(false);
+    expect(isMissingScraperError(new Error("no_docs_surface"))).toBe(false);
+    expect(isMissingScraperError("timeout")).toBe(false);
+    expect(isMissingScraperError(null)).toBe(false);
+  });
+
+  test("the sources prod hit are bound, so the throw means a stale build", () => {
+    // docs / roadmap / hackernews / wellknown all failed with it on prod while the
+    // registry bound every one of them: the worker image was behind, and pausing
+    // those monitors was wrong. Pairing the two predicates is what tells them apart.
+    for (const s of ["docs", "roadmap", "hackernews", "wellknown"] as const) {
+      expect(hasNoScraper(s)).toBe(false);
+    }
+    // A retired source is the other case: genuinely gone, and pausing it is right.
+    expect(hasNoScraper("trustpilot_reviews")).toBe(true);
   });
 });

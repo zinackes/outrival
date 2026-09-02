@@ -1,7 +1,8 @@
 import { test, expect, describe } from "bun:test";
-import type { ContentItemRow } from "../src/lib/api";
+import type { ContentItemRow, Monitor } from "../src/lib/api";
 import {
   boardColumns,
+  contentEmptyReason,
   docsArea,
   docsSections,
   groupByMonth,
@@ -181,5 +182,78 @@ describe("kindGroups", () => {
     expect(groups.map((g) => g.source)).toEqual(["changelog", "blog"]);
     // Unread is a state, not a kind, so it sits last inside its source.
     expect(groups[1]?.kinds.map((k) => k.itemType)).toEqual(["case_study", null]);
+  });
+});
+
+describe("contentEmptyReason (OUT-246)", () => {
+  function monitor(over: Partial<Monitor> & Pick<Monitor, "sourceType">): Monitor {
+    return {
+      id: over.sourceType,
+      competitorId: "c1",
+      frequency: "weekly",
+      config: null,
+      lastRunAt: "2026-09-01T00:00:00.000Z",
+      nextRunAt: null,
+      lastChangedAt: null,
+      scrapeStartedAt: null,
+      scrapePickedUpAt: null,
+      lastFailedAt: null,
+      lastError: null,
+      aiSummary: null,
+      aiSummaryUpdatedAt: null,
+      ...over,
+    };
+  }
+
+  test("a competitor whose sources have never run has not been read yet", () => {
+    const reason = contentEmptyReason([
+      monitor({ sourceType: "blog", lastRunAt: null }),
+      monitor({ sourceType: "docs", lastRunAt: null }),
+    ]);
+    expect(reason).toBe("not_read_yet");
+  });
+
+  test("one unread source outranks three that came back empty", () => {
+    // The question is still open, so the headline must not settle it.
+    const reason = contentEmptyReason([
+      monitor({ sourceType: "blog" }),
+      monitor({ sourceType: "changelog" }),
+      monitor({ sourceType: "roadmap" }),
+      monitor({ sourceType: "docs", lastRunAt: null }),
+    ]);
+    expect(reason).toBe("not_read_yet");
+  });
+
+  test("no content monitor at all reads as unread, not as a competitor who publishes nothing", () => {
+    expect(contentEmptyReason([])).toBe("not_read_yet");
+    // A monitor on some other source is not one of the four this tab reads.
+    expect(contentEmptyReason([monitor({ sourceType: "pricing" })])).toBe("not_read_yet");
+  });
+
+  test("a site with no readable surface is never accused of publishing nothing", () => {
+    // The exact markers the worker records as benign skips, the same ones the
+    // per-source rows already read (NO_TARGET_MARKERS).
+    const reason = contentEmptyReason([
+      monitor({ sourceType: "roadmap", lastError: "no_roadmap_portal" }),
+      monitor({ sourceType: "docs", lastError: "no_docs_surface" }),
+      monitor({ sourceType: "blog", markedUnscrapable: true }),
+    ]);
+    expect(reason).toBe("nothing_to_read");
+  });
+
+  test("one source read clean and empty is what the old sentence actually describes", () => {
+    const reason = contentEmptyReason([
+      monitor({ sourceType: "blog" }),
+      monitor({ sourceType: "roadmap", lastError: "no_roadmap_portal" }),
+    ]);
+    expect(reason).toBe("nothing_published");
+  });
+
+  test("a paused source does not decide the headline for the ones still watched", () => {
+    const reason = contentEmptyReason([
+      monitor({ sourceType: "docs", isActive: false, lastError: "no_docs_surface" }),
+      monitor({ sourceType: "blog" }),
+    ]);
+    expect(reason).toBe("nothing_published");
   });
 });

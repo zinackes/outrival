@@ -322,6 +322,27 @@ describe("GET /:id/content-summary", () => {
     expect(res.totals.previousPublished).toBe(3);
     expect(res.totals.perMonth).toBeGreaterThan(res.totals.previousPerMonth);
   });
+
+  test("totals.allTime counts what the cadence window cannot reach", async () => {
+    const id = await seedCompetitor();
+    // Their newest post predates the 12-month cadence: everything the summary
+    // otherwise reports is legitimately zero.
+    await seedItem(id, { sourceType: "blog", publishedAt: daysAgo(500) });
+    await seedItem(id, { sourceType: "blog", publishedAt: daysAgo(900) });
+
+    const res = await summary(id);
+    expect(res.cadence.reduce((n: number, m: { total: number }) => n + m.total, 0)).toBe(0);
+    expect(res.totals.published).toBe(0);
+    // OUT-246: the tab's "they have never published anything" empty state is an
+    // ALL-TIME claim and renders in place of the period toggle. Reading it off the
+    // cadence made this competitor a dead end at every period, "All" included.
+    expect(res.totals.allTime).toBe(2);
+  });
+
+  test("totals.allTime is zero on a competitor we hold nothing for", async () => {
+    const res = await summary(await seedCompetitor());
+    expect(res.totals.allTime).toBe(0);
+  });
 });
 
 describe("editorial_pivot facts", () => {

@@ -817,11 +817,10 @@ function MarketMapSection({
                             href={n.evidenceUrls[0]}
                             target="_blank"
                             rel="noreferrer noopener"
+                            title={n.evidenceUrls[0]}
                             className="inline-flex items-center gap-1 text-link hover:underline"
                           >
-                            <span className="font-mono">
-                              {n.evidenceUrls[0].replace(/^https?:\/\/(www\.)?/, "")}
-                            </span>
+                            <span className="font-mono">{linkHost(n.evidenceUrls[0])}</span>
                             <ArrowSquareOutIcon size={12} />
                           </a>
                         </>
@@ -883,7 +882,7 @@ function TargetList({
           <li key={t.name} className="flex flex-col gap-0.5 border-t border-border py-2">
             <span className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium">{t.name}</span>
-              {t.announced && <Badge className="text-meta font-medium">New</Badge>}
+              {t.announced && <Badge className="rounded-sm px-1.5 py-0 text-meta font-medium">New</Badge>}
             </span>
             <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
               <span>{t.sources.map(sourceLabel).join(", ")}</span>
@@ -906,11 +905,10 @@ function TargetList({
                     href={t.evidenceUrls[0]}
                     target="_blank"
                     rel="noreferrer noopener"
+                    title={t.evidenceUrls[0]}
                     className="inline-flex items-center gap-1 text-link hover:underline"
                   >
-                    <span className="font-mono">
-                      {t.evidenceUrls[0].replace(/^https?:\/\/(www\.)?/, "")}
-                    </span>
+                    <span className="font-mono">{linkHost(t.evidenceUrls[0])}</span>
                     <ArrowSquareOutIcon size={12} />
                   </a>
                 </>
@@ -939,6 +937,21 @@ const SOURCE_LABELS: Record<string, string> = {
   docs: "docs",
 };
 const sourceLabel = (s: string) => SOURCE_LABELS[s] ?? s;
+
+/**
+ * An evidence link reads as its host, not as its path.
+ *
+ * The path is what made these links wrap over two lines next to the name they
+ * document; the host is the part that says whose page it is. The full URL stays
+ * on the anchor's title and, of course, in its href.
+ */
+function linkHost(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url.replace(/^https?:\/\/(www\.)?/, "");
+  }
+}
 
 // ── 4. ICP ──────────────────────────────────────────────────────────────────
 
@@ -1041,7 +1054,7 @@ function IcpSection({
                   ) : (
                     r.label
                   )}
-                  {r.isNew && <Badge className="text-meta font-medium">New</Badge>}
+                  {r.isNew && <Badge className="rounded-sm px-1.5 py-0 text-meta font-medium">New</Badge>}
                 </span>
                 <span
                   className={cn(
@@ -1094,7 +1107,7 @@ function SegmentGroup({ label, segments }: { label: string; segments: AudienceSe
             ) : (
               s.displayName
             )}
-            {s.isNew && <Badge className="text-meta font-medium">New</Badge>}
+            {s.isNew && <Badge className="rounded-sm px-1.5 py-0 text-meta font-medium">New</Badge>}
           </span>
         ))}
       </div>

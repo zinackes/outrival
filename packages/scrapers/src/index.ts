@@ -26,45 +26,64 @@ type ScraperFn = (
   options?: ScrapeOptions,
 ) => Promise<ScrapeOutcome>;
 
-const scrapers: Partial<Record<SourceType, ScraperFn>> = {
-  homepage: homepage.scrape,
-  pricing: pricing.scrape,
-  blog: blog.scrape,
-  changelog: changelog.scrape,
-  jobs: jobs.scrape,
+/**
+ * The registry, one thunk per source rather than one function reference (OUT-246).
+ *
+ * `docs: docs.scrape` reads the namespace member the moment THIS object literal is
+ * built, and every consumer reaches this module through `await import(...)` on a hot
+ * path. On prod that snapshot came back undefined for the tail of the list —
+ * hackernews, wellknown, docs, roadmap — while the very same worker process ran the
+ * real scraper for the same source seconds later: 59 `No scraper for source type:
+ * docs` runs interleaved with the `no_docs_index` verdicts only docs.scraper can
+ * emit. Reading `.scrape` inside the thunk defers it to call time, when every module
+ * in the graph has certainly finished evaluating, whatever ordering produced the gap.
+ */
+const scrapers: Partial<Record<SourceType, () => ScraperFn>> = {
+  homepage: () => homepage.scrape,
+  pricing: () => pricing.scrape,
+  blog: () => blog.scrape,
+  changelog: () => changelog.scrape,
+  jobs: () => jobs.scrape,
   // Reviews v2 (2026-07-15): App Store (public RSS) is the only directly-read review
   // source with verbatims. The scraped aggregators (g2/capterra/trustpilot_reviews/
   // trustradius/gartner/playstore) are retired — no scraper binding, so getScraper
   // throws if a dormant, marked_unscrapable monitor were ever scheduled (it never is).
-  appstore_reviews: appstoreReviews.scrape,
+  appstore_reviews: () => appstoreReviews.scrape,
   // Shopify App Store (2026-08-04): a public server-rendered listing read at L0
   // through scrapeStatic, so robots.txt + the per-domain gap apply like anywhere
   // else. Score + count come from the page's own JSON-LD AggregateRating.
-  shopify_reviews: shopifyReviews.scrape,
+  shopify_reviews: () => shopifyReviews.scrape,
   // Trustpilot public surface — official API (TRUSTPILOT_API_KEY): score + count +
   // distribution only, never scraped verbatims. Throws cleanly if the key is unset.
-  trustpilot_public: trustpilot.scrape,
-  github_repo: github.scrape,
-  status: status.scrape,
-  sitemap: sitemap.scrape,
-  news: news.scrape,
-  subdomains: subdomains.scrape,
-  youtube: youtube.scrape,
-  hackernews: hackernews.scrape,
-  wellknown: wellknown.scrape,
+  trustpilot_public: () => trustpilot.scrape,
+  github_repo: () => github.scrape,
+  status: () => status.scrape,
+  sitemap: () => sitemap.scrape,
+  news: () => news.scrape,
+  subdomains: () => subdomains.scrape,
+  youtube: () => youtube.scrape,
+  hackernews: () => hackernews.scrape,
+  wellknown: () => wellknown.scrape,
   // Developer docs (pro+): OpenAPI spec → canonical operation/schema listing, else
   // the docs sitemap's page list. Pure fetch, no browser cascade, no AI.
-  docs: docs.scrape,
-  custom: custom.scrape,
+  docs: () => docs.scrape,
+  custom: () => custom.scrape,
   // Public roadmap / feedback portal (pro+): Canny's SSR'd state island or
   // ProductBoard's unauthenticated portal API → a listing sorted by stable entry id.
   // Pure fetch, no browser cascade, no AI.
-  roadmap: roadmap.scrape,
+  roadmap: () => roadmap.scrape,
 };
 
 export function getScraper(sourceType: SourceType): ScraperFn {
-  const scraper = scrapers[sourceType];
-  if (!scraper) throw new Error(`No scraper for source type: ${sourceType}`);
+  const bind = scrapers[sourceType];
+  if (!bind) throw new Error(`No scraper for source type: ${sourceType}`);
+  const scraper = bind();
+  // The thunk defers the read, it does not guarantee it: if this ever fires, the
+  // source IS in the registry and its module still handed us nothing, which is a
+  // different bug from an unbound source and must not read as one.
+  if (typeof scraper !== "function") {
+    throw new Error(`Scraper module not initialised for source type: ${sourceType}`);
+  }
   return scraper;
 }
 

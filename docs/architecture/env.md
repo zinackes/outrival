@@ -333,6 +333,7 @@ RELEVANCE_AUTO_ADJUST_MIN_FEEDBACKS=10 # min feedbacks org avant auto-ajustement
 RELEVANCE_RECALC_INTERVAL_HOURS=168    # cadence recalc (hebdo)
 BATCHING_WINDOW_HOURS=24               # fenêtre de regroupement
 BATCHING_MIN_SIGNALS=3                 # min signals similaires pour un batch
+BATCHING_MAX_GROUPS=500                # max groupes batchés par run (1 appel IA chacun)
 
 # Stale-data actions (patch-27)
 STALENESS_THRESHOLDS_PRICING=7,14,30   # seuils jaune,orange,rouge par type de source (jours)

@@ -544,6 +544,87 @@ signalsRouter.post("/mark-all-read", async (c) => {
   return c.json({ ok: true, count: ids.length, ids: ids.length <= 2000 ? ids : undefined });
 });
 
+// Bulk triage — the same write as PATCH /:id/action, over a selection. The feed's
+// bulk bar had no batched endpoint, so tracking or clearing a shift-selected range
+// fired one concurrent POST per row: tens to low-hundreds of simultaneous requests
+// from a single click, and the toast's Undo replayed the whole fan-out
+// (`code:PER-40`). One org-guarded UPDATE instead, shaped like /mark-all-read's
+// ids branch, which already proved the pattern.
+signalsRouter.post("/bulk-action", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const body = (await c.req.json().catch(() => ({}))) as {
+    ids?: unknown;
+    status?: unknown;
+    note?: unknown;
+  };
+
+  const ids = Array.isArray(body.ids)
+    ? body.ids.filter((x): x is string => typeof x === "string").slice(0, 2000)
+    : [];
+  if (!ids.length) return c.json({ ok: true, count: 0 });
+
+  const status = body.status ?? null;
+  if (status !== null && !(ACTION_STATUSES as readonly string[]).includes(status as string)) {
+    return c.json({ error: "invalid_status" }, 400);
+  }
+  const note = typeof body.note === "string" ? body.note.slice(0, 2000) : null;
+
+  const updated = await db
+    .update(signals)
+    .set({
+      actionStatus: status as (typeof ACTION_STATUSES)[number] | null,
+      actionNote: note,
+      actionUpdatedAt: new Date(),
+    })
+    .where(and(eq(signals.orgId, orgId), inArray(signals.id, ids)))
+    .returning({ id: signals.id });
+
+  // One event for the batch, not one per row: the per-signal event exists to trace a
+  // single triage, and N copies of it would only inflate the funnel it feeds.
+  if (status) {
+    void captureServerEvent(user.id, "signal_action_bulk_updated", {
+      count: updated.length,
+      actionStatus: status,
+      orgId,
+    });
+  }
+
+  return c.json({ ok: true, count: updated.length });
+});
+
+// Bulk snooze — same write as PATCH /:id/snooze over a selection, and the same
+// per-row fan-out it replaces (`code:PER-40`). `until: null` un-snoozes, which is
+// what the toast's Undo sends.
+signalsRouter.post("/bulk-snooze", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown; until?: unknown };
+
+  const ids = Array.isArray(body.ids)
+    ? body.ids.filter((x): x is string => typeof x === "string").slice(0, 2000)
+    : [];
+  if (!ids.length) return c.json({ ok: true, count: 0 });
+
+  let snoozedUntil: Date | null = null;
+  if (body.until !== null && body.until !== undefined) {
+    if (typeof body.until !== "string") return c.json({ error: "invalid_until" }, 400);
+    const d = new Date(body.until);
+    if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) {
+      return c.json({ error: "invalid_until" }, 400);
+    }
+    snoozedUntil = d;
+  }
+
+  const updated = await db
+    .update(signals)
+    .set({ snoozedUntil })
+    .where(and(eq(signals.orgId, orgId), inArray(signals.id, ids)))
+    .returning({ id: signals.id });
+
+  return c.json({ ok: true, count: updated.length });
+});
+
 // CSV export — full scope, server-side, so the export reflects every matching signal,
 // not just the loaded pages. Same filters + ordering as the list; capped at 10k rows.
 signalsRouter.get("/export", async (c) => {

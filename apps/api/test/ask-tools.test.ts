@@ -9,6 +9,8 @@ import {
   pricingHistory,
   reviews,
   reviewScores,
+  techStackEntries,
+  techStackHistory,
 } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
 import { installAppMocks, seedOrg } from "./app-harness";
@@ -286,5 +288,115 @@ describe("getSignals", () => {
     expect(r.returned).toBe(40);
     expect(r.truncated).toBe(true);
     expect(r.signals).toHaveLength(40);
+  });
+});
+
+// The four single-competitor dimension tools, and the comparison that used to call
+// each of them once per competitor (`code:PER-27`). They now share one batched read
+// per dimension, so what has to be locked is that the batch stays KEYED: every
+// competitor gets its own rows, its own per-competitor cap, and nothing from its
+// neighbour — the two failure modes a per-row loop could not have.
+describe("dimension tools over a batched read", () => {
+  beforeAll(async () => {
+    await testDb.insert(techStackEntries).values([
+      { competitorId: hot, techId: "stripe", techName: "Stripe", category: "payments", importance: "high", evidence: [] },
+      { competitorId: hot, techId: "segment", techName: "Segment", category: "analytics", importance: "medium", evidence: [] },
+      // Dropped from the stack: present as a row, absent from `active`.
+      { competitorId: hot, techId: "mixpanel", techName: "Mixpanel", category: "analytics", importance: "low", evidence: [], isActive: false },
+      { competitorId: warm, techId: "vercel", techName: "Vercel", category: "hosting", importance: "high", evidence: [] },
+    ]);
+    // 22 events for `hot` against 1 much older one for `warm`: a cap applied to the
+    // batch instead of to each competitor would return 20 rows of `hot` and lose
+    // `warm`'s only event entirely.
+    await testDb.insert(techStackHistory).values([
+      ...Array.from({ length: 22 }, (_, i) => ({
+        competitorId: hot,
+        techId: `tech-${i}`,
+        event: "appeared",
+        importance: "low",
+        recordedAt: AT(2 + i),
+      })),
+      { competitorId: warm, techId: "vercel", event: "appeared", importance: "high", recordedAt: AT(1) },
+    ]);
+  }, HOOK_TIMEOUT_MS);
+
+  test("getPricingHistory returns the latest plans and the moves behind them", async () => {
+    const r = (await run("getPricingHistory", A.orgId, { competitorId: hot })) as {
+      competitor: string;
+      plans: Array<{ planName: string; price: number | null }>;
+      changes: Array<{ planName: string; price: number; prevPrice: number }>;
+    };
+    expect(r.competitor).toBe("Vantage");
+    // Priced tiers first, quote-only last — the order the overlay resolver keeps.
+    expect(r.plans.map((p) => [p.planName, p.price])).toEqual([
+      ["Pro", 90],
+      ["Enterprise", null],
+    ]);
+    expect(r.changes).toMatchObject([{ planName: "Pro", price: 90, prevPrice: 70 }]);
+  });
+
+  test("a competitor of another org is not a competitor of this one", async () => {
+    for (const name of ["getPricingHistory", "getJobTrends", "getReviewThemes", "getTechStackChanges"]) {
+      const r = (await run(name, A.orgId, { competitorId: foreign })) as Record<string, unknown[]>;
+      expect(r.competitor).toBeUndefined();
+      for (const v of Object.values(r)) expect(v).toEqual([]);
+    }
+  });
+
+  test("compareCompetitors keeps every column on its own competitor", async () => {
+    const r = (await run("compareCompetitors", A.orgId, { ids: [hot, warm] })) as {
+      competitors: Array<{
+        id: string;
+        name: string;
+        profile: { category: string | null };
+        pricing: { plans: Array<{ planName: string }> };
+        hiring: { totalOpen: number; departments: Array<{ department: string }> };
+        reviews: { scores: Array<{ score: number }>; praises: string[]; complaints: string[] };
+        tech: { active: Array<{ techName: string }>; changes: unknown[] };
+      }>;
+    };
+    expect(r.competitors.map((c) => c.id)).toEqual([hot, warm]);
+    const [v, n] = r.competitors;
+
+    expect(v?.pricing.plans.map((p) => p.planName).sort()).toEqual(["Enterprise", "Pro"]);
+    expect(n?.pricing.plans.map((p) => p.planName).sort()).toEqual(["Scale", "Starter"]);
+
+    // hot's latest batch is Engineering 18 + Sales 7; the stale batch is not in it.
+    expect(v?.hiring.totalOpen).toBe(25);
+    expect(n?.hiring.totalOpen).toBe(9);
+    expect(n?.hiring.departments.map((d) => d.department)).toEqual(["Engineering"]);
+
+    expect(v?.reviews.scores.map((x) => x.score)).toEqual([4.6]);
+    expect(n?.reviews.scores.map((x) => x.score)).toEqual([3.8]);
+    // Sliced per competitor: 12 complaints become 8, and the quiet one keeps its own.
+    expect(v?.reviews.complaints).toHaveLength(8);
+    expect(n?.reviews.complaints).toEqual(["warm complaint"]);
+    expect(n?.reviews.praises).toEqual(["warm praise"]);
+
+    expect(v?.tech.active.map((t) => t.techName).sort()).toEqual(["Segment", "Stripe"]);
+    expect(n?.tech.active.map((t) => t.techName)).toEqual(["Vercel"]);
+    // 20 per competitor, and `warm`'s single older event survives the batch.
+    expect(v?.tech.changes).toHaveLength(20);
+    expect(n?.tech.changes).toHaveLength(1);
+  });
+
+  test("an unowned id is dropped, the owned ones are still answered", async () => {
+    const r = (await run("compareCompetitors", A.orgId, { ids: [hot, foreign] })) as {
+      competitors: Array<{ id: string }>;
+    };
+    expect(r.competitors.map((c) => c.id)).toEqual([hot]);
+  });
+
+  test("a named dimension is the only one read", async () => {
+    const r = (await run("compareCompetitors", A.orgId, {
+      ids: [hot, warm],
+      dimension: "pricing",
+    })) as { competitors: Array<Record<string, unknown>> };
+    for (const col of r.competitors) {
+      expect(col.pricing).toBeDefined();
+      expect(col.hiring).toBeUndefined();
+      expect(col.reviews).toBeUndefined();
+      expect(col.tech).toBeUndefined();
+    }
   });
 });

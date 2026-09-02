@@ -19,7 +19,7 @@ import { mock } from "bun:test";
 const real: Record<string, unknown> = { ...(await import("@outrival/shared")) };
 
 /** Exports a test file may stand in for. Add here to stub something new. */
-const STUBBABLE = ["sendWebhook", "uploadToR2", "getFromR2"] as const;
+const STUBBABLE = ["sendWebhook", "uploadToR2", "getFromR2", "deleteManyFromR2"] as const;
 type Stubbable = (typeof STUBBABLE)[number];
 
 type AnyFn = (...args: never[]) => unknown;

@@ -337,16 +337,20 @@ export function SignalsView() {
   const queryClient = useQueryClient();
   const sampleData = useMemo(() => getSampleData(), []);
   const feedOpts = signalsFeedQuery(feedParams);
-  // Poll every 30s so a freshly-generated signal lands on its own; keepPreviousData
-  // avoids a skeleton flash when filters/sort change. Disabled in sample mode (fixtures).
+  // NOT polled: a useInfiniteQuery refetch re-runs the queryFn for EVERY page already
+  // loaded, and this feed is OFFSET-paginated — a user scrolled to five pages was
+  // issuing five sequential requests every 30s, each skipping deeper than the last,
+  // from a tab nobody was looking at (`code:PER-07`). The freshness comes from the
+  // facets poll below instead. keepPreviousData avoids a skeleton flash when
+  // filters/sort change. Disabled in sample mode (fixtures).
   const feedQ = useInfiniteQuery({
     ...feedOpts,
     enabled: !sample,
     placeholderData: keepPreviousData,
-    refetchInterval: 30_000,
   });
   // Facets back the tab counts + the filter dropdowns — product-scoped, filter-agnostic,
-  // so switching a tab never recounts. Polled alongside the feed.
+  // so switching a tab never recounts. This is the one polled query: a single
+  // constant-cost request per tick, whatever the scroll depth.
   const facetsQ = useQuery({
     ...signalsFacetsQuery(productId ?? undefined),
     enabled: !sample,
@@ -379,6 +383,22 @@ export function SignalsView() {
         : data,
     );
   }
+
+  // The freshness half of `code:PER-07`. The facets counts move whenever a signal is
+  // created, read, dismissed or snoozed, so a change in them is exactly "the feed is
+  // stale" — and only then are the loaded pages refetched, together, so the OFFSET
+  // windows stay consistent with each other. An idle tab now polls once per tick and
+  // refetches nothing.
+  const countsKey = facetsQ.data ? JSON.stringify(facetsQ.data.counts) : null;
+  const lastCountsRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!countsKey) return;
+    const previous = lastCountsRef.current;
+    lastCountsRef.current = countsKey;
+    // First reading is the baseline, not a change: the feed was just fetched.
+    if (previous === null || previous === countsKey) return;
+    queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
+  }, [countsKey, queryClient, feedOpts.queryKey]);
 
   // The sidebar competitor counting this signal — null when the row isn't loaded
   // or the flip is a no-op (re-reading a read row moves no count).
@@ -739,7 +759,9 @@ export function SignalsView() {
     }
   }
 
-  // Bulk track/dismiss — no bulk endpoint, so fan out setSignalAction per id.
+  // Bulk track/dismiss — one request for the whole selection. This used to fan out
+  // setSignalAction per id, and a shift-selected range spans every loaded page, so a
+  // single click could open a hundred concurrent POSTs (`code:PER-40`).
   async function bulkSetAction(status: ActionStatus | null) {
     const ids = [...selected];
     if (!ids.length) return;
@@ -754,7 +776,7 @@ export function SignalsView() {
       return;
     }
     try {
-      await Promise.all(ids.map((id) => api.setSignalAction(id, status)));
+      await api.setSignalsAction(ids, status);
       toast.success(
         `${n} signal${n > 1 ? "s" : ""} ${status ? "updated" : "cleared"}`,
       );
@@ -818,17 +840,14 @@ export function SignalsView() {
     }
     let feedbackIds: string[];
     try {
-      const results = await Promise.all(
-        ids.map((id) =>
-          api.submitQualityFeedback({
-            targetType: "signal",
-            targetId: id,
-            verdict: "not_useful",
-            reason: "irrelevant",
-          }),
-        ),
-      );
-      feedbackIds = results.map((r) => r.feedbackId);
+      // One verdict over the whole selection, and one Undo that cancels it — both
+      // were a request per row before (`code:PER-40`).
+      ({ feedbackIds } = await api.submitQualityFeedbackBulk({
+        targetType: "signal",
+        targetIds: ids,
+        verdict: "not_useful",
+        reason: "irrelevant",
+      }));
       queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
     } catch {
       toast.error("Couldn't dismiss those signals. Try again.");
@@ -843,7 +862,8 @@ export function SignalsView() {
         action: {
           label: "Undo",
           onClick: () => {
-            Promise.all(feedbackIds.map((fid) => api.deleteQualityFeedback(fid)))
+            api
+              .deleteQualityFeedbackBulk(feedbackIds)
               .then(() => {
                 queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
                 queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
@@ -874,7 +894,7 @@ export function SignalsView() {
       return;
     }
     try {
-      await Promise.all(ids.map((id) => api.snoozeSignal(id, until)));
+      await api.snoozeSignals(ids, until);
       queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
     } catch {
       toast.error("Couldn't snooze those signals. Try again.");
@@ -885,7 +905,8 @@ export function SignalsView() {
       action: {
         label: "Undo",
         onClick: () => {
-          Promise.all(ids.map((id) => api.snoozeSignal(id, null)))
+          api
+            .snoozeSignals(ids, null)
             .then(() => {
               queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
               queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });

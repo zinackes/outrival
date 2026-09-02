@@ -1,5 +1,5 @@
 import { and, count, desc, eq, gte, inArray, isNull, ne } from "drizzle-orm";
-import { competitors, signals, reviews, techStackEntries } from "@outrival/db";
+import { competitors, signals, techStackEntries } from "@outrival/db";
 import type { AskToolSpec } from "@outrival/ai";
 import {
   isComparablePricePeriod,
@@ -38,6 +38,13 @@ const COMPLAINTS_PER_COMPETITOR = 3;
 const HIRING_TREND_DAYS = 28;
 const PRICING_CHANGE_DAYS = 180;
 const PRICING_CHANGES_PER_COMPETITOR = 5;
+// Per-competitor bounds for the batched dimension reads. Each replaces a LIMIT that
+// used to sit inside a per-competitor query, so a single-competitor answer sees the
+// same rows it saw before; expressed as a rank over the batch, one loud competitor
+// cannot eat the budget of the others (`code:PER-27`).
+const PRICING_MOVES_PER_COMPETITOR = 10;
+const VERBATIM_PER_COMPETITOR = 40;
+const TECH_EVENTS_PER_COMPETITOR = 20;
 
 function asString(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined;
@@ -211,6 +218,9 @@ const getSignals: AskTool = {
 };
 
 interface RawPricingPlan {
+  // Every analytics read below now covers a SET of competitors, so each row has to
+  // say which one it belongs to (`code:PER-27`).
+  competitorId: string;
   planName: string;
   // null for quote-based tiers (Enterprise / Custom).
   price: number | null;
@@ -221,108 +231,21 @@ interface RawPricingPlan {
   capturedAt: string | null;
 }
 interface RawPricingChange {
+  competitorId: string;
   planName: string;
   price: number;
   prevPrice: number;
   billingPeriod: string | null;
   recordedAt: string;
 }
-
-const getPricingHistory: AskTool = {
-  name: "getPricingHistory",
-  description: "A competitor's current pricing plans and recent price changes.",
-  args: "competitorId (required)",
-  async run(orgId, args) {
-    const owned = await ownedCompetitor(orgId, asString(args.competitorId));
-    if (!owned) return { plans: [], changes: [] };
-    const id = owned.id;
-
-    const detected = await analyticsQuery<RawPricingPlan>(sql`
-      WITH latest AS (
-        SELECT max(recorded_at) AS rid FROM pricing_history
-        WHERE competitor_id = ${id} AND origin = 'live'
-      )
-      SELECT plan_name AS "planName", price, currency, billing_period AS "billingPeriod",
-             (latest.rid AT TIME ZONE 'UTC') AS "capturedAt"
-      FROM pricing_history, latest
-      WHERE competitor_id = ${id} AND origin = 'live' AND recorded_at = latest.rid
-      ORDER BY price
-    `);
-    // Apply the user's per-plan overlay so Ask grounds on the plans the user sees
-    // (hand-edited/added/hidden), not just raw detection.
-    const detectedTiers: PricingTier[] = detected.map((p) => ({
-      planName: p.planName,
-      price: p.price,
-      currency: p.currency ?? "USD",
-      billingPeriod: p.billingPeriod ?? "monthly",
-    }));
-    const plans = resolveCurrentPricing(
-      detectedTiers,
-      (owned.overrides ?? null) as CompetitorOverrides | null,
-    ).map((r) => ({
-      planName: r.planName,
-      price: r.price,
-      currency: r.currency,
-      billingPeriod: r.billingPeriod,
-    }));
-    const changes = await analyticsQuery<RawPricingChange>(sql`
-      WITH ranked AS (
-        SELECT plan_name, price, billing_period, recorded_at,
-               lag(price) OVER (PARTITION BY plan_name, billing_period ORDER BY recorded_at) AS prev_price
-        FROM pricing_history WHERE competitor_id = ${id} AND origin = 'live'
-      )
-      SELECT plan_name AS "planName", price, prev_price AS "prevPrice",
-             billing_period AS "billingPeriod", (recorded_at AT TIME ZONE 'UTC') AS "recordedAt"
-      FROM ranked WHERE prev_price IS NOT NULL AND price <> prev_price
-      ORDER BY recorded_at DESC LIMIT 10
-    `);
-    return {
-      competitor: owned.name,
-      capturedAt: detected[0]?.capturedAt ?? null,
-      plans,
-      changes,
-    };
-  },
-};
-
 interface RawHiringDept {
+  competitorId: string;
   department: string;
   count: number;
   capturedAt: string | null;
 }
-
-const getJobTrends: AskTool = {
-  name: "getJobTrends",
-  description:
-    'ONE named competitor\'s open roles, counted per department (latest capture). Use for "what is X hiring for", "which teams is X growing", "how many roles is X running". For a ranking across all competitors use rankHiring instead.',
-  args: "competitorId (required), dept (optional department substring)",
-  async run(orgId, args) {
-    const owned = await ownedCompetitor(orgId, asString(args.competitorId));
-    if (!owned) return { departments: [] };
-    const id = owned.id;
-
-    const latest = await analyticsQuery<RawHiringDept>(sql`
-      WITH latest AS (SELECT max(recorded_at) AS rid FROM job_counts WHERE competitor_id = ${id})
-      SELECT department, count::int AS count, (latest.rid AT TIME ZONE 'UTC') AS "capturedAt"
-      FROM job_counts, latest
-      WHERE competitor_id = ${id} AND recorded_at = latest.rid
-      ORDER BY count DESC
-    `);
-    const dept = asString(args.dept)?.toLowerCase();
-    const departments = dept
-      ? latest.filter((d) => d.department.toLowerCase().includes(dept))
-      : latest;
-    const totalOpen = departments.reduce((s, d) => s + d.count, 0);
-    return {
-      competitor: owned.name,
-      capturedAt: latest[0]?.capturedAt ?? null,
-      totalOpen,
-      departments: departments.map(({ department, count }) => ({ department, count })),
-    };
-  },
-};
-
 interface RawReviewScore {
+  competitorId: string;
   source: string;
   score: number;
   reviewCount: number;
@@ -333,6 +256,324 @@ interface RawReviewScore {
   value: number | null;
   capturedAt: string | null;
 }
+interface RawVerbatim {
+  competitorId: string;
+  source: string;
+  author: string | null;
+  content: string | null;
+}
+interface RawTechChange {
+  competitorId: string;
+  techId: string;
+  event: string;
+  importance: string;
+  recordedAt: string;
+}
+interface RawTechEntry {
+  competitorId: string;
+  techName: string;
+  category: string | null;
+  importance: string | null;
+}
+
+// --- per-dimension reads, batched over a set of competitors ------------------------
+// Each of the four dimension tools below answers about ONE competitor, and
+// compareCompetitors called all four for each of up to six ids — so a single "how
+// does X compare to Y" question issued dozens of round trips, two dozen of them
+// re-establishing an ownership the compare had already established for the whole
+// set in one query (`code:PER-27`).
+//
+// The reads are batched instead: a reader takes the competitors whose ownership is
+// ALREADY resolved and answers for all of them in a fixed number of queries, keyed
+// by id. The single-competitor tool is then the same reader over a one-element list,
+// so there is one code path per dimension rather than a batched one and a loop one.
+
+// What a batched read needs of an already-owned competitor: the id it keys on, the
+// name it labels with, and the pricing overlay the user edited.
+type DimensionSubject = { id: string; name: string; overrides: unknown };
+
+/** Bucket rows carrying a competitorId, preserving the order the query returned. */
+function byCompetitor<T extends { competitorId: string }>(rows: T[]): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const row of rows) {
+    const bucket = out.get(row.competitorId);
+    if (bucket) bucket.push(row);
+    else out.set(row.competitorId, [row]);
+  }
+  return out;
+}
+
+async function pricingForMany(owned: DimensionSubject[]) {
+  const ids = idPredicate(owned.map((o) => o.id));
+  const [detected, moves] = await Promise.all([
+    analyticsQuery<RawPricingPlan>(sql`
+      WITH latest AS (
+        SELECT competitor_id, max(recorded_at) AS rid FROM pricing_history
+        WHERE competitor_id IN (${ids}) AND origin = 'live'
+        GROUP BY competitor_id
+      )
+      SELECT ph.competitor_id AS "competitorId", ph.plan_name AS "planName", ph.price,
+             ph.currency, ph.billing_period AS "billingPeriod",
+             (latest.rid AT TIME ZONE 'UTC') AS "capturedAt"
+      FROM pricing_history ph
+      JOIN latest ON latest.competitor_id = ph.competitor_id AND ph.recorded_at = latest.rid
+      WHERE ph.origin = 'live'
+      ORDER BY ph.competitor_id, ph.price
+    `),
+    // Bounded PER COMPETITOR, not globally: the per-competitor query this replaces
+    // ended in LIMIT 10, and a flat limit over the batch would let one busy
+    // competitor's moves crowd out every other column of the comparison.
+    analyticsQuery<RawPricingChange>(sql`
+      SELECT competitor_id AS "competitorId", plan_name AS "planName", price,
+             prev_price AS "prevPrice", billing_period AS "billingPeriod",
+             (recorded_at AT TIME ZONE 'UTC') AS "recordedAt"
+      FROM (
+        SELECT competitor_id, plan_name, price, billing_period, recorded_at, prev_price,
+               row_number() OVER (PARTITION BY competitor_id ORDER BY recorded_at DESC) AS rn
+        FROM (
+          SELECT competitor_id, plan_name, price, billing_period, recorded_at,
+                 lag(price) OVER (
+                   PARTITION BY competitor_id, plan_name, billing_period ORDER BY recorded_at
+                 ) AS prev_price
+          FROM pricing_history WHERE competitor_id IN (${ids}) AND origin = 'live'
+        ) lagged
+        WHERE prev_price IS NOT NULL AND price <> prev_price
+      ) ranked
+      WHERE rn <= ${PRICING_MOVES_PER_COMPETITOR}
+      ORDER BY competitor_id, recorded_at DESC
+    `),
+  ]);
+
+  const detectedById = byCompetitor(detected);
+  const movesById = byCompetitor(moves);
+  return new Map(
+    owned.map((o) => {
+      const raw = detectedById.get(o.id) ?? [];
+      // Apply the user's per-plan overlay so Ask grounds on the plans the user sees
+      // (hand-edited/added/hidden), not just raw detection.
+      const detectedTiers: PricingTier[] = raw.map((p) => ({
+        planName: p.planName,
+        price: p.price,
+        currency: p.currency ?? "USD",
+        billingPeriod: p.billingPeriod ?? "monthly",
+      }));
+      const plans = resolveCurrentPricing(
+        detectedTiers,
+        (o.overrides ?? null) as CompetitorOverrides | null,
+      ).map((r) => ({
+        planName: r.planName,
+        price: r.price,
+        currency: r.currency,
+        billingPeriod: r.billingPeriod,
+      }));
+      return [
+        o.id,
+        {
+          competitor: o.name,
+          capturedAt: raw[0]?.capturedAt ?? null,
+          plans,
+          changes: (movesById.get(o.id) ?? []).map((m) => ({
+            planName: m.planName,
+            price: m.price,
+            prevPrice: m.prevPrice,
+            billingPeriod: m.billingPeriod,
+            recordedAt: m.recordedAt,
+          })),
+        },
+      ] as const;
+    }),
+  );
+}
+
+async function hiringForMany(owned: DimensionSubject[], dept?: string) {
+  const ids = idPredicate(owned.map((o) => o.id));
+  const latest = await analyticsQuery<RawHiringDept>(sql`
+    WITH latest AS (
+      SELECT competitor_id, max(recorded_at) AS rid FROM job_counts
+      WHERE competitor_id IN (${ids})
+      GROUP BY competitor_id
+    )
+    SELECT jc.competitor_id AS "competitorId", jc.department, jc.count::int AS count,
+           (latest.rid AT TIME ZONE 'UTC') AS "capturedAt"
+    FROM job_counts jc
+    JOIN latest ON latest.competitor_id = jc.competitor_id AND jc.recorded_at = latest.rid
+    ORDER BY jc.competitor_id, jc.count DESC
+  `);
+
+  const byId = byCompetitor(latest);
+  return new Map(
+    owned.map((o) => {
+      const rows = byId.get(o.id) ?? [];
+      const departments = dept
+        ? rows.filter((d) => d.department.toLowerCase().includes(dept))
+        : rows;
+      return [
+        o.id,
+        {
+          competitor: o.name,
+          capturedAt: rows[0]?.capturedAt ?? null,
+          totalOpen: departments.reduce((s, d) => s + d.count, 0),
+          departments: departments.map(({ department, count }) => ({ department, count })),
+        },
+      ] as const;
+    }),
+  );
+}
+
+async function reviewsForMany(owned: DimensionSubject[], source?: string) {
+  const ids = idPredicate(owned.map((o) => o.id));
+  const [scores, verbatim] = await Promise.all([
+    analyticsQuery<RawReviewScore>(sql`
+      SELECT DISTINCT ON (competitor_id, source)
+             competitor_id AS "competitorId", source, score,
+             review_count AS "reviewCount", sentiment_score AS "sentiment",
+             sub_ease_of_use AS ease, sub_support AS support,
+             sub_features AS features, sub_value AS value,
+             (recorded_at AT TIME ZONE 'UTC') AS "capturedAt"
+      FROM review_scores WHERE competitor_id IN (${ids})
+      ORDER BY competitor_id, source, recorded_at DESC
+    `),
+    // Same per-competitor bound the single-competitor query had, expressed as a rank
+    // so one loud competitor cannot consume the whole batch.
+    analyticsQuery<RawVerbatim>(sql`
+      SELECT competitor_id AS "competitorId", source, author, content
+      FROM (
+        SELECT competitor_id, source, author, content,
+               row_number() OVER (PARTITION BY competitor_id ORDER BY detected_at DESC) AS rn
+        FROM reviews WHERE competitor_id IN (${ids})
+      ) ranked
+      WHERE rn <= ${VERBATIM_PER_COMPETITOR}
+      ORDER BY competitor_id, rn
+    `),
+  ]);
+
+  const scoresById = byCompetitor(scores);
+  const verbatimById = byCompetitor(verbatim);
+  return new Map(
+    owned.map((o) => {
+      const rows = verbatimById.get(o.id) ?? [];
+      const filtered = source
+        ? rows.filter((r) => r.source.toLowerCase().includes(source))
+        : rows;
+      return [
+        o.id,
+        {
+          competitor: o.name,
+          scores: (scoresById.get(o.id) ?? []).map((s) => ({
+            source: s.source,
+            score: s.score,
+            reviewCount: s.reviewCount,
+            sentiment: s.sentiment,
+            ease: s.ease,
+            support: s.support,
+            features: s.features,
+            value: s.value,
+            capturedAt: s.capturedAt,
+          })),
+          praises: filtered
+            .filter((r) => r.author === "praise" && r.content)
+            .map((r) => r.content)
+            .slice(0, 8),
+          complaints: filtered
+            .filter((r) => r.author === "complaint" && r.content)
+            .map((r) => r.content)
+            .slice(0, 8),
+        },
+      ] as const;
+    }),
+  );
+}
+
+async function techForMany(owned: DimensionSubject[]) {
+  const ids = owned.map((o) => o.id);
+  const [active, changes] = await Promise.all([
+    db
+      .select({
+        competitorId: techStackEntries.competitorId,
+        techName: techStackEntries.techName,
+        category: techStackEntries.category,
+        importance: techStackEntries.importance,
+      })
+      .from(techStackEntries)
+      .where(
+        and(inArray(techStackEntries.competitorId, ids), eq(techStackEntries.isActive, true)),
+      ),
+    analyticsQuery<RawTechChange>(sql`
+      SELECT competitor_id AS "competitorId", tech_id AS "techId", event, importance,
+             (recorded_at AT TIME ZONE 'UTC') AS "recordedAt"
+      FROM (
+        SELECT competitor_id, tech_id, event, importance, recorded_at,
+               row_number() OVER (PARTITION BY competitor_id ORDER BY recorded_at DESC) AS rn
+        FROM tech_stack_history WHERE competitor_id IN (${idPredicate(ids)})
+      ) ranked
+      WHERE rn <= ${TECH_EVENTS_PER_COMPETITOR}
+      ORDER BY competitor_id, recorded_at DESC
+    `),
+  ]);
+
+  const activeById = byCompetitor(active as RawTechEntry[]);
+  const changesById = byCompetitor(changes);
+  return new Map(
+    owned.map(
+      (o) =>
+        [
+          o.id,
+          {
+            competitor: o.name,
+            active: (activeById.get(o.id) ?? []).map((t) => ({
+              techName: t.techName,
+              category: t.category,
+              importance: t.importance,
+            })),
+            changes: (changesById.get(o.id) ?? []).map((c) => ({
+              techId: c.techId,
+              event: c.event,
+              importance: c.importance,
+              recordedAt: c.recordedAt,
+            })),
+          },
+        ] as const,
+    ),
+  );
+}
+
+const getPricingHistory: AskTool = {
+  name: "getPricingHistory",
+  description: "A competitor's current pricing plans and recent price changes.",
+  args: "competitorId (required)",
+  async run(orgId, args) {
+    const owned = await ownedCompetitor(orgId, asString(args.competitorId));
+    if (!owned) return { plans: [], changes: [] };
+    return (
+      (await pricingForMany([owned])).get(owned.id) ?? {
+        competitor: owned.name,
+        capturedAt: null,
+        plans: [],
+        changes: [],
+      }
+    );
+  },
+};
+
+const getJobTrends: AskTool = {
+  name: "getJobTrends",
+  description:
+    'ONE named competitor\'s open roles, counted per department (latest capture). Use for "what is X hiring for", "which teams is X growing", "how many roles is X running". For a ranking across all competitors use rankHiring instead.',
+  args: "competitorId (required), dept (optional department substring)",
+  async run(orgId, args) {
+    const owned = await ownedCompetitor(orgId, asString(args.competitorId));
+    if (!owned) return { departments: [] };
+    const dept = asString(args.dept)?.toLowerCase();
+    return (
+      (await hiringForMany([owned], dept)).get(owned.id) ?? {
+        competitor: owned.name,
+        capturedAt: null,
+        totalOpen: 0,
+        departments: [],
+      }
+    );
+  },
+};
 
 const getReviewThemes: AskTool = {
   name: "getReviewThemes",
@@ -342,50 +583,17 @@ const getReviewThemes: AskTool = {
   async run(orgId, args) {
     const owned = await ownedCompetitor(orgId, asString(args.competitorId));
     if (!owned) return { scores: [], praises: [], complaints: [] };
-    const id = owned.id;
-
-    const scores = await analyticsQuery<RawReviewScore>(sql`
-      SELECT DISTINCT ON (source)
-             source, score, review_count AS "reviewCount", sentiment_score AS "sentiment",
-             sub_ease_of_use AS ease, sub_support AS support,
-             sub_features AS features, sub_value AS value,
-             (recorded_at AT TIME ZONE 'UTC') AS "capturedAt"
-      FROM review_scores WHERE competitor_id = ${id}
-      ORDER BY source, recorded_at DESC
-    `);
-
-    const rows = await db
-      .select({
-        source: reviews.source,
-        author: reviews.author,
-        content: reviews.content,
-        detectedAt: reviews.detectedAt,
-      })
-      .from(reviews)
-      .where(eq(reviews.competitorId, id))
-      .orderBy(desc(reviews.detectedAt))
-      .limit(40);
-
     const source = asString(args.source)?.toLowerCase();
-    const filtered = source ? rows.filter((r) => r.source.toLowerCase().includes(source)) : rows;
-    const praises = filtered
-      .filter((r) => r.author === "praise" && r.content)
-      .map((r) => r.content)
-      .slice(0, 8);
-    const complaints = filtered
-      .filter((r) => r.author === "complaint" && r.content)
-      .map((r) => r.content)
-      .slice(0, 8);
-    return { competitor: owned.name, scores, praises, complaints };
+    return (
+      (await reviewsForMany([owned], source)).get(owned.id) ?? {
+        competitor: owned.name,
+        scores: [],
+        praises: [],
+        complaints: [],
+      }
+    );
   },
 };
-
-interface RawTechChange {
-  techId: string;
-  event: string;
-  importance: string;
-  recordedAt: string;
-}
 
 const getTechStackChanges: AskTool = {
   name: "getTechStackChanges",
@@ -394,23 +602,13 @@ const getTechStackChanges: AskTool = {
   async run(orgId, args) {
     const owned = await ownedCompetitor(orgId, asString(args.competitorId));
     if (!owned) return { active: [], changes: [] };
-    const id = owned.id;
-
-    const active = await db
-      .select({
-        techName: techStackEntries.techName,
-        category: techStackEntries.category,
-        importance: techStackEntries.importance,
-      })
-      .from(techStackEntries)
-      .where(and(eq(techStackEntries.competitorId, id), eq(techStackEntries.isActive, true)));
-
-    const changes = await analyticsQuery<RawTechChange>(sql`
-      SELECT tech_id AS "techId", event, importance, (recorded_at AT TIME ZONE 'UTC') AS "recordedAt"
-      FROM tech_stack_history WHERE competitor_id = ${id}
-      ORDER BY recorded_at DESC LIMIT 20
-    `);
-    return { competitor: owned.name, active, changes };
+    return (
+      (await techForMany([owned])).get(owned.id) ?? {
+        competitor: owned.name,
+        active: [],
+        changes: [],
+      }
+    );
   },
 };
 
@@ -783,6 +981,9 @@ const compareCompetitors: AskTool = {
         description: competitors.description,
         aiSummary: competitors.aiSummary,
         overlapScore: competitors.overlapScore,
+        // Read here so the batched pricing reader can apply the user's overlay
+        // without going back for the row it already has (`code:PER-27`).
+        overrides: competitors.overrides,
       })
       .from(competitors)
       .where(
@@ -799,27 +1000,37 @@ const compareCompetitors: AskTool = {
       ? [dim]
       : [...COMPARE_DIMENSIONS];
 
-    const cols = await Promise.all(
-      owned.map(async (o) => {
-        // The qualitative substrate is always present so a comparison never comes back
-        // empty just because two competitors haven't been scraped/changed yet.
-        const col: Record<string, unknown> = {
-          id: o.id,
-          name: o.name,
-          profile: {
-            category: o.category,
-            description: o.description,
-            aiSummary: o.aiSummary,
-            overlapScore: o.overlapScore,
-          },
-        };
-        if (dims.includes("pricing")) col.pricing = await getPricingHistory.run(orgId, { competitorId: o.id });
-        if (dims.includes("hiring")) col.hiring = await getJobTrends.run(orgId, { competitorId: o.id });
-        if (dims.includes("reviews")) col.reviews = await getReviewThemes.run(orgId, { competitorId: o.id });
-        if (dims.includes("tech")) col.tech = await getTechStackChanges.run(orgId, { competitorId: o.id });
-        return col;
-      }),
-    );
+    // Four reads for the whole comparison, whatever the number of competitors.
+    // This used to call the four single-competitor tools once per id — each of which
+    // re-resolved an ownership the select above had just established for the entire
+    // set — so six names meant ~66 round trips inside one streamed answer
+    // (`code:PER-27`). A dimension not asked for is not read at all.
+    const [pricing, hiring, reviewThemes, tech] = await Promise.all([
+      dims.includes("pricing") ? pricingForMany(owned) : undefined,
+      dims.includes("hiring") ? hiringForMany(owned) : undefined,
+      dims.includes("reviews") ? reviewsForMany(owned) : undefined,
+      dims.includes("tech") ? techForMany(owned) : undefined,
+    ]);
+
+    const cols = owned.map((o) => {
+      // The qualitative substrate is always present so a comparison never comes back
+      // empty just because two competitors haven't been scraped/changed yet.
+      const col: Record<string, unknown> = {
+        id: o.id,
+        name: o.name,
+        profile: {
+          category: o.category,
+          description: o.description,
+          aiSummary: o.aiSummary,
+          overlapScore: o.overlapScore,
+        },
+      };
+      if (pricing) col.pricing = pricing.get(o.id);
+      if (hiring) col.hiring = hiring.get(o.id);
+      if (reviewThemes) col.reviews = reviewThemes.get(o.id);
+      if (tech) col.tech = tech.get(o.id);
+      return col;
+    });
     return { competitors: cols };
   },
 };

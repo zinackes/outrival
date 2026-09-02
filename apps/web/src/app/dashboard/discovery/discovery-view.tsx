@@ -460,7 +460,9 @@ function CandidateRow({
         onKeyDown={onKeyDown}
         className={cn(
           onSelect ? ROW_GRID_SELECTABLE : ROW_GRID,
-          "group cursor-pointer py-2.5 pl-0.5 pr-2 transition-colors hover:bg-surface-2",
+          "group cursor-pointer py-2.5 pr-2 transition-colors hover:bg-surface-2",
+          // The checkbox gets the same inset as the dismiss button on the other end.
+          onSelect ? "pl-3.5" : "pl-0.5",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
           (open || selected) && "bg-surface-2",
         )}
@@ -729,7 +731,7 @@ function AddedRow({
   );
 
   const grid =
-    "grid items-center gap-x-3.5 border-t border-border py-3 pl-0.5 pr-2 grid-cols-[1rem_minmax(0,1fr)_5.5rem] @3xl:grid-cols-[1rem_minmax(0,16rem)_minmax(0,1fr)_5rem_5.5rem]";
+    "grid items-center gap-x-3.5 border-t border-border py-3 pl-3.5 pr-2 grid-cols-[1rem_minmax(0,1fr)_5.5rem] @3xl:grid-cols-[1rem_minmax(0,16rem)_minmax(0,1fr)_5rem_5.5rem]";
 
   if (!item.competitor) return <div className={grid}>{body}</div>;
   return (

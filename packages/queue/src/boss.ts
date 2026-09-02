@@ -66,20 +66,28 @@ const SLACK_ERROR_THROTTLE_MS = 5 * 60_000;
 let _lastSlackErrorAt = 0;
 
 /**
+ * The decision half of `alertQueueError`: the message to post, or null for "stay
+ * quiet, one already went out this window". Split from the sending so the throttle
+ * — the thing standing between a queue outage and hundreds of Slack messages an
+ * hour — can be tested against a clock instead of against Slack. `now` is a
+ * parameter for the same reason; production always passes the real one.
+ */
+export function queueErrorAlert(err: unknown, now: number = Date.now()): string | null {
+  if (now - _lastSlackErrorAt < SLACK_ERROR_THROTTLE_MS) return null;
+  _lastSlackErrorAt = now;
+  const message = err instanceof Error ? err.message : String(err);
+  return `:rotating_light: pg-boss queue error on \`${process.env.WORKER_ROLE ?? "api"}\`: ${message}`;
+}
+
+/**
  * Best-effort ops alert on a queue-level failure. Never awaited by the caller and
  * never throws: an alerting failure must not add a second fault to the first one.
  */
 function alertQueueError(err: unknown): void {
   const webhook = process.env.OPS_SLACK_WEBHOOK_URL;
   if (!webhook) return;
-  const now = Date.now();
-  if (now - _lastSlackErrorAt < SLACK_ERROR_THROTTLE_MS) return;
-  _lastSlackErrorAt = now;
-  const message = err instanceof Error ? err.message : String(err);
-  void sendSlackMessage(
-    webhook,
-    `:rotating_light: pg-boss queue error on \`${process.env.WORKER_ROLE ?? "api"}\`: ${message}`,
-  );
+  const text = queueErrorAlert(err);
+  if (text) void sendSlackMessage(webhook, text);
 }
 
 function requireQueueUrl(): string {
@@ -347,23 +355,49 @@ export async function registerQueues(): Promise<void> {
     logger.error({ err }, "queue option reconciliation skipped");
     return;
   }
-  const byName = new Map(live.map((q) => [q.name, q as unknown as Record<string, unknown>]));
+  for (const { name, desired, changed } of planQueueReconciliation(registry, live)) {
+    await boss.updateQueue(name, desired);
+    logger.warn({ queue: name, changed }, "queue options reconciled from the job registry");
+  }
+}
 
-  for (const def of registry) {
+/** One queue that has to be repaired, and what exactly is being repaired on it. */
+export interface QueueDrift {
+  name: string;
+  /** what to hand `updateQueue` — the declared options minus the immutable `policy` */
+  desired: Omit<Queue, "name" | "policy">;
+  /** only the keys that actually differ, for the log line */
+  changed: Record<string, { was: unknown; now: unknown }>;
+}
+
+/**
+ * The comparison half of `registerQueues`, split out so it can be tested without a
+ * live pg-boss. Pure: it decides WHICH queues drifted and in which keys, and never
+ * writes anything.
+ *
+ * A queue absent from `live` is skipped rather than updated — `getQueues` answering
+ * short means the row is not there to update, and calling `updateQueue` on it would
+ * throw and take the boot down for a queue `createQueue` will make on the next one.
+ */
+export function planQueueReconciliation(
+  defs: readonly { name: string; queueOptions: Omit<Queue, "name"> }[],
+  live: readonly QueueResult[],
+): QueueDrift[] {
+  const byName = new Map(live.map((q) => [q.name, q as unknown as Record<string, unknown>]));
+  const plan: QueueDrift[] = [];
+  for (const def of defs) {
     const current = byName.get(def.name);
     if (!current) continue;
     const { policy: _policy, ...desired } = def.queueOptions;
     const drift = Object.entries(desired).filter(([k, v]) => current[k] !== v);
     if (drift.length === 0) continue;
-    await boss.updateQueue(def.name, desired);
-    logger.warn(
-      {
-        queue: def.name,
-        changed: Object.fromEntries(drift.map(([k, v]) => [k, { was: current[k], now: v }])),
-      },
-      "queue options reconciled from the job registry",
-    );
+    plan.push({
+      name: def.name,
+      desired,
+      changed: Object.fromEntries(drift.map(([k, v]) => [k, { was: current[k], now: v }])),
+    });
   }
+  return plan;
 }
 
 /**

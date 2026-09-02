@@ -2,7 +2,10 @@ import pino, { type LoggerOptions } from "pino";
 
 const isDev = process.env.NODE_ENV === "development";
 
-const baseOptions: LoggerOptions = {
+// Exported so the redaction rules can be verified against pino itself rather than
+// re-read by eye: they are the only thing standing between a `logger.info({ user })`
+// and a session token in the log drain.
+export const baseOptions: LoggerOptions = {
   level: process.env.LOG_LEVEL ?? "info",
   redact: {
     paths: [

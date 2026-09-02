@@ -198,20 +198,35 @@ export function shouldRetryQuery(failureCount: number, err: unknown): boolean {
 // string codes) is empty. Every re-scan entry point (force-rescan, per-source Run,
 // My Product re-scan) surfaces it the same way: a warning toast + an upgrade nudge.
 // Returns true when it handled the error so callers can skip the generic toast.
-export function toastRescanLimit(err: unknown, toastId?: string | number): boolean {
-  if (!(err instanceof ApiError) || err.status !== 429) return false;
+/**
+ * The parse half of `toastRescanLimit`, split out so it can be tested without a
+ * toast host or a PostHog client: everything that decides whether this error IS the
+ * re-scan cap, and what the toast should say, with no side effect. Returns null for
+ * every other error, which is the caller's "not handled, fall through" answer.
+ */
+export function rescanLimitToast(err: unknown): { message: string; upgradeHint: boolean } | null {
+  if (!(err instanceof ApiError) || err.status !== 429) return null;
   const detail = (err.data.error ?? {}) as {
     code?: string;
     message?: string;
     upgradeHint?: boolean;
   };
-  if (detail.code !== "rescan_limit_reached") return false;
+  if (detail.code !== "rescan_limit_reached") return null;
+  return {
+    message: detail.message ?? "Daily re-scan limit reached. It resets tomorrow.",
+    upgradeHint: detail.upgradeHint === true,
+  };
+}
+
+export function toastRescanLimit(err: unknown, toastId?: string | number): boolean {
+  const hit = rescanLimitToast(err);
+  if (!hit) return false;
   // This 429 never opens PaywallDialog, so it was invisible to the paywall_shown
   // funnel (plan 022). Same event, same reason-code convention, no dialog.
   track("paywall_shown", { reason: "rescan_limit_reached" });
-  toast.warning(detail.message ?? "Daily re-scan limit reached. It resets tomorrow.", {
+  toast.warning(hit.message, {
     id: toastId,
-    action: detail.upgradeHint
+    action: hit.upgradeHint
       ? {
           label: "View plans",
           onClick: () => {

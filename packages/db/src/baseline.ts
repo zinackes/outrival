@@ -10,11 +10,11 @@
  * (drizzle.__drizzle_migrations), never a business table, and is a no-op once any
  * migration is tracked. Run once per existing environment: `pnpm db:baseline`.
  */
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { createHash } from "node:crypto";
 import { config } from "dotenv";
 import postgres from "postgres";
+import { readCommittedMigrations } from "./ledger";
 
 const rootEnv = resolve(__dirname, "../../../.env.local");
 if (existsSync(rootEnv)) config({ path: rootEnv });
@@ -22,10 +22,7 @@ if (existsSync(rootEnv)) config({ path: rootEnv });
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
 
-const migrationsDir = resolve(__dirname, "../migrations");
-const journal = JSON.parse(
-  readFileSync(resolve(migrationsDir, "meta/_journal.json"), "utf8"),
-) as { entries: Array<{ tag: string; when: number }> };
+const { committed } = readCommittedMigrations(resolve(__dirname, "../migrations"));
 
 const sql = postgres(url, { max: 1 });
 
@@ -46,12 +43,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  for (const entry of journal.entries) {
-    const file = resolve(migrationsDir, `${entry.tag}.sql`);
-    const hash = createHash("sha256").update(readFileSync(file, "utf8")).digest("hex");
+  for (const entry of committed) {
     await sql`
       INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at)
-      VALUES (${hash}, ${entry.when})`;
+      VALUES (${entry.hash}, ${entry.when})`;
     console.log(`baselined ${entry.tag} (when=${entry.when})`);
   }
 

@@ -113,17 +113,19 @@ function deriveSteps(
       title: "Generate a battle card",
       why: "A one-page brief your sales team can hand around.",
       minutes: 3,
+      // Cards are generated per competitor: send the user to the richest one's
+      // card, not to the index that only lists what already exists.
+      href: top ? `/dashboard/competitors/${top.id}/battle-card` : "/dashboard/battle-cards",
       done: f.hasBattleCard,
-      href: "/dashboard/battle-cards",
     },
     {
       key: "decide",
       move: "Decide",
-      title: "Read your first signal and decide what to do",
-      why: "Mark it “act on it” so the recommendation becomes trackable.",
+      title: "Open your first signal",
+      why: "What changed, why it matters, and what to do about it.",
       minutes: 2,
-      done: f.hasDecision,
-      locked: f.signalCount === 0 && !f.hasDecision,
+      done: f.hasReadSignal,
+      locked: f.signalCount === 0 && !f.hasReadSignal,
       href: "/dashboard/signals",
     },
   ];
@@ -142,10 +144,23 @@ function horizon(nextScanAt: string | null): string | null {
   return `Next scan in about ${h} hour${h === 1 ? "" : "s"}.`;
 }
 
+// The competitor every deep link points at: the one we hold the most on today, so
+// the page it opens is full rather than empty. Signals collected over the last two
+// windows are the proxy for that; overlap only breaks a tie between silent ones.
+function dataScore(c: Competitor): number {
+  const s = c.stats;
+  return (s?.signals7d ?? 0) + (s?.signalsPrev ?? 0);
+}
+
 function topCompetitor(list: Competitor[] | undefined): { id: string; name: string } | null {
   let best: Competitor | null = null;
   for (const c of list ?? []) {
-    if (!best || (c.overlapScore ?? -1) > (best.overlapScore ?? -1)) best = c;
+    if (!best) {
+      best = c;
+      continue;
+    }
+    const d = dataScore(c) - dataScore(best);
+    if (d > 0 || (d === 0 && (c.overlapScore ?? -1) > (best.overlapScore ?? -1))) best = c;
   }
   return best ? { id: best.id, name: best.name } : null;
 }
@@ -201,7 +216,9 @@ function StepRow({ step, onAsk }: { step: Step; onAsk: () => void }) {
     </>
   );
   const cls = "flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left";
-  if (step.done || step.locked) return <li className={cls}>{body}</li>;
+  // A done step keeps its destination: the dock is also how you find these pages
+  // again. Only a locked one is inert, since there is nothing there yet.
+  if (step.locked) return <li className={cls}>{body}</li>;
   if (step.href) {
     return (
       <li>
@@ -363,7 +380,13 @@ export function GetStartedDock() {
         type="button"
         aria-expanded={false}
         aria-controls={PANEL_ID}
-        onClick={() => setExpanded(true)}
+        // Re-read the facts on open. Steps done without a navigation — asking in
+        // the sheet, opening a signal in the feed — land on this fetch, not on
+        // the pathname effect that never fires for them.
+        onClick={() => {
+          void qc.invalidateQueries({ queryKey: onboardingChecklistQuery().queryKey });
+          setExpanded(true);
+        }}
         className={cn(
           corner,
           "inline-flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-dense font-medium transition-colors hover:bg-muted",

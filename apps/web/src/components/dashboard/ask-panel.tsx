@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import type { Icon as PhosphorIcon } from "@/components/icons";
 import {
@@ -35,6 +36,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import type { OnboardingChecklist } from "@/lib/api";
+import { onboardingChecklistQuery } from "@/lib/queries";
 import { PageHead } from "./page-head";
 import {
   PaywallDialog,
@@ -194,6 +197,7 @@ export function AskPanel({
   const [watchedId, setWatchedId] = useState<string | null>(null);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const qc = useQueryClient();
 
   useEffect(() => {
     setIsMac(/mac/i.test(navigator.platform) || /mac/i.test(navigator.userAgent));
@@ -442,6 +446,12 @@ export function AskPanel({
         };
         setHistory((h) => [item, ...h].slice(0, 50));
         setAnsweredQuestion(trimmed);
+        // The get-started dock reads `askedByMe` off this cache. The server writes
+        // ask_history best-effort after the last frame, so refetching here would
+        // race the insert: state the fact the user just established instead.
+        qc.setQueryData<OnboardingChecklist>(onboardingChecklistQuery().queryKey, (d) =>
+          d ? { ...d, askedByMe: true } : d,
+        );
       }
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {

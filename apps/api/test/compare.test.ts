@@ -201,6 +201,9 @@ describe("compare matrix", () => {
     expect(col.latestSignal.category).toBe("pricing");
     expect(col.latestSignal.insight).toContain("$49");
     expect(col.latestSignal.id).toBeTruthy();
+    // A string on the wire, not a Date the serializer happened to render: the CSV
+    // export slices this and the lens re-parses it (`code:DEB-52`).
+    expect(col.latestSignal.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   test("bands the entry/top price over the latest batch and skips quote tiers", async () => {

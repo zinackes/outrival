@@ -34,7 +34,7 @@ import {
   deterministicInsight,
   withTruncationReport,
 } from "@outrival/ai";
-import type { StructuredChange } from "@outrival/scrapers/homepage-diff";
+import { asStructuredChanges } from "@outrival/scrapers/homepage-diff";
 import {
   PLAN_LIMITS,
   PRICING_STATUSES,
@@ -506,14 +506,16 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
     // effort — a narration failure must never block the signal (unlike the insight
     // above, the narrative is an optional enhancement).
     let narrative: string | null = null;
-    if (change.diffType === "structured" && change.structuredDiff && shouldNarrate(severity)) {
+    // Same guard as classify-change — one narrowing for one column (`code:DEB-08`).
+    const structuredDiff = asStructuredChanges(change.structuredDiff);
+    if (change.diffType === "structured" && structuredDiff.length > 0 && shouldNarrate(severity)) {
       try {
         const narrated = await loggedAi(
           "narrate_change",
           AI_CONFIG.insights,
           () =>
             narrateChange({
-              changes: change.structuredDiff as StructuredChange[],
+              changes: structuredDiff,
               competitor: { name: competitor.name, category: competitor.category ?? "unknown" },
               myProduct,
             }),

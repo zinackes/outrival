@@ -23,7 +23,7 @@ import {
   type Classification,
   type PerChangeAssessment,
 } from "@outrival/ai";
-import type { StructuredChange } from "@outrival/scrapers/homepage-diff";
+import { asStructuredChanges } from "@outrival/scrapers/homepage-diff";
 import { loggedAi } from "../lib/analytics";
 import { determineSelfChangeSeverity, notifySelfChange } from "../lib/self-change";
 
@@ -70,7 +70,11 @@ export async function runClassifyChange(payload: z.input<typeof InputSchema>) {
       : null;
 
     const attribution = { orgId: competitor?.orgId, competitorId: competitor?.id };
-    const isStructured = change.diffType === "structured" && !!change.structuredDiff;
+    // Read through the one guard rather than cast: `structured_diff` is jsonb typed
+    // `unknown`, and a row holding anything but an array now falls through to the
+    // lexical path instead of reaching `.map` as a TypeError (`code:DEB-08`).
+    const structuredDiff = asStructuredChanges(change.structuredDiff);
+    const isStructured = change.diffType === "structured" && structuredDiff.length > 0;
 
     // Semantic gate — ahead of classification, on the generic content path only.
     // The structured homepage path is exempt: relevance scoring + volatile-line
@@ -163,12 +167,11 @@ export async function runClassifyChange(payload: z.input<typeof InputSchema>) {
       perChange: PerChangeAssessment[] | null;
     }>(async () => {
       if (isStructured) {
-        const structured = change.structuredDiff as StructuredChange[];
         const res = await loggedAi(
           "classify_structured",
           AI_CONFIG.classification,
           () =>
-            classifyStructuredChanges(structured, {
+            classifyStructuredChanges(structuredDiff, {
               sourceType: monitor?.sourceType,
               competitorName: competitor?.name,
               recentSignals,

@@ -15,7 +15,8 @@ export const changes = pgTable("changes", {
   // reads it to reason per-field and later enriches each entry with a significance
   // ("major" | "minor" | "trivial") for the "Why this insight?" breakdown. Null
   // for lexical (non-homepage / fallback) changes. Untyped here to keep
-  // @outrival/db a leaf package — cast at the call site.
+  // @outrival/db a leaf package: read it through `asStructuredChanges`
+  // (@outrival/scrapers/homepage-diff) rather than casting per call site.
   structuredDiff: jsonb("structured_diff"),
   // Max composite relevance of the significant structured changes that produced
   // this change (patch-17 scoring, persisted for patch-26 moderation). Set only

@@ -10,35 +10,15 @@
  *   - DRIFT     ledger row whose hash matches NOTHING we hold  ← stop
  *   - PENDING   committed file with no ledger row              ← what will run
  *
- * Writes nothing. Reads DATABASE_URL_PROD out of the repo .env.local.
+ * Writes nothing. Reads DATABASE_URL_PROD through `src/prod-url.ts`.
  */
 import postgres from "postgres";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { loadProdUrl } from "./src/prod-url";
 
-// A worktree carries no .env.local — secrets live in the main checkout. Walk up
-// until one is found so this runs from either.
-function loadEnv(): string {
-  let dir = __dirname;
-  for (let i = 0; i < 8; i++) {
-    const candidate = resolve(dir, ".env.local");
-    if (existsSync(candidate)) return readFileSync(candidate, "utf8");
-    const parent = resolve(dir, "..");
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error("no .env.local found above " + __dirname);
-}
-const env = loadEnv();
-const url = env
-  .match(/^DATABASE_URL_PROD=(.+)$/m)?.[1]
-  ?.trim()
-  .replace(/^["']|["']$/g, "");
-if (!url) throw new Error("DATABASE_URL_PROD not found in .env.local");
-// Neon's `-pooler` endpoint holds a session open across a DDL transaction and the
-// migrator hangs on it. Always talk to the direct endpoint for schema work.
-const direct = url.replace("-pooler.", ".");
+const direct = loadProdUrl();
 
 const journal = JSON.parse(
   readFileSync(resolve(__dirname, "migrations/meta/_journal.json"), "utf8"),

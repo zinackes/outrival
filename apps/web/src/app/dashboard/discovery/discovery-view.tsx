@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -60,12 +60,13 @@ import { DetectionConfigSheet } from "@/components/outrival/detection-config-she
 import { PageHead } from "@/components/dashboard/page-head";
 import { useSetAskContext } from "@/components/dashboard/ask-context";
 import { CompAvatar } from "@/components/dashboard/comp-avatar";
+import { SelectBox } from "@/components/dashboard/select-box";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { TableSkeleton } from "@/components/dashboard/skeletons";
 import { competitorNameColor } from "@/lib/competitor-color";
 import { formatDate, shortAge } from "@/lib/format-date";
 import { cn, isValidHttpUrl, prettyUrl } from "@/lib/utils";
-import { disclosureMotion, feedItemMotion } from "@/lib/motion";
+import { disclosureMotion, feedItemMotion, feedItemTransition } from "@/lib/motion";
 
 type Tab = "queue" | "dismissed" | "added";
 
@@ -382,13 +383,21 @@ function WeakBandHead({
 const ROW_GRID =
   "grid items-center gap-x-3.5 grid-cols-[2.6rem_minmax(0,1fr)_7.5rem] @3xl:grid-cols-[2.6rem_minmax(0,14rem)_minmax(0,1fr)_2.6rem_7.5rem]";
 
+// Same tracks with a 1rem checkbox column in front. Two strings rather than one
+// computed grid: the columns are the layout, and a template built at runtime is the
+// kind of thing Tailwind's scanner cannot see.
+const ROW_GRID_SELECTABLE =
+  "grid items-center gap-x-3.5 grid-cols-[1rem_2.6rem_minmax(0,1fr)_7.5rem] @3xl:grid-cols-[1rem_2.6rem_minmax(0,14rem)_minmax(0,1fr)_2.6rem_7.5rem]";
+
 function CandidateRow({
   candidate,
   tab,
   open,
   busy,
+  selected,
   productLabel,
   onToggle,
+  onSelect,
   onTrack,
   onDismiss,
   onRestore,
@@ -398,8 +407,11 @@ function CandidateRow({
   tab: Tab;
   open: boolean;
   busy: boolean;
+  selected: boolean;
   productLabel: string | null;
   onToggle: () => void;
+  /** Null on a list that carries no batch actions — the row then has no checkbox. */
+  onSelect: ((range: boolean) => void) | null;
   onTrack: () => void;
   onDismiss: () => void;
   onRestore: () => void;
@@ -447,12 +459,19 @@ function CandidateRow({
         onClick={onToggle}
         onKeyDown={onKeyDown}
         className={cn(
-          ROW_GRID,
+          onSelect ? ROW_GRID_SELECTABLE : ROW_GRID,
           "group cursor-pointer py-2.5 pl-0.5 pr-2 transition-colors hover:bg-surface-2",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-          open && "bg-surface-2",
+          (open || selected) && "bg-surface-2",
         )}
       >
+        {onSelect && (
+          <SelectBox
+            checked={selected}
+            label={selected ? `Deselect ${name}` : `Select ${name}`}
+            onToggle={(e) => onSelect(e.shiftKey)}
+          />
+        )}
         <ScoreMeter score={candidate.overlapScore} />
 
         <span className="flex min-w-0 items-center gap-2.5">
@@ -651,11 +670,31 @@ function Evidence({
  * one thing the old page could never tell you, and it is the argument for reviewing
  * the next batch at all.
  */
-function AddedRow({ item }: { item: AddedCandidate }) {
+function AddedRow({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: AddedCandidate;
+  selected: boolean;
+  /** Null once the competitor is gone: there is nothing left to untrack. */
+  onSelect: ((range: boolean) => void) | null;
+}) {
   const name = item.competitor?.name ?? candidateName(item);
   const url = item.competitor?.url ?? item.url;
   const body = (
     <>
+      {onSelect ? (
+        <SelectBox
+          checked={selected}
+          label={selected ? `Deselect ${name}` : `Select ${name}`}
+          onToggle={(e) => onSelect(e.shiftKey)}
+        />
+      ) : (
+        // The column still holds: a row that lost its competitor must not shift the
+        // ones under it half a track to the left.
+        <span aria-hidden />
+      )}
       <span
         className="flex min-w-0 items-center gap-2.5"
         style={competitorNameColor(item.competitor?.color ?? null)}
@@ -690,7 +729,7 @@ function AddedRow({ item }: { item: AddedCandidate }) {
   );
 
   const grid =
-    "grid items-center gap-x-3.5 border-t border-border py-3 pl-0.5 pr-2 grid-cols-[minmax(0,1fr)_5.5rem] @3xl:grid-cols-[minmax(0,16rem)_minmax(0,1fr)_5rem_5.5rem]";
+    "grid items-center gap-x-3.5 border-t border-border py-3 pl-0.5 pr-2 grid-cols-[1rem_minmax(0,1fr)_5.5rem] @3xl:grid-cols-[1rem_minmax(0,16rem)_minmax(0,1fr)_5rem_5.5rem]";
 
   if (!item.competitor) return <div className={grid}>{body}</div>;
   return (
@@ -699,11 +738,70 @@ function AddedRow({ item }: { item: AddedCandidate }) {
       className={cn(
         grid,
         "transition-colors hover:bg-surface-2",
+        selected && "bg-surface-2",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
       )}
     >
       {body}
     </Link>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Selection toolbar                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The batch's own toolbar (OUT-249). Sticks to the bottom of the viewport while the
+ * list is on screen, so acting on a selection never means scrolling back up — and
+ * never pushes the rows around either. The verbs come from the tab it is rendered in;
+ * the count, "select all" and the way out are the same everywhere.
+ */
+function SelectionBar({
+  selected,
+  total,
+  onSelectAll,
+  onClear,
+  children,
+}: {
+  selected: number;
+  total: number;
+  onSelectAll: () => void;
+  onClear: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <AnimatePresence>
+      {selected > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 12 }}
+          transition={feedItemTransition}
+          className="sticky bottom-4 z-20 flex justify-center pt-2"
+        >
+          <div
+            role="toolbar"
+            aria-label={`Actions for ${selected} selected`}
+            className="flex max-w-full flex-wrap items-center gap-1 rounded-lg border border-border bg-surface-2 px-2 py-1.5 shadow-lg"
+          >
+            <span className="px-1.5 text-dense font-medium">
+              <span className="tabular-nums">{selected}</span> selected
+            </span>
+            <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
+            {children}
+            {selected < total && (
+              <Button variant="ghost" size="sm" className="h-7" onClick={onSelectAll}>
+                Select all {total}
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="h-7" onClick={onClear}>
+              Clear
+            </Button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -873,6 +971,86 @@ export function DiscoveryView() {
     (liveProducts.length === 1 ? liveProducts[0]!.name : null) ??
     "your product";
 
+  // Sorted once, up here: the bands, the reading and the shift-click range all read
+  // this exact order.
+  const ranked = useMemo(
+    () => [...(items ?? [])].sort((a, b) => (b.overlapScore ?? -1) - (a.overlapScore ?? -1)),
+    [items],
+  );
+
+  /* ---- Multi-select (OUT-249) ------------------------------------------- */
+
+  // One selection at a time, keyed by candidate row id and dropped on every tab
+  // switch: the tabs list different things, and a selection carried across them would
+  // act on rows the user can no longer see.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const lastSelectedRef = useRef<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState<"track" | "dismiss" | "untrack" | null>(null);
+  const [confirmUntrack, setConfirmUntrack] = useState(false);
+
+  // What this tab can select, in the order it is shown. The Added tab offers only the
+  // rows that still have a competitor: the others have nothing left to untrack.
+  const selectableIds = useMemo(() => {
+    if (tab === "added") {
+      return (addedQ.data?.added ?? []).filter((a) => a.competitor).map((a) => a.id);
+    }
+    return tab === "queue" ? ranked.map((c) => c.id) : [];
+  }, [tab, ranked, addedQ.data]);
+
+  // Keep the selection inside what is on screen: a candidate that leaves the list
+  // (tracked, dismissed, dropped by a refetch) must not stay selected behind it.
+  // Returns `prev` untouched when nothing is stale, so a stable list can't loop.
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(selectableIds);
+      const next = new Set<string>();
+      for (const id of prev) if (visible.has(id)) next.add(id);
+      return next.size === prev.size ? prev : next;
+    });
+  }, [selectableIds]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    lastSelectedRef.current = null;
+  }, []);
+
+  // Shift-click extends from the last box clicked, along the order on screen — the
+  // way you would clear a mailbox, rather than thirty individual clicks.
+  const toggleSelect = useCallback(
+    (id: string, range: boolean) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        const anchor = lastSelectedRef.current;
+        if (range && anchor && anchor !== id) {
+          const a = selectableIds.indexOf(anchor);
+          const b = selectableIds.indexOf(id);
+          if (a !== -1 && b !== -1) {
+            const [lo, hi] = a < b ? [a, b] : [b, a];
+            for (let i = lo; i <= hi; i++) next.add(selectableIds[i]!);
+            lastSelectedRef.current = id;
+            return next;
+          }
+        }
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        lastSelectedRef.current = id;
+        return next;
+      });
+    },
+    [selectableIds],
+  );
+
+  // Escape drops the selection, the way it dismisses every other transient state.
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") clearSelection();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [selectedIds.size, clearSelection]);
+
   // Rewrite the active tab's cached candidates / counts so the optimistic mutations
   // (and their rollbacks) below keep working.
   function setItems(
@@ -990,7 +1168,8 @@ export function DiscoveryView() {
   useEffect(() => {
     tabRef.current = tab;
     setOpenId(null);
-  }, [tab]);
+    clearSelection();
+  }, [tab, clearSelection]);
 
   // Quality feedback (patch-21): tracking a suggestion is an implicit "useful"
   // verdict, dismissing it a "not useful" one. Best-effort — never block the
@@ -1055,8 +1234,8 @@ export function DiscoveryView() {
 
   // Bulk dismiss (the weak band). No per-item feedback: clearing a band in one
   // gesture is a weaker signal than a deliberate single judgment.
-  async function dismissMany(targets: CompetitorCandidate[]) {
-    if (targets.length === 0) return;
+  async function dismissMany(targets: CompetitorCandidate[]): Promise<boolean> {
+    if (targets.length === 0) return false;
     const idSet = new Set(targets.map((t) => t.id));
     setItems((prev) => prev?.filter((c) => !idSet.has(c.id)) ?? null);
     bumpCounts({ new: -targets.length, dismissed: targets.length });
@@ -1066,8 +1245,9 @@ export function DiscoveryView() {
       setItems((prev) => [...(prev ?? []), ...targets]); // rollback
       bumpCounts({ new: targets.length, dismissed: -targets.length });
       toastApiError(e, { title: "Dismiss failed" });
-      return;
+      return false;
     }
+    return true;
   }
 
   // Explicit restore from the Dismissed tab: optimistic removal + a toast that jumps back.
@@ -1105,15 +1285,105 @@ export function DiscoveryView() {
     }
   }
 
+  /* ---- Batch actions (OUT-249) ------------------------------------------ */
+
+  // Track the whole selection in one request. The API adds them in the order sent —
+  // highest overlap first, since that is the order on screen — and stops at the seat
+  // cap rather than half-failing, so what did not fit is named instead of silently
+  // dropped. The selection only clears once the batch has landed.
+  async function trackSelected() {
+    const targets = ranked.filter((c) => selectedIds.has(c.id));
+    if (targets.length === 0 || bulkBusy) return;
+    setBulkBusy("track");
+    try {
+      const res = await api.addCandidates(targets.map((t) => t.id));
+      const skipped = new Set(res.skipped.map((sk) => sk.id));
+      const tracked = targets.filter((t) => !skipped.has(t.id));
+      for (const t of tracked) recordDiscoveryFeedback(t.id, "useful");
+
+      const trackedIds = new Set(tracked.map((t) => t.id));
+      setItems((prev) => prev?.filter((c) => !trackedIds.has(c.id)) ?? null);
+      bumpCounts({ new: -tracked.length, added: tracked.length });
+      void queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
+      void queryClient.invalidateQueries({
+        queryKey: addedCandidatesQuery(productId).queryKey,
+      });
+      // Same reason as the single add: the layout's "N/M seats" is server-rendered.
+      router.refresh();
+      clearSelection();
+
+      const noRoom = res.skipped.filter((sk) => sk.reason === "plan_limit").length;
+      // Every id filtered out server-side (already tracked in another tab, or gone):
+      // a "0 companies now tracked" success would be a lie about a no-op.
+      if (res.added === 0) {
+        toast.info("Nothing to track", {
+          description: "Those suggestions are already tracked, or no longer in the queue.",
+        });
+        return;
+      }
+      toast.success(
+        `${res.added} ${plural(res.added, "company", "companies")} now tracked`,
+        {
+          description: noRoom
+            ? `Their homepage, pricing and blog are being captured now. ${noRoom} more did not fit: every competitor seat is taken.`
+            : "Their homepage, pricing and blog are being captured now.",
+          action: { label: "See them", onClick: () => setTab("added") },
+        },
+      );
+    } catch (e) {
+      const reason = paywallFromError(e);
+      if (reason) setPaywall(reason);
+      else toastApiError(e, { title: "Couldn't track those companies" });
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
+  // Dismiss the selection: the same optimistic write as the per-row X, over a batch.
+  async function dismissSelected() {
+    const targets = ranked.filter((c) => selectedIds.has(c.id));
+    if (targets.length === 0 || bulkBusy) return;
+    setBulkBusy("dismiss");
+    try {
+      if (await dismissMany(targets)) clearSelection();
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
+  // Untrack the selection from the Added tab. Deleting a competitor sends the
+  // candidate it came from back to Dismissed, so the rows move tabs rather than
+  // vanish — refetch both lists instead of patching the cache by hand.
+  async function untrackSelected() {
+    const ids = (addedQ.data?.added ?? []).flatMap((a) =>
+      selectedIds.has(a.id) && a.competitor ? [a.competitor.id] : [],
+    );
+    if (ids.length === 0 || bulkBusy) return;
+    setBulkBusy("untrack");
+    try {
+      const res = await api.bulkDeleteCompetitors(ids);
+      await queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      void queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
+      router.refresh();
+      setConfirmUntrack(false);
+      clearSelection();
+      toast.success(
+        `${res.deleted} ${plural(res.deleted, "competitor")} no longer tracked`,
+        { description: "They are back under Dismissed, and can be restored from there." },
+      );
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't stop tracking those competitors" });
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
   // OUT-190 — ListError has always taken an onRetry; this view was the one place
   // that didn't pass it, so a failed queue load was a dead end with nothing to click.
   if (error && items === null) {
     return <ListError error={error} onRetry={() => void candidatesQ.refetch()} />;
   }
 
-  const ranked = [...(items ?? [])].sort(
-    (a, b) => (b.overlapScore ?? -1) - (a.overlapScore ?? -1),
-  );
   const bands = {
     strong: ranked.filter((c) => band(c.overlapScore) === "strong"),
     worth: ranked.filter((c) => band(c.overlapScore) === "worth"),
@@ -1132,6 +1402,10 @@ export function DiscoveryView() {
     busy: actingIds.has(c.id),
     productLabel:
       showProductBadge && c.productId ? (productNames.get(c.productId) ?? null) : null,
+    selected: selectedIds.has(c.id),
+    // Batch actions live on the queue only (OUT-249): restoring or deleting a batch
+    // of dismissed suggestions is a separate decision, not part of this one.
+    onSelect: tab === "queue" ? (range: boolean) => toggleSelect(c.id, range) : null,
     onToggle: () => setOpenId((prev) => (prev === c.id ? null : c.id)),
     onTrack: () => void add(c),
     onDismiss: () => void dismiss(c.id),
@@ -1145,6 +1419,39 @@ export function DiscoveryView() {
     <div className="@container space-y-5">
       <PaywallDialog reason={paywall} onClose={() => setPaywall(null)} />
       <AddByUrlDialog open={addOpen} onOpenChange={setAddOpen} onPaywall={setPaywall} />
+      <Dialog open={confirmUntrack} onOpenChange={(o) => !o && setConfirmUntrack(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Stop tracking {selectedIds.size} {plural(selectedIds.size, "competitor")}?
+            </DialogTitle>
+            <DialogDescription>
+              Their monitors, snapshots and signals go with them, and the seats are
+              freed. The suggestions land back under Dismissed, so you can track them
+              again later.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={bulkBusy === "untrack"}
+              onClick={() => setConfirmUntrack(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={bulkBusy === "untrack"}
+              onClick={() => void untrackSelected()}
+            >
+              {bulkBusy === "untrack" && <SpinnerIcon size={16} className="animate-spin" />}
+              {bulkBusy === "untrack" ? "Removing…" : "Stop tracking"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <DetectionConfigSheet
         open={configOpen}
         onOpenChange={setConfigOpen}
@@ -1403,6 +1710,41 @@ export function DiscoveryView() {
               Dismissing teaches the relevance threshold for the next scan.
             </span>
           </p>
+
+          <SelectionBar
+            selected={selectedIds.size}
+            total={selectableIds.length}
+            onSelectAll={() => setSelectedIds(new Set(selectableIds))}
+            onClear={clearSelection}
+          >
+            <Button
+              size="sm"
+              className="h-7"
+              disabled={bulkBusy !== null}
+              onClick={() => void trackSelected()}
+            >
+              {bulkBusy === "track" ? (
+                <SpinnerIcon size={16} className="animate-spin" />
+              ) : (
+                <PlusIcon size={16} />
+              )}
+              Track
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7"
+              disabled={bulkBusy !== null}
+              onClick={() => void dismissSelected()}
+            >
+              {bulkBusy === "dismiss" ? (
+                <SpinnerIcon size={16} className="animate-spin" />
+              ) : (
+                <XIcon size={16} />
+              )}
+              Dismiss
+            </Button>
+          </SelectionBar>
         </div>
       )}
 
@@ -1446,13 +1788,38 @@ export function DiscoveryView() {
                 aside="What the queue bought you"
               />
               {addedQ.data!.added.map((item) => (
-                <AddedRow key={item.id} item={item} />
+                <AddedRow
+                  key={item.id}
+                  item={item}
+                  selected={selectedIds.has(item.id)}
+                  onSelect={
+                    item.competitor ? (range) => toggleSelect(item.id, range) : null
+                  }
+                />
               ))}
               {addedQ.data!.added.some((a) => a.competitor && a.signalCount === 0) && (
                 <p className="border-t border-border pt-3 text-dense text-muted-foreground">
                   A seat that captures nothing is a seat you can spend elsewhere.
                 </p>
               )}
+
+              <SelectionBar
+                selected={selectedIds.size}
+                total={selectableIds.length}
+                onSelectAll={() => setSelectedIds(new Set(selectableIds))}
+                onClear={clearSelection}
+              >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-critical hover:text-critical"
+                  disabled={bulkBusy !== null}
+                  onClick={() => setConfirmUntrack(true)}
+                >
+                  <TrashIcon size={16} />
+                  Stop tracking
+                </Button>
+              </SelectionBar>
             </section>
           )}
         </div>

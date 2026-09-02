@@ -40,6 +40,7 @@ import {
   CrosshairIcon,
   PaletteIcon,
   ShieldSlashIcon,
+  UsersIcon,
 } from "@/components/icons";
 import {
   Dialog,
@@ -88,6 +89,7 @@ import { competitorNameColor } from "@/lib/competitor-color";
 import { StatusDot } from "@/components/outrival/data-marks";
 import { shortAge } from "@/lib/format-date";
 import { ListError } from "@/components/outrival/list-error";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -107,6 +109,7 @@ import { sourceShortLabel } from "@/lib/source-labels";
 import CompetitorDetailLoading from "./detail-skeleton";
 import {
   api,
+  ApiError,
   type Competitor,
   type Monitor,
   type ChangeRow,
@@ -659,6 +662,27 @@ export function CompetitorDetailView({ id }: { id: string }) {
   );
 
   if (error && !data) {
+    // A 404 is not a failure to retry, it is an answer: the id is forged, foreign,
+    // or deleted. The generic error card offered "Try again" on a request that
+    // could only 404 again, so a stale bookmark or an old digest link read as a
+    // broken page. Same shape the products detail route already uses for the
+    // identical failure (`ux:10`).
+    if (error instanceof ApiError && error.status === 404) {
+      return (
+        <div className="mt-10">
+          <EmptyState
+            icon={UsersIcon}
+            title="Competitor not found"
+            description="This competitor doesn't exist, was deleted, or belongs to another workspace."
+            actions={
+              <Button asChild>
+                <Link href="/dashboard/competitors">Back to competitors</Link>
+              </Button>
+            }
+          />
+        </div>
+      );
+    }
     return (
       <div className="mt-10">
         <ListError error={error} onRetry={refresh} />
@@ -1216,7 +1240,13 @@ function Header({
                 <CompetitorColorPicker
                   value={competitor.color}
                   onChange={(v) => {
-                    void onEditSave({ color: v });
+                    // `void` here made a failed write an unhandled rejection: the
+                    // swatch silently didn't change and nothing asked for a retry,
+                    // while the Edit dialog one screen over reports the same failure
+                    // through toastApiError (`code:COR-34`).
+                    onEditSave({ color: v }).catch((e: unknown) => {
+                      toastApiError(e, { title: "Couldn't update the competitor" });
+                    });
                     setMenuOpen(false);
                   }}
                 />

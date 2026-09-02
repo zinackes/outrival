@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { ShareNetworkIcon, CheckIcon } from "@/components/icons";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -35,8 +36,8 @@ export function ShareBattleCardButton({
         description:
           "Anyone with the link sees the current card, refresh included. Revoke it in Settings → Data.",
       });
-    } catch {
-      toast.error("Couldn’t create the share link. Please try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn’t create the share link" });
     } finally {
       setBusy(false);
     }

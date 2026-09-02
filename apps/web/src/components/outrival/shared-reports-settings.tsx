@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { CopyIcon, TrashIcon, LinkIcon, PlusIcon, SpinnerIcon } from "@/components/icons";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
@@ -54,8 +55,8 @@ export function SharedReportsSettings() {
       toast.success("Snapshot link created & copied", {
         description: "Anyone with the link can view this report.",
       });
-    } catch {
-      toast.error("Couldn't create the link. Please try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't create the link" });
     } finally {
       setCreating(false);
     }
@@ -71,8 +72,8 @@ export function SharedReportsSettings() {
       toast.success("Link revoked", {
         description: "It stops opening within 5 minutes, once the cached page expires.",
       });
-    } catch {
-      toast.error("Couldn't revoke the link. Please try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't revoke the link" });
     } finally {
       setRevoking(false);
     }

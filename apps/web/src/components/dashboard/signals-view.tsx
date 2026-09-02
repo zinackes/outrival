@@ -20,6 +20,7 @@ import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { CheckIcon, CaretDownIcon, TrayIcon, FlaskIcon, ScanIcon } from "@/components/icons";
 import { startOfWeek, endOfWeek, format, isSameDay, subDays } from "date-fns";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { AnimatePresence, motion } from "motion/react";
 import {
   api,
@@ -416,13 +417,13 @@ export function SignalsView() {
     if (owner) adjustCompetitorUnread(queryClient, owner, -1);
     try {
       await api.markSignalRead(id);
-    } catch {
+    } catch (e) {
       // Revert, or the row reads "read" until the next poll contradicts it — and
       // selectRow fires this without awaiting, so an uncaught rejection would be
       // silent. Mark-unread below has always done this.
       mutateSignals((prev) => prev.map((s) => (s.id === id ? { ...s, isRead: false } : s)));
       if (owner) adjustCompetitorUnread(queryClient, owner, 1);
-      toast.error("Couldn't mark read. Try again.");
+      toastApiError(e, { title: "Couldn't mark read" });
     }
   }
 
@@ -433,11 +434,11 @@ export function SignalsView() {
     if (owner) adjustCompetitorUnread(queryClient, owner, 1);
     try {
       await api.markSignalRead(id, false);
-    } catch {
+    } catch (e) {
       // The row itself stays optimistically unread here, so leave the count with
       // it: both reconcile on the next poll, and a half-reverted pair would read
       // as a sidebar that disagrees with the feed.
-      toast.error("Couldn't mark unread. Try again.");
+      toastApiError(e, { title: "Couldn't mark unread" });
     }
   }
 
@@ -484,8 +485,8 @@ export function SignalsView() {
             }
           : undefined,
       );
-    } catch {
-      toast.error("Couldn't mark all read. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't mark all read" });
       queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
     }
   }
@@ -753,8 +754,8 @@ export function SignalsView() {
       await api.setSignalsRead(ids, read);
       queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
       queryClient.invalidateQueries({ queryKey: ["competitors"] });
-    } catch {
-      toast.error("Couldn't update those signals. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't update those signals" });
       queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
     }
   }
@@ -780,8 +781,8 @@ export function SignalsView() {
       toast.success(
         `${n} signal${n > 1 ? "s" : ""} ${status ? "updated" : "cleared"}`,
       );
-    } catch {
-      toast.error("Couldn't update those signals. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't update those signals" });
       queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
     }
   }
@@ -849,8 +850,8 @@ export function SignalsView() {
         reason: "irrelevant",
       }));
       queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
-    } catch {
-      toast.error("Couldn't dismiss those signals. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't dismiss those signals" });
       queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
       return;
     }
@@ -896,8 +897,8 @@ export function SignalsView() {
     try {
       await api.snoozeSignals(ids, until);
       queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
-    } catch {
-      toast.error("Couldn't snooze those signals. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't snooze those signals" });
       queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
       return;
     }
@@ -1273,8 +1274,8 @@ export function SignalsView() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-    } catch {
-      toast.error("Couldn't export signals. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't export signals" });
     }
   }
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import {
   Dialog,
   DialogContent,
@@ -85,8 +86,8 @@ export function ManualDataEntry({ monitorId, sourceType, open, onOpenChange, onS
       toast.success("Saved. This data is tagged as entered manually.");
       onOpenChange(false);
       onSubmitted?.();
-    } catch {
-      toast.error("Couldn't save your entry. Please try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't save your entry" });
     } finally {
       setSaving(false);
     }

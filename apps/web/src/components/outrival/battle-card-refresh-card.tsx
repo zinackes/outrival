@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SpinnerIcon } from "@/components/icons";
-import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { PLAN_LABELS } from "@outrival/shared";
 import { api } from "@/lib/api";
 import { battleCardSettingsQuery } from "@/lib/queries";
@@ -31,8 +31,8 @@ export function BattleCardRefreshCard() {
     try {
       await api.updateBattleCardSettings(next);
       await qc.invalidateQueries({ queryKey: battleCardSettingsQuery().queryKey });
-    } catch {
-      toast.error("Couldn't save that. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't save that" });
     } finally {
       setSaving(false);
     }

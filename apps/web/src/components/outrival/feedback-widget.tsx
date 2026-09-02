@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { SpinnerIcon } from "@/components/icons";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { api } from "@/lib/api";
 import {
   getRecentErrors,
@@ -96,8 +97,8 @@ export function FeedbackWidget() {
       toast.success("Thanks, got it");
       setOpen(false);
       reset();
-    } catch {
-      toast.error("Send failed, try again in a moment");
+    } catch (e) {
+      toastApiError(e, { title: "Send failed" });
     } finally {
       setSubmitting(false);
     }

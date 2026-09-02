@@ -10,6 +10,7 @@ import {
   CheckIcon,
 } from "@/components/icons";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { api, type SavedView, type SavedViewFilters } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -108,8 +109,8 @@ export function SavedViewsMenu({
       setSaveOpen(false);
       setName("");
       refresh();
-    } catch {
-      toast.error("Couldn't save this view");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't save this view" });
     } finally {
       setSaving(false);
     }
@@ -134,8 +135,8 @@ export function SavedViewsMenu({
       setViews((p) => p.map((v) => (v.id === view.id ? view : v)));
       toast.success(`Updated “${view.name}”`);
       setEditing(null);
-    } catch {
-      toast.error("Couldn't update this view");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't update this view" });
     } finally {
       setSavingEdit(false);
     }
@@ -150,11 +151,11 @@ export function SavedViewsMenu({
       await api.deleteSavedView(target.id);
       toast.success(`Deleted “${target.name}”`);
       setPendingDelete(null);
-    } catch {
+    } catch (e) {
       setViews((p) =>
         [...p, target].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
       );
-      toast.error("Couldn't delete this view");
+      toastApiError(e, { title: "Couldn't delete this view" });
     } finally {
       setDeleting(false);
     }

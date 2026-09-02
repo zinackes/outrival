@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { SpinnerIcon, WarningIcon, XIcon } from "@/components/icons";
 import { api, type ReferenceVolume } from "@/lib/api";
 import { referenceVolumesQuery } from "@/lib/queries";
@@ -57,8 +57,8 @@ export function ReferenceVolumesCard() {
     try {
       await api.updateReferenceVolumes(next);
       await qc.invalidateQueries({ queryKey: referenceVolumesQuery().queryKey });
-    } catch {
-      toast.error("Couldn't save that. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't save that" });
     } finally {
       setSaving(false);
     }

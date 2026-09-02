@@ -17,6 +17,7 @@ import {
 } from "@/components/icons";
 import { api, type SectoralSignal, type SectoralCategory } from "@/lib/api";
 import { sectoralTeaserQuery } from "@/lib/queries";
+import { toastApiError } from "@/lib/error-helpers";
 import { Button } from "@/components/ui/button";
 import { SectionHead } from "./section-head";
 import {
@@ -204,18 +205,39 @@ export function SectoralSignalsSection() {
   function openDetail(s: SectoralSignal) {
     setActive(s);
     if (s.readAt === null) {
-      api.markSectoralRead(s.id).catch(() => {});
       setSignals((prev) =>
         prev
           ? prev.map((x) => (x.id === s.id ? { ...x, readAt: new Date().toISOString() } : x))
           : prev,
       );
+      // Same contract as the full feed: put the dot back rather than say anything.
+      // The empty catch left the row looking read until a refetch disagreed
+      // (`code:COR-35`).
+      api.markSectoralRead(s.id).catch(() => {
+        setSignals((prev) =>
+          prev ? prev.map((x) => (x.id === s.id ? { ...x, readAt: null } : x)) : prev,
+        );
+      });
     }
   }
 
   function dismiss(id: string) {
+    // Optimistic, restored at its own index on failure — a dismiss that didn't go
+    // through used to look exactly like one that did (`code:COR-35`).
+    const index = signals?.findIndex((x) => x.id === id) ?? -1;
+    const removed = index >= 0 ? signals?.[index] : undefined;
     setSignals((prev) => (prev ? prev.filter((x) => x.id !== id) : prev));
-    api.dismissSectoral(id).catch(() => {});
+    api.dismissSectoral(id).catch((e: unknown) => {
+      if (removed) {
+        setSignals((prev) => {
+          if (!prev) return prev;
+          const next = [...prev];
+          next.splice(Math.min(index, next.length), 0, removed);
+          return next;
+        });
+      }
+      toastApiError(e, { title: "Couldn't dismiss that trend" });
+    });
   }
 
   return (

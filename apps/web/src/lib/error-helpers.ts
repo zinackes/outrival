@@ -16,6 +16,14 @@ export interface ErrorConfig {
   action?: { label: string; type: UserActionType };
 }
 
+// Hoisted because it is also the fallback for any 404 whose code the map doesn't
+// know — see `errorConfig`. No retry action on purpose: the request cannot become
+// right by being sent again.
+const NOT_FOUND_CONFIG: ErrorConfig = {
+  title: "Not found",
+  description: "That item doesn't exist anymore, or you don't have access to it.",
+};
+
 const ERROR_CONFIGS: Record<string, ErrorConfig> = {
   network_error: {
     title: "Couldn't reach the server",
@@ -71,10 +79,7 @@ const ERROR_CONFIGS: Record<string, ErrorConfig> = {
     title: "That URL doesn't look right",
     description: "Double-check the address for this source, then try again.",
   },
-  not_found: {
-    title: "Not found",
-    description: "That item doesn't exist anymore, or you don't have access to it.",
-  },
+  not_found: NOT_FOUND_CONFIG,
   // Generic Zod validation failure — the API returns `{ error: "Invalid body" }` on
   // every route, so this keys on that exact string. Front-end field validation should
   // catch most cases first; this is the clean fallback when one slips through.
@@ -100,6 +105,43 @@ const DEFAULT_CONFIG: ErrorConfig = {
   action: { label: "Retry", type: "retry" },
 };
 
+/** "selfProfile.category" -> "Self profile category". */
+function humanizeField(path: string): string {
+  const words = path
+    .replace(/[._]/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * The description for a zod refusal, built from the issues the API sent.
+ *
+ * A failed `safeParse` answers `{ error: "Invalid body", issues: [...] }` with no
+ * `message`, so the description fell through to "Check the highlighted fields and
+ * try again." on forms that highlight nothing — a 400 saying the workspace name is
+ * over 100 characters reached the user as a sentence naming neither the field nor
+ * the limit, which is the systemic half of `ux:04`. Capped at three: past that the
+ * toast is a wall of text and the form is wrong in a way one line can't fix.
+ */
+function describeIssues(err: unknown): string | null {
+  if (!(err instanceof ApiError) || !Array.isArray(err.data.issues)) return null;
+  const parts = (err.data.issues as unknown[])
+    .map((raw) => {
+      if (typeof raw !== "object" || raw === null) return null;
+      const issue = raw as { message?: unknown; path?: unknown };
+      if (typeof issue.message !== "string" || !issue.message.trim()) return null;
+      const field = Array.isArray(issue.path)
+        ? issue.path.filter((p) => typeof p === "string").join(".")
+        : "";
+      return field ? `${humanizeField(field)}: ${issue.message}` : issue.message;
+    })
+    .filter((part): part is string => part !== null)
+    .slice(0, 3);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 export function errorConfig(err: unknown): ErrorConfig {
   // Prefer the human message the API sent (patch-14 envelope), but only as the
   // description — the title/action still come from the known code so the copy
@@ -110,7 +152,16 @@ export function errorConfig(err: unknown): ErrorConfig {
   // minutes" surfaced as "The action didn't go through. Try again in a moment."
   // The API writes these strings for users, so the specific one wins when present.
   const code = err instanceof ApiError ? err.code : undefined;
-  const base = (code && ERROR_CONFIGS[code]) || DEFAULT_CONFIG;
+  // A 404 the map doesn't recognise is still a 404. The API writes most of them as
+  // a sentence rather than a code ("Not found", "Competitor not found"), so a stale
+  // bookmark or a deleted row surfaced as "Something went wrong" next to a Retry
+  // button that could only fail again (`ux:10`).
+  const notFoundByStatus = err instanceof ApiError && err.status === 404;
+  const base =
+    (code && ERROR_CONFIGS[code]) || (notFoundByStatus ? NOT_FOUND_CONFIG : DEFAULT_CONFIG);
+  // A zod refusal carries its detail in `issues`, not in `message`.
+  const issues = describeIssues(err);
+  if (issues) return { ...base, description: issues };
   const sent = err instanceof ApiError ? err.data.message : undefined;
   return typeof sent === "string" && sent.trim() ? { ...base, description: sent } : base;
 }
@@ -120,6 +171,22 @@ export function errorConfig(err: unknown): ErrorConfig {
 // `String(e)` there, which printed the class name plus the raw response body.
 export function errorMessage(err: unknown): string {
   return errorConfig(err).description;
+}
+
+/**
+ * Whether TanStack Query should retry a failed read. Wired as the app-wide
+ * `retry` default in `components/query-provider.tsx`.
+ *
+ * The library's default retries everything three times, so a mistyped or stale id
+ * fired the same 404 four times before the screen said anything at all, and every
+ * other client error paid three pointless round trips before its error state
+ * appeared (`ux:10`). A 4xx is the server's final answer — the identical request
+ * cannot become right on its own. Everything else (network, timeout, 5xx) keeps
+ * the three tries it had.
+ */
+export function shouldRetryQuery(failureCount: number, err: unknown): boolean {
+  if (err instanceof ApiError && err.status >= 400 && err.status < 500) return false;
+  return failureCount < 3;
 }
 
 // Surfaces a transient error as a sonner toast in three parts, never leaking the

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { SpinnerIcon } from "@/components/icons";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,8 +29,8 @@ export function ReauthCodeField({
       await api.sendReauthCode();
       setSent(true);
       toast.success("Confirmation code sent to your email.");
-    } catch {
-      toast.error("Couldn't send the code. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't send the code" });
     } finally {
       setSending(false);
     }

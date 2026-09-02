@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { SpinnerIcon, SparkleIcon, XIcon } from "@/components/icons";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { PLAN_LABELS } from "@outrival/shared";
 import { api } from "@/lib/api";
 import { sourceDefaultsQuery } from "@/lib/queries";
@@ -52,8 +53,8 @@ export function NewSourcesBanner() {
       toast.success(
         `Now collecting ${res.sources.map((s) => SOURCE_SHORT_LABELS[s]).join(", ")} on ${res.competitorsTouched} competitor${res.competitorsTouched === 1 ? "" : "s"}. First scans are queued.`,
       );
-    } catch {
-      toast.error("Couldn't enable them. Try again from Settings → General.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't enable them" });
     } finally {
       setApplying(false);
     }

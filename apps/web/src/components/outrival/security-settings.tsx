@@ -15,6 +15,7 @@ import {
 } from "@/components/icons";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { formatDistanceToNow } from "date-fns";
 import { useSession, authClient } from "@/lib/auth-client";
 import { api, ApiError } from "@/lib/api";
@@ -743,8 +744,8 @@ function PasskeysDialog({
         setAddCode("");
         load();
       }
-    } catch {
-      toast.error("Couldn't add that passkey.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't add that passkey" });
     } finally {
       setBusy(null);
     }
@@ -762,8 +763,8 @@ function PasskeysDialog({
       if (!r.ok) throw new Error();
       toast.success("Passkey removed.");
       load();
-    } catch {
-      toast.error("Couldn't remove that passkey.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't remove that passkey" });
     } finally {
       setBusy(null);
     }
@@ -1316,10 +1317,10 @@ function ActiveSessions() {
       toast.success("Session signed out");
       setConfirmOne(null);
       reload();
-    } catch {
+    } catch (e) {
       // The dialog stays open on failure: closing it would look like the sign-out
       // went through, and the toast is gone in seconds.
-      toast.error("Could not sign out that session");
+      toastApiError(e, { title: "Could not sign out that session" });
     } finally {
       setBusy(null);
     }
@@ -1332,8 +1333,8 @@ function ActiveSessions() {
       toast.success("Other sessions signed out");
       setConfirmOthers(false);
       reload();
-    } catch {
-      toast.error("Could not sign out other sessions");
+    } catch (e) {
+      toastApiError(e, { title: "Could not sign out other sessions" });
     } finally {
       setBusy(null);
     }

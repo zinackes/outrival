@@ -14,6 +14,7 @@ import {
 } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "@/lib/toast";
+import { toastApiError } from "@/lib/error-helpers";
 import { api, type Signal, type ActionStatus } from "@/lib/api";
 import {
   ACTION_OPTIONS,
@@ -167,10 +168,10 @@ export function SignalCard({
     onActionChange?.(signal.id, status);
     try {
       await api.setSignalAction(signal.id, status);
-    } catch {
+    } catch (e) {
       setActionStatus(prev);
       onActionChange?.(signal.id, prev);
-      toast.error("Couldn't update the action. Try again.");
+      toastApiError(e, { title: "Couldn't update the action" });
     }
   }
 
@@ -186,8 +187,8 @@ export function SignalCard({
       });
       setSeverityAdjusted(true);
       if (res.immediateAction) toast(res.immediateAction.description);
-    } catch {
-      toast.error("Couldn't adjust severity. Try again.");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't adjust severity" });
     }
   }
 

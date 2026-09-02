@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { captureServerEvent } from "../lib/posthog";
-import { and, eq, count, desc, inArray, isNull, isNotNull, min } from "drizzle-orm";
+import { and, eq, count, desc, inArray, isNull, min } from "drizzle-orm";
 import {
   organizations,
   competitors,
@@ -212,7 +212,7 @@ onboardingRouter.get("/status", async (c) => {
 
 // Get-started dock (post-onboarding). The dock derives its steps from these
 // facts, all read off existing rows: no schema, no manual checkboxes. Org-level
-// facts (cards, channel, decisions) count for the whole team; askedByMe is per
+// facts (cards, channel, a signal read) count for the whole team; askedByMe is per
 // user, since asking is the one habit each person has to form alone.
 const GET_STARTED_PREFIX = "get_started_";
 const GET_STARTED_MILESTONES = ["landscape_seen", "cadence_seen", "dismissed"] as const;
@@ -244,7 +244,7 @@ onboardingRouter.get("/checklist", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
-  const [org, comps, askRows, cardRows, signalRows, decidedRows, session] =
+  const [org, comps, askRows, cardRows, signalRows, readRows, session] =
     await Promise.all([
       db.query.organizations.findFirst({
         where: eq(organizations.id, orgId),
@@ -268,7 +268,7 @@ onboardingRouter.get("/checklist", async (c) => {
       db
         .select({ id: signals.id })
         .from(signals)
-        .where(and(eq(signals.orgId, orgId), isNotNull(signals.actionStatus)))
+        .where(and(eq(signals.orgId, orgId), eq(signals.isRead, true)))
         .limit(1),
       latestSession(user.id),
     ]);
@@ -292,7 +292,7 @@ onboardingRouter.get("/checklist", async (c) => {
     // created by the first GET and by the timezone sync, so it proves nothing.
     channelConfigured: Boolean(org?.slackWebhookUrl || org?.webhookUrl),
     signalCount: signalRows[0]?.v ?? 0,
-    hasDecision: decidedRows.length > 0,
+    hasReadSignal: readRows.length > 0,
     nextScanAt: nextRunAt ? new Date(nextRunAt).toISOString() : null,
     milestones: getStartedMilestones(session?.timings),
   });

@@ -35,16 +35,23 @@ In-app changelog so users see what shipped. **No DB.**
 
 ### 2. Onboarding checklist
 
-A dismissible activation card on the overview that guides a new workspace to value.
-**No DB** — derive each step from existing data.
+A get-started dock, bottom-right on every dashboard page (`get-started-dock.tsx`),
+that narrates the loop of moves (Watch, Ask, Brief, Decide) after onboarding.
+**No DB** — every step resolves from existing rows, never from a manual checkbox.
 
-- `GET /api/onboarding/checklist` → `{ steps: [{ key, done }], complete }`.
-  Steps (all from existing tables): product profile set, ≥1 competitor added,
-  ≥1 source/monitor enabled, notifications configured, first signal received.
-- Component: shown on the overview while `!complete` and not dismissed; dismissal
-  persisted in `localStorage` (no DB). Each incomplete step links to where to do it.
-- Re-uses existing endpoints where possible; the new endpoint only aggregates
-  booleans (read-only).
+- `GET /api/onboarding/checklist` → usage facts: `competitorCount`, `askedByMe`
+  (per user, `ask_history`), `hasBattleCard`, `channelConfigured` (Slack/webhook
+  URL on the org), `signalCount`, `hasDecision` (`signals.action_status`),
+  `nextScanAt` (min active `monitors.next_run_at`, the honest horizon for the
+  locked Decide tier), and `milestones`.
+- `POST /api/onboarding/checklist/milestone` `{ key, clear? }` stamps a
+  client-observed milestone (`landscape_seen`, `cadence_seen`, `dismissed`) into
+  the user's own onboarding session timings; a teammate without a session gets
+  `stored: false` and the dock keeps a localStorage copy (both are always read).
+- Component: collapsed pill by default, expands to the step list, collapses on
+  every navigation, auto-opens once when the first analysis completes; dismissal
+  is a milestone, recoverable from the user menu and ⌘K. Each incomplete step
+  links to where to do it (the Ask step opens the sheet with a prefilled question).
 
 ### 3. Watchlists / saved views — `saved_views` table
 

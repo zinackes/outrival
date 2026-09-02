@@ -153,7 +153,11 @@ function Steps({ steps, active }: { steps: string[]; active: boolean }) {
 export function AskPanel({
   embedded = false,
   context = null,
+  initialQuestion = null,
 }: {
+  /** A question handed in by the caller (the get-started dock). It lands in the
+   *  textarea, not in a send: the user still owns the ask. */
+  initialQuestion?: string | null;
   /** Embedded in the dock sheet — drop the PageHead and the page max-width. */
   embedded?: boolean;
   /** Current page context; when set, questions can be scoped to it. `kind` drives the
@@ -165,6 +169,9 @@ export function AskPanel({
   } | null;
 } = {}) {
   const [question, setQuestion] = useState("");
+  useEffect(() => {
+    if (initialQuestion) setQuestion(initialQuestion);
+  }, [initialQuestion]);
   // When a page context is present, default to scoping questions to it; the user
   // can toggle off to ask across all competitors.
   const [scoped, setScoped] = useState(true);

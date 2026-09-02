@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import type { Icon as PhosphorIcon } from "@/components/icons";
+import { GET_STARTED_OPEN_EVENT } from "@/components/dashboard/get-started-dock";
 import {
   MagnifyingGlassIcon,
   BuildingsIcon,
@@ -24,6 +25,7 @@ import {
   CreditCardIcon,
   SunIcon,
   MoonIcon,
+  ListChecksIcon,
   MonitorIcon,
 } from "@/components/icons";
 
@@ -127,12 +129,13 @@ export function GlobalSearch() {
 
   const q = query.trim();
   const navMatches = NAV.filter((n) => matches(q, n.label, n.keywords));
-  const THEME_ACTIONS = [
+  const ACTIONS = [
     { id: "theme-dark", label: "Switch to dark theme", icon: MoonIcon, run: () => setTheme("dark"), kw: "theme dark mode" },
     { id: "theme-light", label: "Switch to light theme", icon: SunIcon, run: () => setTheme("light"), kw: "theme light mode" },
     { id: "theme-system", label: "Match system theme", icon: MonitorIcon, run: () => setTheme("system"), kw: "theme system auto" },
+    { id: "get-started", label: "Open the get-started guide", icon: ListChecksIcon, run: () => document.dispatchEvent(new CustomEvent(GET_STARTED_OPEN_EVENT)), kw: "get started guide onboarding checklist help" },
   ];
-  const actionMatches = THEME_ACTIONS.filter((a) => matches(q, a.label, a.kw));
+  const actionMatches = ACTIONS.filter((a) => matches(q, a.label, a.kw));
 
   const hasEntities =
     q.length >= 2 &&

@@ -8,7 +8,6 @@ import {
   competitorsQuery,
   sectoralTeaserQuery,
   battleCardsQuery,
-  onboardingChecklistQuery,
   activityHealthQuery,
   digestsQuery,
 } from "@/lib/queries";
@@ -37,9 +36,6 @@ export default async function DashboardHomePage({
     }
     if (initial.battleCards) {
       queryClient.setQueryData(battleCardsQuery().queryKey, initial.battleCards);
-    }
-    if (initial.checklist) {
-      queryClient.setQueryData(onboardingChecklistQuery().queryKey, initial.checklist);
     }
     // Source health backs one rail stat plus the "next scan" line; digests back the
     // footer's weekly brief link. Both keys are tz-independent, so the server seed

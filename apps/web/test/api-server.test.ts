@@ -79,7 +79,7 @@ describe("success path maps the API shape", () => {
       if (u.includes("/api/activity/health"))
         return ok({ sources: [{ monitorId: "m1" }], upcoming: [] });
       if (u.includes("/api/digests")) return ok({ digests: [{ id: "d1" }] });
-      return ok({ completed: false }); // /api/onboarding/checklist
+      return ok({});
     };
     const { getOverviewData } = await load();
 
@@ -88,7 +88,6 @@ describe("success path maps the API shape", () => {
       competitors: [{ id: "c1" }],
       sectoral: [{ id: "sec1" }],
       battleCards: [{ id: "bc1" }],
-      checklist: { completed: false },
       health: { sources: [{ monitorId: "m1" }], upcoming: [] },
       digests: [{ id: "d1" }],
     });

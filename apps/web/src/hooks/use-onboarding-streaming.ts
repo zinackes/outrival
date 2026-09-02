@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { competitorsQuery, overviewSignalsQuery } from "@/lib/queries";
+import { GET_STARTED_OPEN_EVENT } from "@/components/dashboard/get-started-dock";
 import {
   ONBOARDING_EVENTS,
   milestoneKey,
@@ -110,6 +111,9 @@ export function useOnboardingStreaming(productId?: string): OnboardingStreamingS
           completedFired = true;
           trackOnboarding(ONBOARDING_EVENTS.ANALYSIS_COMPLETED, sessionId);
           if (sessionId) void api.completeOnboardingSession(sessionId).catch(() => {});
+          // The one moment the get-started dock opens on its own: the first
+          // analysis just landed, and the next move is the question to answer.
+          document.dispatchEvent(new CustomEvent(GET_STARTED_OPEN_EVENT));
           stop();
           setState((s) => ({ ...s, active: false }));
         }

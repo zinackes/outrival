@@ -14,6 +14,7 @@ import {
   aiStatusQuery,
   competitorsQuery,
   notificationsBellQuery,
+  onboardingChecklistQuery,
 } from "@/lib/queries";
 import { PostHogIdentitySync } from "@/lib/posthog/identity-sync";
 import { TimezoneSync } from "@/components/outrival/timezone-sync";
@@ -164,6 +165,9 @@ export default async function DashboardLayout({
   }
   if (shell.notifications) {
     queryClient.setQueryData(notificationsBellQuery().queryKey, shell.notifications);
+  }
+  if (shell.checklist) {
+    queryClient.setQueryData(onboardingChecklistQuery().queryKey, shell.checklist);
   }
 
   return (

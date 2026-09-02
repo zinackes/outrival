@@ -26,7 +26,6 @@ import {
 import { PageHead } from "./page-head";
 import { useSetAskContext } from "./ask-context";
 import { catLabel } from "./cat-pill";
-import { OnboardingChecklistCard } from "./onboarding-checklist";
 import { LandscapeSection } from "./landscape";
 import { OverviewLead, OverviewLeadPending, type PulseData } from "./overview-lead";
 import { OverviewMovers } from "./overview-movers";
@@ -149,8 +148,8 @@ export function OverviewView() {
   );
 
   // Lifted here (single poller) so the Overview can stagger its first-run
-  // surfaces: while the first analysis streams in, only the analysis panel shows
-  // — the "Get set up" checklist below it waits until analysis settles. The hook
+  // surfaces: while the first analysis streams in, only the analysis panel shows,
+  // and the get-started dock opens on its own once it settles. The hook
   // reads/writes the shared competitorsQuery cache directly (see
   // use-onboarding-streaming.ts), so this view's own useQuery above just
   // observes the same key — no onTick callback needed.
@@ -299,7 +298,6 @@ export function OverviewView() {
           title="Overview"
           sub="Track every competitor move (pricing, hiring, product, content) as it happens."
         />
-        <OnboardingChecklistCard />
         <EmptyState
           icon={ScanIcon}
           title="Start tracking your first competitor"
@@ -439,8 +437,6 @@ export function OverviewView() {
           Sits under the masthead, not above it (OUT-82): the page opens on the
           Overview it will keep being, and the first-run surfaces are blocks in it. */}
       {!sample && <OnboardingAnalysisPanel state={analysis} />}
-
-      {!sample && !analysisActive && <OnboardingChecklistCard />}
 
       {derived.lead ? (
         <OverviewLead

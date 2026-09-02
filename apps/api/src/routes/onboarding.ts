@@ -313,7 +313,7 @@ onboardingRouter.post("/checklist/milestone", async (c) => {
   const session = await latestSession(user.id);
   if (!session) return c.json({ stored: false, milestones: {} });
 
-  const timings = { ...(session.timings ?? {}) };
+  const timings = { ...session.timings };
   const key = GET_STARTED_PREFIX + parsed.data.key;
   if (parsed.data.clear) delete timings[key];
   else timings[key] = Date.now();

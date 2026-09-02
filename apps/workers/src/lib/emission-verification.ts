@@ -234,10 +234,3 @@ export async function recordEmission(changeId: string, signalId: string): Promis
     });
   }
 }
-
-/** The verification attached to a change, for the API and the tests. */
-export async function verificationForChange(changeId: string) {
-  return db.query.signalVerifications.findFirst({
-    where: eq(signalVerifications.changeId, changeId),
-  });
-}

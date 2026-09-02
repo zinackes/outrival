@@ -2,8 +2,8 @@ import { z } from "zod";
 import { SECTORAL_MIN_COMPETITORS } from "@outrival/shared";
 
 // Required for the whole worker pipeline. Missing any of these is a deployment
-// misconfiguration we want to surface loudly at boot (via the `init` hook in
-// trigger.config.ts) rather than three retries deep inside a job.
+// misconfiguration we want to surface loudly at boot (src/queue/worker.ts calls this
+// before registering a single handler) rather than three retries deep inside a job.
 const EnvSchema = z.object({
   DATABASE_URL: z.string().url(),
   R2_ACCOUNT_ID: z.string().min(1),
@@ -14,16 +14,11 @@ const EnvSchema = z.object({
 
   // Feature/best-effort secrets. Not required to boot (a worker without GROQ
   // still scrapes; AI jobs fail clearly on use), but validated for format when
-  // present so a malformed value is caught early.
-  TRIGGER_SECRET_KEY: z.string().optional(),
-  TRIGGER_PROJECT_ID: z.string().optional(),
-  // pg-boss queue (Trigger.dev replacement). Optional here so Trigger deploys
-  // keep booting during the side-by-side migration; the queue worker entry
-  // (src/queue/worker.ts) hard-requires both itself.
-  QUEUE_DATABASE_URL: z.string().url().optional(),
-  WORKER_ROLE: z.enum(["browser", "light"]).optional(),
+  // present so a malformed value is caught early. QUEUE_DATABASE_URL and
+  // WORKER_ROLE are deliberately absent: src/queue/worker.ts hard-requires both
+  // before it calls this, so declaring them optional here said the opposite of what
+  // boot actually enforces.
   GROQ_API_KEY: z.string().optional(),
-  ANTHROPIC_API_KEY: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   EXA_API_KEY: z.string().optional(),
   POSTHOG_API_KEY: z.string().optional(),

@@ -156,7 +156,6 @@ SHIPPING_VELOCITY_THRESHOLD=0.5         # Content Intelligence v2 P1, relative m
 SHIPPING_VELOCITY_MIN_ITEMS=8           # entries the trailing 3-month window must TOTAL before it counts as a baseline. Under it a changelog of three entries would swing ±50% on a single release, which is arithmetic, not cadence
 
 # AI
-ANTHROPIC_API_KEY=           # provider abstrait — Claude fallback (provider="claude")
 GROQ_API_KEY=                # back-compat : synthétise un provider Groq si aucun AI_PROVIDER_N
 
 # AI provider pool (patch-22) — pool de PROVIDERS légaux OpenAI-compatibles, essayés

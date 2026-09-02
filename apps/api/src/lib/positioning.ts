@@ -153,17 +153,6 @@ export interface PositioningFacts {
   namedByCount: number;
 }
 
-/** Empty in every dimension — the section hides rather than render this. */
-export function isPositioningFactsEmpty(f: PositioningFacts): boolean {
-  return (
-    f.tagline === null &&
-    f.claims.length === 0 &&
-    f.comparison === null &&
-    f.icp === null &&
-    f.namedByCount === 0
-  );
-}
-
 export async function positioningFacts(args: {
   competitorId: string;
   orgId: string;

@@ -245,7 +245,6 @@ export interface JobConfig {
   deadLetter?: string;
   /** rolling worker concurrency for this queue (was `queue({concurrencyLimit})`). */
   concurrency?: number;
-  pollingIntervalSeconds?: number;
 }
 
 export interface JobDef<P extends object> {
@@ -294,9 +293,10 @@ export function defineJob<P extends object>(name: string, config: JobConfig = {}
     // Pinned back to the pre-notify cadence so enabling NOTIFY is a pure gain:
     // instant pickup for live jobs, unchanged catch-up for a queue that is behind.
     // (burstWhenBatchFull is the documented cure but is ignored at batchSize 1.)
-    notifyPollingIntervalSeconds: config.pollingIntervalSeconds ?? 2,
+    // Not per-job configurable: no job ever overrode it, and a queue that opted out
+    // of the backstop would go back to sleeping 30s on a backlog.
+    notifyPollingIntervalSeconds: 2,
     ...(config.concurrency ? { localConcurrency: config.concurrency } : {}),
-    ...(config.pollingIntervalSeconds ? { pollingIntervalSeconds: config.pollingIntervalSeconds } : {}),
   };
 
   const def: JobDef<P> = {
@@ -398,10 +398,6 @@ export function isAbortedOutput(output: unknown): output is AbortedOutput {
 /** What a deferral leaves on the job row it replaced, so "rescheduled because the
  *  AI pool was throttled" is queryable and never reads as a plain success. */
 export type DeferredOutput = { deferred: true; seconds: number; attempt: number; reason: string };
-
-export function isDeferredOutput(output: unknown): output is DeferredOutput {
-  return !!output && typeof output === "object" && (output as DeferredOutput).deferred === true;
-}
 
 /**
  * Register a worker handler for a job. Adapts pg-boss's `(Job[]) => Promise`

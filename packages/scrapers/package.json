@@ -163,10 +163,6 @@
       "types": "./src/positioning/index.ts",
       "default": "./src/positioning/index.ts"
     },
-    "./docs": {
-      "types": "./src/docs/index.ts",
-      "default": "./src/docs/index.ts"
-    },
     "./block-detection": {
       "types": "./src/lib/block-detection.ts",
       "default": "./src/lib/block-detection.ts"

@@ -154,7 +154,7 @@ AUTH_RATE_LIMIT_EMAIL=3 / AUTH_RATE_LIMIT_IP=10 / AUTH_RATE_LIMIT_WINDOW_MIN=15
 R2_ACCOUNT_ID= / R2_ACCESS_KEY_ID= / R2_SECRET_ACCESS_KEY= / R2_BUCKET_NAME=
 STRIPE_SECRET_KEY= / STRIPE_WEBHOOK_SECRET= / STRIPE_PRICE_*=
 RESEND_API_KEY= / RESEND_AUTH_FROM= / RESEND_FROM=   # BOTH required, see warning below
-GROQ_API_KEY= (or AI_PROVIDER_*) / ANTHROPIC_API_KEY=
+GROQ_API_KEY= (or AI_PROVIDER_*)
 EXA_API_KEY=
 POSTHOG_API_KEY=
 QUEUE_DATABASE_URL=                   # send-only: the api enqueues, never runs a handler
@@ -183,7 +183,7 @@ The two workers and the queue Postgres run on a **separate server**
 **Env lives in `/opt/outrival/.env.worker` (0600), read once at boot** — appending
 a var does nothing until the process restarts. Both services are built from
 `apps/workers` (`Dockerfile.queue-light` / `Dockerfile.queue-browser`) and take the
-job env (`DATABASE_URL`, `R2_*`, `AI_PROVIDER_*`, `ANTHROPIC_API_KEY`,
+job env (`DATABASE_URL`, `R2_*`, `AI_PROVIDER_*`,
 `RESEND_API_KEY`, `EXA_API_KEY`, `PROXYSCRAPE_DC_*`, `POSTHOG_API_KEY`, `SENTRY_*`,
 plus the tuning knobs in `.env.example`) plus:
 ```

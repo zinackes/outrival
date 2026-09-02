@@ -1,8 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import type { Icon as PhosphorIcon } from "@/components/icons";
 import {
@@ -13,13 +10,9 @@ import {
   CurrencyDollarIcon,
   TargetIcon,
   PlantIcon,
-  GlobeIcon,
 } from "@/components/icons";
-import { api, type SectoralSignal, type SectoralCategory } from "@/lib/api";
-import { sectoralTeaserQuery } from "@/lib/queries";
-import { toastApiError } from "@/lib/error-helpers";
+import type { SectoralSignal, SectoralCategory } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { SectionHead } from "./section-head";
 import {
   Dialog,
   DialogContent,
@@ -181,90 +174,5 @@ export function SectoralRow({
         )}
       </div>
     </div>
-  );
-}
-
-export function SectoralSignalsSection() {
-  // Overview teaser — the top few; the full feed lives on /dashboard/sector.
-  const queryClient = useQueryClient();
-  const sectoralQ = useQuery(sectoralTeaserQuery());
-  const signals = sectoralQ.data ?? null;
-  const [active, setActive] = useState<SectoralSignal | null>(null);
-
-  // Optimistic write-through for the read / dismiss mutations below.
-  function setSignals(updater: (prev: SectoralSignal[] | null) => SectoralSignal[] | null) {
-    queryClient.setQueryData<SectoralSignal[]>(sectoralTeaserQuery().queryKey, (prev) =>
-      updater(prev ?? null) ?? undefined,
-    );
-  }
-
-  // Hide the whole section while loading or when there is nothing to show — no
-  // empty placeholder, the section simply does not exist for the user.
-  if (!signals || signals.length === 0) return null;
-
-  function openDetail(s: SectoralSignal) {
-    setActive(s);
-    if (s.readAt === null) {
-      setSignals((prev) =>
-        prev
-          ? prev.map((x) => (x.id === s.id ? { ...x, readAt: new Date().toISOString() } : x))
-          : prev,
-      );
-      // Same contract as the full feed: put the dot back rather than say anything.
-      // The empty catch left the row looking read until a refetch disagreed
-      // (`code:COR-35`).
-      api.markSectoralRead(s.id).catch(() => {
-        setSignals((prev) =>
-          prev ? prev.map((x) => (x.id === s.id ? { ...x, readAt: null } : x)) : prev,
-        );
-      });
-    }
-  }
-
-  function dismiss(id: string) {
-    // Optimistic, restored at its own index on failure — a dismiss that didn't go
-    // through used to look exactly like one that did (`code:COR-35`).
-    const index = signals?.findIndex((x) => x.id === id) ?? -1;
-    const removed = index >= 0 ? signals?.[index] : undefined;
-    setSignals((prev) => (prev ? prev.filter((x) => x.id !== id) : prev));
-    api.dismissSectoral(id).catch((e: unknown) => {
-      if (removed) {
-        setSignals((prev) => {
-          if (!prev) return prev;
-          const next = [...prev];
-          next.splice(Math.min(index, next.length), 0, removed);
-          return next;
-        });
-      }
-      toastApiError(e, { title: "Couldn't dismiss that trend" });
-    });
-  }
-
-  return (
-    <section>
-      <SectionHead
-        title="Sector trends"
-        icon={<GlobeIcon size={16} />}
-        sub="patterns across your competitors · not single-competitor signals"
-      />
-      <div>
-        {signals.map((s) => (
-          <SectoralRow
-            key={s.id}
-            signal={s}
-            onOpen={() => openDetail(s)}
-            onDismiss={() => dismiss(s.id)}
-          />
-        ))}
-      </div>
-      <div className="pt-2">
-        <Button asChild variant="ghost" size="sm">
-          <Link href="/dashboard/sector">
-            View all sector trends <ArrowRightIcon size={16} />
-          </Link>
-        </Button>
-      </div>
-      <EvidenceModal signal={active} onClose={() => setActive(null)} />
-    </section>
   );
 }

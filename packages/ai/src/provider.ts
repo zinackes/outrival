@@ -1,7 +1,5 @@
 import OpenAI from "openai";
-import Anthropic from "@anthropic-ai/sdk";
 import type { AITaskConfig } from "./config";
-import { aiEnv } from "./env";
 import {
   estimateRequestTokens,
   loadProviders,
@@ -43,7 +41,6 @@ const openaiClients = new Map<string, OpenAI>();
 // throttled provider is answered by asking someone else, immediately. The sleep is
 // only worth it when there IS nobody else, which is the one case it was written for.
 const LAST_RESORT_SDK_RETRIES = 2;
-let claudeClient: Anthropic | null = null;
 
 function clientFor(p: Provider): OpenAI {
   let c = openaiClients.get(p.id);
@@ -52,15 +49,6 @@ function clientFor(p: Provider): OpenAI {
     openaiClients.set(p.id, c);
   }
   return c;
-}
-
-function getClaude(): Anthropic {
-  if (!claudeClient) {
-    const key = aiEnv().ANTHROPIC_API_KEY;
-    if (!key) throw new Error("ANTHROPIC_API_KEY is required when provider=claude");
-    claudeClient = new Anthropic({ apiKey: key });
-  }
-  return claudeClient;
 }
 
 export interface CompletionOptions {
@@ -591,64 +579,22 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
   );
 }
 
-async function dispatch(
-  config: AITaskConfig,
-  options: CompletionOptions,
-): Promise<string> {
-  if (config.provider === "groq") {
-    // "groq" now means "the provider pool". A "fast"-tier task routes to the
-    // provider's small model (AI_PROVIDER_N_FAST_MODEL) when declared, restoring
-    // the 8b/70b split the pool had collapsed; "smart" tasks keep the 70B.
-    return callLLM(options, config.tier === "fast");
-  }
-
-  if (config.provider === "claude") {
-    markProvider("claude");
-    markModel(config.model);
-    const res = await getClaude().messages.create({
-      model: config.model,
-      max_tokens: options.maxTokens ?? 1024,
-      // Mark the static system block ephemeral so Anthropic caches the prefill
-      // (~90% off on a hit) when the same task fires repeatedly (F2).
-      ...(options.system && {
-        system: [
-          {
-            type: "text" as const,
-            text: options.system,
-            cache_control: { type: "ephemeral" as const },
-          },
-        ],
-      }),
-      messages: [{ role: "user", content: options.prompt }],
-    });
-    const inputTokens = res.usage?.input_tokens ?? 0;
-    const outputTokens = res.usage?.output_tokens ?? 0;
-    markUsage({
-      promptTokens: inputTokens,
-      completionTokens: outputTokens,
-      totalTokens: inputTokens + outputTokens,
-    });
-    if (res.stop_reason === "max_tokens") markTruncated();
-    const block = res.content[0];
-    return block && block.type === "text" ? block.text : "";
-  }
-
-  throw new Error(`Unknown AI provider: ${config.provider as string}`);
-}
-
 export async function complete(
   config: AITaskConfig,
   options: CompletionOptions,
 ): Promise<string> {
-  const text = await dispatch(config, options);
+  // The provider pool is the only dispatch: a "fast"-tier task routes to the
+  // provider's small model (AI_PROVIDER_N_FAST_MODEL) when declared, restoring the
+  // 8b/70b split the pool had collapsed; "smart" tasks keep the 70B.
+  const text = await callLLM(options, config.tier === "fast");
   // An empty completion is a failed generation (rate-limit truncation, a provider
   // hiccup), never a valid answer — every prompt asks for JSON or prose. Throw so
-  // loggedAi records it as `error` (→ user-facing "AI delayed" banner) and
-  // Trigger.dev retries, instead of the "" parsing to null downstream and
-  // surfacing as a benign "nothing found". A valid empty array (e.g. {plans:[]})
+  // loggedAi records it as `error` (→ user-facing "AI delayed" banner) and pg-boss
+  // retries, instead of the "" parsing to null downstream and surfacing as a benign
+  // "nothing found". A valid empty array (e.g. {plans:[]})
   // is non-empty text here, so genuine "no public pricing" still passes through.
   if (!text.trim()) {
-    throw new Error(`Empty completion from provider ${config.provider}`);
+    throw new Error("Empty completion from the AI provider pool");
   }
   return text;
 }

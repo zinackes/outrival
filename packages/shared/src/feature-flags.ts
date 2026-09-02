@@ -6,7 +6,3 @@ export const FEATURE_FLAGS = {
 } as const;
 
 export type FeatureFlag = keyof typeof FEATURE_FLAGS;
-
-export function isFeatureFlagEnabled(flag: FeatureFlag): boolean {
-  return FEATURE_FLAGS[flag];
-}

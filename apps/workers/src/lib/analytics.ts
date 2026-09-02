@@ -31,7 +31,7 @@ import type { CreditBurnRow } from "@outrival/shared";
 // ClickHouse; they are now plain Postgres tables in the same Neon database.
 // Everything here stays best-effort: a logging/analytics failure must never break
 // a scrape or an AI job (try/catch, never throws — except loggedAi, which rethrows
-// the wrapped call so Trigger.dev still retries the job).
+// the wrapped call so pg-boss still retries the job).
 
 async function bestEffort(op: string, fn: () => Promise<unknown>): Promise<void> {
   try {
@@ -270,7 +270,7 @@ export async function logAiRun(
 ): Promise<void> {
   // Prefer the real pool provider the call ran on (cerebras|cloudflare|groq|mistral),
   // captured by complete() in the same async context (patch-22). Falls back to the
-  // static provider from AI_CONFIG when the pool didn't run (e.g. Claude fallback).
+  // static provider from AI_CONFIG when the pool didn't run at all.
   const actual = getActiveProvider() ?? provider;
   // Same for the model: AI_CONFIG.model is IGNORED on the pool path (callLLM picks
   // provider.fastModel ?? provider.model), so logging it attributed cost to a model
@@ -297,10 +297,10 @@ export async function logAiRun(
 
 // Wrap an @outrival/ai task call so its outcome lands in ai_runs (patch-02):
 // a value → success, null → parse_failed, a throw (e.g. a 429 after the SDK's own
-// retries) → error, rethrown so Trigger.dev still retries the job.
+// retries) → error, rethrown so pg-boss still retries the job.
 // withAiContext establishes the token/provider scope in THIS frame — without it
-// the marks complete() makes in its child frames never reach logAiRun (Bun and
-// the Trigger runtime both drop the lazy enterWith; ai_runs logged 0 tokens).
+// the marks complete() makes in its child frames never reach logAiRun (Bun drops
+// the lazy enterWith; ai_runs logged 0 tokens).
 export async function loggedAi<T>(
   task: string,
   config: { provider: string; model: string },
@@ -1493,13 +1493,6 @@ export async function getPreviousReviewPoint(
         .limit(1),
   );
   return rows && rows.length > 0 ? (rows[0] ?? null) : null;
-}
-
-export async function getPreviousReviewScore(
-  competitorId: string,
-  source: string,
-): Promise<number | null> {
-  return (await getPreviousReviewPoint(competitorId, source))?.score ?? null;
 }
 
 // --- Numeric claims (patch-17). Append-only tracking of quantified homepage

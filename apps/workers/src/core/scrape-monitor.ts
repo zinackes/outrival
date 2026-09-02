@@ -909,8 +909,9 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
     // cascade into an all-branches-skipped fail.
     const startLevel = (shouldReprobe ? 0 : Math.min(pinnedLevel ?? 0, 2)) as 0 | 1 | 2;
 
-    // Lazy-import to avoid loading Patchright (Chromium) at module parse time
-    // (trigger.dev warns on >1 s import).
+    // Lazy-import to avoid loading Patchright (Chromium) at module parse time: the
+    // light worker imports this file too and must never pay for a browser it can't
+    // run.
     let result: ScrapeOutcome;
     try {
       if (monitor.apiCaptureEnabled) {
@@ -982,8 +983,9 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         return { changed: false, skipped: true };
       }
       // Otherwise: diagnose before rethrowing so the failure category is persisted
-      // from the attempt that carried the cascade data (patch-23). Trigger.dev
-      // retries / onFailure then handle consecutiveFailures + markedUnscrapable.
+      // from the attempt that carried the cascade data (patch-23). pg-boss's retry
+      // policy and the failure path then handle consecutiveFailures +
+      // markedUnscrapable.
       await diagnoseAndPersistFailure(monitor.id, scrapeUrl, err);
       throw err;
     } finally {

@@ -43,11 +43,6 @@ export const DISCOVERY_REGIONS: DiscoveryRegion[] = [
 
 const REGION_CODES = new Set(DISCOVERY_REGIONS.map((r) => r.code));
 
-/** True for a supported region code; `null`/`undefined`/unknown → false. */
-export function isDiscoveryRegion(code: string | null | undefined): code is string {
-  return typeof code === "string" && REGION_CODES.has(code);
-}
-
 /** Human label for a region code, or null for global/unknown. */
 export function regionLabel(code: string | null | undefined): string | null {
   return DISCOVERY_REGIONS.find((r) => r.code === code)?.label ?? null;

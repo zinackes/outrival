@@ -21,8 +21,12 @@ one-shot legacy. Committer le `.sql` **et** le snapshot.
 ## Conventions
 
 - Un fichier par entité dans `src/schema/[entity].ts`.
-- Toujours exporter le type inféré :
-  `export type X = InferSelectModel<typeof xTable>`.
+- Exporter le type inféré (`export type X = InferSelectModel<typeof xTable>`) **dès
+  qu'un consommateur nomme la ligne** — signature de fonction, prop de composant,
+  payload de job. 30 des 55 fichiers de schéma le font ; les 25 autres (`changes`,
+  `signals`, `competitors`, `monitors`, `snapshots`, `organizations`, `users`,
+  `auth`…) n'ont que des consommateurs qui lisent le type inféré du `db.query`, et
+  un alias posé d'avance ne ferait qu'ajouter un nom de plus à garder synchrone.
 - Jamais de SQL manuel hors migration.
 
 ## Analytics (`src/schema/analytics.ts`)

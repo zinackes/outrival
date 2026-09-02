@@ -323,9 +323,11 @@ export function defineJob<P extends object>(name: string, config: JobConfig = {}
  *
  * So reconcile after creating: `updateQueue` writes retry/expiry/retention/notify
  * onto the existing row, making jobs.ts the source of truth on every boot. `policy`
- * and `partition` are excluded because pg-boss refuses to change them after
- * creation (they decide the queue's table shape) — a policy change still needs the
- * queue dropped and recreated, deliberately.
+ * is the one key stripped out below, because pg-boss refuses to change it after
+ * creation (it decides the queue's table shape) — a policy change still needs the
+ * queue dropped and recreated, deliberately. `partition` is the same kind of
+ * immutable, but no `defineJob` sets it, so it never reaches `updateQueue` and
+ * needs no exclusion.
  */
 export async function registerQueues(): Promise<void> {
   const boss = getBoss();

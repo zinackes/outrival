@@ -20,7 +20,8 @@ const SEV_RANK: Record<Sev, number> = { critical: 4, high: 3, medium: 2, low: 1 
  * One compact row in the Signals master list (Linear/Sentry inbox register). The
  * detail lives in the right pane; this stays scannable — the finding leads, and
  * who moved / from where sits under it as attribution. Read rows dim; unread
- * carry a bold title + trailing dot. Selection is a background tint (no bar).
+ * carry a bold title, an accent wash and a leading dot. Selection is a stronger
+ * tint of that same accent (no bar).
  *
  * The row carries the insight's TITLE, not the insight (signalTitle): the model
  * writes a paragraph, and fifty unread paragraphs is what made the list the
@@ -78,12 +79,33 @@ export function SignalRow({
       onClick={onSelect}
       className={cn(
         "group relative grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors",
-        // No unread rail: the gauge owns the gutter now, and a second thin
-        // vertical 6px to its left stuttered. Unread reads from the title (bold,
-        // full ink, against a read row's medium at 85% ink) plus the trailing dot.
+        // Unread is an AREA, not three attributes of a text run. Bold title, full
+        // ink against a read row's 85%, and a dot all sat inside the row's middle
+        // and right end; over sixty rows the list still read as uniform, because
+        // the column the eye enters on (the gutter) and the row's surface said
+        // nothing. The wash is the dot's own ink at 8% — the same accent ramp the
+        // row already climbs on hover (50%) and selection (100%), so it reads as
+        // one scale of "marked" rather than a fourth colour. Still no rail: the
+        // gauge owns the gutter, and a second thin vertical to its left stuttered.
+        unread && "bg-primary/8",
         selected ? "bg-accent" : "hover:bg-accent/50 focus-visible:bg-accent/50",
       )}
     >
+      {/* The unread mark, at the row's LEADING edge. It used to trail the age —
+          the column the eye reaches LAST, so every cue for a binary state sat at
+          the far end of the row. Here it lands where the scan starts, in the
+          padding left of the gutter, and a backlog shows its shape down one edge.
+          Absolute rather than a grid column: reserving one on every row would
+          indent the whole list by the width of a mark only some rows carry. The
+          15px offset centres it on the title's first line (10px pad + half of a
+          13/1.375 line), not on the row, whose height varies with the so-what. */}
+      {unread && (
+        <span
+          className="absolute left-0.5 top-[15px] size-2 rounded-full bg-primary"
+          aria-hidden
+        />
+      )}
+
       {/* Gutter: whose move it is, then the band. The insight opens with the
           competitor's name, but that is prose — it starts at a different word on
           every row, so it never forms a column you can scan. The mark does, and
@@ -230,10 +252,6 @@ export function SignalRow({
         >
           {shortAge(signal.createdAt)}
         </time>
-        {/* 8px, not 6: at 6 the dot sat under the age's x-height and read as
-            punctuation. The name it used to carry now lives in the row's
-            accessible name (sr-only, above), so this is decoration. */}
-        {unread && <span className="size-2 rounded-full bg-primary" aria-hidden />}
       </span>
     </button>
   );
@@ -288,8 +306,20 @@ export function FoldRow({
       // unread count has to be said here or it is not said at all — the visible
       // "N unread" below is inside an element the label overrides.
       aria-label={`${expanded ? "Collapse" : "Expand"} ${signals.length} similar signals from ${first.competitorName}${unread > 0 ? `, ${unread} unread` : ""}`}
-      className="group relative grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors hover:bg-accent/50 focus-visible:bg-accent/50"
+      className={cn(
+        "group relative grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors hover:bg-accent/50 focus-visible:bg-accent/50",
+        // The same wash and mark a single unread row gets: a fold HIDES rows, so
+        // it has to carry theirs, or the backlog vanishes behind the fold.
+        unread > 0 && "bg-primary/8",
+      )}
     >
+      {unread > 0 && (
+        <span
+          className="absolute left-0.5 top-[15px] size-2 rounded-full bg-primary"
+          aria-hidden
+        />
+      )}
+
       <span className="flex shrink-0 flex-col items-center gap-1">
         <CompAvatar
           name={first.competitorName}

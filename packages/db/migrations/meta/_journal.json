@@ -589,6 +589,13 @@
       "when": 1786783958740,
       "tag": "0083_red_natasha_romanoff",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1788351082550,
+      "tag": "0084_zippy_luminals",
+      "breakpoints": true
     }
   ]
 }

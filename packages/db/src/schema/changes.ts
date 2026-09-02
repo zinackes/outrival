@@ -38,4 +38,9 @@ export const changes = pgTable("changes", {
   // FK to snapshots: lets a snapshot delete find referencing changes by index
   // instead of scanning, and backs the before/after join on the diff view.
   index("changes_snapshot_after_idx").on(t.snapshotAfterId),
+  // The other half of that pair. Only the _after_ arm was ever indexed, so the
+  // retention purge's `NOT EXISTS (snapshot_before_id = sn.id OR snapshot_after_id
+  // = sn.id)` had one arm on an index and one on a scan of the largest table in
+  // the schema, per candidate snapshot, on every scheduled run (`code:PER-04`).
+  index("changes_snapshot_before_idx").on(t.snapshotBeforeId),
 ]);

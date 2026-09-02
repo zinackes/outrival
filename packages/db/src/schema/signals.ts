@@ -151,4 +151,9 @@ export const signals = pgTable("signals", {
   // UNIQUE so two concurrent runs can't create two signals for the same change, and
   // the dedupe check + the changes-FK teardown become index lookups, not seq scans.
   uniqueIndex("signals_change_id_uq").on(t.changeId),
+  // The per-product feed filters `product_ids @> '["<id>"]'`, which no btree can
+  // serve: the org+createdAt index narrowed to the org and then the containment
+  // was evaluated row by row over every signal that org had ever received
+  // (`code:PER-06`). GIN is the index type jsonb containment actually uses.
+  index("signals_product_ids_gin").using("gin", t.productIds),
 ]);

@@ -34,6 +34,10 @@ let closeDb: () => Promise<void>;
 let org: { orgId: string; userId: string; email: string };
 
 let seq = 0;
+// Exactly one primary product per org, which the schema now enforces
+// (`products_org_primary_uq`). Every test in this file seeds its workspace into
+// the same org, so only the first one carries the flag — nothing here reads it.
+let primarySeeded = false;
 const DAY = 86_400_000;
 const daysAgo = (n: number) => new Date(Date.now() - n * DAY);
 
@@ -59,8 +63,9 @@ async function seedWorkspace() {
     orgId: org.orgId,
     name: "Main",
     selfCompetitorId: selfId,
-    isPrimary: true,
+    isPrimary: !primarySeeded,
   });
+  primarySeeded = true;
   return { selfId, rivalId, productId };
 }
 

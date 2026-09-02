@@ -192,46 +192,42 @@ feedbackQualityRouter.post("/", async (c) => {
   const data = parsed.data;
 
   // Upsert on (user, targetType, targetId): a second verdict on the same target
-  // replaces the first so the user can change their mind.
-  const existing = await db.query.qualityFeedback.findFirst({
-    where: and(
-      eq(qualityFeedback.userId, user.id),
-      eq(qualityFeedback.targetType, data.targetType),
-      eq(qualityFeedback.targetId, data.targetId),
-    ),
-  });
-
-  let feedbackId: string;
-  if (existing) {
-    feedbackId = existing.id;
-    await db
-      .update(qualityFeedback)
-      .set({
+  // replaces the first so the user can change their mind. One statement, onto the
+  // unique index that now backs that triple — the read-then-branch it replaces let
+  // a double-click see "no row" twice and insert twice, and every reader
+  // downstream counts rows without deduping (`code:COR-15`).
+  const [row] = await db
+    .insert(qualityFeedback)
+    .values({
+      userId: user.id,
+      orgId,
+      targetType: data.targetType,
+      targetId: data.targetId,
+      verdict: data.verdict,
+      reason: data.reason ?? null,
+      npsScore: data.npsScore ?? null,
+      freeText: data.freeText ?? null,
+      metadata: data.metadata ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [
+        qualityFeedback.userId,
+        qualityFeedback.targetType,
+        qualityFeedback.targetId,
+      ],
+      // orgId stays as first written: the pair is scoped by user, and a user
+      // cannot move org without the row being cascaded away with them.
+      set: {
         verdict: data.verdict,
         reason: data.reason ?? null,
         npsScore: data.npsScore ?? null,
         freeText: data.freeText ?? null,
         metadata: data.metadata ?? null,
         createdAt: new Date(),
-      })
-      .where(eq(qualityFeedback.id, existing.id));
-  } else {
-    const [inserted] = await db
-      .insert(qualityFeedback)
-      .values({
-        userId: user.id,
-        orgId,
-        targetType: data.targetType,
-        targetId: data.targetId,
-        verdict: data.verdict,
-        reason: data.reason ?? null,
-        npsScore: data.npsScore ?? null,
-        freeText: data.freeText ?? null,
-        metadata: data.metadata ?? null,
-      })
-      .returning({ id: qualityFeedback.id });
-    feedbackId = inserted!.id;
-  }
+      },
+    })
+    .returning({ id: qualityFeedback.id });
+  const feedbackId = row!.id;
 
   const immediateAction = await triggerImmediateAction(data, { userId: user.id, orgId });
 

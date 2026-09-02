@@ -22,6 +22,7 @@
     "db:backfill-email-canonical": "bun run src/backfill-email-canonical.ts",
     "db:backfill-crm-secrets": "bun run src/backfill-crm-secrets.ts",
     "db:realign-journal": "bun run src/realign-journal.ts",
+    "db:index-hot": "bun run src/create-hot-indexes.ts",
     "db:preflight": "bun run preflight-prod.ts"
   },
   "dependencies": {

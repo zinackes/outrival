@@ -25,8 +25,7 @@ export default function PrivacyPage() {
             The controller for the processing described here is {ENTITY.legalName}{" "}
             ({ENTITY.legalForm}), {ENTITY.address}. For any privacy question or to
             exercise your rights, contact us at{" "}
-            <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a> (or{" "}
-            <a href={`mailto:${CONTACT.general}`}>{CONTACT.general}</a>).
+            <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>.
           </p>
           <p className="fine">
             No Data Protection Officer is mandatory for our activity; the address
@@ -226,8 +225,7 @@ export default function PrivacyPage() {
             Le responsable des traitements décrits ici est {ENTITY.legalName}{" "}
             ({ENTITY.legalForm}), {ENTITY.address}. Pour toute question relative à
             la protection des données ou pour exercer vos droits, écrivez-nous à{" "}
-            <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a> (ou{" "}
-            <a href={`mailto:${CONTACT.general}`}>{CONTACT.general}</a>).
+            <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>.
           </p>
           <p className="fine">
             La désignation d'un délégué à la protection des données n'est pas

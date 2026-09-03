@@ -4,6 +4,10 @@ Written 2026-09-03, after Cerebras removed its free tier on 2026-08-17 (the pool
 priority-1 provider now answers 402). Pre-beta, no paying user. Goal: stay on free
 tiers as long as possible and know exactly when that stops working.
 
+Revision 2 (same day): one-time credits and request-capped free tiers are no longer
+proposed as pool members (they do not move the recurring capacity); startup programs
+and a root-cause / action plan for the failing pool were added.
+
 Source labels used on every figure:
 
 - `vendor-doc` = read on the vendor's own pricing, limits or terms page, date of the
@@ -235,27 +239,41 @@ What ops sees: `ai-capacity-check` (every 30 min) alerts at 80 / 90 / 100% of
 Hard constraints: (1) OpenAI-compatible `/chat/completions` with base URL + key;
 (2) accepts a 12,000-token prompt in one request; (3) one account per vendor;
 (4) no training on inputs or a documented opt-out; (5) production allowed by the
-terms, or flagged as assumed risk. Already in the pool or already discarded in the
+terms, or flagged as assumed risk. Two filters added in revision 2: (6) the free
+volume must **recur** (a one-time credit does not raise the daily ceiling, it only
+delays the same wall); (7) the free volume must be **material** against the fleet's
+311 calls and 924k tokens per day. Already in the pool or already discarded in the
 repo (cerebras, groq, cloudflare, mistral, hyperbolic) are not re-proposed as new.
 Prices per million tokens; "mix" = 0.915 × input + 0.085 × output.
 
-### 2.1 Retained (pass all five), ranked
+### 2.1 Verdict: no new recurring free volume exists that is worth a pool slot
 
-| # | Provider | Free volume/day | TPM | RPS / RPM | Max request | Training | Hosting | Overflow price (mix) | Sources |
-|---|---|---|---|---|---|---|---|---|---|
-| 1 | **OVHcloud AI Endpoints** | US$200 credit on the first Public Cloud project, valid one month, requires a saved payment method: ≈ 1.8B tokens at the mix price, i.e. far more than the fleet uses; **one-time** | none documented (2 MB body) | 400 RPM per project and model (authenticated); 2 RPM anonymous | 131k context | "Your data will never be used to train or improve our AI models", zero data retention | Gravelines, FR | **€0.08 / €0.40 gpt-oss-120b (€0.107 mix)** | `vendor-doc` ovhcloud.com ai-endpoints page 2026-09-03; catalog page gpt-oss-120b published 2025-08-05; capabilities doc 2026-02-03 |
-| 2 | **Scaleway Generative APIs** | "free tier on the first 1,000,000 tokens. You'll be charged from token number 1,000,001": **1M one-time** | 200k TPM and 300 RPM with a payment method validated; 400k to 2,000k TPM and 600 RPM with identity validated; 100 concurrent | gpt-oss-120b 128k context, 32k output, structured output | no training on inputs | Paris | €0.15 / €0.60 gpt-oss-120b (€0.188 mix); mistral-small-3.2-24b €0.15 / €0.35; Batch API −50% | `vendor-doc` pricing page 2026-09-03; quotas doc validated 2025-10-29; models doc validated 2026-08-14; privacy doc validated 2025-10-03; quickstart (base URL `https://api.scaleway.ai/v1`) validated 2026-04-16 |
-| 3 | **Vercel AI Gateway** (as paid aggregator) | Free tier = a subset of $0 models with unpublished per-model limits; "monthly free credit" stops at the first purchase (`vendor-doc` 2026-08-23); the $5/month figure is `tiers`. The only $0 chat model flagged `no_training: all` is `inclusionai/ling-3.0-flash-fin(-free)` (256k ctx); quality unverified. gpt-oss-120b is **not** in the free tier | unpublished | unpublished | 131k context | gpt-oss-120b: `no_training: "all"`, `zdr: "all"` across its 8 upstreams (baseten, bedrock, cerebras, fireworks, groq, nebius, parasail, together) | US regions | zero markup; **$0.10 / $0.50 via baseten ($0.134 mix)** up to $0.35 / $0.75 via cerebras; one key, built-in failover | `vendor-doc` public catalog API `ai-gateway.vercel.sh/v1/models` 2026-09-03; pricing doc 2026-08-23; OpenAI-compat doc 2026-08-11 |
-| 4 | **SambaNova Cloud Free** | 20 RPM, **20 requests/day**, 200,000 tokens/day on gpt-oss-120b: ≈ 200k/day only if every request is ≥ 10k tokens, ≈ 60k/day at the fleet's 3k average | not stated | 20 RPM | 128k context | Terms: Customer Content processed "solely to the extent necessary to provide the Service to you ... and for no other purposes"; usage data excludes Customer Content | US | Developer tier (card): 60 RPM, 12k RPD, 20M TPD; $0.22 / $0.59 ($0.251 mix) | `vendor-doc` rate-limits doc 2026-09-03; SambaCloud terms (undated, fetched 2026-09-03); base URL `https://api.sambanova.ai/v1` seen only in third-party docs (`tiers`) |
-| 5 | **OpenRouter `:free` models** | 20 RPM; 50 requests/day, or 1,000/day after a one-time $10 credit purchase | n/a | 20 RPM | model-dependent | separate account setting for free versus paid endpoints; enabling "no training" shrinks the free set | mixed | list price of each upstream, +5.5% fee on purchases | `vendor-doc` limits and privacy docs, fetched 2026-09-03 (undated pages) |
+Every vendor with an OpenAI-compatible endpoint and a public free tier was checked
+(pricing and limits pages, 2026-09-03). After filters (6) and (7), the recurring free
+market for gpt-oss-class models under a no-training policy is exactly what the pool
+already has (Groq, Cloudflare, Mistral) plus one unproven model on Vercel.
 
-Notes on the ranking. OVH and Scaleway win on stability (published quotas, EU, cheap
-overflow) but their free volume is one-time and both need a payment method on file
-for the documented limits, which is Mathys's decision, not a config change. Vercel is
-the strongest paid overflow (one key, eight no-training upstreams, cheapest gpt-oss-120b
-route) but its free tier is a different model whose quality on classification and JSON
-extraction has not been evaluated. SambaNova and OpenRouter pass but are small, and
-both are request-capped in a way the pool cannot express (no RPD counter).
+| Provider | What is free | Filter that fails | Source |
+|---|---|---|---|
+| OVHcloud AI Endpoints | US$200 credit, first project, one month, payment method required | (6) one-time | `vendor-doc` 2026-09-03 |
+| Scaleway Generative APIs | first 1,000,000 tokens, then billed | (6) one-time (≈ 1 day of the fleet) | `vendor-doc` 2026-09-03 |
+| Cerebras | $5 trial credit, 30 days | (6) one-time; this is why p1 answers 402 | `vendor-doc` 2026-09-03 |
+| Fireworks, Nebius, Novita, Alibaba Model Studio, NVIDIA build, Ollama Cloud, Google Cloud / Azure trials | signup credits ($1 to $300, or 1M tokens per model) | (6) one-time | `vendor-doc` 2026-09-03 (amounts on each page) |
+| SambaNova Cloud Free | 20 RPM, **20 requests/day**, 200k tokens/day | (7): 20 requests = 6% of the fleet's daily calls; the pool has no requests-per-day counter, so request 21 gets a 429 and parks the provider | `vendor-doc` rate-limits 2026-09-03 |
+| OpenRouter `:free` | 20 RPM, 50 requests/day (1,000/day after a one-time $10 purchase) | (7): 50 requests = 16% of daily calls; no explicit no-training guarantee on free routes (4) | `vendor-doc` 2026-09-03 |
+| Cohere trial keys | 1,000 API calls per month | (7): ≈ 33 calls/day | `vendor-doc` 2026-09-03 |
+| Hugging Face Inference Providers | $0.10 per month | (7) | `vendor-doc` 2026-09-03 |
+| Google AI Studio free tier | unlimited-ish | (4): unpaid usage "used to improve" products, human review, no opt-out | `vendor-doc` terms 2026-04-28 |
+| GitHub Models | retired 2026-07-30 | gone | `vendor-doc` 2026-09-03 |
+| OpenAI complimentary tokens | data-sharing program | (4) by construction | program definition |
+| Z.ai GLM-4.7-Flash, AkashML, Together "Ternary Bonsai" $0 | $0 models | (4) no data-usage statement found; AkashML docs unreachable | vendor pages 2026-09-03 |
+| Vercel AI Gateway free tier | a subset of $0 models, per-model limits unpublished, "monthly free credit" that stops at the first purchase (amount: `tiers` $5) | passes (6); (7) unknown until measured; only `inclusionai/ling-3.0-flash-fin(-free)` is flagged `no_training: all` (the minimax and laguna free models are `no_training: none`) | `vendor-doc` catalog API and pricing doc 2026-08-23, fetched 2026-09-03 |
+| Modal Starter ($30/month free compute, self-hosted vLLM) | recurring, but 7.6 H100-hours per month; 311 calls spread over 24 h would spend most of it on cold starts | (7) unless calls are batched into a few windows; 2 to 3 days of work; parked | `vendor-doc` modal.com/pricing 2026-09-03 |
+
+Consequence for the plan: the capacity problem is solved on our side (section 4), not
+by adding free vendors. The only candidate worth a trial slot is Vercel's Ling model,
+and only after a quality check on classify and JSON extraction (section 3 has its
+block).
 
 ### 2.2 Existing providers, re-verified
 
@@ -266,22 +284,38 @@ both are request-capped in a way the pool cannot express (no RPD counter).
 | Mistral | Experiment ≈ 1B tokens/month, 1 req/s (`tiers`) or Free plan "$10 /mo in API credits" (`vendor-doc` 2026-09-03); opt-out toggle in Admin → Privacy (`vendor-doc` 2026-09-03) | Small 4 $0.15 / $0.60 ($0.188 mix); Medium 3.5 $1.5 / $7.5 ($2.01 mix); Large 3 $0.5 / $1.5 | `vendor-doc` docs.mistral.ai/inference/pricing 2026-09-03 |
 | Cerebras | Free tier replaced by $5 trial credits (30 days), 5 RPM, 30k TPM, 1M TPD | Developer from $10: 1k RPM, 1M TPM; $0.35 / $0.75 ($0.384 mix, via Vercel catalog) | `vendor-doc` 2026-09-03 |
 
-### 2.3 Eliminated or parked, with the failing constraint
+### 2.3 Startup programs: the one kind of one-time credit that is big enough
 
-| Provider | Why | Source |
+What they are: cloud vendors give early-stage companies a credit balance to spend on
+any of their services, in exchange for an application (company registration, stage,
+sometimes an investor or accelerator referral). They are free, no equity, no fee. The
+credit is one-time and expires (6 to 24 months), so it fails filter (6) like the
+$5 to $200 trials above, but it is two to four orders of magnitude larger, so it
+covers the whole bill projection of section 5 for years rather than days.
+
+| Program | Credit | Duration | Eligibility stated on the page | Covers the AI endpoint? | Source |
+|---|---|---|---|---|---|
+| **Scaleway Startup Program** | Founders: up to €1,000; Early Stage: €1,500/month × 6 = €9,000; Growth: €3,000/month × 12 = €36,000 | 6 or 12 months from activation | less than 5 years old, fewer than 50 employees, **not yet a Scaleway client**; weekly committee | Generative APIs not named on the page (`console`) | `vendor-doc` scaleway.com/en/startup-program 2026-09-03 |
+| **OVHcloud Startup Program** | Start: €10,000; Scale: up to €100,000 | 12 months | not stated on the page | "cloud credits", AI Endpoints not named (`console`) | `vendor-doc` startup.ovhcloud.com 2026-09-03 |
+| **AWS Activate** | Founders (self-funded): $1,000 initially, up to $5,000; Portfolio: up to $200,000 with an Activate Provider org ID | not stated on the page | founded in the last 10 years, pre-Series B, AWS account on the paid tier (payment method), answer in 5 to 10 business days | Bedrock hosts gpt-oss-120b at $0.15 / $0.60 (`vendor-doc` via Vercel catalog 2026-09-03) | `vendor-doc` aws.amazon.com/startups/credits 2026-09-03 |
+| Microsoft for Startups | "up to $150,000 in credits" | not stated | levels and conditions not on the public page | Azure AI Foundry hosts gpt-oss (price not verified) | `vendor-doc` microsoft.com/startups 2026-09-03 |
+| Google for Startups Cloud Program | page unreadable (truncated), apply page requires login | | | Vertex AI paid tier does not train | not verified |
+
+What the credit buys at the prices of section 2.4 (fleet today ≈ 28M tokens/month;
+1,000 blended users ≈ 1.25B/month):
+
+| Credit | Tokens | Covers |
 |---|---|---|
-| Google AI Studio free tier | C4: unpaid services "used to improve" products, human review, no opt-out | `vendor-doc` terms 2026-04-28 |
-| GitHub Models | "fully retired" as of 2026-07-30 | `vendor-doc` 2026-09-03 |
-| NVIDIA build.nvidia.com | C5: not for production; ~1,000 one-time credits, 40 RPM | `tiers` |
-| Cohere trial keys | volume: 1,000 API calls per month | `vendor-doc` 2026-09-03 |
-| Hugging Face Inference Providers | volume: $0.10 per month for free users | `vendor-doc` 2026-09-03 |
-| OpenAI complimentary tokens for data sharing | C4 by construction (training is the deal); page returned 403 | program definition |
-| Alibaba Model Studio | 1M tokens per model, one-time, 90 days, Singapore only; no data-usage statement found (C4 unverified) | `vendor-doc` 2026-09-03 |
-| Z.ai GLM-4.7-Flash / GLM-4.5-Flash | $0 but 1 concurrency (`tiers`); no data-usage statement found (C4 unverified) | `vendor-doc` pricing 2026-09-03 |
-| Ollama Cloud Free | "starter usage credits" unspecified, 1 concurrent; no-training statement OK; cloud OpenAI base URL not confirmed | `vendor-doc` ollama.com/cloud 2026-09-03 |
-| AkashML | $0.03 / $0.17 (cheapest seen) but docs domain unreachable, no privacy statement found (C4 unverified), free credits unspecified | vendor page 2026-09-03 |
-| Together "Ternary Bonsai 27B" $0 | limits and quality unknown | `vendor-doc` 2026-09-03 |
-| Vercel free-tier models other than Ling | `minimax-m2.7-free`, `minimax-m3-free`, `laguna-s-2.1-free`: `no_training: none` (C4) | `vendor-doc` catalog API 2026-09-03 |
+| Scaleway Founders €1,000 at €0.188/M | 5.3B | 4 months of 1,000 users, or 15 years of today's fleet |
+| Scaleway Early Stage €9,000 | 48B | 3 years of 1,000 users |
+| OVH Start €10,000 at €0.107/M | 93B | 6 years of 1,000 users |
+| AWS Activate Founders $1,000 at $0.188/M (Bedrock) | 5.3B | 4 months of 1,000 users |
+
+Order of application, if Mathys goes this way: Scaleway first, because "not yet a
+Scaleway client" means the application must precede any account; then OVH Start (EU,
+cheapest per token, already the prod host); AWS Activate Founders as a US fallback.
+Each is a `console` item: what the credit covers and its expiry are only visible
+after acceptance.
 
 ### 2.4 Paid options kept for section 5
 
@@ -289,9 +323,9 @@ both are request-capped in a way the pool cannot express (no RPD counter).
 |---|---|---|---|---|---|
 | DeepInfra | $0.037 / $0.17 | **$0.048** | US | zero retention, no training (vendor data page, seen via search summary only) | `vendor-doc` 2026-09-03 |
 | OVHcloud | €0.08 / €0.40 | **€0.107** | FR | no training, zero retention | `vendor-doc` 2026-09-03 |
-| Vercel via baseten | $0.10 / $0.50 | $0.134 | US | no training, ZDR | `vendor-doc` 2026-09-03 |
+| Vercel via baseten | $0.10 / $0.50 | $0.134 | US | `no_training: all`, `zdr: all` on all 8 upstreams | `vendor-doc` catalog API 2026-09-03 |
 | Scaleway | €0.15 / €0.60 | €0.188 | FR | no training | `vendor-doc` 2026-09-03 |
-| Groq Developer, Fireworks, Together, Nebius | $0.15 / $0.60 | $0.188 | US (Nebius: Finland/France, zero-retention mode) | see each | `vendor-doc` 2026-09-03 (Nebius price via Vercel catalog) |
+| Groq Developer, Fireworks, Together, Nebius, AWS Bedrock | $0.15 / $0.60 | $0.188 | US (Nebius: Finland/France, zero-retention mode) | see each | `vendor-doc` 2026-09-03 (Nebius and Bedrock prices via Vercel catalog) |
 | IONOS AI Model Hub | €0.15 / €0.65 | €0.193 | DE | data-handling page not fetched | `vendor-doc` price list v2026-08-27 |
 | Cloudflare, Cerebras | $0.35 / $0.75 | $0.384 | US | | `vendor-doc` |
 | Mistral Medium 3.5 | $1.5 / $7.5 | $2.01 | FR | opt-out | `vendor-doc` 2026-09-03 |
@@ -302,13 +336,32 @@ both are request-capped in a way the pool cannot express (no RPD counter).
 
 Variable names follow `.env.example` (`AI_PROVIDER_N_{ID,BASE_URL,API_KEY,MODEL,
 FAST_MODEL,TIER,DAILY_TOKEN_QUOTA,MAX_REQUEST_TOKENS,TPM_LIMIT,PRIORITY}`). The pool
-skips a provider at 95% of `_DAILY_TOKEN_QUOTA`, so quotas below are set at the
-vendor cap and the 5% margin is the pool's. Suggested order: Groq first (fast, cheap,
-small requests only), Cloudflare second (fixed daily budget), then the EU providers,
-Mistral last among the free ones. Remove the Cerebras block or move it to a paid tier.
+skips a provider at 95% of `_DAILY_TOKEN_QUOTA`, so quotas are set at the vendor cap
+and the 5% margin is the pool's. No new free provider passed section 2, so there are
+four blocks: two fixes to the existing pool and two paid overflow options for the day
+Mathys decides to pay (or gets a startup credit).
+
+**Fix 1: remove Cerebras.** Delete the `AI_PROVIDER_1_*` block, or, if a $10 Developer
+top-up is made, set `AI_PROVIDER_1_TIER=paid`, `AI_PROVIDER_1_TPM_LIMIT=1000000`,
+`AI_PROVIDER_1_DAILY_TOKEN_QUOTA` to the daily spend you accept (1M ≈ $0.38/day).
+Then renumber so Groq is priority 1 (small requests, fast), Cloudflare 2, Mistral 3.
+
+**Fix 2: Mistral quota, re-derived from the plan the workspace is actually on**
+(console check #1):
 
 ```bash
-# --- OVHcloud AI Endpoints (EU, credit month then pay-as-you-go) --------------
+# Experiment plan (≈ 1B tokens/month): keep 30000000.
+# Free plan with $10/month credits on mistral-medium-2604 ($2.01 per M at the mix):
+AI_PROVIDER_4_DAILY_TOKEN_QUOTA=160000
+# Same credits on mistral-small-2603 ($0.188 per M): 1700000, and set
+# AI_PROVIDER_4_MODEL=mistral-small-2603 for the smart tier too.
+```
+
+**Paid overflow A: OVHcloud AI Endpoints** (EU, cheapest EU per token, also where a
+Startup Program credit would be spent). Not free: every token is billed from the
+first one, unless a credit is on the account.
+
+```bash
 # Per-model endpoint from the catalog page; a unified endpoint may exist: console.
 AI_PROVIDER_5_ID=ovh
 AI_PROVIDER_5_BASE_URL=https://gpt-oss-120b.endpoints.kepler.ai.cloud.ovh.net/api/openai_compat/v1
@@ -319,85 +372,94 @@ AI_PROVIDER_5_TIER=paid
 AI_PROVIDER_5_MAX_REQUEST_TOKENS=120000
 # No token limit documented, only 400 RPM. 400 × 3k average = 1.2M; cap lower.
 AI_PROVIDER_5_TPM_LIMIT=1000000
-# Spend cap, not a vendor limit: 6M/day ≈ €0.64/day at €0.107 per M, covered by the
-# US$200 credit for its month; drop to 3,000,000 (≈ €10/month) once the credit ends.
-AI_PROVIDER_5_DAILY_TOKEN_QUOTA=6000000
-AI_PROVIDER_5_PRIORITY=3
-
-# --- Scaleway Generative APIs (EU, 1M free once, then pay-as-you-go) -----------
-AI_PROVIDER_6_ID=scaleway
-AI_PROVIDER_6_BASE_URL=https://api.scaleway.ai/v1
-AI_PROVIDER_6_API_KEY=
-AI_PROVIDER_6_MODEL=gpt-oss-120b
-# Fast tier candidate on the same account (€0.15/€0.35): mistral-small-3.2-24b-instruct-2506
-AI_PROVIDER_6_FAST_MODEL=mistral-small-3.2-24b-instruct-2506
-AI_PROVIDER_6_TIER=paid
-AI_PROVIDER_6_MAX_REQUEST_TOKENS=120000
-# 200,000 TPM with a payment method validated (vendor quotas doc 2025-10-29).
-AI_PROVIDER_6_TPM_LIMIT=200000
-# Free allowance is 1,000,000 tokens total, one-time. Set to 1000000 for day one,
-# then to a spend cap: 2,000,000/day ≈ €0.38/day.
-AI_PROVIDER_6_DAILY_TOKEN_QUOTA=1000000
-AI_PROVIDER_6_PRIORITY=4
-
-# --- SambaNova Cloud Free (US, small; 20 requests/day is the real cap) -----------
-# The pool has no requests-per-day counter: after 20 requests it will take 429s and
-# park for 30 to 120 s. Only worth adding once an RPD cap exists in the pool.
-AI_PROVIDER_7_ID=sambanova
-AI_PROVIDER_7_BASE_URL=https://api.sambanova.ai/v1
-AI_PROVIDER_7_API_KEY=
-AI_PROVIDER_7_MODEL=gpt-oss-120b
-AI_PROVIDER_7_TIER=free
-AI_PROVIDER_7_MAX_REQUEST_TOKENS=120000
-# 20 RPM × 3k average; vendor states no TPM.
-AI_PROVIDER_7_TPM_LIMIT=60000
-# Vendor: 200,000 tokens per day.
-AI_PROVIDER_7_DAILY_TOKEN_QUOTA=200000
-AI_PROVIDER_7_PRIORITY=6
-
-# --- Vercel AI Gateway (paid overflow; one key, 8 no-training upstreams) ---------
-AI_PROVIDER_8_ID=vercel
-AI_PROVIDER_8_BASE_URL=https://ai-gateway.vercel.sh/v1
-AI_PROVIDER_8_API_KEY=
-AI_PROVIDER_8_MODEL=openai/gpt-oss-120b
-AI_PROVIDER_8_FAST_MODEL=openai/gpt-oss-20b
-AI_PROVIDER_8_TIER=paid
-AI_PROVIDER_8_MAX_REQUEST_TOKENS=120000
-# Per-model limits unpublished; cap by spend instead: 2M/day ≈ $0.27 to $0.38/day.
-AI_PROVIDER_8_TPM_LIMIT=500000
-AI_PROVIDER_8_DAILY_TOKEN_QUOTA=2000000
-AI_PROVIDER_8_PRIORITY=8
-# Free-tier variant (quality unverified): AI_PROVIDER_8_MODEL=inclusionai/ling-3.0-flash-fin-free
+# Spend cap, not a vendor limit: 3M/day ≈ €0.32/day (≈ €10/month) at €0.107 per M.
+AI_PROVIDER_5_DAILY_TOKEN_QUOTA=3000000
+AI_PROVIDER_5_PRIORITY=9
 ```
 
-Mistral, re-derived from the plan the workspace is actually on (console check #1):
+**Paid overflow B: Vercel AI Gateway** (one key, 8 no-training upstreams with built-in
+failover, cheapest gpt-oss-120b route at $0.134 per M; US only). Free-tier variant on
+the last line, for a quality trial only.
 
 ```bash
-# Experiment plan (≈ 1B tokens/month): keep 30000000.
-# Free plan with $10/month credits on mistral-medium-2604 ($2.01 per M at the mix):
-AI_PROVIDER_4_DAILY_TOKEN_QUOTA=160000
-# Same credits on mistral-small-2603 ($0.188 per M): 1700000, and set
-# AI_PROVIDER_4_MODEL=mistral-small-2603 for the smart tier too.
+AI_PROVIDER_6_ID=vercel
+AI_PROVIDER_6_BASE_URL=https://ai-gateway.vercel.sh/v1
+AI_PROVIDER_6_API_KEY=
+AI_PROVIDER_6_MODEL=openai/gpt-oss-120b
+AI_PROVIDER_6_FAST_MODEL=openai/gpt-oss-20b
+AI_PROVIDER_6_TIER=paid
+AI_PROVIDER_6_MAX_REQUEST_TOKENS=120000
+# Per-model limits unpublished; cap by spend instead: 2M/day ≈ $0.27 to $0.38/day.
+AI_PROVIDER_6_TPM_LIMIT=500000
+AI_PROVIDER_6_DAILY_TOKEN_QUOTA=2000000
+AI_PROVIDER_6_PRIORITY=9
+# Free-tier trial (quality unverified, limits unpublished, tier=free, quota 500000):
+# AI_PROVIDER_6_MODEL=inclusionai/ling-3.0-flash-fin-free
 ```
 
 ---
 
-## 4. Reduction levers, ranked by gain per effort
+## 4. Why the pool fails today, and the action plan
 
-| # | Lever | Where | Gain (quantified) | Effort |
-|---|---|---|---|---|
-| 1 | Remove Cerebras from priority 1 (or move it to paid after a $10 top-up) | env only | Every task stops paying a guaranteed 402 attempt plus a 10-minute park cycle; the OUT-237 failure class disappears. Frees the top slot. | 5 min |
-| 2 | Add OVH (credit) and Scaleway (1M) as configured in section 3 | env + console | +6M tokens/day of headroom versus a 924k/day fleet; the 12k+ prompts that Groq refuses get two more homes; failure rate at today's load returns to the healthy-window level (≤ 4 errors/day). | 20 min + payment method (Mathys) |
-| 3 | Spread the hourly fan-out: jitter `nextRunAt` over 0 to 59 min in `computeNextRun`, or enqueue with a `startAfter` spread in `runScheduleScraping` | `packages/shared`, `apps/workers` | Peak minute ÷ 10 to 12 (67% of calls now land in 5 minutes). Moves the burst wall from ≈ 15 pro-equivalents per hour slot to the daily-quota wall (hundreds). Largest capacity gain of the list. | half a day with tests |
-| 4 | Per-provider RPS / RPD token bucket in the pool (Mistral 1 req/s, Groq 30 RPM, SambaNova 20 RPD) | `packages/ai` (not touched here) | Ends the 429 → park 30 to 120 s → whole-pool outage cascade; lets SambaNova and OpenRouter be used at all. | 1 day |
-| 5 | Cap the HTML excerpt in `generate_extractor` at ≈ 6k tokens | `packages/ai` prompt | Task is 31% of fleet tokens on 23 calls/day, average prompt 12.3k, p95 16.9k, max 24.3k. A 6k cap cuts the task ≈ 45%, so **≈ −14% fleet tokens (≈ 130k/day)** and the task fits Groq-sized limits. Cache is already shared across orgs by domain and source type: 13.5% of competitor rows already share a host (linear.app in 5 orgs), so the second org monitoring a competitor pays 0 for its extractors, and 46% of onboarding cost. | 1 to 2 h |
-| 6 | Cap evidence in `faithfulness_check` at 8k tokens | `packages/ai` prompt | 8.6% of fleet tokens; p95 13.4k, max 47.5k. ≈ −3 to −4% fleet. | 1 h |
-| 7 | Fast-tier routing for classify, cosmetic_gate, classify_structured everywhere (already fast on Groq and Cloudflare) | env (`_FAST_MODEL` on Mistral, Scaleway, Vercel) | Those tasks are 20% of tokens. On Cloudflare, 20b costs 54% of the Neurons of 120b, so the same daily budget serves up to 85% more of those calls. Keep insight and digest on smart. | 30 min |
-| 8 | Verify prefix-cache hits on the 6 tasks that already send `system:` | measurement | Groq: cached tokens cost 50% and are exempt from rate limits; Fireworks $0.015 cached; Vercel implicit caching. Gain = system-prompt share of the group A prompts, plausibly 30 to 40% of their input, i.e. −8 to −12% of billable input where supported. | half a day |
-| 9 | Cross-org dedup of classify / insight on the same change (cache keyed by change hash) | `apps/workers` | Proportional to competitor overlap between users: 13.5% today, unknown for real users; up to −30% of group A in a niche-heavy user base. | 2 to 3 days |
-| 10 | Batch API for group B extraction (Scaleway and Groq: −50%, no rate limit) | new job flow | Up to −50% of the 55% that tolerates hours of latency; not for hourly change alerts. | 3 to 5 days, later |
+### 4.1 Root causes, in the order they bite (`measured` + `code`)
 
-Digest is 3% of tokens: no lever needed.
+1. **Cerebras is dead at priority 1.** Every call tries it first, gets a 402, parks it
+   for 10 minutes, and the next call after the park pays the same failed round trip
+   again: ≈ 144 wasted attempts per day per worker process, 100% of Cerebras rows in
+   error since 2026-08-29. It does not by itself sink the pool (failover works), but it
+   adds latency to every task and noise to every metric.
+2. **The :00 burst.** `schedule-scraping` enqueues every due monitor at the top of the
+   hour; 67% of AI calls land in minutes :00 to :04. The pool then sees 12 to 22 calls
+   and up to 123k tokens in one minute against a 640 tokens/minute average.
+3. **Groq's free tier is minute-shaped.** 8k TPM and an 8k request cap mean one small
+   call per minute during the burst, and none of the 12k `generate_extractor` prompts.
+   Everything above 8k goes straight to Cloudflare or Mistral.
+4. **Mistral's 1 request/second has no regulator in the pool.** Parallel jobs fire
+   several calls in the same second, Mistral answers 429, the pool parks it for the
+   `retry-after` (30 to 120 s). With Groq and Cloudflare already skipped, the pool is
+   empty: `AIUnavailableError`, deferral, and the deferral wave at :05 to :14 lands on
+   providers that are still parked (86% failure in those minutes).
+5. **Cloudflare's 286k/day is gone by late morning.** 08:00 to 10:00 UTC carry 27% of
+   the day, so afternoon calls have only Groq (8k TPM) and Mistral (1 req/s) left, and
+   the big prompts have only Mistral.
+
+Net effect: 45% to 65% of AI task runs fail each day, changes never become signals,
+digests thin out silently, and battle cards show "temporarily unavailable" at :00.
+
+### 4.2 Action plan (each step has its effect and its check)
+
+| Step | What | Where | Effort | Effect | Check |
+|---|---|---|---|---|---|
+| 1 | Remove the Cerebras block; reorder Groq p1, Cloudflare p2, Mistral p3; set the Mistral quota from the verified plan; confirm the training opt-out toggle | prod `.env` (api + workers) | 10 min + console | No more wasted first attempt on every call; the daily quota view becomes true | `ai_runs` rows with provider cerebras drop to 0 |
+| 2 | **Spread the fan-out over the hour**: in `runScheduleScraping`, enqueue with `startAfter = random(0, 55 min)`, or add a 0 to 59 min jitter in `computeNextRun` | `apps/workers/src/core/schedule-scraping.ts` or `packages/shared/src/scheduling.ts` | half a day with tests | Peak minute ÷ 10 to 12; at today's load the pool stays under Mistral's 60 calls/min and Groq's 8k TPM most minutes; the burst wall moves to the daily-quota wall | minute-of-hour histogram of `ai_runs.recorded_at` flat; error share under 5% |
+| 3 | **Per-provider request-rate limiter** (per-second and per-day token bucket next to the TPM window), so a rate limit becomes a skip, not a park; same place as `reserveTpm` | `packages/ai/src/provider/provider-pool.ts` (recommendation only, not touched here) | 1 day | Ends the 429 → park → empty-pool cascade; makes request-capped tiers usable if ever wanted | 429 share per provider under 2% |
+| 4 | **Prune the two fat prompts**: cap the HTML excerpt in `generate_extractor` at ≈ 6k tokens (avg 12.3k, p95 16.9k, max 24.3k) and the evidence in `faithfulness_check` at 8k (p95 13.4k, max 47.5k) | `packages/ai/src/tasks/generate-extractor.ts`, `apps/workers/src/lib/faithfulness-gate.ts` | 2 to 3 h | −14% and −3 to −4% of fleet tokens (≈ −165k/day); `generate_extractor` fits under Groq's 8k request cap (its output is ≈ 100 tokens) | avg prompt of both tasks in `ai_runs` |
+| 5 | **Paid overflow or startup credit** at the end of the pool with a daily cap (OVH block, 3M/day ≈ €10/month), and the Scaleway / OVH / AWS applications of 2.3 | `.env` + Mathys's decision | 20 min + application | Removes the per-minute walls entirely for the price of a coffee; interactive calls stop failing at :00 | zero `AIUnavailableError` in worker logs over a week |
+
+Steps 1 and 2 alone should bring the fleet back to the healthy-window failure rate
+(≤ 4 errors/day). Step 3 is what lets the pool grow past ≈ 15 pro-equivalents per
+onboarding hour without step 5. Step 4 is pure savings. Step 5 is the only one that
+costs money.
+
+### 4.3 Token and request optimization, ranked by gain per effort
+
+Already done (`code`): the classify chain (classify, cosmetic_gate, faithfulness
+claims, extract_pricing, extract_jobs, extract_reviews, alert matching, standing
+queries, overlap scoring, the Ask planner) runs on `AI_CONFIG.classificationFast`,
+i.e. the provider's small model (gpt-oss-20b on Groq and Cloudflare,
+`mistral-small-2603` on Mistral); prefix caching (`system:`) is wired on 6 tasks;
+extractors are cached per domain and source type across orgs.
+
+| # | Lever | Gain | Effort |
+|---|---|---|---|
+| 1 | Prompt pruning (step 4 above) | −17% fleet tokens | 2 to 3 h |
+| 2 | Verify prefix-cache hits on the 6 `system:` tasks (Groq: cached tokens cost 50% and are exempt from rate limits; Fireworks $0.015 cached; Vercel implicit caching) | −8 to −12% of billable input where supported, and a higher effective Groq TPM | half a day of measurement |
+| 3 | Move the remaining small smart-tier tasks to fast: source_summary 16.5k, classify_structured 16.6k, narrate_change 1.5k, type_content_items 2.5k | ≈ 4% of tokens at half price on Cloudflare (20b costs 54% of the Neurons of 120b) | 30 min |
+| 4 | Cross-org dedup of classify / insight on the same change (cache keyed by change hash) | proportional to competitor overlap between users: 13.5% of competitor rows share a host today (linear.app in 5 orgs); up to −30% of group A in a niche-heavy user base | 2 to 3 days |
+| 5 | Batch API for group B extraction (Scaleway and Groq: −50%, no rate limit) | up to −50% of the 55% that tolerates hours of latency; not for hourly change alerts | 3 to 5 days, later |
+
+Digest is 3% of tokens: no lever needed. Insight (74k/day, 8%) stays on smart for
+quality.
 
 ---
 
@@ -431,16 +493,16 @@ AI inference is under 2% of revenue on every provider except Mistral Medium 3.5
 When paying becomes inevitable:
 
 - Recurring verified free supply is 652k to 2.26M tokens/day (Cloudflare + Groq +
-  Mistral on credits), i.e. **≈ 17 to 55 blended users, or 8 to 28 pro users**. One-time
-  credits (OVH ≈ 1.8B tokens, Scaleway 1M) push that by months, not by users.
+  Mistral on credits), i.e. **≈ 17 to 55 blended users, or 8 to 28 pro users**, and
+  only once the burst is spread (step 2) and a regulator exists (step 3).
 - If Mistral is on the Experiment plan, quota supports ≈ 800 blended users, but the
-  burst wall (lever 3) arrives at ≈ 15 pro-equivalents per onboarding hour first.
-- Because the bill is a few dollars a month until several hundred users, the honest
+  burst wall arrives at ≈ 15 pro-equivalents per onboarding hour first.
+- Because the bill is a few euros a month until several hundred users, the honest
   threshold is reliability, not money: the first paid tier removes the per-minute
-  walls (Groq Developer, Cerebras Developer 1k RPM / 1M TPM, Scaleway 300 RPM / 200k
-  TPM). Recommendation: one pay-as-you-go EU provider at the end of the pool with a
-  daily cap of 2 to 3M tokens (≈ €7 to €10/month at OVH prices) as soon as Mathys
-  accepts a payment method on file.
+  walls. A startup credit (2.3) makes even that free for one to two years.
+  Recommendation: one pay-as-you-go EU provider at the end of the pool with a daily
+  cap of 2 to 3M tokens (≈ €7 to €10/month at OVH prices, €0 with a credit) as soon
+  as Mathys accepts a payment method on file.
 
 ---
 
@@ -479,20 +541,13 @@ When paying becomes inevitable:
 3. **Cloudflare dashboard**: Neurons consumed per day against the 10,000 free.
 4. **Groq console**: confirm the account tier and whether cached-token hits appear;
    Developer-tier limits are not public.
-5. **Vercel dashboard**: which models the free tier actually allows, their rate
-   limits, whether a monthly credit exists and its amount; set a budget before use.
-6. **OVHcloud**: saving a payment method unlocks the US$200 credit (your call, not
-   done here); confirm the unified OpenAI endpoint versus the per-model URL, and that
-   the gpt-oss-120b endpoint runs in Gravelines.
-7. **Scaleway**: whether the API answers at all without a payment method and at what
-   quota (only the "payment method validated" tiers are documented); confirm the free
-   1M is one-time.
-8. **SambaNova**: confirm the base URL `https://api.sambanova.ai/v1` in the vendor
-   docs (only third-party pages were readable) and whether 20 requests/day can be
-   raised without a card.
-9. **OpenRouter**: whether a one-time $10 purchase (1,000 free requests/day) is
-   acceptable.
-10. **Startup programs** (application required, none verifiable from docs): Scaleway
-    Startup Program, OVHcloud Startup Program, Microsoft for Startups (Azure AI
-    Foundry hosts gpt-oss), AWS Activate (Bedrock gpt-oss-120b at $0.15 / $0.60),
-    Google for Startups (Vertex AI paid tier does not train).
+5. **Vercel dashboard** (only if the Ling trial is wanted): which models the free tier
+   allows, their rate limits, whether a monthly credit exists and its amount; set a
+   budget before use.
+6. **Startup programs**: Scaleway must be applied to before any Scaleway account
+   exists ("not yet a Scaleway client"); confirm that the OVH and Scaleway credits
+   cover AI Endpoints / Generative APIs; AWS Activate requires an AWS account on the
+   paid tier; Google and Microsoft figures could not be read from their public pages.
+7. **OVHcloud** (only if paid overflow A is chosen): the unified OpenAI endpoint versus
+   the per-model URL, and that the gpt-oss-120b endpoint runs in Gravelines. A saved
+   payment method is required: your call, not done here.

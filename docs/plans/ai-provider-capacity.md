@@ -8,6 +8,11 @@ Revision 2 (same day): one-time credits and request-capped free tiers are no lon
 proposed as pool members (they do not move the recurring capacity); startup programs
 and a root-cause / action plan for the failing pool were added.
 
+Companion: `docs/plans/ai-pool-reliability-audit.md` (same day) goes down to the code.
+Two corrections from it are folded in below: the `ai-capacity-check` aggregate alert is
+unreachable as configured, and the per-task table in 1.3 undercounts onboarding (its
+two discovery calls, `nameKnownCompetitors` and `scoreOverlap`, never reach `ai_runs`).
+
 Source labels used on every figure:
 
 - `vendor-doc` = read on the vendor's own pricing, limits or terms page, date of the
@@ -229,8 +234,11 @@ What the user sees (`code`):
 - Hourly cap: HTTP 429 `ai_rate_limit_exceeded`.
 - Digest, insights, pricing changes: nothing. Signals simply do not appear.
 
-What ops sees: `ai-capacity-check` (every 30 min) alerts at 80 / 90 / 100% of
-`dailyTokenQuota` only. Nothing on parks, 429 share, deferrals or dead letters.
+What ops sees: `ai-capacity-check` (every 30 min) alerts on used / declared quota
+summed over all providers. Mistral's declared 30M dominates that sum, so the 80 / 90%
+alerts cannot fire even with the three other providers at 100%; only the per-provider
+`exhausted` list (95%) works (audit, section 6, C9). Nothing on parks, 429 share,
+deferrals or dead letters.
 
 ---
 
@@ -519,7 +527,8 @@ When paying becomes inevitable:
    predicts the first wall.
 4. **Quota burn-rate projection**: the hour at which each provider is projected to
    reach 95% (Cloudflare reaches it before noon UTC on a normal day); alert when the
-   projection lands before 18:00 UTC. `ai-capacity-check` only alerts after the fact.
+   projection lands before 18:00 UTC. `ai-capacity-check` alerts on the pooled sum,
+   which the Mistral quota makes unreachable: alert per provider instead.
 5. **Deferral and dead-letter counters** from the queue in Slack, plus a count of
    changes unclassified for more than 2 hours: that is the user-facing damage.
 6. **Log the onboarding discovery calls** (`scoreOverlap`, `nameKnownCompetitors`) to

@@ -1080,6 +1080,22 @@ directly.
 | 4 | Move `generate-daily-digest` to `"7 * * * *"` in `packages/queue/src/jobs.ts:504`. Note that `syncSchedules` reconciles on boot (`jobs.ts:533`), so a restart applies it. | `SELECT name, cron FROM pgboss.schedule`. |
 | 5 | Change `packages/ai/src/faithfulness/judge-claim.ts:80` from `AI_CONFIG.classification` to `AI_CONFIG.classificationFast`. This overrides the deliberate choice documented at `faithfulness-gate.ts:22-25`, so revert if quality moves. | `SELECT model, count(*) FROM ai_runs WHERE task='faithfulness_check' GROUP BY model` shows `gpt-oss-20b`. Then watch the `blocked` count in the worker log line at `faithfulness-gate.ts:87`. |
 
+**Status, 2026-09-03 evening.** Steps 1 to 3 are live on the worker box: written to
+`/opt/outrival/.env.worker` (timestamped backup kept next to it) and both workers
+recreated. Mistral got `AI_PROVIDER_4_TPM_LIMIT=60000` rather than 8,000: its
+published limit is 1 request/second, which the pool cannot count, and 60k TPM at
+~3.3k tokens per call keeps the fleet near 0.25 req/s while leaving 12k/min to the
+interactive reserve. Step 4 is in the branch and ships with the next worker image
+(`docker compose pull && docker compose up -d` after merge). Step 5 was NOT applied:
+`judge-claim.ts:70-78` records a measured regression on the fast model (5/6 invented
+claims rejected against 6/6 on the 120b), which is the exact failure the gate exists
+to stop, so that swap is a product decision, not a tuning. Cerebras was already
+disabled on the worker box (empty `AI_PROVIDER_1_API_KEY` since 2026-09-02 17:36) but
+is still configured at priority 1 on the api (Coolify), which also has none of the
+breaker or TPM variables above; the api env is Mathys's console, listed in the
+handover.
+
+
 Steps 1 to 4 are env and config only. Step 5 is a one-word code change that also fixes a
 documented contradiction.
 

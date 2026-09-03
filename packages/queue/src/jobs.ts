@@ -501,7 +501,9 @@ export const CRON_SCHEDULES: Record<string, string> = {
   // thing that can page when the whole worker fleet is down.
   heartbeat: "*/5 * * * *",
   "schedule-scraping": "0 * * * *",
-  "generate-daily-digest": "0 * * * *",
+  // Off the :00 minute on purpose: the hourly scrape fan-out lands there and this
+  // job needs none of it. It reads the hour, not the minute.
+  "generate-daily-digest": "7 * * * *",
   "schedule-tech-stack": "0 6 * * *",
   "schedule-platform-detection": "0 4 * * *",
   // DAILY, not weekly: the free Gemini tier caps requests per day, so a week's worth

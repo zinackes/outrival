@@ -220,7 +220,7 @@ AI_PROVIDER_N_JSON_SCHEMA=         # "true" = ce provider honore response_format
                                    # ne bascule volontairement pas (une requête mal
                                    # construite échouerait pareil partout). Vide = mode
                                    # json_object, identique à aujourd'hui
-AI_PROVIDER_N_TPM_LIMIT=           # plafond TOKENS PAR MINUTE du provider (cerebras 30000,
+AI_PROVIDER_N_TPM_LIMIT=           # plafond TOKENS PAR MINUTE du provider (cerebras 30000, cloudflare 6000, mistral 60000,
                                    # groq 8000). C'est LE plafond qui mordait : le quota
                                    # journalier n'a jamais été atteint. Mesuré en prod le
                                    # 2026-07-31 — Cerebras sert 420k tokens sur l'heure de 05:00,
@@ -250,7 +250,7 @@ AI_INTERACTIVE_RESERVE_FRACTION=0.2 # part de chaque plafond par minute réserv�
                                    # scope withAiContext et les scopes imbriqués en HÉRITENT, donc
                                    # un job que l'user regarde s'enveloppe une fois et tous ses
                                    # loggedAi sont interactifs. 0 désactive la réserve
-AI_DEFER_BASE_SEC=75               # délai avant qu'un JOB refusé par le pool soit REJOUÉ. La
+AI_DEFER_BASE_SEC=150              # délai avant qu'un JOB refusé par le pool soit REJOUÉ. La
                                    # politique de retry de la queue est 1s avec backoff plafonné
                                    # à 10s : juste pour une panne transitoire, faux pour un rate
                                    # limit, puisque les tiers gratuits répondent au 429 en
@@ -262,11 +262,11 @@ AI_DEFER_BASE_SEC=75               # délai avant qu'un JOB refusé par le pool 
                                    # mal configuré ni quand la requête est trop grosse : ni l'un
                                    # ni l'autre ne guérit en attendant, donc les deux gardent le
                                    # retry normal et finissent en DLQ où quelqu'un les voit
-AI_DEFER_JITTER_FRACTION=0.4       # étalement UNILATÉRAL de ce délai (jamais plus tôt que la
+AI_DEFER_JITTER_FRACTION=0.6      # étalement UNILATÉRAL de ce délai (jamais plus tôt que la
                                    # base). Sans lui, tous les jobs déférés par la même panne
                                    # reviennent au même instant et reconstruisent le burst qui a
                                    # causé la panne, une fenêtre plus tard
-QUEUE_MAX_DEFERRALS=3              # nombre de reports qu'un job peut accumuler avant de retomber
+QUEUE_MAX_DEFERRALS=5             # nombre de reports qu'un job peut accumuler avant de retomber
                                    # sur le retry normal (puis la DLQ). Une BORNE, pas un réglage :
                                    # un pool durablement indisponible ne doit pas reprogrammer un
                                    # job indéfiniment, un job qui n'échoue jamais est un job dont
@@ -274,8 +274,8 @@ QUEUE_MAX_DEFERRALS=3              # nombre de reports qu'un job peut accumuler 
                                    # réservée `__deferrals`, retirée par `jobData`) : un report
                                    # RE-SEND le job, donc le compteur de retry pg-boss repart à
                                    # zéro et ne peut pas borner la boucle
-AI_CIRCUIT_BREAKER_THRESHOLD=5     # échecs consécutifs (tous providers) avant coupure globale
-AI_CIRCUIT_BREAKER_RESET_MIN=10    # minutes avant retry (breaker provider ET global)
+AI_CIRCUIT_BREAKER_THRESHOLD=20   # échecs consécutifs (tous providers) avant coupure globale
+AI_CIRCUIT_BREAKER_RESET_MIN=2    # minutes avant retry (breaker provider ET global)
 AI_INTENSIVE_RATE_LIMIT=           # OVERRIDE d'urgence ops UNIQUEMENT. Le plafond horaire
                                    # d'actions IA discrétionnaires est PAR TIER depuis
                                    # 2026-07-31 (PLAN_LIMITS.aiActionsPerHour 20/40/120/300).
@@ -386,7 +386,7 @@ EXTRACTOR_HEAL_POOL_PAUSE_MINUTES=5    # durée pendant laquelle TOUS les heals 
                                        # pause seule. 📄 docs/ai-consumption-audit-2026-08.md
 EXTRACTOR_REVALIDATE_INTERVAL_DAYS=14  # R8 — âge max d'un parser caché avant régénération forcée contre le DOM courant (un sélecteur dérivé "plausible mais faux" ne peut plus être trusté indéfiniment). last_validated_at n'est plus stampé à chaque cache hit
 EXTRACTOR_MAX_CONSECUTIVE_FAILURES=5   # R8 — échecs de replay consécutifs après lesquels un parser caché est distrusté d'office
-PRUNE_HTML_MAX_CHARS=40000             # cap de l'HTML élagué envoyé au générateur de sélecteurs
+PRUNE_HTML_MAX_CHARS=21000            # cap de l'HTML élagué envoyé au générateur de sélecteurs
 
 # Platform auto-detection (patch-31)
 PLATFORM_DETECTION_ENABLED=true        # false → pas de profil écrit, routage = comportement actuel exact

@@ -32,7 +32,7 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 | P-07 | P1 | ops | OVH: 17.9 GB docker build cache + 5.4 GB dangling images | open |
 | P-08 | P1 | ops | Backups: rclone 501 on attempt 1 of every run; Neon has no off-provider dump | open |
 | P-09 | P1 | ops | Worker `.env` has 12 keys absent from `env.worker.example` | open |
-| S-05 | P1 | security | api answers without HSTS / X-Content-Type-Options | open |
+| S-05 | P1 | security | api answers without HSTS / X-Content-Type-Options | fixed c68b516a |
 | S-06 | P2 | security | Browser worker runs as root with `--no-sandbox`; runtimes unpinned | open |
 | D-03 | P1 | deps | 59 vulns (26 high): next, sharp, undici, postcss, hono; CI audit non-blocking | open |
 | Q-06 | P1 | code | Raw-sql Date params have no guard; tests cannot catch them (PGlite) | open |
@@ -185,11 +185,15 @@ trustpilot source is dead in prod).
 
 ## Security
 
-### S-05 api security headers (P1)
+### S-05 api security headers (P1) — fixed c68b516a
 
 `api.outrival.app` answers without `Strict-Transport-Security` and
 `X-Content-Type-Options`; the web app sends both. Add hono's `secureHeaders()` in
 `apps/api/src/index.ts`.
+
+Fixed c68b516a together with S-05 of the 2026-09-02 report: `secureHeaders({
+crossOriginResourcePolicy: "same-site" })` runs on every response, plus a 1 MB
+global `bodyLimit` with the two document-upload routes exempted by path.
 
 ### S-06 Browser worker as root, unpinned runtimes (P2)
 
@@ -205,7 +209,15 @@ trustpilot source is dead in prod).
 - ~~S-02~~ sign-in on GET with the OTP in the URL: fixed `54512f71`.
 - ~~S-03~~ rate limits keyed on spoofable headers: fixed `54512f71`. Note for P-03
   below: that work established the api is *not* behind Cloudflare, only `www` is.
-- D-01 and the other 24 findings: none has a commit since `70013d0a` (#551).
+- ~~S-04~~ billing had no role check: fixed `c68b516a`.
+- ~~S-05~~ no global hardening, localhost trusted in prod: fixed `c68b516a`.
+- ~~S-06~~ share links never expired, report cached `public`: fixed `c68b516a`;
+  migration 0086 applied on prod 2026-09-04.
+- ~~S-08~~ session cache keyed by the raw token, revocation lagged 30 s: fixed
+  `c68b516a`; the multi-instance half stays open.
+- S-10 fail-open guards: `NODE_ENV` now defaults to production (`c68b516a`); the Sentry
+  build-token half is still open.
+- D-01 and the other 19 findings: none has a commit since `70013d0a` (#551).
 
 ## Dependencies
 

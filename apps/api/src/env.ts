@@ -6,7 +6,15 @@ export const EnvSchema = z
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.string().url(),
     PORT: z.coerce.number().default(3001),
-    NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+    // Defaults to production, not development (audit 2026-09-02, S-10). Every
+    // fail-open guard in this file keys off NODE_ENV, so an image started without
+    // it (manual compose, debugging on the box) used to run with the captcha, the
+    // rate limiters and the dev router silently in their permissive state. Failing
+    // closed means such a boot now stops on the missing Upstash/Turnstile keys
+    // instead of serving traffic unprotected. Every real env declares it anyway:
+    // apps/api/Dockerfile sets production, apps/api/.env.local sets development,
+    // and `bun test` sets test.
+    NODE_ENV: z.enum(["development", "production", "test"]).default("production"),
     // Upstash backs the HARD rate limiters: authRateLimit (anti-OTP-brute-force,
     // per email+IP) and aiIntensiveRateLimit (anti-AI-abuse). Both no-op when these
     // are absent — tolerable in dev/test, a silent security hole in prod. Required

@@ -5,6 +5,7 @@ import { organizations, users } from "@outrival/db";
 import { BILLING_PERIODS, PLAN_LIMITS, PLANS, type Plan } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
+import { requireRole } from "../middleware/require-role";
 import { ensureUserOrg } from "../lib/org";
 import { countActiveCompetitors, pausedByPlanCap } from "../lib/plan";
 import { getPriceId, getStripe } from "../lib/stripe";
@@ -15,6 +16,12 @@ type Variables = { user: { id: string } };
 export const billingRouter = new Hono<{ Variables: Variables }>();
 
 billingRouter.use("*", authMiddleware);
+
+// Money is an owner/admin action (audit 2026-09-02, S-04). Registered as a
+// method-wide guard rather than per route so a mutation added later inherits it:
+// forgetting the decorator on one new endpoint is exactly how this gap appeared.
+// The two GETs stay open, the dashboard reads the current plan on every page.
+billingRouter.on(["POST"], "*", requireRole("owner", "admin"));
 
 const PAID_PLANS = PLANS.filter((p): p is Exclude<Plan, "free"> => p !== "free");
 

@@ -1,0 +1,1 @@
+ALTER TABLE "share_links" ADD COLUMN "expires_at" timestamp DEFAULT now() + interval '30 days' NOT NULL;

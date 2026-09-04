@@ -111,6 +111,10 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 
 - Cloudflare 526 = origin certificate invalid for that hostname: Traefik on OVH only
   holds a certificate for the apex, `www` is proxied but not configured in Coolify.
+- Confirmed 2026-09-04 while fixing S-03: `www` resolves to 188.114.96.2 / 188.114.97.2
+  (Cloudflare) while the apex and `api.outrival.app` both resolve to 151.80.58.65 (OVH,
+  DNS-only). Only `www` is orange-clouded, which is also why the api never sees a
+  `cf-connecting-ip` header.
 - Fix (5 minutes): Cloudflare Redirect Rule `www.outrival.app/*` to
   `https://outrival.app/$1` (301). Alternative: add `www.outrival.app` to the web
   service's domains in Coolify so Traefik issues a certificate.
@@ -197,10 +201,11 @@ trustpilot source is dead in prod).
 
 ### Still open from 2026-09-02 (verified today)
 
-- S-01 `requireEmailVerification: false` (`apps/api/src/lib/auth.ts:86`).
-- S-03 rate limits keyed on spoofable `cf-connecting-ip` / `x-forwarded-for`
-  (`apps/api/src/routes/auth.ts:25-26`, `apps/api/src/middleware/auth-rate-limit.ts:33-34`).
-- S-02, D-01 and the other 24 findings: none has a commit since `70013d0a` (#551).
+- ~~S-01~~ `requireEmailVerification: false`: fixed `54512f71`.
+- ~~S-02~~ sign-in on GET with the OTP in the URL: fixed `54512f71`.
+- ~~S-03~~ rate limits keyed on spoofable headers: fixed `54512f71`. Note for P-03
+  below: that work established the api is *not* behind Cloudflare, only `www` is.
+- D-01 and the other 24 findings: none has a commit since `70013d0a` (#551).
 
 ## Dependencies
 

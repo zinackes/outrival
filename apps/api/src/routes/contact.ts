@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { getRedis } from "@outrival/shared";
+import { clientIp } from "../lib/client-ip";
 import { sendDemoRequestEmail } from "../lib/contact-email";
 import { verifyTurnstileToken } from "../lib/turnstile";
 import { errorBody } from "../lib/errors";
@@ -29,16 +30,20 @@ const WINDOW_SEC = 60 * 60; // 1h
 const MAX_PER_IP = 5;
 
 contactRouter.post("/", async (c) => {
-  const ip =
-    c.req.header("cf-connecting-ip") ??
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-    "unknown";
+  // Fail closed: no trustworthy caller identity, no bucket to charge. The old
+  // "unknown" fallback gave every header-less caller the same counter, which is
+  // both a bypass (forge a header, get a fresh bucket) and a shared-fate bug
+  // (one spammer locks out a whole corporate proxy).
+  const ip = clientIp(c);
 
   const redis = getRedis();
   if (redis) {
     const key = `ratelimit:contact:ip:${ip}`;
-    const count = await redis.incr(key);
-    if (count === 1) await redis.expire(key, WINDOW_SEC);
+    // INCR + EXPIRE NX in one transaction: a counter that loses the race for
+    // its TTL never resets and bans the caller for good.
+    const [count] = ip
+      ? await redis.multi().incr(key).expire(key, WINDOW_SEC, "NX").exec<[number, number]>()
+      : [MAX_PER_IP + 1];
     if (count > MAX_PER_IP) {
       return c.json(
         errorBody("rate_limited", "Too many requests. Please try again later.", {

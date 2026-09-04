@@ -1,13 +1,19 @@
 import { Hono } from "hono";
-import type { Context } from "hono";
 import { and, eq } from "drizzle-orm";
-import { emailSchema, canonicalizeEmail, validatePasswordWithHibp } from "@outrival/shared";
+import {
+  emailSchema,
+  canonicalizeEmail,
+  validatePasswordWithHibp,
+  escapeHtml,
+} from "@outrival/shared";
 import { db } from "../lib/db";
 import { users, account } from "@outrival/db";
 import { auth } from "../lib/auth";
 import { verifyTurnstileToken } from "../lib/turnstile";
 import { captureServerEvent, identifyUser } from "../lib/posthog";
-import { authRateLimit } from "../middleware/auth-rate-limit";
+import { authRateLimit, ipRateLimit } from "../middleware/auth-rate-limit";
+import { clientIp } from "../lib/client-ip";
+import { consumeOtpLinkToken } from "../lib/otp-link-token";
 import { authMiddleware } from "../middleware/auth";
 import { errorBody } from "../lib/errors";
 import { verifyReauthCode } from "../lib/reauth";
@@ -19,14 +25,6 @@ import {
 } from "../lib/signup-abuse";
 
 export const authRouter = new Hono<{ Variables: { user: { id: string } } }>();
-
-function clientIp(c: Context): string {
-  return (
-    c.req.header("cf-connecting-ip") ??
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-    "unknown"
-  );
-}
 
 /**
  * Unified entry point for the /auth page. Sends a 6-digit sign-in code (and a
@@ -164,27 +162,59 @@ authRouter.post("/check-and-send-magic-link", authRateLimit, async (c) => {
 });
 
 /**
- * One-click sign-in link target. The sign-in email embeds this URL carrying the
- * same OTP as the code, so clicking it verifies the code server-side, sets the
- * session cookie, and lands the user on the dashboard — no code typing on the
- * device that opened the email. Invalid/expired/used codes fall back to /auth.
+ * Confirmation page for the one-click sign-in link. The link in the email
+ * carries `?t=<handle>`, an opaque single-use stand-in for the OTP
+ * (lib/otp-link-token.ts), and this GET does nothing but render a button.
  *
- * The OTP is single-use and attempt-capped (Better Auth `allowedAttempts`), so
- * exposing it in the link doesn't lower the floor an attacker already faces on
- * the verify endpoint. Existence never leaks: any failure → the same redirect.
+ * A GET must never sign anyone in: mail security scanners and browser prefetch
+ * fetch every link in an email before the human sees it, and the old handler
+ * redeemed the OTP and returned the session cookie to whatever machine asked
+ * first. The redemption lives on the POST below, behind a real click.
  */
+function signInConfirmPage(token: string): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="robots" content="noindex"/>
+<title>Sign in to Outrival</title></head>
+<body style="margin:0;background:#0a0a0a;color:#fafafa;font-family:Inter,system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;">
+<div style="text-align:center;padding:24px;">
+<div style="font-family:Syne,sans-serif;font-size:24px;font-weight:bold;margin-bottom:12px;">Out<span style="color:#818cf8;">rival</span></div>
+<p style="color:#a3a3a3;font-size:15px;">Confirm you want to sign in on this device.</p>
+<form method="post" action="/api/auth/otp-link?t=${escapeHtml(token)}" style="margin-top:16px;">
+<button type="submit" style="padding:10px 20px;border-radius:8px;border:none;background:#818cf8;color:#0a0a0a;font-size:14px;font-weight:600;cursor:pointer;">Sign in</button>
+</form>
+<p style="color:#737373;font-size:13px;margin-top:20px;">This link works once and expires in 10 minutes. You can also type the code from the email.</p>
+</div></body></html>`;
+}
+
 authRouter.get("/otp-link", async (c) => {
-  const email = c.req.query("email") ?? "";
-  const code = c.req.query("code") ?? "";
+  const token = c.req.query("t") ?? "";
   const webUrl = process.env.WEB_URL ?? "http://localhost:3000";
-  if (!email || !code) {
+  // Not redeemed here on purpose — an invalid handle is only discovered on POST,
+  // so a scanner can't probe handle validity either.
+  if (!token) return c.redirect(`${webUrl}/auth?error=link_invalid`, 302);
+  return c.html(signInConfirmPage(token));
+});
+
+/**
+ * Redeem the one-click sign-in link: exchange the handle for the OTP it stands
+ * for, verify it, set the session cookie, land on the dashboard. Invalid,
+ * expired and already-used handles all fall back to /auth with the same error —
+ * existence never leaks. IP-limited because this is an unauthenticated endpoint
+ * that mints sessions; the body is a form, so the JSON-reading `authRateLimit`
+ * would consume it before the handler.
+ */
+authRouter.post("/otp-link", ipRateLimit("otp-link"), async (c) => {
+  const webUrl = process.env.WEB_URL ?? "http://localhost:3000";
+  const payload = await consumeOtpLinkToken(c.req.query("t") ?? "");
+  if (!payload) {
     return c.redirect(`${webUrl}/auth?error=link_invalid`, 302);
   }
 
   try {
     const { headers, response } = await auth.api.signInEmailOTP({
       headers: c.req.raw.headers,
-      body: { email, otp: code },
+      body: { email: payload.email, otp: payload.otp },
       returnHeaders: true,
     });
     // 2FA-enabled accounts: the auth hook swapped the freshly created session

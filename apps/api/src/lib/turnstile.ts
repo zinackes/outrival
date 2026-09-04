@@ -3,7 +3,7 @@
 
 export async function verifyTurnstileToken(
   token: string | undefined,
-  ip: string,
+  ip: string | null,
 ): Promise<boolean> {
   const secret = process.env.TURNSTILE_SECRET_KEY;
   if (!secret) {
@@ -18,7 +18,14 @@ export async function verifyTurnstileToken(
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ secret, response: token, remoteip: ip }),
+        // remoteip is optional and must be a real address when sent — omit it
+        // rather than pass the old "unknown" placeholder, which Cloudflare
+        // treats as a malformed request.
+        body: new URLSearchParams({
+          secret,
+          response: token,
+          ...(ip ? { remoteip: ip } : {}),
+        }),
         signal: AbortSignal.timeout(5000),
       },
     );

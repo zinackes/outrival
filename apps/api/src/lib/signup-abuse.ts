@@ -24,9 +24,12 @@ const MX_CHECK_ENABLED = process.env.SIGNUP_MX_CHECK_ENABLED !== "false";
  *
  * Fail-open: no Redis, disabled cap, or no reliable client IP → false.
  */
-export async function overSignupIpCap(ip: string, canonicalEmail: string): Promise<boolean> {
+export async function overSignupIpCap(
+  ip: string | null,
+  canonicalEmail: string,
+): Promise<boolean> {
   if (SIGNUP_IP_DAILY_CAP <= 0) return false;
-  if (ip === "unknown") return false;
+  if (!ip) return false;
   const redis = getRedis();
   if (!redis) return false;
 

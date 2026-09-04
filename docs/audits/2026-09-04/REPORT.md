@@ -25,12 +25,12 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 |---|---|---|---|---|
 | P-01 | P0 | prod | `purge-retention` fails on every run (Date in raw sql) | fixed in #558, deploy pending |
 | P-02 | P0 | prod | `detect-hiring-footprint` fails once it reaches `evaluateFreeze` | fixed in #558, deploy pending |
-| P-03 | P0 | prod | `www.outrival.app` returns HTTP 526 | open |
-| P-04 | P0 | prod | 759 jobs in `outrival-dlq`, nobody replays; AI pool 61% errors | open |
+| P-03 | P0 | prod | `www.outrival.app` returns HTTP 526 | open, needs the Cloudflare dashboard |
+| P-04 | P0 | prod | 759 jobs in `outrival-dlq`, nobody replays; AI pool 61% errors | open, blocked on pool capacity |
 | P-05 | P1 | prod | 698 active monitors overdue > 24 h with no run since | open |
-| P-06 | P1 | ops | Netcup box: kernel + libc6 pending, reboot required | open |
-| P-07 | P1 | ops | OVH: 17.9 GB docker build cache + 5.4 GB dangling images | open |
-| P-08 | P1 | ops | Backups: rclone 501 on attempt 1 of every run; Neon has no off-provider dump | open |
+| P-06 | P1 | ops | Netcup box: kernel + libc6 pending, reboot required | done 2026-09-04 |
+| P-07 | P1 | ops | OVH: 17.9 GB docker build cache + 5.4 GB dangling images | open, worse: 30.9 GB, disk at 67% |
+| P-08 | P1 | ops | Backups: rclone 501 on attempt 1 of every run; Neon has no off-provider dump | fixed ff473441 |
 | P-09 | P1 | ops | Worker `.env` has 12 keys absent from `env.worker.example` | open |
 | S-05 | P1 | security | api answers without HSTS / X-Content-Type-Options | fixed cac2e50b |
 | S-06 | P2 | security | Browser worker runs as root with `--no-sandbox`; runtimes unpinned | open |
@@ -118,6 +118,15 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 - Fix (5 minutes): Cloudflare Redirect Rule `www.outrival.app/*` to
   `https://outrival.app/$1` (301). Alternative: add `www.outrival.app` to the web
   service's domains in Coolify so Traefik issues a certificate.
+- 2026-09-04, still open, and it is the user's credential to spend: confirmed the cause
+  on the origin rather than inferring it. Coolify writes exactly two Traefik routers for
+  the web app, both ``Host(`outrival.app`)``, so `www` reaches Traefik's default
+  self-signed certificate and Cloudflare (Full strict) refuses it. Take the redirect
+  rule, not the Coolify domain: adding `www` as a second served hostname means the whole
+  marketing site answers on two domains with no canonical, which trades a 526 for
+  duplicate content. Cloudflare > outrival.app > Rules > Redirect Rules > Create:
+  hostname equals `www.outrival.app`, dynamic redirect to
+  `concat("https://outrival.app", http.request.uri.path)`, 301, preserve query string.
 
 ### P-04 Dead-letter queue and AI pool (P0)
 
@@ -133,6 +142,18 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 - Decision needed: replay the DLQ (re-enqueue `classify-change` with `__deferrals`
   reset, throttled, once the pool recovers) or purge it. Belongs to wave 3 of
   `docs/plans/ai-pool-reliability-audit.md`. Replay is an outward-facing action.
+- 2026-09-04 15:50Z, remeasured before deciding: **do not replay yet**. The DLQ has grown
+  to 821 jobs (581 `created`, 240 `retry`), every payload still `{changeId, __deferrals:
+  5}`, oldest 2026-08-20. `ai_runs` for the same afternoon: 10:00Z 372 errors / 0
+  success, 11:00Z 164 / 0, 13:00Z 64 / 0. Over the 6 h window, 944 errors against 19
+  successes: groq `no_providers` 374 and `breaker_open` 370, mistral `rate_limited` 194,
+  cerebras 6 unclassified. The worker boot log names the pool as
+  three providers, `cloudflare[free,p2] groq[free,p3] mistral[free,p4]` — cerebras is
+  already out. So the pool is not failing, it is out of free-tier capacity, and replaying
+  821 jobs into it would burn their deferrals again and land them straight back here.
+  Sequence: paid capacity (or a lower concurrency ceiling) first, replay second. The
+  order is not negotiable, which makes this a dependency of the AI pool plan rather than
+  a decision anyone can take today.
 
 ### P-05 698 monitors overdue with no run (P1)
 
@@ -154,11 +175,25 @@ Kernel `6.8.0-137` and `libc6` pending, uptime 46 days, `/run/reboot-required` s
 About 2 minutes of downtime for `outrival-pg`, `outrival-worker-light`,
 `outrival-worker-browser`. Outward-facing: needs a go.
 
+Done 2026-09-04 15:53Z. Checked first that all three containers carry
+`restart=unless-stopped` and that `docker.service` is enabled, so nothing needed a manual
+start. `linux-image-6.8.0-138` was already installed against a running `-136`, so the
+reboot activated a kernel two versions ahead of what the finding recorded. Back in about
+20 seconds; `/run/reboot-required` cleared, 18 cron schedules resynced, all three AI
+providers passed their model check, and `/ms-playwright/chromium-1223` is present on the
+browser worker (the invariant `.claude/rules/production.md` §5 asks for after a deploy).
+
 ### P-07 OVH disk (P1)
 
 Docker build cache 17.9 GB (14.6 GB reclaimable) plus 5.4 GB dangling images on a 72 GB
 disk at 46%. `docker builder prune -af --filter until=168h && docker image prune -f`.
 Needs a go.
+
+Worse on 2026-09-04 15:55Z, and this is now the most urgent open ops item: build cache
+30.9 GB of which 27.65 GB is reclaimable, images 42.4 GB of which 9.1 GB is reclaimable,
+disk 48 GB used of 72 GB (67%, was 46%). 36.7 GB is reclaimable in total. Each deploy
+adds cache and nothing removes it, so the box fills on its own; a full disk on the
+Coolify host takes web and api down together.
 
 ### P-08 Backups (P1)
 
@@ -170,6 +205,25 @@ Needs a go.
 - Neon (the business database, 146 MB) is covered only by Neon's own point-in-time
   restore; there is no off-provider dump. Adding a nightly `pg_dump` of
   `DATABASE_URL_PROD` to the same script is about 30 minutes.
+
+Fixed ff473441, and the guess in this finding was wrong: `--s3-no-check-bucket` changes
+nothing, and `no_check_bucket = true` was already set in `rclone.conf`. The failing call
+is the one rclone makes *after* a successful PUT — `HEAD <object>?versionId=<id>`, which
+R2 answers 501 because it has no object versioning. Caught by dumping the request lines
+only: HEAD 404, PUT 200, HEAD `?versionId=` 501. `--s3-no-head` drops that verification
+call; a probe upload then ran clean. rclone here is v1.60.1 from the Ubuntu archive, so
+upgrading it is the durable fix and the flag is the cheap one.
+
+The Neon dump runs inside the `outrival-pg` container, which is the only postgres client
+on the box. Two things the naive version gets wrong: the connection string must not reach
+the host's process list (it arrives through `docker exec --env-file`, not on argv), and
+`-pooler.` has to be stripped, because the Neon pooler is pgbouncer in transaction mode
+and cannot hold pg_dump's snapshot open.
+
+Verified end to end 2026-09-04 15:52Z: queue 1.6 MB, Neon 42 MB, exit 0, no error line.
+Then the round trip that actually matters — pull the Neon object back from R2, decrypt it
+with the age key, `pg_restore -l`: 88 tables. Retention is unchanged at 30 days and now
+covers both dumps.
 
 ### P-09 Worker env drift (P1)
 

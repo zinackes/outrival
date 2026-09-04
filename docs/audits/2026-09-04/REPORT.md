@@ -27,7 +27,7 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 | P-02 | P0 | prod | `detect-hiring-footprint` fails once it reaches `evaluateFreeze` | fixed in #558, deploy pending |
 | P-03 | P0 | prod | `www.outrival.app` returns HTTP 526 | open, needs the Cloudflare dashboard |
 | P-04 | P0 | prod | 759 jobs in `outrival-dlq`, nobody replays; AI pool 61% errors | priority swap applied, root cause is free quota + no RPS limit, see below |
-| P-05 | P1 | prod | 698 active monitors overdue > 24 h with no run since | diagnosed: 756 of 791 are zombies on deleted competitors, see below |
+| P-05 | P1 | prod | 698 active monitors overdue > 24 h with no run since | fixed #567 + backfill: 791 overdue down to 35 |
 | P-06 | P1 | ops | Netcup box: kernel + libc6 pending, reboot required | done 2026-09-04 |
 | P-07 | P1 | ops | OVH: 17.9 GB docker build cache + 5.4 GB dangling images | open, but smaller: 9.8 GB reclaimable, disk at 36% |
 | P-08 | P1 | ops | Backups: rclone 501 on attempt 1 of every run; Neon has no off-provider dump | fixed ff473441 |
@@ -247,9 +247,15 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 - Nothing else the scheduler filters on explains any of the rest: of the 791, zero have
   `monitoring_paused` and zero are locked out by `planAllowsMonitorSource`. Only 10
   competitors across all orgs sit beyond their plan's `maxCompetitors`.
-- Fix: set `is_active = false` on monitors whose competitor is soft-deleted, in
-  `softDeleteCompetitors` for new deletions and as a one-off backfill for the 825
-  existing rows. Backfill touches prod data, so it needs a go.
+- Fixed 2026-09-04 20:10Z. Code in PR #567: one `update` inside the existing
+  transaction of `softDeleteCompetitors`, mirroring what archiving a product already
+  did (`routes/products.ts:1015`). Regression test in
+  `apps/api/test/competitors-bulk.test.ts` (`is_active` defaults to `true`, so the
+  assertion is not vacuous); 519 pass, 0 fail.
+- Backfill applied to prod the same day, after the go: 825 rows across 108 competitors
+  set to `is_active = false`. **Overdue > 24 h fell from 791 to 35**, active monitors
+  from 3073 to 2248. The 35 that remain are the real backlog (homepage 11, pricing 11,
+  blog 10, news 3), and they are now visible instead of buried under 95% noise.
 
 ### P-06 Netcup box needs a reboot (P1)
 

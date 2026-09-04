@@ -1154,12 +1154,19 @@ caused a second problem.
    context, incremented once per provider tried, so an error row now says how far the
    failover walked before giving up.
 
-**Step 5 is the remaining decision.** It is deliberately not applied: the plan itself
-prescribes one task per day with an eval run each, the `eval:*` scripts in `packages/ai`
-call real providers and cost money, and Wave 1's analogous step 5 was dropped after a
-measured quality regression on the fast model. Recommended order, cheapest risk first:
-`source_summary` (39.9 calls/day, 412 average tokens, no reasoning in the prompt), then
-`extract_entitlements`, `extract_pricing`, `extract_jobs`.
+**Step 5 is the remaining decision, and the eval it asks for does not exist.**
+`packages/ai` ships three eval scripts: `eval:model` (insight and classify_structured),
+`eval:severity` and `eval:faithfulness`. None of them covers `source_summary`,
+`extract_pricing`, `extract_jobs` or `extract_entitlements`, so "one per day with an eval
+run each" first means writing a labelled harness for those four, on the model of
+`severity-golden.ts`. That is the cost, not the tokens: every provider is `TIER=free`, an
+eval run burns the same daily quota production needs (groq 200k, cloudflare 280k,
+cerebras 1M, mistral 30M) and only Cloudflare can turn into a bill, past its 10,000 free
+Neurons at $0.011 per 1,000. The other reason to hold is Wave 1's analogous step 5, which
+was dropped on a measured quality regression on the fast model. Recommended order once
+the harness exists, cheapest risk first: `source_summary` (39.9 calls/day, 412 average
+tokens, no reasoning in the prompt), then `extract_entitlements`, `extract_pricing`,
+`extract_jobs`.
 
 ### Wave 3: later
 

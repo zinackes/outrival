@@ -15,9 +15,9 @@ Prior audit: `docs/audits/2026-08-16/REPORT.md` (ids `code:SEC-NN`, `COR-NN`, `P
 ## Status index
 | id | sev | status | effort | title |
 |---|---|---|---|---|
-| S-01 | P0 | open | S | Password sign-up exposed with email never verified (account pre-hijack) |
-| S-02 | P0 | open | M | Sign-in performed on GET with the OTP in the URL |
-| S-03 | P0 | open | M | Client IP taken from spoofable headers; every public rate limit bypassable |
+| S-01 | P0 | fixed 54512f71 | S | Password sign-up exposed with email never verified (account pre-hijack) |
+| S-02 | P0 | fixed 54512f71 | M | Sign-in performed on GET with the OTP in the URL |
+| S-03 | P0 | fixed 54512f71 | M | Client IP taken from spoofable headers; every public rate limit bypassable |
 | D-01 | P0 | open | M | Known-vulnerable deps in prod (next, hono, sharp, undici); CI audit is `|| true` |
 | S-04 | P1 | open | S | RBAC is binary; billing has no role check |
 | S-05 | P1 | open | S | Hono API without secureHeaders/bodyLimit; localhost trusted in prod |
@@ -46,25 +46,29 @@ Prior audit: `docs/audits/2026-08-16/REPORT.md` (ids `code:SEC-NN`, `COR-NN`, `P
 
 ## Findings
 
-### S-01 · P0 · open · Password sign-up exposed, email never verified (account pre-hijack)
+### S-01 · P0 · fixed 54512f71 · Password sign-up exposed, email never verified (account pre-hijack)
 - where: apps/api/src/lib/auth.ts:84-88 `emailAndPassword { requireEmailVerification: false }`; apps/web/src/app/(auth)/auth/auth-form.tsx:218 (front only calls `signIn.email`); apps/api/src/index.ts:112-114 (catch-all exposes `POST /api/auth/sign-up/email`); lib/auth.ts:264-272 (no rate rule for `/sign-up/email`); lib/auth.ts:281-310 (hook blocks disposable/dupe, not third-party emails)
 - prior: 2026-08-16 §7.1 gap sweep, unrefuted
 - impact: attacker registers victim's email with own password; victim's later OTP/Google sign-in links to that user; attacker keeps password access to the workspace (competitors, CRM tokens, billing). Also email enumeration and unbounded account creation.
 - fix: `emailAndPassword: { enabled: true, disableSignUp: true, requireEmailVerification: true, minPasswordLength: 12 }`; add `"/sign-up/email": { window: 60, max: 3 }` to `rateLimit.customRules`.
 - verify: `curl -X POST $API/api/auth/sign-up/email -H 'content-type: application/json' -d '{"email":"x@y.io","password":"correct-horse-battery","name":"x"}'` returns 4xx; add `apps/api/test/auth-surface.test.ts` listing allowed `/api/auth/*` endpoints.
+- fixed 54512f71: as proposed. Checked against prod first: 7 legacy credential-only accounts are unverified, none shows the pre-hijack shape (no second provider), and all keep access through the email-code flow the /auth page leads with. `disableSignUp` breaks nothing, `signUp` is exported in the web auth client but has zero call sites. The auth-surface test was deliberately skipped: `auth-step-up.test.ts` sorts first and its process-global `mock.module` answers any later import of `src/lib/auth`, so the assertion would read the mock and be green regardless. Verification is the curl line above, run on deploy.
 
-### S-02 · P0 · open · Sign-in performed on GET with the OTP in the URL
+### S-02 · P0 · fixed 54512f71 · Sign-in performed on GET with the OTP in the URL
 - where: apps/api/src/lib/auth.ts:134-136 (`otp-link?email=&code=`); apps/api/src/routes/auth.ts:176-209 (`GET /otp-link` calls `auth.api.signInEmailOTP`, sets cookie); routes/auth.ts:41 (`authRateLimit` only on `/check-and-send-magic-link`)
 - prior: code:SEC-22 (verified, effort S, fix risk high)
 - impact: link scanners (Safe Links, Proofpoint, Gmail prefetch) consume the OTP (`allowedAttempts: 3`) and receive the session; OTP lands in CDN/proxy logs, history, Referer; route sits outside Better Auth's limiter.
 - fix: GET renders a minimal HTML page with `<form method="post">`; `POST /otp-link` (with `authRateLimit`) redeems an opaque `t` token (Redis GETDEL, 10 min) for the OTP then calls `signInEmailOTP`. Mail carries `?t=<uuid>`; OTP stays in the mail body. Pattern already in `routes/digest-feedback.ts`.
 - verify: `curl -I "$API/api/auth/otp-link?email=a@b.io&t=x"` returns 200 text/html with no `set-cookie`; POST path covered by test.
+- fixed 54512f71: as proposed, with the handle in Better Auth's `verification` table rather than Redis. The OTP is already stored there by the emailOTP plugin, so this adds no new class of secret at rest, and it behaves identically in dev where Upstash is absent. `DELETE ... RETURNING` is what makes redemption single-use under concurrency. `POST /otp-link` carries `ipRateLimit("otp-link")`. Covered by 8 tests in `apps/api/test/auth-otp-link.test.ts`.
 
-### S-03 · P0 · open · Client IP from spoofable headers; every public rate limit bypassable
+### S-03 · P0 · fixed 54512f71 · Client IP from spoofable headers; every public rate limit bypassable
 - where: apps/api/src/middleware/auth-rate-limit.ts:32-35, apps/api/src/routes/auth.ts:23-29, apps/api/src/routes/contact.ts:32-35 (`cf-connecting-ip ?? x-forwarded-for[0] ?? "unknown"`, 3 copies, no peer check); middleware/auth-rate-limit.ts:20-24 (`incr` then `expire` only when `count === 1`, non-atomic); routes/auth.ts:129 (`overSignupIpCap` uses it)
 - impact: if the OVH origin answers directly (Coolify default), forged `cf-connecting-ip` gives a fresh bucket per request: unlimited OTP mails (Resend cost, domain reputation), contact spam, signup cap void. Missing header collapses everyone into `"unknown"`: one abuser locks all users behind a corporate proxy.
 - fix: one `clientIp(c)` in `packages/shared/src/http/client-ip.ts`: trust `cf-connecting-ip` only when `getConnInfo(c).remote.address` is in Cloudflare ranges, else the TCP peer, never `x-forwarded-for`; return 429 when null. Counter: `redis.multi().incr(key).expire(key, ttl, "NX").exec()` or `@upstash/ratelimit` slidingWindow. Box: UFW allows 443 from Cloudflare ranges only, or Authenticated Origin Pulls.
 - verify: `curl -skI https://<OVH_IP>/health -H 'Host: api.outrival.app'` must not return 200 from outside Cloudflare; two requests with different forged `cf-connecting-ip` share one bucket.
+- fixed 54512f71: the atomic counter and the fail-closed null are as proposed, the identity rule is not. This finding's premise that Cloudflare fronts the api does not hold. `api.outrival.app` and the apex both resolve to 151.80.58.65 (OVH, DNS-only) and only `www` is proxied, so `cf-connecting-ip` can only ever be forged here and trusting it under any condition is itself the bug. Coolify's Traefik runs with no `forwardedheaders.insecure` and no `trustedIPs`, which is its secure default: a client-supplied `x-forwarded-for` is stripped before the proxy writes its own. The identity is therefore the LAST element of that header, or the TCP peer when the peer is public. Helper sits in `apps/api/src/lib/client-ip.ts` rather than `packages/shared`: all three call sites are in the api and shared carries no hono dependency. Covered by 9 tests in `apps/api/test/client-ip.test.ts`.
+- residual, config drift not code: two Coolify/DNS changes would silently break this. Turning on `forwardedheaders.insecure` makes `x-forwarded-for` caller-written again, and putting `api.outrival.app` behind Cloudflare makes the last element a CF edge address, collapsing every visitor into a handful of shared buckets. The box-level item in the fix above (UFW allowing 443 from Cloudflare ranges) does not apply as written, there are no CF ranges in this path to allowlist.
 
 ### D-01 · P0 · open · Known-vulnerable deps in prod; CI audit non-blocking
 - where: .github/workflows/ci.yml:23 (`pnpm audit --prod --audit-level=high || true`); package.json:35-53 (17 `ignoreGhsas`, no reason, no date)
@@ -240,8 +244,8 @@ Prior audit: `docs/audits/2026-08-16/REPORT.md` (ids `code:SEC-NN`, `COR-NN`, `P
 - DB pool `max: 10`, `idle_timeout: 300` per process (packages/db/src/client.ts:6-12): 3 processes stay far under the Neon pooler cap.
 
 ## Remediation order
-1. S-01, S-02 + auth-surface test (Q-05). 1 day.
-2. S-03 + UFW/origin pull. Half a day.
+1. ~~S-01, S-02~~ done 54512f71. The auth-surface test (Q-05) stays open, see the S-01 note.
+2. ~~S-03~~ done 54512f71. The UFW/origin-pull half does not apply, see the S-03 residual note.
 3. D-01: CI gate, Trivy, gitleaks, 4 bumps. 1 day.
 4. S-05, S-04. 2 hours.
 5. P-01 migration (staging first) + S-06. Half a day.

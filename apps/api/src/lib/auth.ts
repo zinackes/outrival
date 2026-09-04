@@ -11,6 +11,7 @@ import { users } from "@outrival/db";
 import * as schema from "@outrival/db";
 import { sendSignInCodeEmail, sendEmailChangeCodeEmail } from "./sign-in-email";
 import { isDisposableEmail } from "./disposable-email";
+import { createOtpLinkToken } from "./otp-link-token";
 
 const SIGN_IN_OTP_TTL_SECONDS = 600; // 10 minutes
 
@@ -78,12 +79,31 @@ export const auth = betterAuth({
     },
   },
 
-  // Email + password kept as a fallback. Existing accounts (created before patch-19,
-  // some with <12-char passwords) keep working: minPasswordLength is only enforced
-  // when a password is SET, not on sign-in.
+  // Email + password kept as a SIGN-IN fallback only (audit 2026-09-02, S-01).
+  //
+  // disableSignUp: `POST /api/auth/sign-up/email` was reachable through the
+  // catch-all in index.ts even though nothing in the web app calls signUp — an
+  // account pre-hijack primitive: register a victim's address with your own
+  // password, wait for them to sign in with the email code or Google (both link
+  // to the SAME user row), and keep password access to their workspace
+  // afterwards. It was also an enumeration oracle and an unbounded account mint.
+  // Accounts are created by the email-OTP flow, which proves the mailbox first.
+  //
+  // requireEmailVerification: closes the same door from the other side for the 7
+  // legacy password accounts that predate the OTP flow and were never verified —
+  // an unverified credential can no longer be used to sign in. Those users keep
+  // full access through the email code (the /auth page leads with it and offers
+  // it from the password step), and a verified account can still set a password
+  // in Settings → Security. The error stays the generic "incorrect email or
+  // password" on the web on purpose: a distinct message would leak which
+  // addresses hold an account.
+  //
+  // minPasswordLength is only enforced when a password is SET, not on sign-in,
+  // so pre-patch-19 short passwords keep working.
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: false,
+    disableSignUp: true,
+    requireEmailVerification: true,
     minPasswordLength: 12,
   },
 
@@ -131,9 +151,14 @@ export const auth = betterAuth({
           return;
         }
         if (type !== "sign-in") return; // email-verification / forget-password unused
-        const linkUrl = `${process.env.BETTER_AUTH_URL ?? ""}/api/auth/otp-link?email=${encodeURIComponent(
-          email,
-        )}&code=${otp}`;
+        // The one-click link carries an opaque, single-use handle instead of the
+        // OTP itself — see lib/otp-link-token.ts for why a live code in a URL is
+        // a credential leak. The code still travels in the mail body.
+        const linkToken = await createOtpLinkToken(
+          { email, otp },
+          SIGN_IN_OTP_TTL_SECONDS,
+        );
+        const linkUrl = `${process.env.BETTER_AUTH_URL ?? ""}/api/auth/otp-link?t=${linkToken}`;
         await sendSignInCodeEmail({
           to: email,
           code: otp,
@@ -264,6 +289,9 @@ export const auth = betterAuth({
   rateLimit: {
     enabled: true,
     customRules: {
+      // Defence in depth behind `disableSignUp`: the endpoint answers 4xx now,
+      // but a cheap 4xx loop is still a way to probe the auth surface.
+      "/sign-up/email": { window: 60, max: 3 },
       "/sign-in/email": { window: 60, max: 10 },
       "/sign-in/email-otp": { window: 60, max: 10 },
       "/two-factor/verify-totp": { window: 60, max: 10 },

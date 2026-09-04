@@ -131,9 +131,10 @@ reference map.
 
 ## Related skills
 
-- `.claude/rules/scraping.md`: the cascade contract (L0/L1/L2, refusal handling,
+- `packages/scrapers/CLAUDE.md`: the cascade contract (L0/L1/L2, refusal handling,
   `scrapePage` / `scrapeStatic`). Read it before writing any capture code.
-- `.claude/rules/jobs.md`: only if the source needs its own pg-boss job rather than
-  the generic `scrape-monitor` path (rare — most sources need no new job).
+- `packages/queue/CLAUDE.md`: only if the source needs its own pg-boss job rather
+  than the generic `scrape-monitor` path (rare, most sources need no new job); the
+  handler body and its idempotence rule live in `apps/workers/CLAUDE.md`.
 - **data-quality-auditor**: use to profile a new source's extracted rows
   (`pricing_history`, `job_counts`, …) for missingness before trusting the feed.

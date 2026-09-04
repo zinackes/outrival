@@ -25,26 +25,26 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 |---|---|---|---|---|
 | P-01 | P0 | prod | `purge-retention` fails on every run (Date in raw sql) | fixed in #558, deploy pending |
 | P-02 | P0 | prod | `detect-hiring-footprint` fails once it reaches `evaluateFreeze` | fixed in #558, deploy pending |
-| P-03 | P0 | prod | `www.outrival.app` returns HTTP 526 | open |
-| P-04 | P0 | prod | 759 jobs in `outrival-dlq`, nobody replays; AI pool 61% errors | open |
+| P-03 | P0 | prod | `www.outrival.app` returns HTTP 526 | open, needs the Cloudflare dashboard |
+| P-04 | P0 | prod | 759 jobs in `outrival-dlq`, nobody replays; AI pool 61% errors | open, blocked on pool capacity |
 | P-05 | P1 | prod | 698 active monitors overdue > 24 h with no run since | open |
-| P-06 | P1 | ops | Netcup box: kernel + libc6 pending, reboot required | open |
-| P-07 | P1 | ops | OVH: 17.9 GB docker build cache + 5.4 GB dangling images | open |
-| P-08 | P1 | ops | Backups: rclone 501 on attempt 1 of every run; Neon has no off-provider dump | open |
+| P-06 | P1 | ops | Netcup box: kernel + libc6 pending, reboot required | done 2026-09-04 |
+| P-07 | P1 | ops | OVH: 17.9 GB docker build cache + 5.4 GB dangling images | open, worse: 30.9 GB, disk at 67% |
+| P-08 | P1 | ops | Backups: rclone 501 on attempt 1 of every run; Neon has no off-provider dump | fixed ff473441 |
 | P-09 | P1 | ops | Worker `.env` has 12 keys absent from `env.worker.example` | open |
 | S-05 | P1 | security | api answers without HSTS / X-Content-Type-Options | fixed cac2e50b |
 | S-06 | P2 | security | Browser worker runs as root with `--no-sandbox`; runtimes unpinned | open |
 | D-03 | P1 | deps | 59 vulns (26 high): next, sharp, undici, postcss, hono; CI audit non-blocking | fixed 317fd537 |
-| Q-06 | P1 | code | Raw-sql Date params have no guard; tests cannot catch them (PGlite) | open |
+| Q-06 | P1 | code | Raw-sql Date params have no guard; tests cannot catch them (PGlite) | fixed 7026b0ca |
 | Q-07 | P2 | code | 5 files over 1900 lines | open |
 | G-01 | P1 | git | 106 untracked skill dirs (11.6 MB) will be swept by the next `git add -A` | resolved, committed in #558 |
 | G-02 | P2 | git | 446 remote branches, 438 from merged PRs, no auto-delete | open |
 | G-03 | P2 | git | `OUT-229` worktree: 16 unmerged commits, no PR, idle since 2026-08-29 | open |
-| G-04 | P2 | env | `.env.example`: 7 dead vars, 12 live vars missing | open |
-| C-01 | P1 | docs | `architecture.md` says Upstash is retired; `env.ts` boot-blocks prod without it | open |
-| C-02 | P2 | docs | `architecture/env.md` claims to be complete, misses ~60 vars | open |
-| C-03 | P2 | docs | Dead references: ClickHouse files, `.claude/rules/jobs.md` | open |
-| C-04 | P2 | docs | 2026-09-02 audit: 28/28 still open; 35 historical files in `docs/` | open |
+| G-04 | P2 | env | `.env.example`: 7 dead vars, 12 live vars missing | fixed 7026b0ca |
+| C-01 | P1 | docs | `architecture.md` says Upstash is retired; `env.ts` boot-blocks prod without it | fixed 7026b0ca |
+| C-02 | P2 | docs | `architecture/env.md` claims to be complete, misses ~60 vars | fixed 7026b0ca |
+| C-03 | P2 | docs | Dead references: ClickHouse files, `.claude/rules/jobs.md` | fixed 7026b0ca |
+| C-04 | P2 | docs | 2026-09-02 audit: 28/28 still open; 35 historical files in `docs/` | partial 7026b0ca, `PHASES/` left in place |
 
 ## Actions taken during this audit
 
@@ -118,6 +118,15 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 - Fix (5 minutes): Cloudflare Redirect Rule `www.outrival.app/*` to
   `https://outrival.app/$1` (301). Alternative: add `www.outrival.app` to the web
   service's domains in Coolify so Traefik issues a certificate.
+- 2026-09-04, still open, and it is the user's credential to spend: confirmed the cause
+  on the origin rather than inferring it. Coolify writes exactly two Traefik routers for
+  the web app, both ``Host(`outrival.app`)``, so `www` reaches Traefik's default
+  self-signed certificate and Cloudflare (Full strict) refuses it. Take the redirect
+  rule, not the Coolify domain: adding `www` as a second served hostname means the whole
+  marketing site answers on two domains with no canonical, which trades a 526 for
+  duplicate content. Cloudflare > outrival.app > Rules > Redirect Rules > Create:
+  hostname equals `www.outrival.app`, dynamic redirect to
+  `concat("https://outrival.app", http.request.uri.path)`, 301, preserve query string.
 
 ### P-04 Dead-letter queue and AI pool (P0)
 
@@ -133,6 +142,18 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 - Decision needed: replay the DLQ (re-enqueue `classify-change` with `__deferrals`
   reset, throttled, once the pool recovers) or purge it. Belongs to wave 3 of
   `docs/plans/ai-pool-reliability-audit.md`. Replay is an outward-facing action.
+- 2026-09-04 15:50Z, remeasured before deciding: **do not replay yet**. The DLQ has grown
+  to 821 jobs (581 `created`, 240 `retry`), every payload still `{changeId, __deferrals:
+  5}`, oldest 2026-08-20. `ai_runs` for the same afternoon: 10:00Z 372 errors / 0
+  success, 11:00Z 164 / 0, 13:00Z 64 / 0. Over the 6 h window, 944 errors against 19
+  successes: groq `no_providers` 374 and `breaker_open` 370, mistral `rate_limited` 194,
+  cerebras 6 unclassified. The worker boot log names the pool as
+  three providers, `cloudflare[free,p2] groq[free,p3] mistral[free,p4]` — cerebras is
+  already out. So the pool is not failing, it is out of free-tier capacity, and replaying
+  821 jobs into it would burn their deferrals again and land them straight back here.
+  Sequence: paid capacity (or a lower concurrency ceiling) first, replay second. The
+  order is not negotiable, which makes this a dependency of the AI pool plan rather than
+  a decision anyone can take today.
 
 ### P-05 698 monitors overdue with no run (P1)
 
@@ -154,11 +175,25 @@ Kernel `6.8.0-137` and `libc6` pending, uptime 46 days, `/run/reboot-required` s
 About 2 minutes of downtime for `outrival-pg`, `outrival-worker-light`,
 `outrival-worker-browser`. Outward-facing: needs a go.
 
+Done 2026-09-04 15:53Z. Checked first that all three containers carry
+`restart=unless-stopped` and that `docker.service` is enabled, so nothing needed a manual
+start. `linux-image-6.8.0-138` was already installed against a running `-136`, so the
+reboot activated a kernel two versions ahead of what the finding recorded. Back in about
+20 seconds; `/run/reboot-required` cleared, 18 cron schedules resynced, all three AI
+providers passed their model check, and `/ms-playwright/chromium-1223` is present on the
+browser worker (the invariant `.claude/rules/production.md` §5 asks for after a deploy).
+
 ### P-07 OVH disk (P1)
 
 Docker build cache 17.9 GB (14.6 GB reclaimable) plus 5.4 GB dangling images on a 72 GB
 disk at 46%. `docker builder prune -af --filter until=168h && docker image prune -f`.
 Needs a go.
+
+Worse on 2026-09-04 15:55Z, and this is now the most urgent open ops item: build cache
+30.9 GB of which 27.65 GB is reclaimable, images 42.4 GB of which 9.1 GB is reclaimable,
+disk 48 GB used of 72 GB (67%, was 46%). 36.7 GB is reclaimable in total. Each deploy
+adds cache and nothing removes it, so the box fills on its own; a full disk on the
+Coolify host takes web and api down together.
 
 ### P-08 Backups (P1)
 
@@ -170,6 +205,25 @@ Needs a go.
 - Neon (the business database, 146 MB) is covered only by Neon's own point-in-time
   restore; there is no off-provider dump. Adding a nightly `pg_dump` of
   `DATABASE_URL_PROD` to the same script is about 30 minutes.
+
+Fixed ff473441, and the guess in this finding was wrong: `--s3-no-check-bucket` changes
+nothing, and `no_check_bucket = true` was already set in `rclone.conf`. The failing call
+is the one rclone makes *after* a successful PUT — `HEAD <object>?versionId=<id>`, which
+R2 answers 501 because it has no object versioning. Caught by dumping the request lines
+only: HEAD 404, PUT 200, HEAD `?versionId=` 501. `--s3-no-head` drops that verification
+call; a probe upload then ran clean. rclone here is v1.60.1 from the Ubuntu archive, so
+upgrading it is the durable fix and the flag is the cheap one.
+
+The Neon dump runs inside the `outrival-pg` container, which is the only postgres client
+on the box. Two things the naive version gets wrong: the connection string must not reach
+the host's process list (it arrives through `docker exec --env-file`, not on argv), and
+`-pooler.` has to be stripped, because the Neon pooler is pgbouncer in transaction mode
+and cannot hold pg_dump's snapshot open.
+
+Verified end to end 2026-09-04 15:52Z: queue 1.6 MB, Neon 42 MB, exit 0, no error line.
+Then the round trip that actually matters — pull the Neon object back from R2, decrypt it
+with the age key, `pg_restore -l`: 88 tables. Retention is unchanged at 30 days and now
+covers both dumps.
 
 ### P-09 Worker env drift (P1)
 
@@ -250,6 +304,26 @@ suite is green while prod crashes. Options: a `sqlTimestamp(d: Date)` helper in
 `no-restricted-syntax` rule on `${...}` of Date type (not typed-aware; the helper is the
 realistic guard).
 
+- fixed 7026b0ca: `sqlTimestamp(d: Date)` in `packages/db/src/sql.ts`, exported from
+  `@outrival/db`, adopted at both sites (`purge-retention.ts` `cutoff`,
+  `detect-hiring-footprint.ts` `startAt`, four interpolations).
+- deviation: **no cast**, where the finding proposed `::timestamptz`.
+  `job_postings.detected_at` and `closed_at` are declared `timestamp(...)` WITHOUT
+  `withTimezone`, so they are `timestamp` without time zone; the only `timestamptz`
+  column in the whole schema is `ai_visibility_engine_budget.next_call_allowed_at`.
+  Casting the parameter to `timestamptz` would make every comparison against a naive
+  column depend on the session's `TimeZone`, and casting to `timestamp` would drop the
+  offset on the one column that carries it. An untyped parameter is resolved by
+  Postgres from the comparison itself, which is correct against both and is exactly
+  what `caacc05c` already shipped.
+- verify: `pnpm test:local --filter @outrival/db` (`test/sql.test.ts`, 2 tests). The
+  test asserts the EMITTED params (`PgDialect.sqlToQuery`), not a round trip: PGlite
+  accepts a `Date` object, so a round-trip test would pass on the broken code too.
+  Second test pins the absence of a cast, so re-adding one has to be deliberate.
+- residual: nothing enforces adoption. A new `${someDate}` in a raw `sql` tag still
+  compiles and still passes on PGlite. oxlint cannot see it (no type information); the
+  realistic follow-up is a typed lint rule, not worth its cost for two call sites.
+
 ### Q-07 Large files (P2)
 
 `apps/web/src/lib/api.ts` 4984 lines, `apps/api/src/routes/competitors.ts` 3922,
@@ -291,6 +365,22 @@ SIGNUP_IP_DAILY_CAP SIGNUP_MX_CHECK_ENABLED SCRAPER_REGION HIRING_FREEZE_CLOSED_
 HIRING_FREEZE_MAX_OPENED HIRING_FREEZE_MIN_OPEN HIRING_FREEZE_WINDOW_DAYS
 AI_VISIBILITY_MIN_RUNS_FOR_SIGNAL AI_CACHE_TTL_NAME_DAYS`.
 
+- fixed 7026b0ca: both lists verified one by one against the code before touching
+  anything (`grep -rl` over `apps packages infra`), and both were exactly right. The 7
+  dead ones are deleted, the 12 live ones added under the section they belong to with
+  the default the code actually applies.
+- note: two of the dead names are renames, not deletions.
+  `AI_VISIBILITY_MIN_PROMPTS_FOR_SIGNAL` became `AI_VISIBILITY_MIN_RUNS_FOR_SIGNAL`
+  (runs held per (product, engine), default `VISIBILITY_MIN_RUNS` = 8) and
+  `AI_CACHE_TTL_ANALYZE_DAYS` became `AI_CACHE_TTL_NAME_DAYS`. The old names were
+  still in `docs/architecture/env.md` too, and are gone from both.
+- `SECTORAL_ANALYSIS_DAY` carried the comment "the Trigger.dev cron is static", which
+  outlived Trigger.dev itself.
+- verify: for each of the 19 names, `grep -c "^NAME=" .env.example` against
+  `grep -rl NAME --include=*.ts apps packages infra`. 0/1 before, 1/0 after.
+- residual: D-03 of the 2026-09-02 audit (config sprawl) stays open. The file is
+  accurate now, it is still 780 lines.
+
 ## Docs
 
 ### C-01 Upstash contradiction (P1)
@@ -300,6 +390,14 @@ AI_VISIBILITY_MIN_RUNS_FOR_SIGNAL AI_CACHE_TTL_NAME_DAYS`.
 `docs/deployment.md:29,242` lists them as managed. The prod api container has them.
 Fix the line in `architecture.md`.
 
+- fixed 7026b0ca: `docs/architecture.md:75`. What Phase 6 retired was the alert
+  TRANSPORT (Upstash pub/sub, replaced by DB-backed SSE), not Redis. Upstash still
+  holds the state that must be shared between api instances: the auth and AI-intensive
+  rate limiters, and the AI pool's circuit breaker (`packages/shared/src/redis.ts`).
+  The note now says that, and says why `env.ts` boot-blocks on it.
+- `docs/deployment.md` needed nothing: its line already reads "BLOCKING: api refuses
+  to boot in prod without these".
+
 ### C-02 `docs/architecture/env.md` incomplete (P2)
 
 Announces a complete list (485 lines) but about 60 variables present in `.env.example`
@@ -307,17 +405,63 @@ are absent (`AUTH_COOKIE_DOMAIN`, `UPSTASH_*`, `ADMIN_EMAILS`, `SENTRY_*`, `POST
 `SCRAPE_*`, `PIVOT_*`, ...). Either generate the table from `.env.example` or drop the
 "complete" claim.
 
+- fixed 7026b0ca: the claim is dropped, and the header now states the split.
+  `.env.example` is the inventory; `env.md` is the *why*, and a variable earns a place
+  there when its rationale does not fit on one line.
+- measured, not estimated: 251 variables in `.env.example`, 176 named in the body of
+  `env.md`, 75 absent. The header carries those numbers with their date, so the next
+  reader can re-measure instead of trusting the word "complete".
+- rejected: generating the table from `.env.example`. It would produce 251 rows of
+  which 176 already exist by hand with an incident behind them, and the generator would
+  either overwrite that or need a merge rule nobody would maintain.
+
 ### C-03 Dead references (P2)
 
 `docs/staged-extraction.md:143,234,261` describe ClickHouse files that were retired.
 `.claude/skills/outrival-new-source/SKILL.md:136` points to `.claude/rules/jobs.md`,
 which does not exist.
 
+- fixed 7026b0ca, and the sweep found more than the two cited sites.
+- ClickHouse: retired on 2026-06-06 by `19261f57` ("ClickHouse -> Neon"), which deleted
+  `clickhouse-schema.ts`, `ch-setup.ts`, `clickhouse-safe.ts`, `workers/lib/clickhouse.ts`
+  and the `keep-clickhouse-warm` job. `docs/staged-extraction.md` still sent the reader
+  to all three files at lines 42, 132, 143, 179, 234 and 261. `extraction_runs`,
+  `scrape_runs` and `ai_runs` are Postgres tables in `packages/db/src/schema/analytics.ts`.
+  The doc is a patch spec, so it keeps its original SQL sketch with a dated note saying
+  what actually landed.
+- `.claude/rules/`: `jobs.md`, `scraping.md`, `monorepo.md`, `api-routes.md` and
+  `linear-workflow.md` are all gone, their content having moved into the per-package
+  `CLAUDE.md`. Repointed in the three LIVE files: the skill (scraping ->
+  `packages/scrapers/CLAUDE.md`, jobs -> `packages/queue/CLAUDE.md` + `apps/workers/CLAUDE.md`
+  for idempotence), `apps/workers/src/scripts/replay-dlq.ts:20`, and
+  `.claude/workflows/audit-ux.js:296`.
+- deliberately NOT rewritten: the same names inside `PHASES/`, `plans/` and the
+  2026-08-16 audit. Those are records of what was true when they were written.
+
 ### C-04 Audit debt and archive (P2)
 
 `docs/audits/2026-09-02/REPORT.md`: 28 findings, all `open`; the remediation commit
 `70013d0a` addressed the 2026-08-16 audit, not this one. `docs/` holds 47 files including
 10 dated audits and 25 `PHASES` files; move the historical ones under `docs/archive/`.
+
+- partial 7026b0ca.
+- The status half is already done and was done before this wave: the 2026-09-02 index
+  now reads 8 fixed, 1 partial, 19 open, each with the sha that closed it. `70013d0a`
+  is never claimed by that report; the sentence it carries about `81a2b730..ee391589`
+  is about the 2026-08-16 audit and is correct.
+- The archive half: the 7 dated audits sitting in `docs/` root move to `docs/archive/`
+  with a README stating the rule (dated, finished, nobody edits it) and warning that
+  nothing in there describes today's code. The other 3 of the 10 already live under
+  `docs/audits/`, which is where tracked audits belong.
+- Inbound links repointed in `.claude/workflows/audit-code.js`, `audit-verify.js`,
+  `docs/architecture/env.md`, `docs/ai-visibility.md`,
+  `packages/scrapers/src/lib/nav-strategy.ts`, and between the two moved files. The
+  references inside `docs/audits/2026-08-16/` are left dangling on purpose: a rendered
+  audit is a record, and editing it to keep a link alive rewrites history.
+- `PHASES/` is NOT moved, and the count is stale: 25 files, but at the repo root in
+  their own directory, not in `docs/`. They are already separated from the live docs,
+  which is the outcome this finding asks for, and 29 files under `plans/` reference
+  them by path. Moving them would buy nothing and break those.
 
 ## Business snapshot (Neon, 2026-09-04)
 

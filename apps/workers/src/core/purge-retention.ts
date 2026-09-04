@@ -1,6 +1,6 @@
 import { logger } from "../lib/job-logger";
 import { sql } from "drizzle-orm";
-import { db, snapshots } from "@outrival/db";
+import { db, snapshots, sqlTimestamp } from "@outrival/db";
 import { PLAN_LIMITS, deleteManyFromR2, snapshotObjectKeys } from "@outrival/shared";
 
 // Enforces PLAN_LIMITS.historyRetentionDays (free 7d / starter 30d / pro 365d /
@@ -42,9 +42,9 @@ export async function runPurgeRetention() {
 
     for (const [plan, orgCount] of plans) {
       const days = PLAN_LIMITS[plan].historyRetentionDays;
-      // ISO string, not a Date: drizzle's postgres-js driver disables the driver's
-      // date serializers, so a Date in a raw sql param hits the wire as an object.
-      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+      // sqlTimestamp, not the Date: through drizzle, postgres-js cannot bind a Date
+      // as a raw sql param. See packages/db/src/sql.ts.
+      const cutoff = sqlTimestamp(new Date(Date.now() - days * 24 * 60 * 60 * 1000));
       // Written once and inlined into every statement: the org set and the cutoff
       // have to agree, and restating the predicate ten times is how they stop
       // agreeing.

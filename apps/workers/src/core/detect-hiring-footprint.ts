@@ -2,7 +2,15 @@ import { logger } from "../lib/job-logger";
 import { NonRetriable as AbortTaskRunError, generateSignal } from "@outrival/queue";
 import { z } from "zod";
 import { and, desc, eq, gt, gte, isNull, lte, or, sql } from "drizzle-orm";
-import { db, competitors, monitors, snapshots, changes, jobPostings } from "@outrival/db";
+import {
+  db,
+  competitors,
+  monitors,
+  snapshots,
+  changes,
+  jobPostings,
+  sqlTimestamp,
+} from "@outrival/db";
 import {
   computeHash,
   uploadToR2,
@@ -254,20 +262,22 @@ async function evaluateFreeze(
   now: Date,
 ): Promise<string | null> {
   const start = new Date(now.getTime() - FREEZE_WINDOW_DAYS * 86_400_000);
-  // Raw sql params below take the ISO string: through drizzle, postgres.js cannot
-  // bind a Date object. The helpers use the query builder and keep the Date.
+  // The raw sql params below go through sqlTimestamp: postgres-js cannot bind a Date
+  // object once drizzle has replaced its serializers (packages/db/src/sql.ts). The
+  // helpers called further down use the query builder and keep the Date itself.
+  const startAt = sqlTimestamp(start);
 
   const [stats] = await db
     .select({
       openAtStart: sql<number>`count(*) filter (
-        where ${jobPostings.detectedAt} <= ${start.toISOString()}
-          and (${jobPostings.closedAt} is null or ${jobPostings.closedAt} > ${start.toISOString()})
+        where ${jobPostings.detectedAt} <= ${startAt}
+          and (${jobPostings.closedAt} is null or ${jobPostings.closedAt} > ${startAt})
       )::int`,
       closedInWindow: sql<number>`count(*) filter (
-        where ${jobPostings.closedAt} >= ${start.toISOString()}
+        where ${jobPostings.closedAt} >= ${startAt}
       )::int`,
       openedInWindow: sql<number>`count(*) filter (
-        where ${jobPostings.detectedAt} >= ${start.toISOString()}
+        where ${jobPostings.detectedAt} >= ${startAt}
       )::int`,
       lastClosureAt: sql<string | null>`max(${jobPostings.closedAt})`,
     })

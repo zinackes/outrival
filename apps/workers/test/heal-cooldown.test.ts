@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from "bun:test";
 import {
   shouldAttemptHeal,
+  healCooldownMs,
   healPausedUntil,
   pauseHealsAfterPoolFailure,
   resetHealPause,
@@ -81,5 +82,48 @@ describe("pool heal pause", () => {
     pauseHealsAfterPoolFailure(NOW, 60_000);
     pauseHealsAfterPoolFailure(NOW + 30_000, 60_000);
     expect(healPausedUntil()).toBe(NOW + 90_000);
+  });
+});
+
+// R-E9: a page the generator cannot parse must stop costing two generate_extractor
+// calls a day forever. 12 h → 48 h → 7 d, then flat.
+describe("healCooldownMs", () => {
+  it("gives the base cooldown to a page that has never failed a heal", () => {
+    expect(healCooldownMs(COOLDOWN, 0)).toBe(12 * HOUR);
+  });
+
+  it("climbs 12 h → 48 h → 7 d over three consecutive failures", () => {
+    expect(healCooldownMs(COOLDOWN, 1)).toBe(12 * HOUR);
+    expect(healCooldownMs(COOLDOWN, 2)).toBe(48 * HOUR);
+    expect(healCooldownMs(COOLDOWN, 3)).toBe(7 * 24 * HOUR);
+  });
+
+  it("caps at the last step instead of growing without bound", () => {
+    expect(healCooldownMs(COOLDOWN, 9)).toBe(7 * 24 * HOUR);
+    expect(healCooldownMs(COOLDOWN, 200)).toBe(7 * 24 * HOUR);
+  });
+
+  it("scales with the configured base, so the env knob still works", () => {
+    expect(healCooldownMs(HOUR, 2)).toBe(4 * HOUR);
+  });
+
+  it("parks a repeatedly-failing page that a flat cooldown would have released", () => {
+    const lastHealAttemptAt = new Date(NOW - 24 * HOUR);
+    expect(
+      shouldAttemptHeal({
+        lastHealAttemptAt,
+        now: NOW,
+        cooldownMs: healCooldownMs(COOLDOWN, 1),
+        poolPausedUntil: 0,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAttemptHeal({
+        lastHealAttemptAt,
+        now: NOW,
+        cooldownMs: healCooldownMs(COOLDOWN, 3),
+        poolPausedUntil: 0,
+      }),
+    ).toBe(false);
   });
 });

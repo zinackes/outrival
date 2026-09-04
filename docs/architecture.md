@@ -69,7 +69,7 @@ grille de plans ou la roadmap changent.
 | Discovery         | Exa.ai (`exa-js`)                        | Recherche sémantique de concurrents similaires |
 | Email             | Resend                                   | Alerts + digests transactionnels |
 | Paiements         | Stripe (SDK v22)                         | Checkout + Customer Portal + webhooks |
-| Insights IA       | Pool OpenAI-compat (`gpt-oss-120b`)      | Cerebras p1 → Cloudflare Workers AI p2 → Groq p3 → Mistral p4, tous gratuits. `tier:"fast"` → `gpt-oss-20b` (Groq + Cloudflare). Les llama-3.x sont arrêtés par Groq le 2026-08-16. `AI_CONFIG.model` est ignoré sur le chemin pool |
+| Insights IA       | Pool OpenAI-compat (`gpt-oss-120b`)      | Cloudflare Workers AI p2 → Groq p3 → Mistral p4, tous gratuits. Cerebras (p1) retiré le 2026-09-04, plus de crédit depuis le 2026-08-17. `tier:"fast"` → `gpt-oss-20b` (Groq + Cloudflare). Les llama-3.x sont arrêtés par Groq le 2026-08-16. `AI_CONFIG.model` est ignoré sur le chemin pool |
 | Déploiement       | OVH VPS + Coolify                        | Self-hosted, EU GDPR, €8/mois |
 
 > **Note** : Upstash Redis a été retiré du stack (Phase 6). Les alertes temps-réel

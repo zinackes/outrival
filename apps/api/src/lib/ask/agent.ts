@@ -201,7 +201,7 @@ async function runAsk(
     }
     await emit({ type: "done" });
   } catch (err) {
-    await logAskRun(AI_CONFIG.insights.model, "error", { orgId });
+    await logAskRun(AI_CONFIG.insights.model, "error", { orgId }, err);
     const message =
       err instanceof AIUnavailableError
         ? "AI is temporarily unavailable. Please try again in a moment."

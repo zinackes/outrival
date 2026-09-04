@@ -10,6 +10,12 @@ import {
   type SourceType,
 } from "@outrival/shared";
 import { rearmableMonitorIds } from "../lib/rearm";
+import { spreadOverWindow } from "../lib/burst-spread";
+
+// How long the hourly batch is spread over (R1 of the AI pool reliability audit).
+// 3000 s = 50 min, which leaves a 10-minute margin before the next `0 * * * *` fire.
+// 0 disables the spread and restores the single-batch behaviour from env.
+const SCRAPE_SPREAD_SEC = Number(process.env.SCRAPE_SPREAD_SEC ?? 3000);
 
 type DueMonitor = {
   id: string;
@@ -144,10 +150,16 @@ export async function runScheduleScraping() {
       logger.log("Re-armed unscrapable monitors", { count: rearmIds.length });
     }
 
+    // Everything that falls due WITHIN the spread window, not just what is due now:
+    // this batch is going to run over the next SCRAPE_SPREAD_SEC anyway, and taking
+    // only `nextRunAt <= now` would strand the tail of it. A realtime monitor run at
+    // :50 gets nextRunAt = :50 + 1 h, which is past the next :00, so it would wait for
+    // the hour after that — the spread would have halved its cadence.
+    const dueBy = new Date(now.getTime() + Math.max(0, SCRAPE_SPREAD_SEC) * 1000);
     const due = await db.query.monitors.findMany({
       where: and(
         eq(monitors.isActive, true),
-        or(isNull(monitors.nextRunAt), lte(monitors.nextRunAt, now)),
+        or(isNull(monitors.nextRunAt), lte(monitors.nextRunAt, dueBy)),
       ),
       columns: { id: true, competitorId: true, requiresLevel: true, sourceType: true },
     });
@@ -167,16 +179,21 @@ export async function runScheduleScraping() {
       return { enqueued: 0, total: due.length };
     }
 
-    // One batch call instead of N sequential triggers. Actual execution is
-    // throttled by the single scrape-monitor queue (concurrencyLimit). The cascade
-    // caps at L2 (flat-cost datacenter egress), so every monitor rides the one lane.
+    // One batch call instead of N sequential triggers, but each row carries its own
+    // `startAfter` so the hour arrives as a stream rather than a wall — the queue
+    // lane was never the bottleneck, the AI pool behind it was (see lib/burst-spread).
+    const spread = spreadOverWindow(enqueueable, SCRAPE_SPREAD_SEC);
     await scrapeMonitor.enqueueMany(
-      enqueueable.map((monitor) => ({ data: { monitorId: monitor.id } })),
+      spread.map(({ item, startAfterSec }) => ({
+        data: { monitorId: item.id },
+        options: { startAfter: startAfterSec },
+      })),
     );
 
     logger.log("Completed schedule-scraping", {
       enqueued: enqueueable.length,
       capped,
+      spreadSec: SCRAPE_SPREAD_SEC,
     });
     return { enqueued: enqueueable.length, total: due.length };
 }

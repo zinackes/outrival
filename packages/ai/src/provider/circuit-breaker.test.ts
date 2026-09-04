@@ -172,6 +172,23 @@ describe("tripGlobalBreaker", () => {
     await tripGlobalBreaker("too_many_failures");
     expect((await checkGlobalBreaker()).open).toBe(true);
   });
+
+  // The threshold has to mean the same thing on the second trip as on the first.
+  // The failure count outlives the park (10-minute window vs a 2-minute reset), so
+  // unless the trip clears it the breaker comes back already loaded and one failure
+  // re-parks AI for everyone.
+  test("the park starts the streak over, so the threshold still applies after it", async () => {
+    process.env.AI_CIRCUIT_BREAKER_THRESHOLD = "2";
+    process.env.AI_CIRCUIT_BREAKER_RESET_MIN = "0.001"; // 60ms
+    await recordFailure("groq-1");
+    await recordFailure("groq-1");
+    expect((await checkGlobalBreaker()).open).toBe(true);
+    await Bun.sleep(80);
+    expect((await checkGlobalBreaker()).open).toBe(false);
+    // One failure is not two: the count restarts, it does not resume at the threshold.
+    await recordFailure("groq-1");
+    expect((await checkGlobalBreaker()).open).toBe(false);
+  });
 });
 
 describe("recordFailure", () => {

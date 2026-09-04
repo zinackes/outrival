@@ -166,6 +166,10 @@ scrapingRouter.get("/scraping-health", async (c) => {
   const extraction = {
     structured: resCount("structured"),
     cache: resCount("cache"),
+    // A cached parser replayed past its revalidation age: free like `cache`, but it
+    // means the heal that should have refreshed it never ran. Read it as a heal-
+    // starvation gauge, not as cache health.
+    staleCache: resCount("stale_cache"),
     heal: resCount("heal"),
     aiFallback: resCount("ai_fallback"),
   };

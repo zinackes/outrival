@@ -479,6 +479,18 @@ export const aiRuns = pgTable(
     provider: text("provider").notNull(),
     model: text("model").notNull(),
     status: text("status").notNull(), // success | parse_failed | error
+    // WHY an `error` row failed, from the AIUnavailableError the pool threw (C1 of
+    // the AI pool reliability audit): misconfigured | out_of_credit | too_large |
+    // empty_replies | rate_limited | transient. '' on success/parse_failed and on
+    // any error the pool did not classify. 295-491 error rows/day carried no reason
+    // at all before this, so "why is AI failing" was not a question the table could
+    // answer — every diagnosis went through the worker logs by hand.
+    errorKind: text("error_kind").notNull().default(""),
+    // How many pool providers this run actually tried (1 = served first pick). The
+    // failover is invisible in the provider column, which records only the LAST one
+    // marked, so a pool burning three providers per call looked identical to a
+    // healthy one.
+    attempts: integer("attempts").notNull().default(0),
     confidence: text("confidence").notNull().default(""), // low | medium | high | '' (patch-24)
     selfCheckPassed: integer("self_check_passed").notNull().default(-1), // -1 not run | 0 failed | 1 passed
     groundingScore: doublePrecision("grounding_score").notNull().default(-1), // ratio of valid citations, -1 = ungrounded

@@ -6,6 +6,7 @@ export {
   getActiveProvider,
   getActiveModel,
   consumeUsage,
+  consumeAttempts,
   wasTruncated,
   withAiContext,
   withTruncationReport,
@@ -13,6 +14,8 @@ export {
 } from "./provider/provider-context";
 export type { TokenUsage } from "./provider/provider-context";
 export { AIUnavailableError, checkGlobalBreaker } from "./provider/circuit-breaker";
+export { aiErrorKind, AI_ERROR_KINDS } from "./provider/error-kind";
+export type { AiErrorKind } from "./provider/error-kind";
 export { loadProviders, checkProviderModels } from "./provider/provider-pool";
 export type { Provider, ProviderCheck } from "./provider/provider-pool";
 export { safeParseJson } from "./lib/parse";

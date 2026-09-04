@@ -1109,6 +1109,65 @@ documented contradiction.
 | 4 | Process-wide semaphore in `provider.ts` at `AI_MAX_CONCURRENT_CALLS=4`. | Job expiry rate: `SELECT name, count(*) FROM pgboss.job WHERE state='failed' AND output::text ILIKE '%expire%'`. Must not rise. |
 | 5 | Move `source_summary`, `extract_pricing`, `extract_jobs`, `extract_entitlements` to `classificationFast`, one per day, with an eval run each. | `SELECT provider, sum(total_tokens) FROM ai_runs WHERE recorded_at::date = current_date GROUP BY 1` and Cloudflare's Neuron dashboard. |
 
+**Status, 2026-09-04.** Steps 1 to 4 are implemented in the branch and green
+(`typecheck`, `check:lint`, and the suites of `@outrival/ai`, `@outrival/workers`,
+`@outrival/api`, `@outrival/shared`). Nothing is deployed: the four new columns ship in
+migration `0085_silky_stick.sql` (`parser_extractors.consecutive_heal_failures`,
+`ai_runs.error_kind`, `ai_runs.attempts`) and the two new variables
+(`SCRAPE_SPREAD_SEC=3000`, `AI_MAX_CONCURRENT_CALLS=4`) are in `.env.example` and
+`docs/architecture/env.md` but not on any box. Step 5 was NOT applied, see below.
+
+Three deviations from the table above, each because the step as written would have
+caused a second problem.
+
+1. **No jitter in `computeNextRun` (step 1).** The spread lives in
+   `apps/workers/src/lib/burst-spread.ts`: a Fisher-Yates shuffle plus an even walk over
+   `SCRAPE_SPREAD_SEC`, passed to `enqueueMany` as a per-row `startAfter`. The shuffle is
+   what removes the systematic unfairness, so jittering the *next* run as well would only
+   add randomness to a pure function called from three other sites. What the plan missed
+   is the cadence regression: a monitor scraped at `:50` gets `nextRunAt = :50 + 1 h`,
+   which is past the next `:00` fire, so it would wait for the hour after that and its
+   effective cadence would halve. The selection was therefore widened to everything due
+   *within* the window (`nextRunAt <= now + SCRAPE_SPREAD_SEC`) instead of only what is
+   due now. Freshness still moves by at most 50 minutes, in the other direction.
+
+2. **`stale_cache` instead of resetting the revalidation clock (step 2).** The plan's E9
+   offered two fixes and both regress R8: stamping `lastValidatedAt` on a successful
+   replay makes a drifted-but-plausible selector immortal, which is the exact bug R8 shut
+   (`extractor-trust.ts:17-20` documents the reason), and raising
+   `EXTRACTOR_REVALIDATE_INTERVAL_DAYS` to 60 weakens drift detection fourfold. Applied
+   instead: an expired spec is kept in hand and replayed as a last resort *after* the heal
+   has been attempted or skipped, still gated on `lastValidatedAt != null` and
+   `consecutiveFailures < EXTRACTOR_MAX_FAILURES`, and logged under a fifth resolution,
+   `stale_cache`. Heal starvation becomes visible in `extraction_runs` rather than hiding
+   inside `cache`. The exponential backoff is the plan's, on a new counter
+   (`consecutive_heal_failures`) rather than on `consecutive_failures`, which counts replay
+   misses and would otherwise conflate two different facts: 12 h, then 48 h, then 7 days,
+   reset by a heal that does produce a parser.
+
+3. **Eight error kinds, not six (step 3).** C1 lists `misconfigured`, `out_of_credit`,
+   `too_large`, `empty_replies`, `rate_limited`, `transient`. Two more throw sites exist
+   and folding them into the six would assert a cause never observed: `no_providers` (the
+   walk found nothing to call, so no request was ever made) and `breaker_open` (the global
+   breaker refused, which is the consequence of an earlier storm rather than new evidence
+   about this call). `attempts` comes from a counter on the AsyncLocalStorage provider
+   context, incremented once per provider tried, so an error row now says how far the
+   failover walked before giving up.
+
+**Step 5 is the remaining decision, and the eval it asks for does not exist.**
+`packages/ai` ships three eval scripts: `eval:model` (insight and classify_structured),
+`eval:severity` and `eval:faithfulness`. None of them covers `source_summary`,
+`extract_pricing`, `extract_jobs` or `extract_entitlements`, so "one per day with an eval
+run each" first means writing a labelled harness for those four, on the model of
+`severity-golden.ts`. That is the cost, not the tokens: every provider is `TIER=free`, an
+eval run burns the same daily quota production needs (groq 200k, cloudflare 280k,
+cerebras 1M, mistral 30M) and only Cloudflare can turn into a bill, past its 10,000 free
+Neurons at $0.011 per 1,000. The other reason to hold is Wave 1's analogous step 5, which
+was dropped on a measured quality regression on the fast model. Recommended order once
+the harness exists, cheapest risk first: `source_summary` (39.9 calls/day, 412 average
+tokens, no reasoning in the prompt), then `extract_entitlements`, `extract_pricing`,
+`extract_jobs`.
+
 ### Wave 3: later
 
 1. Per-provider request buckets (`ai:rps:<id>:<sec>`) and `AI_PROVIDER_N_RPS_LIMIT`.

@@ -57,6 +57,15 @@ SCRAPE_CONCURRENCY=3         # scrape-monitor jobs in flight per browser worker 
                             # per-run machines; 3 on the shared 8 GB VPS). The slow lane no longer
                             # exists — it was retired with the L3/L4 cascade tiers
 SUMMARY_CONCURRENCY=1        # competitor-summary lane (onboarding burst stays on the free AI tier)
+SCRAPE_SPREAD_SEC=3000       # R1 — secondes sur lesquelles le cron horaire étale son batch. Il
+                            # enfilait TOUS les monitors dus dans un seul insert, donc toute la
+                            # flotte tapait le pool IA dans la même minute et faisait sauter les
+                            # fenêtres de tokens par minute. 3000 s = 50 min, soit 10 min de marge
+                            # avant le `0 * * * *` suivant. Les monitors dus DANS la fenêtre entrent
+                            # aussi dans le batch : sans ça un monitor calé sur :50 raterait l'heure
+                            # suivante et sa cadence serait divisée par deux. 0 rétablit le batch
+                            # unique. Ordre mélangé (Fisher-Yates) pour qu'aucune org ne soit
+                            # systématiquement servie en dernier
 HEARTBEAT_URL=               # dead-man's switch: the light worker GETs this every 5 min. Point it at
                             # a Better Stack / UptimeRobot heartbeat monitor that alerts when the pings
                             # STOP — the only alert that still fires if the VPS or the fleet dies.
@@ -159,16 +168,13 @@ SHIPPING_VELOCITY_MIN_ITEMS=8           # entries the trailing 3-month window mu
 GROQ_API_KEY=                # back-compat : synthétise un provider Groq si aucun AI_PROVIDER_N
 
 # AI provider pool (patch-22) — pool de PROVIDERS légaux OpenAI-compatibles, essayés
-# free d'abord puis payant. AI_PROVIDER_1..N contigus (stop au 1er trou). priority =
-# ordre d'essai. dailyTokenQuota = tokens/jour (pool skip à 95%). Vide → fallback GROQ_API_KEY.
+# free d'abord puis payant. loadProviders balaie AI_PROVIDER_1..10 et SAUTE tout slot
+# sans id, clé ou base url : un trou ne désactive que son slot, il n'arrête pas le
+# balayage. priority = ordre d'essai, indépendant du numéro de slot. dailyTokenQuota =
+# tokens/jour (pool skip à 95%). Vide → fallback GROQ_API_KEY.
 # NE PAS utiliser plusieurs comptes Groq (viole les ToS) — des PROVIDERS distincts.
-AI_PROVIDER_1_ID=cerebras          # free 1M tok/j, prio 1
-AI_PROVIDER_1_BASE_URL=https://api.cerebras.ai/v1
-AI_PROVIDER_1_API_KEY=
-AI_PROVIDER_1_MODEL=gpt-oss-120b   # NOT llama-3.3-70b (404 model_not_found on Cerebras free tier)
-AI_PROVIDER_1_TIER=free
-AI_PROVIDER_1_DAILY_TOKEN_QUOTA=1000000
-AI_PROVIDER_1_PRIORITY=1
+# Le slot 1 est libre depuis le retrait de Cerebras le 2026-09-04 (plus de crédit
+# depuis le 2026-08-17, clé vidée le 2026-09-02). Le pool tourne à 3 providers.
 AI_PROVIDER_N_MAX_REQUEST_TOKENS=  # plafond d'UNE requête chez ce provider (≠ quota
                                    # journalier, qui est un budget : celui-ci est un mur).
                                    # Groq gratuit compte prompt + max_tokens contre ses
@@ -220,7 +226,7 @@ AI_PROVIDER_N_JSON_SCHEMA=         # "true" = ce provider honore response_format
                                    # ne bascule volontairement pas (une requête mal
                                    # construite échouerait pareil partout). Vide = mode
                                    # json_object, identique à aujourd'hui
-AI_PROVIDER_N_TPM_LIMIT=           # plafond TOKENS PAR MINUTE du provider (cerebras 30000, cloudflare 6000, mistral 60000,
+AI_PROVIDER_N_TPM_LIMIT=           # plafond TOKENS PAR MINUTE du provider (cloudflare 6000, mistral 60000,
                                    # groq 8000). C'est LE plafond qui mordait : le quota
                                    # journalier n'a jamais été atteint. Mesuré en prod le
                                    # 2026-07-31 — Cerebras sert 420k tokens sur l'heure de 05:00,
@@ -276,6 +282,20 @@ QUEUE_MAX_DEFERRALS=5             # nombre de reports qu'un job peut accumuler a
                                    # zéro et ne peut pas borner la boucle
 AI_CIRCUIT_BREAKER_THRESHOLD=20   # échecs consécutifs (tous providers) avant coupure globale
 AI_CIRCUIT_BREAKER_RESET_MIN=2    # minutes avant retry (breaker provider ET global)
+AI_MAX_CONCURRENT_CALLS=4         # R9 — plafond PROCESS d'appels simultanés au pool. La
+                                   # concurrence par queue n'est pas la concurrence du pool : 24
+                                   # handlers portent un appel IA, ce qui met le plancher à ~22
+                                   # appels en vol côté workers, plus l'api, et rien ne les
+                                   # comptait. C'est le seul frein qui agit AVANT le 429 : les
+                                   # breakers et les fenêtres TPM sont tous des réactions à un
+                                   # 429 déjà encaissé. Le slot est tenu pendant TOUTE la marche
+                                   # de failover, pas par tentative, sinon un appel qui a déjà
+                                   # brûlé deux providers repasse derrière du travail neuf. Le
+                                   # check du breaker global reste HORS du slot pour qu'un
+                                   # blackout échoue vite au lieu de faire la queue. Trop bas
+                                   # transforme un problème de tokens en problème de latence et
+                                   # pousse les jobs vers leur `expireInSeconds` : se régler
+                                   # contre le taux de jobs expirés. 0 désactive
 AI_INTENSIVE_RATE_LIMIT=           # OVERRIDE d'urgence ops UNIQUEMENT. Le plafond horaire
                                    # d'actions IA discrétionnaires est PAR TIER depuis
                                    # 2026-07-31 (PLAN_LIMITS.aiActionsPerHour 20/40/120/300).
@@ -386,6 +406,16 @@ EXTRACTOR_HEAL_POOL_PAUSE_MINUTES=5    # durée pendant laquelle TOUS les heals 
                                        # pause seule. 📄 docs/ai-consumption-audit-2026-08.md
 EXTRACTOR_REVALIDATE_INTERVAL_DAYS=14  # R8 — âge max d'un parser caché avant régénération forcée contre le DOM courant (un sélecteur dérivé "plausible mais faux" ne peut plus être trusté indéfiniment). last_validated_at n'est plus stampé à chaque cache hit
 EXTRACTOR_MAX_CONSECUTIVE_FAILURES=5   # R8 — échecs de replay consécutifs après lesquels un parser caché est distrusté d'office
+                                       # E9 — le cooldown de heal ci-dessus est désormais
+                                       # EXPONENTIEL par page (12 h → 48 h → 7 j) via
+                                       # parser_extractors.consecutive_heal_failures : une page
+                                       # que le générateur n'arrive pas à parser doit cesser
+                                       # d'être re-générée au tarif plat pour toujours. Remis à 0
+                                       # par un heal qui produit un parser. Et un spec expiré
+                                       # n'est plus jeté d'office : quand le heal censé le
+                                       # remplacer ne peut pas tourner (cooldown, ou pool qui ne
+                                       # répond pas), il est rejoué quand même et le run est logué
+                                       # en `stale_cache` au lieu de payer le modèle
 PRUNE_HTML_MAX_CHARS=21000            # cap de l'HTML élagué envoyé au générateur de sélecteurs
 
 # Platform auto-detection (patch-31)

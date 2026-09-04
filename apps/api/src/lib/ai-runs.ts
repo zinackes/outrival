@@ -1,5 +1,11 @@
 import { aiRuns } from "@outrival/db";
-import { getActiveProvider, getActiveModel, consumeUsage } from "@outrival/ai";
+import {
+  getActiveProvider,
+  getActiveModel,
+  consumeUsage,
+  consumeAttempts,
+  aiErrorKind,
+} from "@outrival/ai";
 import { db } from "./db";
 
 export type AiRunStatus = "success" | "parse_failed" | "error";
@@ -27,6 +33,10 @@ export async function logApiAiRun(
   model: string,
   status: AiRunStatus,
   attribution?: AiRunAttribution,
+  /** The throw behind an `error` row (see aiErrorKind). The interactive path is the
+   *  one the audit found unprotected, so its failures need the same reason column the
+   *  jobs get — otherwise a user-facing outage is invisible next to a worker one. */
+  err?: unknown,
 ): Promise<void> {
   try {
     const provider = getActiveProvider() ?? "groq";
@@ -35,11 +45,16 @@ export async function logApiAiRun(
     const actualModel = getActiveModel() ?? model;
     // Read-and-clear gives each row just this call's tokens.
     const usage = consumeUsage();
+    // Same read-and-clear contract as the tokens: an uncleared count would leak into
+    // the next request's row.
+    const attempts = consumeAttempts();
     await db.insert(aiRuns).values({
       task,
       provider,
       model: actualModel,
       status,
+      errorKind: status === "error" ? aiErrorKind(err) : "",
+      attempts,
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,
       totalTokens: usage.totalTokens,
@@ -55,6 +70,7 @@ export function logAskRun(
   model: string,
   status: AiRunStatus,
   attribution?: AiRunAttribution,
+  err?: unknown,
 ): Promise<void> {
-  return logApiAiRun("ask", model, status, attribution);
+  return logApiAiRun("ask", model, status, attribution, err);
 }

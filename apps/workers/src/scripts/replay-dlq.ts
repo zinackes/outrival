@@ -21,9 +21,10 @@
 // content hashes and the unique constraint on signals.change_id absorb a duplicate,
 // and nothing absorbs a change that was silently dropped.
 //
-//   pnpm replay:dlq                            # count what is parked, write nothing
-//   pnpm replay:dlq -- --apply                 # replay all of it
-//   pnpm replay:dlq -- --apply --limit 200     # replay a wave
+//   pnpm replay:dlq                                    # count what is parked
+//   pnpm replay:dlq -- --apply                         # replay all of it
+//   pnpm replay:dlq -- --apply --limit 200             # replay a wave
+//   pnpm replay:dlq -- --apply --queue scrape-monitor  # replay one origin
 //
 // --limit exists because the pool's free providers have a DAILY token quota, so a
 // backlog larger than one day's worth will not all classify today. It is a comfort
@@ -32,6 +33,20 @@
 // deletes it on that date without a word, whereas a job that fails again lands back
 // here with a fresh fourteen days on it. Waiting costs the backlog; retrying does
 // not.
+//
+// --queue is the safety knob --limit is not, because a mixed backlog does not fail
+// as one thing. On 2026-09-04 the 601 parked jobs were 270 scrape-monitor, which
+// need a browser and nothing else, and 331 classify-change / generate-signal, which
+// need a pool whose free daily quota was already spent (cloudflare 266k/280k, groq
+// 202k/200k). Replaying all of it would have run 331 doomed jobs, three attempts
+// each, down a lane pg-boss serialises at concurrency 1 — hours of it, in front of
+// the classifications of the day. --limit cannot separate them: pg-boss fetches by
+// priority then created_on, and the two kinds are interleaved by the minute.
+//
+// A job of another origin is fetched and deliberately NOT completed, exactly like an
+// unroutable one below: it holds its fetch lock for the rest of the run and returns
+// to the queue by itself afterwards. So a filtered pass reads the whole backlog and
+// moves only its slice.
 //
 // Runs against whatever QUEUE_DATABASE_URL is loaded. On a shared environment, read
 // .claude/rules/production.md first.
@@ -43,6 +58,8 @@ const limitFlag = process.argv.indexOf("--limit");
 const rawLimit = limitFlag > -1 ? Number(process.argv[limitFlag + 1]) : Number.NaN;
 const limit =
   Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : Number.POSITIVE_INFINITY;
+const queueFlag = process.argv.indexOf("--queue");
+const onlyQueue = queueFlag > -1 ? process.argv[queueFlag + 1] : undefined;
 
 /** What `deadLetterPayload` wrote around the original job data. */
 type Parked = { __dlq?: { queue?: string; reason?: string; jobId?: string } };
@@ -58,6 +75,9 @@ async function main(): Promise<void> {
   }
 
   console.log(`${deadLetterQueue.name}: ${dlq.queuedCount} parked`);
+  // The count is the whole queue: pg-boss has no per-origin count, and reading one
+  // would mean fetching the backlog, which is the write this run is refusing to do.
+  if (onlyQueue) console.log(`replaying only the jobs from "${onlyQueue}"`);
   if (!apply) {
     console.log("dry run — pass --apply to replay");
     return;
@@ -67,6 +87,7 @@ async function main(): Promise<void> {
   const queueExists = new Map<string, boolean>();
   let done = 0;
   let skipped = 0;
+  let filtered = 0;
 
   // A skipped job is deliberately NOT completed: it stays locked for the rest of
   // this run, then returns to the queue on its own once the fetch lock expires. A
@@ -86,6 +107,10 @@ async function main(): Promise<void> {
       if (!target) {
         console.warn(`skip ${job.id}: neither a __dlq envelope nor a source queue`);
         skipped++;
+        continue;
+      }
+      if (onlyQueue && target !== onlyQueue) {
+        filtered++;
         continue;
       }
       if (!queueExists.has(target)) {
@@ -111,7 +136,10 @@ async function main(): Promise<void> {
   for (const [queue, count] of [...replayed].sort((a, b) => b[1] - a[1])) {
     console.log(`  ${count}\t${queue}`);
   }
-  console.log(`replayed ${done}, skipped ${skipped}`);
+  console.log(
+    `replayed ${done}, skipped ${skipped}` +
+      (onlyQueue ? `, left ${filtered} of other origins parked` : ""),
+  );
 }
 
 main()

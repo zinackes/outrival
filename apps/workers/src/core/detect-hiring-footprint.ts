@@ -254,18 +254,20 @@ async function evaluateFreeze(
   now: Date,
 ): Promise<string | null> {
   const start = new Date(now.getTime() - FREEZE_WINDOW_DAYS * 86_400_000);
+  // Raw sql params below take the ISO string: through drizzle, postgres.js cannot
+  // bind a Date object. The helpers use the query builder and keep the Date.
 
   const [stats] = await db
     .select({
       openAtStart: sql<number>`count(*) filter (
-        where ${jobPostings.detectedAt} <= ${start}
-          and (${jobPostings.closedAt} is null or ${jobPostings.closedAt} > ${start})
+        where ${jobPostings.detectedAt} <= ${start.toISOString()}
+          and (${jobPostings.closedAt} is null or ${jobPostings.closedAt} > ${start.toISOString()})
       )::int`,
       closedInWindow: sql<number>`count(*) filter (
-        where ${jobPostings.closedAt} >= ${start}
+        where ${jobPostings.closedAt} >= ${start.toISOString()}
       )::int`,
       openedInWindow: sql<number>`count(*) filter (
-        where ${jobPostings.detectedAt} >= ${start}
+        where ${jobPostings.detectedAt} >= ${start.toISOString()}
       )::int`,
       lastClosureAt: sql<string | null>`max(${jobPostings.closedAt})`,
     })

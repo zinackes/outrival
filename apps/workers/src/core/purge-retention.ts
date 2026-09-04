@@ -42,7 +42,9 @@ export async function runPurgeRetention() {
 
     for (const [plan, orgCount] of plans) {
       const days = PLAN_LIMITS[plan].historyRetentionDays;
-      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      // ISO string, not a Date: drizzle's postgres-js driver disables the driver's
+      // date serializers, so a Date in a raw sql param hits the wire as an object.
+      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
       // Written once and inlined into every statement: the org set and the cutoff
       // have to agree, and restating the predicate ten times is how they stop
       // agreeing.

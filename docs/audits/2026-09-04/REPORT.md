@@ -26,8 +26,8 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 | P-01 | P0 | prod | `purge-retention` fails on every run (Date in raw sql) | fixed in #558, deploy pending |
 | P-02 | P0 | prod | `detect-hiring-footprint` fails once it reaches `evaluateFreeze` | fixed in #558, deploy pending |
 | P-03 | P0 | prod | `www.outrival.app` returns HTTP 526 | open, needs the Cloudflare dashboard |
-| P-04 | P0 | prod | 759 jobs in `outrival-dlq`, nobody replays; AI pool 61% errors | open, worse: 863 parked, pool 89% errors |
-| P-05 | P1 | prod | 698 active monitors overdue > 24 h with no run since | open, worse: 791 of 3073 |
+| P-04 | P0 | prod | 759 jobs in `outrival-dlq`, nobody replays; AI pool 61% errors | priority swap applied, root cause is free quota + no RPS limit, see below |
+| P-05 | P1 | prod | 698 active monitors overdue > 24 h with no run since | diagnosed: 756 of 791 are zombies on deleted competitors, see below |
 | P-06 | P1 | ops | Netcup box: kernel + libc6 pending, reboot required | done 2026-09-04 |
 | P-07 | P1 | ops | OVH: 17.9 GB docker build cache + 5.4 GB dangling images | open, but smaller: 9.8 GB reclaimable, disk at 36% |
 | P-08 | P1 | ops | Backups: rclone 501 on attempt 1 of every run; Neon has no off-provider dump | fixed ff473441 |
@@ -179,6 +179,41 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
   It is an env change on a shared box, so it needs a go, and it needs one measured
   day afterwards before anyone concludes anything.
 
+  Executed 2026-09-04 18:50Z after the go, then measured. `AI_PROVIDER_4_PRIORITY` 4 to
+  1 in `/opt/outrival/.env.worker` (backup `.env.worker.bak-p04-<ts>`), plus a duplicate
+  `AI_PROVIDER_2_TPM_LIMIT` line removed. Both workers reloaded and print
+  `mistral[free,p1] | cloudflare[free,p2] | groq[free,p3]`.
+
+  The swap is right and it does not fix today, because the diagnosis was incomplete.
+  Live Redis at 17:00Z: groq `ai:usage` 201843 against a 200000 quota, cloudflare 266123
+  against 280000 (95.04%, just past the 0.95 gate `pickProvider` applies), mistral 62771
+  against 30000000 but `ai:breaker:mistral = rate_limited`. All three parked at once, so
+  `pickProvider` returns null on the first call: that is the `attempts = 0` on every
+  `no_providers` row, 466 of them in 48 h. The counters were spent this morning under
+  the old ordering, and they only reset at 00:00 UTC, so the swap cannot be scored
+  before 2026-09-05.
+
+  Two amplifiers sit under the quota problem, and neither is an env change:
+
+  1. **Nothing limits requests per second.** `AI_PROVIDER_*_TPM_LIMIT` and
+     `tpm-window.ts` meter TOKENS per minute. Mistral's free tier meters REQUESTS, at
+     1/s. `AI_MAX_CONCURRENT_CALLS=1` is process-local (`semaphore.ts` holds `inFlight`
+     in a module variable), so three processes make three concurrent calls and mistral
+     429s on the second. One 429 then parks it for
+     `RATE_LIMIT_BACKOFF_FALLBACK_SEC = 30` (`provider.ts:151`, mistral sends no
+     `retry-after` and no prose the parser reads), and with the other two already at
+     quota that is 30 seconds of a completely dark pool bought by a single overrun.
+  2. **Demand is about twice the free supply.** Successful runs average 3029 tokens
+     (`ai_runs`, 7 days) and the pipeline wants 300 to 380 of them a day, so roughly
+     1.0 M tokens/day. Usable free quota is cloudflare 280 k + groq 200 k = 480 k/day.
+     Mistral's 30 M/day would cover it several times over, which is exactly why the
+     1 req/s ceiling is the thing to engineer around rather than the token budget.
+
+  One reporting bug found on the way: `ai_runs.provider` and `.model` record the task's
+  CONFIGURED provider, not the pool's pick, whenever the call never reaches a provider.
+  That is why 485 error rows in 48 h are attributed to `cerebras`, which is not in the
+  pool at all. The column misleads on precisely the rows a pool diagnosis needs.
+
 ### P-05 698 monitors overdue with no run (P1)
 
 - Active, not unscrapable, not refused, `next_run_at` more than 24 h in the past and no
@@ -195,8 +230,26 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
   `no_docs_surface` 57, `no_docs_index` 18, `No scraper for source type: docs` 4
   (`packages/scrapers/src/index.ts:67`, the 3-strike pause documented in
   `packages/shared/src/sources/catalog.ts:222-231` handles it).
-- To check: the enqueue budget of `schedule-scraping` versus the browser worker's daily
-  capacity (~600 runs/day). Either raise the budget or lower frequencies per plan.
+- **Root cause found 2026-09-04 17:00Z, and the finding is 95% noise.** 756 of the 791
+  overdue monitors (95.6%) hang off a competitor whose `deleted_at` is set.
+  `softDeleteCompetitors` (`apps/api/src/routes/competitors.ts:212`) writes
+  `competitors.deleted_at` and dismisses the candidate rows, and never touches
+  `monitors.is_active`. 825 active monitors sit on 113 deleted competitors, 542 of them
+  from a single July cleanup. `schedule-scraping` selects them as due on every run,
+  `selectWithinPlanCap` drops them because the competitor is deleted, so `next_run_at`
+  is never advanced and they age forever. They cost nothing: they are never enqueued.
+  They only poison the metric this finding is built on.
+- Once they are excluded, the real fleet is healthy: 2248 active monitors on live
+  competitors, 2203 already scheduled ahead, 10 never run, 7 unscrapable, and **35
+  genuinely overdue** (homepage 11, pricing 11, blog 10, news 3; 2 unscrapable, 2 with
+  a failure streak). Not a capacity problem, so the enqueue-budget hypothesis below is
+  dead. Nothing was checked about it.
+- Nothing else the scheduler filters on explains any of the rest: of the 791, zero have
+  `monitoring_paused` and zero are locked out by `planAllowsMonitorSource`. Only 10
+  competitors across all orgs sit beyond their plan's `maxCompetitors`.
+- Fix: set `is_active = false` on monitors whose competitor is soft-deleted, in
+  `softDeleteCompetitors` for new deletions and as a one-off backfill for the 825
+  existing rows. Backfill touches prod data, so it needs a go.
 
 ### P-06 Netcup box needs a reboot (P1)
 

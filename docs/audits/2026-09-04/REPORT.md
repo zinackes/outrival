@@ -211,8 +211,8 @@ global `bodyLimit` with the two document-upload routes exempted by path.
   below: that work established the api is *not* behind Cloudflare, only `www` is.
 - ~~S-04~~ billing had no role check: fixed `c68b516a`.
 - ~~S-05~~ no global hardening, localhost trusted in prod: fixed `c68b516a`.
-- ~~S-06~~ share links never expired, report cached `public`: fixed `c68b516a` (migration
-  0086 not yet applied on prod).
+- ~~S-06~~ share links never expired, report cached `public`: fixed `c68b516a`;
+  migration 0086 applied on prod 2026-09-04.
 - ~~S-08~~ session cache keyed by the raw token, revocation lagged 30 s: fixed
   `c68b516a`; the multi-instance half stays open.
 - S-10 fail-open guards: `NODE_ENV` now defaults to production (`c68b516a`); the Sentry

@@ -102,7 +102,7 @@ Prior audit: `docs/audits/2026-08-16/REPORT.md` (ids `code:SEC-NN`, `COR-NN`, `P
 - fix: `Cache-Control: private, no-store` + `X-Robots-Tag: noindex`; add `expiresAt` (default now + 30 d) on the share row and return 410 when past.
 - verify: `curl -sI $API/api/public/report/<token> | grep -i cache-control` shows `no-store`.
 - fixed c68b516a: `share_links.expires_at` NOT NULL, default `now() + interval '30 days'` (migration 0086); 410 past expiry; `private, no-store` + `X-Robots-Tag: noindex, nofollow`; `ipRateLimit("public-report", 60)` on the router. Every create-or-return in routes/share.ts now filters on `expiresAt > now()`, so "Share" never hands back a URL that already 410s; revoke deliberately does not, a lapsed link must still be killable.
-- pending: migration 0086 is NOT applied. A shared env needs an explicit go.
+- migration: 0086 applied on prod 2026-09-04. 9 existing links took the default (expiry 2026-10-04), 0 null, 0 pending and no ledger drift before or after. Applied ahead of the deploy on purpose: the running API selects columns from its own compiled schema, which does not include `expires_at`, so the new column is invisible to it and inserts fall through to the default.
 - test: apps/api/test/share-expiry.test.ts, 7 cases.
 
 ### S-07 · P1 · open · At-rest key optional, plaintext accepted, no rotation, empty-key HMAC
@@ -263,7 +263,7 @@ Prior audit: `docs/audits/2026-08-16/REPORT.md` (ids `code:SEC-NN`, `COR-NN`, `P
 2. ~~S-03~~ done 54512f71. The UFW/origin-pull half does not apply, see the S-03 residual note.
 3. D-01: CI gate, Trivy, gitleaks, 4 bumps. 1 day.
 4. ~~S-05, S-04~~ done c68b516a. The `csrf()` half does not apply, see the S-05 note.
-5. P-01 migration (staging first). ~~S-06~~ done c68b516a, migration 0086 not yet applied. Half a day.
+5. P-01 migration (staging first). ~~S-06~~ done c68b516a, migration 0086 applied 2026-09-04. Half a day.
 6. S-07 key required + rotation + backfill. 1 day.
 7. D-02 sha tag, health gate, Node 22, turbo pin, delete legacy Dockerfile. Half a day.
 8. ~~S-08~~ done c68b516a. S-10: NODE_ENV done, Sentry build secret open. 1 hour.

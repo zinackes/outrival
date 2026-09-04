@@ -25,12 +25,15 @@ interface Org {
 
 export function DashboardShell({
   user,
+  userId,
   org,
   children,
   defaultOpen = true,
   productScope = null,
 }: {
   user: User;
+  /** Scopes the dock's local milestones, so they never carry to the next account. */
+  userId?: string;
   org: Org;
   children: React.ReactNode;
   defaultOpen?: boolean;
@@ -81,7 +84,7 @@ export function DashboardShell({
                 </div>
               </div>
               <AskDock />
-              <GetStartedDock />
+              <GetStartedDock userId={userId} />
             </SidebarInset>
           </SidebarProvider>
         </AskContextProvider>

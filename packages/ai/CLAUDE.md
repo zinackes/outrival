@@ -8,7 +8,9 @@ pool, retournent du parsé. Elles ne loguent pas et n'écrivent pas en DB. Le lo
 
 ## Routing du pool
 
-`src/provider.ts` cascade Cerebras p1, Cloudflare Workers AI p2, Groq p3, Mistral p4.
+`src/provider.ts` cascade Cloudflare Workers AI p2, Groq p3, Mistral p4. Cerebras
+(anciennement p1) a été retiré le 2026-09-04 : plus de crédit depuis le 2026-08-17.
+Le slot `AI_PROVIDER_1_*` est libre, un trou ne désactive que son slot.
 
 ⚠️ **`AI_CONFIG.model` est IGNORÉ sur le chemin pool.** Seul `tier` route le choix :
 `"smart"` donne `gpt-oss-120b`, `"fast"` donne `gpt-oss-20b`. Poser un `model` en

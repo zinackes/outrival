@@ -3,7 +3,7 @@ import { slidingWindowTokens, hasHeadroom, WINDOW_MS } from "./tpm-window";
 
 /**
  * Provider pool (patch-22). The AI source is a pool of *legal* OpenAI-compatible
- * providers (Cerebras, Cloudflare Workers AI, Groq, Mistral) tried free-first then
+ * providers (Cloudflare Workers AI, Groq, Mistral) tried free-first then
  * paid — NOT a pool of Groq accounts (multi-account would violate Groq's ToS). They
  * all speak the OpenAI chat-completions API, so one client routes them by baseUrl.
  *
@@ -14,7 +14,7 @@ import { slidingWindowTokens, hasHeadroom, WINDOW_MS } from "./tpm-window";
  * `redis` facade no-ops and the pool degrades to "first provider, no tracking".
  */
 export interface Provider {
-  id: string; // "cerebras", "cloudflare", "groq", "mistral"
+  id: string; // "cloudflare", "groq", "mistral"
   baseUrl: string; // OpenAI-compatible endpoint
   apiKey: string;
   model: string; // model name at this provider
@@ -79,7 +79,9 @@ function logPoolOnce(providers: Provider[]): void {
 }
 
 /**
- * Load providers from AI_PROVIDER_1..N_* env (contiguous, stops at first gap).
+ * Load providers from AI_PROVIDER_1..10_* env. A slot missing an id, key or base url
+ * is SKIPPED, not a terminator: gaps disable that slot alone, which is what removing a
+ * provider from the middle of the list relies on.
  * Back-compat: if none are configured but GROQ_API_KEY exists, synthesize a single
  * Groq provider so existing setups keep working without the new env block.
  */

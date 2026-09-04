@@ -4,7 +4,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * Carries, for the current async scope: (1) which pool provider actually served the
  * most recent `complete()` call, (2) which MODEL it actually ran, and (3) the token
  * usage accumulated by complete() calls — so the ai_runs logger can tag the real
- * provider (cerebras|cloudflare|groq|mistral) and model instead of the static ones from
+ * provider (cloudflare|groq|mistral) and model instead of the static ones from
  * AI_CONFIG, AND attribute token cost per task (patch-22, patch-02 observability;
  * tokens added 2026-06, model added 2026-07).
  *

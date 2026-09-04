@@ -168,16 +168,13 @@ SHIPPING_VELOCITY_MIN_ITEMS=8           # entries the trailing 3-month window mu
 GROQ_API_KEY=                # back-compat : synthétise un provider Groq si aucun AI_PROVIDER_N
 
 # AI provider pool (patch-22) — pool de PROVIDERS légaux OpenAI-compatibles, essayés
-# free d'abord puis payant. AI_PROVIDER_1..N contigus (stop au 1er trou). priority =
-# ordre d'essai. dailyTokenQuota = tokens/jour (pool skip à 95%). Vide → fallback GROQ_API_KEY.
+# free d'abord puis payant. loadProviders balaie AI_PROVIDER_1..10 et SAUTE tout slot
+# sans id, clé ou base url : un trou ne désactive que son slot, il n'arrête pas le
+# balayage. priority = ordre d'essai, indépendant du numéro de slot. dailyTokenQuota =
+# tokens/jour (pool skip à 95%). Vide → fallback GROQ_API_KEY.
 # NE PAS utiliser plusieurs comptes Groq (viole les ToS) — des PROVIDERS distincts.
-AI_PROVIDER_1_ID=cerebras          # free 1M tok/j, prio 1
-AI_PROVIDER_1_BASE_URL=https://api.cerebras.ai/v1
-AI_PROVIDER_1_API_KEY=
-AI_PROVIDER_1_MODEL=gpt-oss-120b   # NOT llama-3.3-70b (404 model_not_found on Cerebras free tier)
-AI_PROVIDER_1_TIER=free
-AI_PROVIDER_1_DAILY_TOKEN_QUOTA=1000000
-AI_PROVIDER_1_PRIORITY=1
+# Le slot 1 est libre depuis le retrait de Cerebras le 2026-09-04 (plus de crédit
+# depuis le 2026-08-17, clé vidée le 2026-09-02). Le pool tourne à 3 providers.
 AI_PROVIDER_N_MAX_REQUEST_TOKENS=  # plafond d'UNE requête chez ce provider (≠ quota
                                    # journalier, qui est un budget : celui-ci est un mur).
                                    # Groq gratuit compte prompt + max_tokens contre ses
@@ -229,7 +226,7 @@ AI_PROVIDER_N_JSON_SCHEMA=         # "true" = ce provider honore response_format
                                    # ne bascule volontairement pas (une requête mal
                                    # construite échouerait pareil partout). Vide = mode
                                    # json_object, identique à aujourd'hui
-AI_PROVIDER_N_TPM_LIMIT=           # plafond TOKENS PAR MINUTE du provider (cerebras 30000, cloudflare 6000, mistral 60000,
+AI_PROVIDER_N_TPM_LIMIT=           # plafond TOKENS PAR MINUTE du provider (cloudflare 6000, mistral 60000,
                                    # groq 8000). C'est LE plafond qui mordait : le quota
                                    # journalier n'a jamais été atteint. Mesuré en prod le
                                    # 2026-07-31 — Cerebras sert 420k tokens sur l'heure de 05:00,

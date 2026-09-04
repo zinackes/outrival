@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { competitors, monitors, productCompetitors, products } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
 import { asUser, installAppMocks, installQueueMock, mountApp, seedOrg } from "./app-harness";
@@ -61,6 +61,14 @@ async function flags(id: string) {
     .from(competitors)
     .where(eq(competitors.id, id));
   return row!;
+}
+
+async function activeMonitors(competitorId: string): Promise<number> {
+  const rows = await testDb
+    .select({ id: monitors.id })
+    .from(monitors)
+    .where(and(eq(monitors.competitorId, competitorId), eq(monitors.isActive, true)));
+  return rows.length;
 }
 
 describe("POST /competitors/bulk/monitoring", () => {
@@ -140,6 +148,15 @@ describe("POST /competitors/bulk/delete", () => {
     expect(await res.json()).toMatchObject({ deleted: 1 });
     expect((await flags("a-2")).deletedAt).not.toBeNull();
     expect((await flags("b-1")).deletedAt).toBeNull();
+  });
+
+  // The scheduler drops a deleted competitor's monitors WITHOUT advancing their
+  // next_run_at, so leaving them active parks them as permanently due: 825 such rows
+  // on prod, 95% of the "overdue monitors" the 2026-09-04 audit reported (P-05).
+  test("deactivates the deleted competitor's monitors, and only those", async () => {
+    await post("/bulk/delete", { ids: ["a-2"] });
+    expect(await activeMonitors("a-2")).toBe(0);
+    expect(await activeMonitors("a-1")).toBe(1);
   });
 });
 

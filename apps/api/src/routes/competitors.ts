@@ -216,6 +216,20 @@ async function softDeleteCompetitors(
       .set({ deletedAt: new Date() })
       .where(inArray(competitors.id, ids));
 
+    // Same reasoning as archiving a product (routes/products.ts): soft-deleting the
+    // competitor takes it out of rosters and feeds, deactivating its monitors is what
+    // actually stops the work. Skipped here until now, and the scheduler does not read
+    // `deleted_at` when it selects due rows — it drops them one step later, in
+    // selectWithinPlanCap, WITHOUT advancing next_run_at. So every deleted competitor
+    // left its monitors permanently "due", re-read and re-dropped on every hourly run:
+    // 825 of them on prod across 113 competitors, which is 756 of the 791 rows the
+    // 2026-09-04 audit counted as an overdue backlog (P-05). They cost nothing, they
+    // just made the only monitor-health metric we have unreadable.
+    await tx
+      .update(monitors)
+      .set({ isActive: false })
+      .where(inArray(monitors.competitorId, ids));
+
     await tx
       .update(competitorCandidates)
       .set({ status: "dismissed", competitorId: null })

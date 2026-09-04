@@ -34,7 +34,7 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 | P-09 | P1 | ops | Worker `.env` has 12 keys absent from `env.worker.example` | open |
 | S-05 | P1 | security | api answers without HSTS / X-Content-Type-Options | fixed cac2e50b |
 | S-06 | P2 | security | Browser worker runs as root with `--no-sandbox`; runtimes unpinned | open |
-| D-03 | P1 | deps | 59 vulns (26 high): next, sharp, undici, postcss, hono; CI audit non-blocking | open |
+| D-03 | P1 | deps | 59 vulns (26 high): next, sharp, undici, postcss, hono; CI audit non-blocking | fixed 317fd537 |
 | Q-06 | P1 | code | Raw-sql Date params have no guard; tests cannot catch them (PGlite) | open |
 | Q-07 | P2 | code | 5 files over 1900 lines | open |
 | G-01 | P1 | git | 106 untracked skill dirs (11.6 MB) will be swept by the next `git add -A` | resolved, committed in #558 |
@@ -217,11 +217,13 @@ global `bodyLimit` with the two document-upload routes exempted by path.
   `cac2e50b`; the multi-instance half stays open.
 - S-10 fail-open guards: `NODE_ENV` now defaults to production (`cac2e50b`); the Sentry
   build-token half is still open.
-- D-01 and the other 19 findings: none has a commit since `70013d0a` (#551).
+- ~~D-01~~ vulnerable deps and the non-blocking CI audit: fixed `317fd537` (the same work
+  as D-03 below).
+- The other 18 findings: none has a commit since `70013d0a` (#551).
 
 ## Dependencies
 
-### D-03 59 vulnerabilities, CI audit non-blocking (P1)
+### D-03 59 vulnerabilities, CI audit non-blocking (P1) — fixed 317fd537
 
 `pnpm audit --prod`: 0 critical, 26 high, 10 moderate. High, by package: `next`
 ^16.2.6 needs >= 16.2.11, `sharp` ^0.33.5 / ^0.34.5 needs >= 0.35.0, `undici`,
@@ -230,6 +232,12 @@ global `bodyLimit` with the two document-upload routes exempted by path.
 posthog-js. `.github/workflows/ci.yml:23` runs `pnpm audit --prod --audit-level=high ||
 true`; its comment says the npm endpoint returns 410, but it answers today (retry on
 `ERR_SOCKET_TIMEOUT`). `package.json` ignores 11 GHSAs via `pnpm.auditConfig`.
+
+Fixed 317fd537, together with D-01 of 2026-09-02: same finding, seen from the other
+report. The ignore list held 17 ids, not the 11 counted here; the 2026-09-02 report had
+it right, and all 17 are gone. Detail, deviations and the residual trivy risk live under
+D-01 in `docs/audits/2026-09-02/REPORT.md`; the standing policy is
+`docs/security/audit-ignores.md`.
 
 ## Codebase
 

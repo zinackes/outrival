@@ -22,7 +22,7 @@
     "disposable-email-domains-js": "^1.25.0",
     "drizzle-orm": "^0.45.2",
     "franc-min": "^6.2.0",
-    "hono": "^4.12.25",
+    "hono": "^4.12.34",
     "mammoth": "^1.12.0",
     "posthog-node": "^5.35.5",
     "resend": "^6.12.3",

@@ -26,14 +26,14 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 | P-01 | P0 | prod | `purge-retention` fails on every run (Date in raw sql) | fixed in #558, deploy pending |
 | P-02 | P0 | prod | `detect-hiring-footprint` fails once it reaches `evaluateFreeze` | fixed in #558, deploy pending |
 | P-03 | P0 | prod | `www.outrival.app` returns HTTP 526 | open, needs the Cloudflare dashboard |
-| P-04 | P0 | prod | 759 jobs in `outrival-dlq`, nobody replays; AI pool 61% errors | open, blocked on pool capacity |
-| P-05 | P1 | prod | 698 active monitors overdue > 24 h with no run since | open |
+| P-04 | P0 | prod | 759 jobs in `outrival-dlq`, nobody replays; AI pool 61% errors | open, worse: 863 parked, pool 89% errors |
+| P-05 | P1 | prod | 698 active monitors overdue > 24 h with no run since | open, worse: 791 of 3073 |
 | P-06 | P1 | ops | Netcup box: kernel + libc6 pending, reboot required | done 2026-09-04 |
-| P-07 | P1 | ops | OVH: 17.9 GB docker build cache + 5.4 GB dangling images | open, worse: 30.9 GB, disk at 67% |
+| P-07 | P1 | ops | OVH: 17.9 GB docker build cache + 5.4 GB dangling images | open, but smaller: 9.8 GB reclaimable, disk at 36% |
 | P-08 | P1 | ops | Backups: rclone 501 on attempt 1 of every run; Neon has no off-provider dump | fixed ff473441 |
-| P-09 | P1 | ops | Worker `.env` has 12 keys absent from `env.worker.example` | open |
+| P-09 | P1 | ops | Worker `.env` has 12 keys absent from `env.worker.example` | fixed, see below |
 | S-05 | P1 | security | api answers without HSTS / X-Content-Type-Options | fixed cac2e50b |
-| S-06 | P2 | security | Browser worker runs as root with `--no-sandbox`; runtimes unpinned | open |
+| S-06 | P2 | security | Browser worker runs as root with `--no-sandbox`; runtimes unpinned | partial: root half is WRONG, see below |
 | D-03 | P1 | deps | 59 vulns (26 high): next, sharp, undici, postcss, hono; CI audit non-blocking | fixed 317fd537 |
 | Q-06 | P1 | code | Raw-sql Date params have no guard; tests cannot catch them (PGlite) | fixed 7026b0ca |
 | Q-07 | P2 | code | 5 files over 1900 lines | open |
@@ -127,6 +127,8 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
   duplicate content. Cloudflare > outrival.app > Rules > Redirect Rules > Create:
   hostname equals `www.outrival.app`, dynamic redirect to
   `concat("https://outrival.app", http.request.uri.path)`, 301, preserve query string.
+- 2026-09-04 ~18:45Z, re-probed: `www` still 526, apex 200, `api/health` ok. Unchanged,
+  and it stays unchanged until someone opens the Cloudflare dashboard.
 
 ### P-04 Dead-letter queue and AI pool (P0)
 
@@ -154,12 +156,39 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
   Sequence: paid capacity (or a lower concurrency ceiling) first, replay second. The
   order is not negotiable, which makes this a dependency of the AI pool plan rather than
   a decision anyone can take today.
+- 2026-09-04 ~18:45Z, third measurement, and it has degraded further. DLQ 863 (595
+  `created`, 167 `retry`, 101 `completed`), oldest 2026-08-17. By `source_name`:
+  `classify-change` 360, `scrape-monitor` 302, 171 with no source (pre-`source_name`
+  rows), `generate-signal` 30 — so it is NOT all `classify-change` any more, and the
+  replay script already reads `source_name` for exactly these.
+- `ai_runs` last 24 h: 198 successes against 1382 errors, **88.9%**, up from 61% at the
+  first measurement and 55% on 09-02 and 09-03. `no_providers` 450, `breaker_open` 393,
+  `rate_limited` 306, 233 unclassified. By provider: groq 451 `no_providers` + 393
+  `breaker_open` + 84 successes; mistral 306 `rate_limited` + 44 successes; cloudflare
+  70 successes and no errors; cerebras 139 errors with an EMPTY `error_kind`, which is
+  a classifier gap worth closing (a retired provider should not produce unlabelled
+  rows).
+- The shape of the capacity problem, read from the live pool config: cloudflare `p2`
+  280k tokens/day, groq `p3` 200k/day, mistral `p4` 30M/day. Priority is tried
+  low-number-first, so the two providers with a COMBINED 480k/day are drained before
+  the one with 30M/day is touched, and mistral then meets its 1 req/s ceiling as
+  overflow rather than as steady load. Today's tokens: cloudflare 310k (over its
+  configured 280k), groq 139k, mistral 122k of 30M.
+- The cheapest experiment is therefore a priority swap, not a purchase: give mistral
+  `p1` and let the small-quota providers absorb the overflow instead of the reverse.
+  It is an env change on a shared box, so it needs a go, and it needs one measured
+  day afterwards before anyone concludes anything.
 
 ### P-05 698 monitors overdue with no run (P1)
 
 - Active, not unscrapable, not refused, `next_run_at` more than 24 h in the past and no
   `scrape_runs` row since: 698 of 3345 monitors (21%). By source: homepage 98,
   pricing 95, blog 76, news 75, subdomains 51, jobs 51, wellknown 50, hackernews 49.
+- 2026-09-04 ~18:45Z: **791 of 3073 active monitors** overdue by more than 24 h (784 by
+  more than 7 days), up from 698. Oldest `next_run_at` is 2026-06-02, so the tail is
+  three months deep, not a backlog of the last few days. By source: blog 109, pricing
+  108, homepage 108, news 94, jobs 56, subdomains 51, wellknown 50, hackernews 49,
+  youtube 47, docs 42. 811 are due right now.
 - Throughput last 24 h: `no_change` 265, `success` 249, `failed` 72. Top failure reasons
   over 7 days: `cloudflare_challenge` 139, `no_roadmap_portal` 104,
   `crtsh_unavailable` 93. Blog: 128 of 359 monitors flagged unscrapable. Docs source:
@@ -194,6 +223,13 @@ Worse on 2026-09-04 15:55Z, and this is now the most urgent open ops item: build
 disk 48 GB used of 72 GB (67%, was 46%). 36.7 GB is reclaimable in total. Each deploy
 adds cache and nothing removes it, so the box fills on its own; a full disk on the
 Coolify host takes web and api down together.
+
+2026-09-04 ~18:40Z, after the wave-3 deploy: the pressure is off, and nobody pruned.
+Disk 26 GB of 72 GB (36%), images 18.72 GB with 8.55 GB reclaimable, build cache
+4.9 GB with 1.3 GB reclaimable. 9.85 GB reclaimable in total, down from 36.7 GB. So
+Coolify's own cleanup does run, it just runs on its own schedule and lets the box get
+to 67% first. The prune is still worth doing and still needs a go; it is no longer the
+most urgent ops item.
 
 ### P-08 Backups (P1)
 
@@ -237,6 +273,25 @@ On the api container, `INTERNAL_API_SECRET` is unset (internal routes answer 404
 `apps/api/src/routes/internal.ts:10-16`) and `TRUSTPILOT_API_KEY` is unset (the
 trustpilot source is dead in prod).
 
+- fixed 2026-09-04 (this session), and the finding UNDERSTATED it. Four of the twelve
+  (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`) are
+  `.min(1)` in `apps/workers/src/env.ts`, which `src/queue/worker.ts` parses BEFORE it
+  registers a single handler. A box provisioned from the runbook alone did not "silently
+  drop R2", it never booted.
+- All twelve are now in `infra/queue-box/env.worker.example`, each under the section it
+  belongs to, with the default the code applies and what breaks when it is empty. Two new
+  sections: `storage (R2)` marked BOOT-BLOCKING, and `security` for the encryption key.
+- verified against the live box: key names on both sides now differ by exactly one,
+  `FAITHFULNESS_MIN_RATIO`, which is correct. The gate is off in prod and the code
+  defaults the ratio to 0.9, so setting it would change nothing.
+- NOT changed: the tuning VALUES have drifted again since `5136f9b6` aligned them
+  (prod runs `AI_MAX_CONCURRENT_CALLS=1` vs 4 here, `AI_DEFER_BASE_SEC=150` vs 75,
+  `AI_CIRCUIT_BREAKER_THRESHOLD=20` vs 5, `QUEUE_MAX_DEFERRALS=5` vs 3). Those are
+  today's incident response, not drift to correct: the file's contract is the KEY list,
+  values live on the box.
+- `INTERNAL_API_SECRET` and `TRUSTPILOT_API_KEY` on the api container are untouched;
+  both are api-side and neither is in this template.
+
 ## Security
 
 ### S-05 api security headers (P1) — fixed cac2e50b
@@ -256,6 +311,25 @@ global `bodyLimit` with the two document-upload routes exempted by path.
   `--no-sandbox`. api, web and queue-light run as `bun` / `node`.
 - Worker image is pulled by the mutable `:latest` tag; `Dockerfile.queue-light:26` uses
   `oven/bun:1-slim`, so prod runs Bun 1.4.0 while local is 1.3.13. Pin both.
+
+Re-verified on the live box 2026-09-04. **The root half of this finding is wrong**, and
+the reason is worth more than the finding:
+
+- `docker exec outrival-worker-browser id` returns `uid=1000(bun)`. Prod has never run
+  this container as root.
+- Both `apps/workers/Dockerfile.queue-browser` and `Dockerfile.queue-light` are DEAD
+  FILES. Nothing builds them: `.github/workflows/deploy.yml:121` builds
+  `Dockerfile.worker` at the repo root, one image for both roles, and that file ends on
+  `USER bun` (line 51). `infra/queue-box/docker-compose.override.yml` runs the two
+  services off that single image, split by `WORKER_ROLE`. The audit read the wrong
+  Dockerfile because two plausible ones are still tracked.
+- The two halves that ARE real: `packages/scrapers/src/lib/proxy.ts:57` still passes
+  `--no-sandbox` (less severe as a non-root user, still no Chromium sandbox), and
+  nothing is pinned — `Dockerfile.worker` uses `oven/bun:1-slim` and
+  `node:22-bookworm-slim`, and compose pulls `:latest`. That last one is D-02 of the
+  2026-09-02 report.
+- The cheapest fix here is deleting the two dead Dockerfiles: they cost a wrong P2
+  finding in an audit, and they will cost the next reader the same.
 
 ### Still open from 2026-09-02 (verified today)
 

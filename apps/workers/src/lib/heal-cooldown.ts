@@ -47,6 +47,32 @@ export function shouldAttemptHeal(input: HealAttemptInput): boolean {
   return input.now - input.lastHealAttemptAt.getTime() >= input.cooldownMs;
 }
 
+// --- Exponential per-page backoff --------------------------------------------
+//
+// The flat 12 h cooldown treats "we could not parse this page once" the same as "we
+// have failed to parse this page nine times running", so a page the generator simply
+// cannot turn into selectors costs two `generate_extractor` calls a day forever.
+// `generate_extractor` is 31% of all AI tokens and about 84% of its calls produce no
+// working parser, so that tail is a large share of the single largest consumer.
+//
+// The ladder is deliberately short and coarse: 12 h → 48 h → 7 d. A page that has
+// failed three times has told us what it is, and 7 d is still frequent enough to
+// catch a redesign. Anything finer would be tuning a number nobody measures.
+const HEAL_BACKOFF_STEPS = [1, 4, 14] as const;
+
+/**
+ * How long this page stays parked after its `failures`-th consecutive heal that
+ * reached a provider and produced nothing usable.
+ *
+ * `failures` is the count INCLUDING the attempt that just failed, so 1 → the base
+ * cooldown. 0 (never failed) also maps to the base, which is what a page that has
+ * only ever been healed successfully should get.
+ */
+export function healCooldownMs(baseMs: number, failures: number): number {
+  const step = Math.min(Math.max(failures, 1), HEAL_BACKOFF_STEPS.length);
+  return baseMs * HEAL_BACKOFF_STEPS[step - 1]!;
+}
+
 // --- Process-wide pool pause -------------------------------------------------
 //
 // Deliberately in-memory rather than in Redis: it is a courtesy backoff, not a

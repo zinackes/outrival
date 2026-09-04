@@ -1,5 +1,12 @@
 import { logger } from "./job-logger";
-import { getActiveProvider, getActiveModel, consumeUsage, withAiContext } from "@outrival/ai";
+import {
+  getActiveProvider,
+  getActiveModel,
+  consumeUsage,
+  consumeAttempts,
+  aiErrorKind,
+  withAiContext,
+} from "@outrival/ai";
 import {
   db,
   pricingHistory,
@@ -267,6 +274,9 @@ export async function logAiRun(
   model: string,
   status: AiRunStatus,
   attribution?: AiRunAttribution,
+  /** The throw that produced an `error` row, so the reason is stored, not just the
+   *  fact. Ignored for success/parse_failed — see aiErrorKind in @outrival/ai. */
+  err?: unknown,
 ): Promise<void> {
   // Prefer the real pool provider the call ran on (cerebras|cloudflare|groq|mistral),
   // captured by complete() in the same async context (patch-22). Falls back to the
@@ -279,12 +289,17 @@ export async function logAiRun(
   // Read-and-clear the tokens accumulated by complete() since the last log point,
   // so this row carries the full cost of the task (incl. any self-check pass).
   const usage = consumeUsage();
+  // Read-and-clear like the tokens: these attempts belong to THIS row, and leaving
+  // them behind would bill the next task for a failover it never made.
+  const attempts = consumeAttempts();
   await bestEffort("ai_runs insert", () =>
     db.insert(aiRuns).values({
       task,
       provider: actual,
       model: actualModel,
       status,
+      errorKind: status === "error" ? aiErrorKind(err) : "",
+      attempts,
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,
       totalTokens: usage.totalTokens,
@@ -319,7 +334,7 @@ export async function loggedAi<T>(
       );
       return res;
     } catch (err) {
-      await logAiRun(task, config.provider, config.model, "error", attribution);
+      await logAiRun(task, config.provider, config.model, "error", attribution, err);
       throw err;
     }
   });

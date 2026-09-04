@@ -36,6 +36,12 @@ export const parserExtractors = pgTable(
     /** Consecutive replay validation failures — feeds the heal cooldown so a
      *  durably-broken page doesn't burn an AI call every run. */
     consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    /** Consecutive self-heal attempts that REACHED a provider and still produced no
+     *  working parser. Distinct from `consecutive_failures`, which counts REPLAY
+     *  misses of a spec we already have. Drives the exponential heal backoff (12 h →
+     *  48 h → 7 d): a page the generator cannot parse must stop being re-generated at
+     *  the flat cooldown forever. Reset to 0 by a heal that does produce one. */
+    consecutiveHealFailures: integer("consecutive_heal_failures").notNull().default(0),
     /** Last time a replay of this extractor passed validation. */
     lastValidatedAt: timestamp("last_validated_at"),
     /** Last time self-heal tried to (re)generate it — drives the cooldown. */

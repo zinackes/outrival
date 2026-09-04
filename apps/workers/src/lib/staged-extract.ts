@@ -16,6 +16,7 @@ import { logExtractionRun, loggedAi } from "./analytics";
 import { shouldTrustCachedExtractor } from "./extractor-trust";
 import {
   shouldAttemptHeal,
+  healCooldownMs,
   healPausedUntil,
   pauseHealsAfterPoolFailure,
 } from "./heal-cooldown";
@@ -134,6 +135,9 @@ export async function stagedExtract<T>(
     ),
   });
   const cachedSpec = cached ? ExtractorSpecSchema.safeParse(cached.spec) : null;
+  // A spec skipped purely for AGE, kept aside for step 4 below. See the stale replay
+  // there for why an expired parser still beats paying the model.
+  let staleSpec: ExtractorSpec | null = null;
   if (cached && cachedSpec?.success) {
     // R8: an expired (or repeatedly failing) spec is skipped entirely so the ladder
     // falls through to self-heal, which regenerates the selectors from the CURRENT
@@ -162,6 +166,15 @@ export async function stagedExtract<T>(
         .set({ consecutiveFailures: cached.consecutiveFailures + 1 })
         .where(eq(parserExtractors.id, cached.id));
     } else {
+      // Distrusted for AGE, not for repeated replay misses, and it was validated
+      // against real HTML at least once: worth re-trying if the heal below cannot
+      // produce a replacement. A spec whose replays keep failing is not.
+      if (
+        cached.lastValidatedAt != null &&
+        cached.consecutiveFailures < EXTRACTOR_MAX_FAILURES
+      ) {
+        staleSpec = cachedSpec.data;
+      }
       logger.log("cached extractor due for revalidation — regenerating", {
         sourceType: input.sourceType,
         domain,
@@ -178,7 +191,9 @@ export async function stagedExtract<T>(
     shouldAttemptHeal({
       lastHealAttemptAt: cached?.lastHealAttemptAt ?? null,
       now: Date.now(),
-      cooldownMs: HEAL_COOLDOWN_MS,
+      // Backs off per page: a domain the generator has failed on three times running
+      // is parked for 7 days, not re-tried twice a day forever.
+      cooldownMs: healCooldownMs(HEAL_COOLDOWN_MS, cached?.consecutiveHealFailures ?? 0),
       poolPausedUntil: healPausedUntil(),
     })
   ) {
@@ -239,7 +254,36 @@ export async function stagedExtract<T>(
     }
   }
 
-  // 4. AI fallback — the floor (exactly today's extraction).
+  // 4. Stale cache — replay the EXPIRED spec rather than pay the model.
+  //
+  // Reaching here with a stale spec in hand means the heal that was supposed to
+  // replace it did not run or did not work. R8 expires a spec so drift gets corrected
+  // by regeneration; it never intended "no regeneration available" to mean "throw the
+  // working parser away and buy the answer". That is what it meant in practice: a
+  // parser that had replayed correctly every day for two weeks was discarded on its
+  // age alone, and every scrape after it paid `extract_pricing` (3,577 tokens) or
+  // `extract_jobs` (2,937) until a heal happened to land.
+  //
+  // The drift guard survives: this only runs after a heal attempt has been made or
+  // deliberately skipped, `consecutiveFailures >= EXTRACTOR_MAX_FAILURES` still
+  // disqualifies the spec outright, and the resolution is logged as `stale_cache` so
+  // the share of extractions riding an unrevalidated parser is queryable rather than
+  // hidden inside `cache`.
+  if (staleSpec) {
+    const replayed = stageOk(
+      normalizeReplayOutput(input.kind, replayExtractor(input.html, staleSpec)),
+    );
+    if (replayed) {
+      logger.log("replayed an expired extractor (heal unavailable)", {
+        sourceType: input.sourceType,
+        domain,
+        version: staleSpec.version,
+      });
+      return finish(replayed, "stale_cache", staleSpec.version);
+    }
+  }
+
+  // 5. AI fallback — the floor (exactly today's extraction).
   return finish(await runFallback(), "ai_fallback", 0);
 }
 
@@ -261,6 +305,9 @@ export async function stagedExtract<T>(
  * `consecutiveFailures` counts REPLAY failures (it gates cache trust), so it only
  * moves when a spec actually existed and failed to replay. A model parse miss says
  * nothing about a cached parser and must not distrust one that still works.
+ * `consecutiveHealFailures` is the other counter and always moves here: it is the one
+ * the exponential backoff reads, and every path into this function is a generation
+ * that reached a provider and came back with nothing we could use.
  *
  * Best-effort: the cooldown is an optimisation and extraction is the contract, so a
  * failed bookkeeping write is logged, never propagated.
@@ -268,12 +315,21 @@ export async function stagedExtract<T>(
 async function stampHealAttempt(
   domain: string,
   sourceType: SourceType,
-  cached: { version: number; healCount: number; consecutiveFailures: number } | null,
+  cached: {
+    version: number;
+    healCount: number;
+    consecutiveFailures: number;
+    consecutiveHealFailures: number;
+  } | null,
   spec: ExtractorSpec | null,
 ): Promise<void> {
   const now = new Date();
   const version = (cached?.version ?? 0) + 1;
   const failures = (cached?.consecutiveFailures ?? 0) + (spec ? 1 : 0);
+  // Counts THIS failed generation, whatever it returned: unlike consecutiveFailures
+  // (a replay counter, which only moves when a spec existed), the backoff is about
+  // how many times the generator has been asked and come back with nothing usable.
+  const healFailures = (cached?.consecutiveHealFailures ?? 0) + 1;
   try {
     await db
       .insert(parserExtractors)
@@ -284,6 +340,7 @@ async function stampHealAttempt(
         version,
         healCount: cached?.healCount ?? 0,
         consecutiveFailures: failures,
+        consecutiveHealFailures: healFailures,
         lastValidatedAt: null,
         lastHealAttemptAt: now,
         updatedAt: now,
@@ -292,7 +349,12 @@ async function stampHealAttempt(
         target: [parserExtractors.domain, parserExtractors.sourceType],
         // Bookkeeping only on an existing row: a spec that just failed to replay
         // must not overwrite one that may still work.
-        set: { lastHealAttemptAt: now, consecutiveFailures: failures, updatedAt: now },
+        set: {
+          lastHealAttemptAt: now,
+          consecutiveFailures: failures,
+          consecutiveHealFailures: healFailures,
+          updatedAt: now,
+        },
       });
   } catch (err) {
     logger.warn("could not arm heal cooldown (non-fatal)", {
@@ -320,6 +382,7 @@ async function upsertExtractor(
       version,
       healCount: priorHealCount + 1,
       consecutiveFailures: 0,
+      consecutiveHealFailures: 0,
       lastValidatedAt: now,
       lastHealAttemptAt: now,
       updatedAt: now,
@@ -331,6 +394,7 @@ async function upsertExtractor(
         version,
         healCount: priorHealCount + 1,
         consecutiveFailures: 0,
+        consecutiveHealFailures: 0,
         lastValidatedAt: now,
         lastHealAttemptAt: now,
         updatedAt: now,

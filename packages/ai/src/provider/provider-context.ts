@@ -33,6 +33,8 @@ interface Scope {
   id: string | null;
   model: string | null;
   usage: TokenUsage;
+  /** Pool providers tried since the last log point (C1: `ai_runs.attempts`). */
+  attempts: number;
   truncated: boolean;
   /** Someone is waiting on this call at a screen (see withAiContext). */
   interactive: boolean;
@@ -56,6 +58,7 @@ function scope(): Scope {
       id: null,
       model: null,
       usage: zeroUsage(),
+      attempts: 0,
       truncated: false,
       interactive: false,
       parent: null,
@@ -93,7 +96,15 @@ export function withAiContext<T>(
   const parent = store.getStore() ?? null;
   const interactive = parent?.interactive || (opts?.interactive ?? false);
   return store.run(
-    { id: null, model: null, usage: zeroUsage(), truncated: false, interactive, parent },
+    {
+      id: null,
+      model: null,
+      usage: zeroUsage(),
+      attempts: 0,
+      truncated: false,
+      interactive,
+      parent,
+    },
     fn,
   );
 }
@@ -117,6 +128,7 @@ export async function withTruncationReport<T>(
     id: null,
     model: null,
     usage: zeroUsage(),
+    attempts: 0,
     truncated: false,
     interactive: parent?.interactive ?? false,
     parent,
@@ -156,6 +168,16 @@ export function markUsage(u: TokenUsage): void {
 }
 
 /**
+ * Count one provider attempt. Called once per iteration of the pool's failover loop,
+ * so a run that was served by its first pick reads 1 and one that burned three
+ * providers reads 3 — a distinction the `provider` column cannot make, since it holds
+ * only the LAST provider marked.
+ */
+export function markAttempt(): void {
+  scope().attempts += 1;
+}
+
+/**
  * Record that a `complete()` call in this scope hit its output ceiling
  * (`finish_reason: "length"`). Sticky for the scope: a truncated reply is always
  * malformed JSON downstream, and "the model ran out of room" is a different repair
@@ -184,4 +206,17 @@ export function consumeUsage(): TokenUsage {
   const used = s.usage;
   s.usage = zeroUsage();
   return used;
+}
+
+/**
+ * Read AND clear the provider attempts, on the same read-and-clear contract as
+ * consumeUsage: each ai_runs row carries the attempts spent since the previous row.
+ * Every log site must call it, or an uncleared count leaks into the next task's row.
+ */
+export function consumeAttempts(): number {
+  const s = store.getStore();
+  if (!s) return 0;
+  const n = s.attempts;
+  s.attempts = 0;
+  return n;
 }

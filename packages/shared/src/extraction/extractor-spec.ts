@@ -50,7 +50,20 @@ export const ExtractorSpecSchema = z.object({
 });
 export type ExtractorSpec = z.infer<typeof ExtractorSpecSchema>;
 
-/** The four resolution stages, logged per extraction to the `extraction_runs`
- *  table — the dashboard's direct arbiter of AI cost (patch-30). */
-export const EXTRACTION_RESOLUTIONS = ["structured", "cache", "heal", "ai_fallback"] as const;
+/** The resolution stages, logged per extraction to the `extraction_runs` table —
+ *  the dashboard's direct arbiter of AI cost (patch-30).
+ *
+ *  `stale_cache` is a cached parser replayed PAST its revalidation age, because the
+ *  regeneration that should have replaced it could not run (cooldown or a pool that
+ *  would not answer). It costs no AI, like `cache`, but it must not be counted as one:
+ *  the spec behind it has not been checked against fresh HTML in over
+ *  EXTRACTOR_REVALIDATE_INTERVAL_DAYS, so a rising share is the signal that heals are
+ *  starved, not that the cache is working. */
+export const EXTRACTION_RESOLUTIONS = [
+  "structured",
+  "cache",
+  "stale_cache",
+  "heal",
+  "ai_fallback",
+] as const;
 export type ExtractionResolution = (typeof EXTRACTION_RESOLUTIONS)[number];

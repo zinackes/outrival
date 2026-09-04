@@ -497,8 +497,8 @@ ${lines.slice(0, 6000)}
       await logApiAiRun("signals_brief", AI_CONFIG.insights.model, "success", { orgId });
       briefCache.set(cacheKey, { brief, count: rows.length, at: Date.now() });
       return c.json({ brief, count: rows.length });
-    } catch {
-      await logApiAiRun("signals_brief", AI_CONFIG.insights.model, "error", { orgId });
+    } catch (err) {
+      await logApiAiRun("signals_brief", AI_CONFIG.insights.model, "error", { orgId }, err);
       return c.json({ brief: null, count: rows.length });
     }
   }, { interactive: true });

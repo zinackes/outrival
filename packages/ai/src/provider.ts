@@ -18,10 +18,12 @@ import {
   tripGlobalBreaker,
   AIUnavailableError,
 } from "./provider/circuit-breaker";
+import { withAiSlot } from "./provider/semaphore";
 import {
   markProvider,
   markModel,
   markUsage,
+  markAttempt,
   markTruncated,
   isInteractive,
 } from "./provider/provider-context";
@@ -378,205 +380,213 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
   // concurrent callers see each other's in-flight spend rather than all reading an
   // empty window and all firing.
   const interactive = isInteractive();
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const provider = await pickProvider(tried, requestTokens, interactive);
-    if (!provider) break; // every eligible provider exhausted, in breaker, or already tried
-    tried.add(provider.id);
-    markProvider(provider.id);
-    // A "fast"-tier task (classify-change, overlap scoring) routes to the
-    // provider's small 8B-class model when declared — ~10× cheaper than the 70B.
-    // Falls back to the default model when the provider has no fast model.
-    const model = fast && provider.fastModel ? provider.fastModel : provider.model;
-    // AI_CONFIG.model is ignored on this path — record what we actually send so
-    // ai_runs attributes cost to the real model (see provider-context).
-    markModel(model);
-    const reasoningEffort = resolveReasoningEffort(model, provider.reasoningEffort);
-    // Nobody left to fail over to once every provider has been tried — only then is
-    // waiting out a rate limit better than giving up.
-    const lastResort = tried.size >= maxAttempts;
-    // The window bucket this attempt booked into, while the booking is still an
-    // estimate. Cleared once reconciled; read by the failure path to decide whether
-    // the booking describes something that happened.
-    let bucketKey: string | null = null;
-    try {
-      const body = {
-        model,
-        // Static system prefix (when provided) before the variable user payload —
-        // a byte-identical prefix lets Groq/Cerebras auto-cache the prefill (F2).
-        messages: [
-          ...(options.system
-            ? [{ role: "system" as const, content: options.system }]
-            : []),
-          { role: "user" as const, content: options.prompt },
-        ],
-        max_tokens: maxTokens,
-        // Constrained decoding when this provider declares it (P3): the schema is
-        // compiled to a grammar and an invalid token cannot be emitted, so "the model
-        // wrote bad JSON" stops being a failure mode. Providers without the
-        // capability keep the plain object mode — one pool, two request shapes, no
-        // change to failover.
-        ...(options.jsonSchema && provider.supportsJsonSchema
-          ? {
-              response_format: {
-                type: "json_schema" as const,
-                json_schema: {
-                  name: options.jsonSchema.name,
-                  schema: options.jsonSchema.schema,
-                  strict: true,
+  // Admission control (R9): hold a pool slot for the whole failover walk, not per
+  // attempt — a call that has already burned two providers must not go to the back of
+  // the queue behind fresh work, and re-acquiring between attempts is how a saturated
+  // pool starves the very calls closest to succeeding. The global-breaker check above
+  // stays outside the slot so a blackout still fails fast instead of queueing.
+  return withAiSlot(async () => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const provider = await pickProvider(tried, requestTokens, interactive);
+      if (!provider) break; // every eligible provider exhausted, in breaker, or already tried
+      tried.add(provider.id);
+      markAttempt();
+      markProvider(provider.id);
+      // A "fast"-tier task (classify-change, overlap scoring) routes to the
+      // provider's small 8B-class model when declared — ~10× cheaper than the 70B.
+      // Falls back to the default model when the provider has no fast model.
+      const model = fast && provider.fastModel ? provider.fastModel : provider.model;
+      // AI_CONFIG.model is ignored on this path — record what we actually send so
+      // ai_runs attributes cost to the real model (see provider-context).
+      markModel(model);
+      const reasoningEffort = resolveReasoningEffort(model, provider.reasoningEffort);
+      // Nobody left to fail over to once every provider has been tried — only then is
+      // waiting out a rate limit better than giving up.
+      const lastResort = tried.size >= maxAttempts;
+      // The window bucket this attempt booked into, while the booking is still an
+      // estimate. Cleared once reconciled; read by the failure path to decide whether
+      // the booking describes something that happened.
+      let bucketKey: string | null = null;
+      try {
+        const body = {
+          model,
+          // Static system prefix (when provided) before the variable user payload —
+          // a byte-identical prefix lets Groq/Cerebras auto-cache the prefill (F2).
+          messages: [
+            ...(options.system
+              ? [{ role: "system" as const, content: options.system }]
+              : []),
+            { role: "user" as const, content: options.prompt },
+          ],
+          max_tokens: maxTokens,
+          // Constrained decoding when this provider declares it (P3): the schema is
+          // compiled to a grammar and an invalid token cannot be emitted, so "the model
+          // wrote bad JSON" stops being a failure mode. Providers without the
+          // capability keep the plain object mode — one pool, two request shapes, no
+          // change to failover.
+          ...(options.jsonSchema && provider.supportsJsonSchema
+            ? {
+                response_format: {
+                  type: "json_schema" as const,
+                  json_schema: {
+                    name: options.jsonSchema.name,
+                    schema: options.jsonSchema.schema,
+                    strict: true,
+                  },
                 },
-              },
-            }
-          : options.json
-            ? { response_format: { type: "json_object" as const } }
-            : {}),
-        // Only sent for reasoning models (gpt-oss) — never for Llama (undefined).
-        ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
-      };
-      const requestOptions = { maxRetries: lastResort ? LAST_RESORT_SDK_RETRIES : 0 };
-      const client = clientFor(provider);
-      bucketKey = await reserveTpm(provider.id, requestTokens);
-      const res = options.onPartial
-        ? await streamReply(client, body, requestOptions, options.onPartial)
-        : await wholeReply(client, body, requestOptions);
-      // Swap the estimate for what it really cost, in the bucket the estimate was
-      // booked into (a call spanning a minute boundary must not credit the minute
-      // that never spent the tokens).
-      await reconcileTpm(bucketKey, res.usage.totalTokens - requestTokens);
-      bucketKey = null;
-      await trackUsage(provider.id, res.usage.totalTokens);
-      // Accumulate per-task token usage for ai_runs cost attribution. Counted here
-      // (with trackUsage) even on the empty-content failover below: those tokens
-      // were spent, so the cost is real.
-      markUsage(res.usage);
-      // A reply cut off at max_tokens is syntactically broken JSON, and the parse
-      // error it produces downstream ("Unterminated string") names the symptom, not
-      // the cause. Flag it on the call scope so the task that owns the budget can
-      // say so — a truncation is repaired by raising maxTokens or shrinking the
-      // prompt envelope, never by retrying the same call.
-      if (res.finishReason === "length") markTruncated();
-      const content = res.content;
-      // A 200 with empty content is a failed generation, never a valid answer (every
-      // prompt asks for JSON or prose). It happens when a reasoning model's hidden
-      // reasoning eats the whole max_tokens budget before any answer, or on a silent
-      // refusal. Fail over to the next provider instead of returning "" — which used
-      // to surface as a hard "Empty completion" throw that failed the task without
-      // ever trying another provider, taking down every AI task when the priority-1
-      // provider was a reasoning one.
-      //
-      // The park is deliberately SHORT (see EMPTY_COMPLETION_PARK_SEC) and the flag is
-      // what keeps this out of the global breaker. Skipping recordFailure here was
-      // never enough on its own: this branch set no error flag, so an exhaustion made
-      // of nothing but empty replies fell through to the transient path at the end and
-      // was counted anyway — the opposite of what the old comment claimed.
-      if (!content.trim()) {
-        await tripBreaker(provider.id, "empty_completion", EMPTY_COMPLETION_PARK_SEC);
-        sawEmptyCompletion = true;
-        lastErr = new Error(`empty completion from ${provider.id}`);
-        continue;
-      }
-      await recordSuccess();
-      return content;
-    } catch (err) {
-      if (shouldFailover(err)) {
-        const rateLimited = err instanceof OpenAI.APIError && err.status === 429;
-        const tooLarge = isTooLarge(err);
-        // A 429 says the window really is full, so the booking stands and keeps the
-        // next caller off this provider. Every other failure means the request never
-        // ran, so holding its tokens would penalise a provider that spent nothing.
-        if (bucketKey && !rateLimited) {
-          await reconcileTpm(bucketKey, -requestTokens);
-          bucketKey = null;
+              }
+            : options.json
+              ? { response_format: { type: "json_object" as const } }
+              : {}),
+          // Only sent for reasoning models (gpt-oss) — never for Llama (undefined).
+          ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
+        };
+        const requestOptions = { maxRetries: lastResort ? LAST_RESORT_SDK_RETRIES : 0 };
+        const client = clientFor(provider);
+        bucketKey = await reserveTpm(provider.id, requestTokens);
+        const res = options.onPartial
+          ? await streamReply(client, body, requestOptions, options.onPartial)
+          : await wholeReply(client, body, requestOptions);
+        // Swap the estimate for what it really cost, in the bucket the estimate was
+        // booked into (a call spanning a minute boundary must not credit the minute
+        // that never spent the tokens).
+        await reconcileTpm(bucketKey, res.usage.totalTokens - requestTokens);
+        bucketKey = null;
+        await trackUsage(provider.id, res.usage.totalTokens);
+        // Accumulate per-task token usage for ai_runs cost attribution. Counted here
+        // (with trackUsage) even on the empty-content failover below: those tokens
+        // were spent, so the cost is real.
+        markUsage(res.usage);
+        // A reply cut off at max_tokens is syntactically broken JSON, and the parse
+        // error it produces downstream ("Unterminated string") names the symptom, not
+        // the cause. Flag it on the call scope so the task that owns the budget can
+        // say so — a truncation is repaired by raising maxTokens or shrinking the
+        // prompt envelope, never by retrying the same call.
+        if (res.finishReason === "length") markTruncated();
+        const content = res.content;
+        // A 200 with empty content is a failed generation, never a valid answer (every
+        // prompt asks for JSON or prose). It happens when a reasoning model's hidden
+        // reasoning eats the whole max_tokens budget before any answer, or on a silent
+        // refusal. Fail over to the next provider instead of returning "" — which used
+        // to surface as a hard "Empty completion" throw that failed the task without
+        // ever trying another provider, taking down every AI task when the priority-1
+        // provider was a reasoning one.
+        //
+        // The park is deliberately SHORT (see EMPTY_COMPLETION_PARK_SEC) and the flag is
+        // what keeps this out of the global breaker. Skipping recordFailure here was
+        // never enough on its own: this branch set no error flag, so an exhaustion made
+        // of nothing but empty replies fell through to the transient path at the end and
+        // was counted anyway — the opposite of what the old comment claimed.
+        if (!content.trim()) {
+          await tripBreaker(provider.id, "empty_completion", EMPTY_COMPLETION_PARK_SEC);
+          sawEmptyCompletion = true;
+          lastErr = new Error(`empty completion from ${provider.id}`);
+          continue;
         }
-        if (isConfigError(err)) sawConfigError = true;
-        else if (isOutOfCredit(err)) sawOutOfCredit = true;
-        else if (tooLarge) sawTooLarge = true;
-        else sawTransientError = true;
-        // A refused-as-too-large request leaves the provider healthy: try the next
-        // one without parking this one.
-        if (tooLarge) {
+        await recordSuccess();
+        return content;
+      } catch (err) {
+        if (shouldFailover(err)) {
+          const rateLimited = err instanceof OpenAI.APIError && err.status === 429;
+          const tooLarge = isTooLarge(err);
+          // A 429 says the window really is full, so the booking stands and keeps the
+          // next caller off this provider. Every other failure means the request never
+          // ran, so holding its tokens would penalise a provider that spent nothing.
+          if (bucketKey && !rateLimited) {
+            await reconcileTpm(bucketKey, -requestTokens);
+            bucketKey = null;
+          }
+          if (isConfigError(err)) sawConfigError = true;
+          else if (isOutOfCredit(err)) sawOutOfCredit = true;
+          else if (tooLarge) sawTooLarge = true;
+          else sawTransientError = true;
+          // A refused-as-too-large request leaves the provider healthy: try the next
+          // one without parking this one.
+          if (tooLarge) {
+            lastErr = err;
+            continue;
+          }
+          // Park THIS provider (per-provider breaker) and fail over. We deliberately do
+          // NOT feed the GLOBAL breaker here: a per-provider failure the pool routes
+          // around (the task still succeeds on the next provider) is not "all providers
+          // down". Counting it per-attempt let a persistently-broken priority-1 provider
+          // — e.g. a bad Cerebras key that 404s every call — drip failures into the
+          // global counter and trip a 10-min workspace-wide blackout while every task was
+          // actually succeeding via failover. The global breaker is fed once per TASK, at
+          // the exhaustion path below.
+          await tripBreaker(
+            provider.id,
+            rateLimited ? "rate_limited" : "provider_error",
+            rateLimited ? rateLimitBackoffSec(err) : undefined,
+          );
           lastErr = err;
           continue;
         }
-        // Park THIS provider (per-provider breaker) and fail over. We deliberately do
-        // NOT feed the GLOBAL breaker here: a per-provider failure the pool routes
-        // around (the task still succeeds on the next provider) is not "all providers
-        // down". Counting it per-attempt let a persistently-broken priority-1 provider
-        // — e.g. a bad Cerebras key that 404s every call — drip failures into the
-        // global counter and trip a 10-min workspace-wide blackout while every task was
-        // actually succeeding via failover. The global breaker is fed once per TASK, at
-        // the exhaustion path below.
-        await tripBreaker(
-          provider.id,
-          rateLimited ? "rate_limited" : "provider_error",
-          rateLimited ? rateLimitBackoffSec(err) : undefined,
-        );
-        lastErr = err;
-        continue;
+        // A request WE built wrong never reached the model, so its booking describes
+        // nothing: release it before failing fast, or one malformed call would pace
+        // every caller off a healthy provider for a minute.
+        if (bucketKey) await reconcileTpm(bucketKey, -requestTokens);
+        throw err; // real error — fail fast, don't churn the pool
       }
-      // A request WE built wrong never reached the model, so its booking describes
-      // nothing: release it before failing fast, or one malformed call would pace
-      // every caller off a healthy provider for a minute.
-      if (bucketKey) await reconcileTpm(bucketKey, -requestTokens);
-      throw err; // real error — fail fast, don't churn the pool
     }
-  }
 
-  // Pool exhausted for THIS task — every pickable provider failed.
-  const detail = lastErr instanceof Error ? lastErr.message : String(lastErr);
-  const exhaustion = classifyExhaustion({
-    configError: sawConfigError,
-    transientError: sawTransientError,
-    outOfCredit: sawOutOfCredit,
-    tooLarge: sawTooLarge,
-    emptyCompletion: sawEmptyCompletion,
+    // Pool exhausted for THIS task — every pickable provider failed.
+    const detail = lastErr instanceof Error ? lastErr.message : String(lastErr);
+    const exhaustion = classifyExhaustion({
+      configError: sawConfigError,
+      transientError: sawTransientError,
+      outOfCredit: sawOutOfCredit,
+      tooLarge: sawTooLarge,
+      emptyCompletion: sawEmptyCompletion,
+    });
+
+    // Config-only exhaustion (every provider rejected with 401/403/404, no transient
+    // fault) is a misconfigured pool, not an outage: back-off won't fix an env mistake,
+    // so trip the global breaker immediately and loudly to make ops fix AI_PROVIDER_*.
+    if (exhaustion === "misconfigured") {
+      await tripGlobalBreaker("ai_provider_misconfigured");
+      throw new AIUnavailableError(
+        `ai_provider_misconfigured: every provider rejected the request (last: ${detail}). ` +
+          `Check AI_PROVIDER_*_BASE_URL (needs a trailing /v1) and AI_PROVIDER_*_MODEL.`,
+      );
+    }
+    // Every provider that answered said the account behind it has no credit left. Same
+    // treatment as a misconfigured pool — retrying cannot buy credit, so pause AI
+    // workspace-wide and say so once, loudly, instead of burning every task on a wall
+    // that only a top-up moves.
+    if (exhaustion === "out_of_credit") {
+      await tripGlobalBreaker("ai_out_of_credit");
+      throw new AIUnavailableError(
+        `ai_out_of_credit: every provider answered 402 (last: ${detail}). ` +
+          `Top up or re-enable billing on the AI_PROVIDER_* accounts.`,
+      );
+    }
+    // Every provider refused the request as too large. Nothing is down: the prompt or
+    // the max_tokens budget is simply bigger than the pool can serve, and counting it
+    // toward the global breaker would blank AI for the whole workspace over one
+    // oversized task. Surface it as what it is, so the fix goes to the caller's budget.
+    if (exhaustion === "too_large") {
+      throw new AIUnavailableError(`ai_request_too_large: ${detail}`);
+    }
+    // Every provider answered 200 with an empty body, and nothing errored. Same verdict
+    // as too_large and for the same reason: an empty reply is a property of the request
+    // (its max_tokens budget against a reasoning model), so it reproduces across the
+    // whole pool without anything being down. The fix is the caller's budget, not a
+    // ten-minute workspace-wide pause.
+    if (exhaustion === "empty_replies") {
+      throw new AIUnavailableError(`ai_empty_completions: ${detail}`);
+    }
+    // Transient cross-provider failure: count this failed TASK (not per attempt).
+    // recordFailure trips the global breaker only once AI_CIRCUIT_BREAKER_THRESHOLD
+    // tasks fail back-to-back — and any task success calls recordSuccess and clears the
+    // streak — so one unlucky task, or a single transient blip on the one provider left
+    // pickable while others sit in their per-provider breakers, no longer blanks AI for
+    // the whole workspace for 10 minutes.
+    await recordFailure();
+    throw new AIUnavailableError(
+      lastErr instanceof Error ? `all_providers_failed: ${lastErr.message}` : "no_providers_available",
+    );
   });
-
-  // Config-only exhaustion (every provider rejected with 401/403/404, no transient
-  // fault) is a misconfigured pool, not an outage: back-off won't fix an env mistake,
-  // so trip the global breaker immediately and loudly to make ops fix AI_PROVIDER_*.
-  if (exhaustion === "misconfigured") {
-    await tripGlobalBreaker("ai_provider_misconfigured");
-    throw new AIUnavailableError(
-      `ai_provider_misconfigured: every provider rejected the request (last: ${detail}). ` +
-        `Check AI_PROVIDER_*_BASE_URL (needs a trailing /v1) and AI_PROVIDER_*_MODEL.`,
-    );
-  }
-  // Every provider that answered said the account behind it has no credit left. Same
-  // treatment as a misconfigured pool — retrying cannot buy credit, so pause AI
-  // workspace-wide and say so once, loudly, instead of burning every task on a wall
-  // that only a top-up moves.
-  if (exhaustion === "out_of_credit") {
-    await tripGlobalBreaker("ai_out_of_credit");
-    throw new AIUnavailableError(
-      `ai_out_of_credit: every provider answered 402 (last: ${detail}). ` +
-        `Top up or re-enable billing on the AI_PROVIDER_* accounts.`,
-    );
-  }
-  // Every provider refused the request as too large. Nothing is down: the prompt or
-  // the max_tokens budget is simply bigger than the pool can serve, and counting it
-  // toward the global breaker would blank AI for the whole workspace over one
-  // oversized task. Surface it as what it is, so the fix goes to the caller's budget.
-  if (exhaustion === "too_large") {
-    throw new AIUnavailableError(`ai_request_too_large: ${detail}`);
-  }
-  // Every provider answered 200 with an empty body, and nothing errored. Same verdict
-  // as too_large and for the same reason: an empty reply is a property of the request
-  // (its max_tokens budget against a reasoning model), so it reproduces across the
-  // whole pool without anything being down. The fix is the caller's budget, not a
-  // ten-minute workspace-wide pause.
-  if (exhaustion === "empty_replies") {
-    throw new AIUnavailableError(`ai_empty_completions: ${detail}`);
-  }
-  // Transient cross-provider failure: count this failed TASK (not per attempt).
-  // recordFailure trips the global breaker only once AI_CIRCUIT_BREAKER_THRESHOLD
-  // tasks fail back-to-back — and any task success calls recordSuccess and clears the
-  // streak — so one unlucky task, or a single transient blip on the one provider left
-  // pickable while others sit in their per-provider breakers, no longer blanks AI for
-  // the whole workspace for 10 minutes.
-  await recordFailure();
-  throw new AIUnavailableError(
-    lastErr instanceof Error ? `all_providers_failed: ${lastErr.message}` : "no_providers_available",
-  );
 }
 
 export async function complete(

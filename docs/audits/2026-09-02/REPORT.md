@@ -18,7 +18,7 @@ Prior audit: `docs/audits/2026-08-16/REPORT.md` (ids `code:SEC-NN`, `COR-NN`, `P
 | S-01 | P0 | fixed 54512f71 | S | Password sign-up exposed with email never verified (account pre-hijack) |
 | S-02 | P0 | fixed 54512f71 | M | Sign-in performed on GET with the OTP in the URL |
 | S-03 | P0 | fixed 54512f71 | M | Client IP taken from spoofable headers; every public rate limit bypassable |
-| D-01 | P0 | open | M | Known-vulnerable deps in prod (next, hono, sharp, undici); CI audit is `|| true` |
+| D-01 | P0 | fixed 317fd537 | M | Known-vulnerable deps in prod (next, hono, sharp, undici); CI audit is `|| true` |
 | S-04 | P1 | fixed cac2e50b | S | RBAC is binary; billing has no role check |
 | S-05 | P1 | fixed cac2e50b | S | Hono API without secureHeaders/bodyLimit; localhost trusted in prod |
 | S-06 | P1 | fixed cac2e50b | S | Public report token URL cached `public`, links never expire |
@@ -70,13 +70,18 @@ Prior audit: `docs/audits/2026-08-16/REPORT.md` (ids `code:SEC-NN`, `COR-NN`, `P
 - fixed 54512f71: the atomic counter and the fail-closed null are as proposed, the identity rule is not. This finding's premise that Cloudflare fronts the api does not hold. `api.outrival.app` and the apex both resolve to 151.80.58.65 (OVH, DNS-only) and only `www` is proxied, so `cf-connecting-ip` can only ever be forged here and trusting it under any condition is itself the bug. Coolify's Traefik runs with no `forwardedheaders.insecure` and no `trustedIPs`, which is its secure default: a client-supplied `x-forwarded-for` is stripped before the proxy writes its own. The identity is therefore the LAST element of that header, or the TCP peer when the peer is public. Helper sits in `apps/api/src/lib/client-ip.ts` rather than `packages/shared`: all three call sites are in the api and shared carries no hono dependency. Covered by 9 tests in `apps/api/test/client-ip.test.ts`.
 - residual, config drift not code: two Coolify/DNS changes would silently break this. Turning on `forwardedheaders.insecure` makes `x-forwarded-for` caller-written again, and putting `api.outrival.app` behind Cloudflare makes the last element a CF edge address, collapsing every visitor into a handful of shared buckets. The box-level item in the fix above (UFW allowing 443 from Cloudflare ranges) does not apply as written, there are no CF ranges in this path to allowlist.
 
-### D-01 · P0 · open · Known-vulnerable deps in prod; CI audit non-blocking
+### D-01 · P0 · fixed 317fd537 · Known-vulnerable deps in prod; CI audit non-blocking
 - where: .github/workflows/ci.yml:23 (`pnpm audit --prod --audit-level=high || true`); package.json:35-53 (17 `ignoreGhsas`, no reason, no date)
 - data (pnpm audit --prod, 2026-09-02): 58 vulns, 26 high. next 16.2.6 < 16.2.11 (middleware/proxy bypass, DoS + SSRF via Server Actions, SSRF via rewrites); hono 4.12.28 < 4.12.34 (GHSA-54fx-42gc-7vw4); sharp 0.34.5 < 0.35.0 (libvips CVEs, decodes scraped images in the worker); undici 7.26.0 < 7.29.0 (cross-request info leak); fast-uri 3.1.2 < 3.1.4 (SSRF); @opentelemetry/core < 2.8.0 (unbounded memory via Baggage); @xmldom/xmldom via mammoth.
 - note: web has no middleware/proxy, no Server Actions, static rewrites (apps/web/next.config.ts:90-101): the next advisories reduce to DoS here; hono serves the public API; sharp decodes scraped images in the worker.
 - impact: published SSRF/DoS on the prod web framework; attacker-controlled images hit a vulnerable libvips in the worker; CI green throughout.
 - fix: drop `|| true`; add `aquasecurity/trivy-action` (fs, HIGH,CRITICAL, exit-code 1, ignore-unfixed) and `gitleaks/gitleaks-action@v2`; bump next ^16.2.11, hono ^4.12.34, sharp ^0.35.0, undici ^7.29.0 one PR each (edit range, `pnpm install --lockfile-only`); keep an `ignoreGhsas` entry only with a dated reason in `docs/security/audit-ignores.md`, monthly review.
 - verify: `pnpm audit --prod --audit-level=high` exits 0 in CI; `pnpm typecheck` green; web build in CI (not locally, OOM).
+- fixed 317fd537: `|| true` dropped. trivy (fs, vuln, HIGH/CRITICAL, `ignore-unfixed`, `exit-code: 1`) and gitleaks over the full history now run *before* `pnpm install`, so a hostile postinstall cannot taint its own scan. Bumps: next `~16.2.11` (16.2.12 resolved), hono ^4.12.34 (4.13.5), sharp ^0.35.0 (0.35.4, one copy left in the tree), undici ^7.29.0. `auditConfig.ignoreGhsas` emptied: the seven transitive offenders are floored by `pnpm.overrides` (brace-expansion, browserslist, fast-uri, js-yaml, nanoid, postcss, @opentelemetry/api) instead of hidden. 59 vulnerabilities / 26 high down to 14 / 0 high (10 moderate, 4 low); `pnpm audit --prod --audit-level=high` exits 0.
+- deviation: next is pinned `~16.2.11`, not `^16.2.11` as prescribed. CI runs no build step, so a minor bump would reach Coolify build-unverified. `next build` was run locally instead (exit 0, blog pages prerendered through `compileMDX`).
+- extra: next-mdx-remote ^5 to ^6, not in the original finding. GHSA-g4xw-jxrg-5f6m (RCE in React SSR) only surfaced as high once next stopped pinning the old sharp. The blog compiles repo-committed `.mdx` only, so it was never reachable, but the bump was free.
+- residual: trivy also sees dev dependencies that `pnpm audit --prod` filters out, and it could not be installed locally (the sandbox blocked all three download attempts), so the PR's first CI run is the only proof the gate is not noisy. If it trips on a dev-only advisory the answer is a `.trivyignore` entry documented below, not a lower severity floor.
+- doc: `docs/security/audit-ignores.md` holds the suppression policy, the log, and the 14 sub-high advisories left standing. `@xmldom/xmldom` (mammoth, parses user-uploaded docx) is the one worth watching.
 
 ### S-04 · P1 · fixed cac2e50b · RBAC is binary; billing has no role check
 - where: packages/db/src/schema/users.ts:4 (`owner|admin|member`); only role checks: apps/api/src/routes/settings.ts:134, routes/feedback.ts:87, routes/digest-feedback.ts:127; apps/api/src/routes/billing.ts (no `role`/`owner` anywhere; checkout L230-231, portal, cancel)
@@ -261,7 +266,7 @@ Prior audit: `docs/audits/2026-08-16/REPORT.md` (ids `code:SEC-NN`, `COR-NN`, `P
 ## Remediation order
 1. ~~S-01, S-02~~ done 54512f71. The auth-surface test (Q-05) stays open, see the S-01 note.
 2. ~~S-03~~ done 54512f71. The UFW/origin-pull half does not apply, see the S-03 residual note.
-3. D-01: CI gate, Trivy, gitleaks, 4 bumps. 1 day.
+3. ~~D-01~~ done 317fd537: CI gate blocking, trivy + gitleaks added, 5 bumps, ignore list emptied.
 4. ~~S-05, S-04~~ done cac2e50b. The `csrf()` half does not apply, see the S-05 note.
 5. P-01 migration (staging first). ~~S-06~~ done cac2e50b, migration 0086 applied 2026-09-04. Half a day.
 6. S-07 key required + rotation + backfill. 1 day.

@@ -35,16 +35,16 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 | S-05 | P1 | security | api answers without HSTS / X-Content-Type-Options | fixed cac2e50b |
 | S-06 | P2 | security | Browser worker runs as root with `--no-sandbox`; runtimes unpinned | open |
 | D-03 | P1 | deps | 59 vulns (26 high): next, sharp, undici, postcss, hono; CI audit non-blocking | fixed 317fd537 |
-| Q-06 | P1 | code | Raw-sql Date params have no guard; tests cannot catch them (PGlite) | open |
+| Q-06 | P1 | code | Raw-sql Date params have no guard; tests cannot catch them (PGlite) | fixed 7026b0ca |
 | Q-07 | P2 | code | 5 files over 1900 lines | open |
 | G-01 | P1 | git | 106 untracked skill dirs (11.6 MB) will be swept by the next `git add -A` | resolved, committed in #558 |
 | G-02 | P2 | git | 446 remote branches, 438 from merged PRs, no auto-delete | open |
 | G-03 | P2 | git | `OUT-229` worktree: 16 unmerged commits, no PR, idle since 2026-08-29 | open |
-| G-04 | P2 | env | `.env.example`: 7 dead vars, 12 live vars missing | open |
-| C-01 | P1 | docs | `architecture.md` says Upstash is retired; `env.ts` boot-blocks prod without it | open |
-| C-02 | P2 | docs | `architecture/env.md` claims to be complete, misses ~60 vars | open |
-| C-03 | P2 | docs | Dead references: ClickHouse files, `.claude/rules/jobs.md` | open |
-| C-04 | P2 | docs | 2026-09-02 audit: 28/28 still open; 35 historical files in `docs/` | open |
+| G-04 | P2 | env | `.env.example`: 7 dead vars, 12 live vars missing | fixed 7026b0ca |
+| C-01 | P1 | docs | `architecture.md` says Upstash is retired; `env.ts` boot-blocks prod without it | fixed 7026b0ca |
+| C-02 | P2 | docs | `architecture/env.md` claims to be complete, misses ~60 vars | fixed 7026b0ca |
+| C-03 | P2 | docs | Dead references: ClickHouse files, `.claude/rules/jobs.md` | fixed 7026b0ca |
+| C-04 | P2 | docs | 2026-09-02 audit: 28/28 still open; 35 historical files in `docs/` | partial 7026b0ca, `PHASES/` left in place |
 
 ## Actions taken during this audit
 
@@ -304,6 +304,26 @@ suite is green while prod crashes. Options: a `sqlTimestamp(d: Date)` helper in
 `no-restricted-syntax` rule on `${...}` of Date type (not typed-aware; the helper is the
 realistic guard).
 
+- fixed 7026b0ca: `sqlTimestamp(d: Date)` in `packages/db/src/sql.ts`, exported from
+  `@outrival/db`, adopted at both sites (`purge-retention.ts` `cutoff`,
+  `detect-hiring-footprint.ts` `startAt`, four interpolations).
+- deviation: **no cast**, where the finding proposed `::timestamptz`.
+  `job_postings.detected_at` and `closed_at` are declared `timestamp(...)` WITHOUT
+  `withTimezone`, so they are `timestamp` without time zone; the only `timestamptz`
+  column in the whole schema is `ai_visibility_engine_budget.next_call_allowed_at`.
+  Casting the parameter to `timestamptz` would make every comparison against a naive
+  column depend on the session's `TimeZone`, and casting to `timestamp` would drop the
+  offset on the one column that carries it. An untyped parameter is resolved by
+  Postgres from the comparison itself, which is correct against both and is exactly
+  what `caacc05c` already shipped.
+- verify: `pnpm test:local --filter @outrival/db` (`test/sql.test.ts`, 2 tests). The
+  test asserts the EMITTED params (`PgDialect.sqlToQuery`), not a round trip: PGlite
+  accepts a `Date` object, so a round-trip test would pass on the broken code too.
+  Second test pins the absence of a cast, so re-adding one has to be deliberate.
+- residual: nothing enforces adoption. A new `${someDate}` in a raw `sql` tag still
+  compiles and still passes on PGlite. oxlint cannot see it (no type information); the
+  realistic follow-up is a typed lint rule, not worth its cost for two call sites.
+
 ### Q-07 Large files (P2)
 
 `apps/web/src/lib/api.ts` 4984 lines, `apps/api/src/routes/competitors.ts` 3922,
@@ -345,6 +365,22 @@ SIGNUP_IP_DAILY_CAP SIGNUP_MX_CHECK_ENABLED SCRAPER_REGION HIRING_FREEZE_CLOSED_
 HIRING_FREEZE_MAX_OPENED HIRING_FREEZE_MIN_OPEN HIRING_FREEZE_WINDOW_DAYS
 AI_VISIBILITY_MIN_RUNS_FOR_SIGNAL AI_CACHE_TTL_NAME_DAYS`.
 
+- fixed 7026b0ca: both lists verified one by one against the code before touching
+  anything (`grep -rl` over `apps packages infra`), and both were exactly right. The 7
+  dead ones are deleted, the 12 live ones added under the section they belong to with
+  the default the code actually applies.
+- note: two of the dead names are renames, not deletions.
+  `AI_VISIBILITY_MIN_PROMPTS_FOR_SIGNAL` became `AI_VISIBILITY_MIN_RUNS_FOR_SIGNAL`
+  (runs held per (product, engine), default `VISIBILITY_MIN_RUNS` = 8) and
+  `AI_CACHE_TTL_ANALYZE_DAYS` became `AI_CACHE_TTL_NAME_DAYS`. The old names were
+  still in `docs/architecture/env.md` too, and are gone from both.
+- `SECTORAL_ANALYSIS_DAY` carried the comment "the Trigger.dev cron is static", which
+  outlived Trigger.dev itself.
+- verify: for each of the 19 names, `grep -c "^NAME=" .env.example` against
+  `grep -rl NAME --include=*.ts apps packages infra`. 0/1 before, 1/0 after.
+- residual: D-03 of the 2026-09-02 audit (config sprawl) stays open. The file is
+  accurate now, it is still 780 lines.
+
 ## Docs
 
 ### C-01 Upstash contradiction (P1)
@@ -354,6 +390,14 @@ AI_VISIBILITY_MIN_RUNS_FOR_SIGNAL AI_CACHE_TTL_NAME_DAYS`.
 `docs/deployment.md:29,242` lists them as managed. The prod api container has them.
 Fix the line in `architecture.md`.
 
+- fixed 7026b0ca: `docs/architecture.md:75`. What Phase 6 retired was the alert
+  TRANSPORT (Upstash pub/sub, replaced by DB-backed SSE), not Redis. Upstash still
+  holds the state that must be shared between api instances: the auth and AI-intensive
+  rate limiters, and the AI pool's circuit breaker (`packages/shared/src/redis.ts`).
+  The note now says that, and says why `env.ts` boot-blocks on it.
+- `docs/deployment.md` needed nothing: its line already reads "BLOCKING: api refuses
+  to boot in prod without these".
+
 ### C-02 `docs/architecture/env.md` incomplete (P2)
 
 Announces a complete list (485 lines) but about 60 variables present in `.env.example`
@@ -361,17 +405,63 @@ are absent (`AUTH_COOKIE_DOMAIN`, `UPSTASH_*`, `ADMIN_EMAILS`, `SENTRY_*`, `POST
 `SCRAPE_*`, `PIVOT_*`, ...). Either generate the table from `.env.example` or drop the
 "complete" claim.
 
+- fixed 7026b0ca: the claim is dropped, and the header now states the split.
+  `.env.example` is the inventory; `env.md` is the *why*, and a variable earns a place
+  there when its rationale does not fit on one line.
+- measured, not estimated: 251 variables in `.env.example`, 176 named in the body of
+  `env.md`, 75 absent. The header carries those numbers with their date, so the next
+  reader can re-measure instead of trusting the word "complete".
+- rejected: generating the table from `.env.example`. It would produce 251 rows of
+  which 176 already exist by hand with an incident behind them, and the generator would
+  either overwrite that or need a merge rule nobody would maintain.
+
 ### C-03 Dead references (P2)
 
 `docs/staged-extraction.md:143,234,261` describe ClickHouse files that were retired.
 `.claude/skills/outrival-new-source/SKILL.md:136` points to `.claude/rules/jobs.md`,
 which does not exist.
 
+- fixed 7026b0ca, and the sweep found more than the two cited sites.
+- ClickHouse: retired on 2026-06-06 by `19261f57` ("ClickHouse -> Neon"), which deleted
+  `clickhouse-schema.ts`, `ch-setup.ts`, `clickhouse-safe.ts`, `workers/lib/clickhouse.ts`
+  and the `keep-clickhouse-warm` job. `docs/staged-extraction.md` still sent the reader
+  to all three files at lines 42, 132, 143, 179, 234 and 261. `extraction_runs`,
+  `scrape_runs` and `ai_runs` are Postgres tables in `packages/db/src/schema/analytics.ts`.
+  The doc is a patch spec, so it keeps its original SQL sketch with a dated note saying
+  what actually landed.
+- `.claude/rules/`: `jobs.md`, `scraping.md`, `monorepo.md`, `api-routes.md` and
+  `linear-workflow.md` are all gone, their content having moved into the per-package
+  `CLAUDE.md`. Repointed in the three LIVE files: the skill (scraping ->
+  `packages/scrapers/CLAUDE.md`, jobs -> `packages/queue/CLAUDE.md` + `apps/workers/CLAUDE.md`
+  for idempotence), `apps/workers/src/scripts/replay-dlq.ts:20`, and
+  `.claude/workflows/audit-ux.js:296`.
+- deliberately NOT rewritten: the same names inside `PHASES/`, `plans/` and the
+  2026-08-16 audit. Those are records of what was true when they were written.
+
 ### C-04 Audit debt and archive (P2)
 
 `docs/audits/2026-09-02/REPORT.md`: 28 findings, all `open`; the remediation commit
 `70013d0a` addressed the 2026-08-16 audit, not this one. `docs/` holds 47 files including
 10 dated audits and 25 `PHASES` files; move the historical ones under `docs/archive/`.
+
+- partial 7026b0ca.
+- The status half is already done and was done before this wave: the 2026-09-02 index
+  now reads 8 fixed, 1 partial, 19 open, each with the sha that closed it. `70013d0a`
+  is never claimed by that report; the sentence it carries about `81a2b730..ee391589`
+  is about the 2026-08-16 audit and is correct.
+- The archive half: the 7 dated audits sitting in `docs/` root move to `docs/archive/`
+  with a README stating the rule (dated, finished, nobody edits it) and warning that
+  nothing in there describes today's code. The other 3 of the 10 already live under
+  `docs/audits/`, which is where tracked audits belong.
+- Inbound links repointed in `.claude/workflows/audit-code.js`, `audit-verify.js`,
+  `docs/architecture/env.md`, `docs/ai-visibility.md`,
+  `packages/scrapers/src/lib/nav-strategy.ts`, and between the two moved files. The
+  references inside `docs/audits/2026-08-16/` are left dangling on purpose: a rendered
+  audit is a record, and editing it to keep a link alive rewrites history.
+- `PHASES/` is NOT moved, and the count is stale: 25 files, but at the repo root in
+  their own directory, not in `docs/`. They are already separated from the live docs,
+  which is the outcome this finding asks for, and 29 files under `plans/` reference
+  them by path. Moving them would buy nothing and break those.
 
 ## Business snapshot (Neon, 2026-09-04)
 

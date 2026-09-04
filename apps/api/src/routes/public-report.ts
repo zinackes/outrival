@@ -5,6 +5,7 @@ import type { BattleCardContent } from "@outrival/ai";
 import { db } from "../lib/db";
 import { buildLandscape } from "../lib/landscape-data";
 import { buildMonthlyRecap } from "../lib/monthly-recap";
+import { ipRateLimit } from "../middleware/auth-rate-limit";
 
 // PUBLIC (no auth) resolver for a share token → the "Competitive Snapshot Report"
 // (Lever 8). Mounted OUTSIDE authMiddleware. The token is the only capability: a
@@ -13,6 +14,11 @@ import { buildMonthlyRecap } from "../lib/monthly-recap";
 // (buildLandscape never throws); a short public cache since a shared report doesn't
 // need to be live. See docs/post-onboarding-activation.md.
 export const publicReportRouter = new Hono();
+
+// The token is unguessable, so this is not about enumeration: it bounds how hard a
+// single caller can hammer the four queries behind a leaked link. 60 per 15 minutes
+// is far above a human reading a report and far below a scraper (S-06).
+publicReportRouter.use("*", ipRateLimit("public-report", 60));
 
 publicReportRouter.get("/:token", async (c) => {
   const token = c.req.param("token");
@@ -26,13 +32,24 @@ publicReportRouter.get("/:token", async (c) => {
   });
   if (!link) return c.json({ error: "not_found" }, 404);
 
+  // 410 rather than 404: the reader is holding a link that WAS valid, and telling
+  // them it expired is the difference between "ask for a fresh link" and "this was
+  // never real". An expired token leaks nothing, it only ever pointed here.
+  if (link.expiresAt <= new Date()) return c.json({ error: "expired" }, 410);
+
   const org = await db.query.organizations.findFirst({
     where: eq(organizations.id, link.orgId),
     columns: { name: true },
   });
   if (!org) return c.json({ error: "not_found" }, 404);
 
-  c.header("Cache-Control", "public, max-age=300");
+  // Was `public, max-age=300` (audit 2026-09-02, S-06): any shared cache in front of
+  // this, and the browser's own, kept serving a report for five minutes after it was
+  // revoked, which is the one moment revocation has to work. Revocation is the whole
+  // point of the token, so it wins over the cache. X-Robots-Tag because the URL is
+  // handed around and search engines follow what they are given.
+  c.header("Cache-Control", "private, no-store");
+  c.header("X-Robots-Tag", "noindex, nofollow");
 
   // Recap share (Lever 9): the shared "Wrapped". Month is pinned in the link's meta.
   if (link.type === "recap") {

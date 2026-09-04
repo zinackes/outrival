@@ -64,7 +64,7 @@ export const authRateLimit = createMiddleware(async (c, next) => {
  * to charge and reading the body would consume it before the handler. Same
  * keyspace and same generic response as `authRateLimit`.
  */
-export function ipRateLimit(bucket: string) {
+export function ipRateLimit(bucket: string, max: number = IP_MAX) {
   return createMiddleware(async (c: Context, next) => {
     const redis = getRedis();
     if (!redis) return next();
@@ -73,7 +73,7 @@ export function ipRateLimit(bucket: string) {
     if (!ip) return c.json(limitedResponse(), 429);
 
     const count = await hit(redis, `ratelimit:${bucket}:ip:${ip}`);
-    if (count > IP_MAX) return c.json(limitedResponse(), 429);
+    if (count > max) return c.json(limitedResponse(), 429);
 
     await next();
   });

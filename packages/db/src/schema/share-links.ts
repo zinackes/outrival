@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
 import { organizations } from "./organizations";
 import { users } from "./users";
@@ -30,6 +31,15 @@ export const shareLinks = pgTable(
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
     // Revocation is soft: keep the row so a revoked link stays dead even if re-shared.
     revokedAt: timestamp("revoked_at"),
+    // A share link used to be valid forever (audit 2026-09-02, S-06): one forwarded
+    // mail, one screenshot of a URL, and competitor and pricing data kept leaving the
+    // building with nothing to stop it and no trace. 30 days is long enough that a
+    // link sent to a prospect survives their buying cycle, short enough that a leaked
+    // one dies on its own. Re-sharing mints a fresh token, so the cost of expiry is
+    // one click. Existing rows get 30 days from the migration, not from creation.
+    expiresAt: timestamp("expires_at")
+      .notNull()
+      .default(sql`now() + interval '30 days'`),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [

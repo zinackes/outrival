@@ -5,11 +5,14 @@ import { Hono } from "hono";
 import { getPostHog } from "./lib/posthog";
 import { cors } from "hono/cors";
 import { compress } from "hono/compress";
+import { secureHeaders } from "hono/secure-headers";
+import { bodyLimit } from "hono/body-limit";
 import { contextStorage } from "hono/context-storage";
 import { logger as honoLogger } from "hono/logger";
 import { logger } from "@outrival/shared";
 import { env } from "./env";
 import { auth } from "./lib/auth";
+import { evictUserSessions } from "./lib/session-cache";
 import { healthRouter } from "./routes/health";
 import { competitorsRouter } from "./routes/competitors";
 import { monitorsRouter } from "./routes/monitors";
@@ -66,6 +69,25 @@ const app = new Hono();
 // ensureUserOrg can skip its second users round-trip on every authenticated call.
 app.use("*", contextStorage());
 app.use("*", honoLogger());
+
+// Baseline response hardening (audit 2026-09-02, S-05). The API had none of it:
+// no nosniff, no referrer policy, no HSTS of its own. `same-site` rather than the
+// default `same-origin` for CORP because the browser fetches this API from
+// outrival.app, a different origin on the same site. CORS fetches are unaffected
+// either way (CORP is only checked for no-cors loads); what this closes is a page
+// on some other site embedding an API response as a subresource.
+app.use("*", secureHeaders({ crossOriginResourcePolicy: "same-site" }));
+
+// Global request-size ceiling. The API is a single Bun process: one 200 MB JSON
+// body is an outage, and until now nothing bounded it except the two upload routes
+// that set their own limit. Those two are exempted by path rather than raised
+// globally, so a 10 MB document upload stays possible and everything else does not.
+const uploadRoutes = new Set(["/api/products/analyze-document", "/api/onboarding/analyze-document"]);
+const globalBodyLimit = bodyLimit({
+  maxSize: 1024 * 1024,
+  onError: (c) => c.json({ error: "Payload too large" }, 413),
+});
+app.use("*", (c, next) => (uploadRoutes.has(c.req.path) ? next() : globalBodyLimit(c, next)));
 app.use(
   "*",
   cors({
@@ -111,7 +133,33 @@ app.use("*", async (c, next) => {
 // catch-all below, or the wildcard handler swallows them.
 app.route("/api/auth", authRouter);
 
-app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+// Better Auth's own endpoints. The wrapper exists for one reason (audit
+// 2026-09-02, S-08): authMiddleware caches a resolved session per process for 30s,
+// so revoking access used to keep working for up to 30s after the user asked for it.
+// These are the paths that take access away; the user is resolved before the handler
+// runs (the session row is gone after it) and their cached entries dropped once it
+// has. Everything else goes straight through.
+const REVOCATION_PATHS = new Set([
+  "/api/auth/sign-out",
+  "/api/auth/revoke-session",
+  "/api/auth/revoke-sessions",
+  "/api/auth/revoke-other-sessions",
+  "/api/auth/change-password",
+  "/api/auth/set-password",
+  "/api/auth/delete-user",
+]);
+
+app.on(["POST", "GET"], "/api/auth/*", async (c) => {
+  const revoking = REVOCATION_PATHS.has(c.req.path);
+  const userId = revoking
+    ? (await auth.api.getSession({ headers: c.req.raw.headers }))?.user.id
+    : undefined;
+
+  const res = await auth.handler(c.req.raw);
+
+  if (userId) evictUserSessions(userId);
+  return res;
+});
 
 // Stripe webhook — must be mounted before any router that could consume the
 // body (none currently, but kept first defensively) and stays outside the

@@ -15,6 +15,7 @@ import { auth } from "../../lib/auth";
 import { eraseOrg } from "../../lib/erase-org";
 import { enqueueJob } from "../../lib/queue";
 import { logAudit, type AdminVariables } from "./shared";
+import { evictUserSessions } from "../../lib/session-cache";
 
 export const usersRouter = new Hono<{ Variables: AdminVariables }>();
 
@@ -204,6 +205,9 @@ usersRouter.post("/users/:id/suspend", async (c) => {
   await db.update(users).set({ suspendedAt: new Date() }).where(eq(users.id, id));
   // Kill existing sessions so the lock-out is immediate, not next-login.
   await db.delete(authSession).where(eq(authSession.userId, id));
+  // The rows are gone but authMiddleware keeps a resolved session in process for up
+  // to 30s, which is 30s of continued access for a just-suspended abuser (S-08).
+  evictUserSessions(id);
 
   await logAudit(c.get("user").email, "suspend", "user", id, { email: user.email });
   return c.json({ ok: true });

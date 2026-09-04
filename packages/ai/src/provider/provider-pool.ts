@@ -283,11 +283,26 @@ export function providersAcceptingSize(providers: Provider[], requestTokens: num
  * `interactive` lets a call someone is watching draw on the share of each ceiling
  * that background work is held back from (AI_INTERACTIVE_RESERVE_FRACTION).
  */
+export interface ProviderPick {
+  provider: Provider;
+  /**
+   * Nobody else was pickable at this instant — every other provider is breakered,
+   * out of daily quota, too small for the request, or already tried by this call.
+   * The caller has nowhere to fail over to, so a rate limit has to be WAITED OUT
+   * rather than routed around (see LAST_RESORT_SDK_RETRIES in ../provider.ts).
+   *
+   * Read off `available`, not off the returned `pool`: a provider held back only by
+   * the per-minute window is deprioritised, not removed, and the next iteration can
+   * still pick it once the preferred one is excluded.
+   */
+  sole: boolean;
+}
+
 export async function pickProvider(
   exclude?: ReadonlySet<string>,
   requestTokens = 0,
   interactive = false,
-): Promise<Provider | null> {
+): Promise<ProviderPick | null> {
   const providers = providersAcceptingSize(loadProviders(), requestTokens);
   if (providers.length === 0) return null;
   const today = todayKey();
@@ -317,15 +332,16 @@ export async function pickProvider(
   }
   const pool = withHeadroom.length > 0 ? withHeadroom : available;
   if (pool.length === 0) return null;
+  const sole = available.length === 1;
 
   // Keep only the providers at the best available priority, then round-robin them.
   const bestPriority = pool[0]!.priority;
   const topTier = pool.filter((p) => p.priority === bestPriority);
-  if (topTier.length === 1) return topTier[0]!;
+  if (topTier.length === 1) return { provider: topTier[0]!, sole };
 
   const idx = await redis.incr(`ai:roundrobin:${bestPriority}`);
   await redis.expire(`ai:roundrobin:${bestPriority}`, 3600);
-  return topTier[idx % topTier.length]!;
+  return { provider: topTier[idx % topTier.length]!, sole };
 }
 
 /** Track consumed tokens (input+output) for today — not just request count. */

@@ -387,8 +387,9 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
   // stays outside the slot so a blackout still fails fast instead of queueing.
   return withAiSlot(async () => {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const provider = await pickProvider(tried, requestTokens, interactive);
-      if (!provider) break; // every eligible provider exhausted, in breaker, or already tried
+      const pick = await pickProvider(tried, requestTokens, interactive);
+      if (!pick) break; // every eligible provider exhausted, in breaker, or already tried
+      const provider = pick.provider;
       tried.add(provider.id);
       markAttempt();
       markProvider(provider.id);
@@ -400,9 +401,18 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
       // ai_runs attributes cost to the real model (see provider-context).
       markModel(model);
       const reasoningEffort = resolveReasoningEffort(model, provider.reasoningEffort);
-      // Nobody left to fail over to once every provider has been tried — only then is
-      // waiting out a rate limit better than giving up.
-      const lastResort = tried.size >= maxAttempts;
+      // Nobody left to fail over to — only then is waiting out a rate limit better
+      // than giving up. This has to be asked of the POOL, not of the config: counting
+      // `tried` against `maxAttempts` (every provider whose per-request ceiling admits
+      // the prompt) says "two more to go" while both of them are breakered or out of
+      // daily quota, so the one mechanism written for this case never fired. Measured
+      // on prod 2026-09-04: Cloudflare and Groq spent their free daily quota by
+      // mid-afternoon, leaving Mistral — 29.9M of its 30M tokens still unspent — the
+      // only pickable provider. Its free tier meters 1 request/second, nothing here
+      // meters requests at all, so it answered 429; the loop declined the SDK sleep it
+      // was owed, parked it for RATE_LIMIT_BACKOFF_FALLBACK_SEC, and every task for
+      // the next 30 seconds got `no_providers` from a pool that was not out of anything.
+      const lastResort = pick.sole || tried.size >= maxAttempts;
       // The window bucket this attempt booked into, while the booking is still an
       // estimate. Cleared once reconciled; read by the failure path to decide whether
       // the booking describes something that happened.

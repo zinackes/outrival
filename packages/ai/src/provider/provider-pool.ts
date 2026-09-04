@@ -39,6 +39,19 @@ export interface Provider {
    * per-minute one is the limit the hourly fan-out walks into every day.
    */
   tpmLimit: number;
+  /**
+   * Per-minute REQUEST ceiling at this provider (AI_PROVIDER_N_RPM_LIMIT). 0 =
+   * unknown, which disables request pacing for it and restores the behaviour that
+   * shipped before this field existed.
+   *
+   * The other half of every free tier's rate limit, and the half nothing here
+   * counted. Mistral's free tier meters 1 request/second alongside 500k
+   * tokens/minute, so a fleet sitting at 2% of the token budget still earns 429s by
+   * arriving in a burst. Measured on prod 2026-09-04: 1,465 of 1,600 AI calls never
+   * reached a provider at all, against ~800k tokens/day actually spent out of 30.5M
+   * configured. The pool was short of pacing, not of quota.
+   */
+  rpmLimit: number;
   // Optional override for reasoning models (gpt-oss). Unset → callLLM auto-picks
   // "low" for gpt-oss (cheapest, validated equal quality) and sends nothing for
   // non-reasoning models. Only set this to deviate (e.g. "medium").
@@ -104,6 +117,7 @@ export function loadProviders(): Provider[] {
       dailyTokenQuota: Number(process.env[`AI_PROVIDER_${i}_DAILY_TOKEN_QUOTA`] ?? 500000),
       maxRequestTokens: Number.isFinite(maxReq) && maxReq > 0 ? maxReq : undefined,
       tpmLimit: Number(process.env[`AI_PROVIDER_${i}_TPM_LIMIT`] ?? 0),
+      rpmLimit: Number(process.env[`AI_PROVIDER_${i}_RPM_LIMIT`] ?? 0),
       priority: Number(process.env[`AI_PROVIDER_${i}_PRIORITY`] ?? 99),
       reasoningEffort: re === "low" || re === "medium" || re === "high" ? re : undefined,
       supportsJsonSchema: process.env[`AI_PROVIDER_${i}_JSON_SCHEMA`] === "true",
@@ -128,6 +142,9 @@ export function loadProviders(): Provider[] {
         // this branch synthesizes a provider from a bare GROQ_API_KEY, so there is
         // no AI_PROVIDER_N_TPM_LIMIT to read.
         tpmLimit: 8000,
+        // Groq's published free ceiling for gpt-oss-120b, same source as the TPM one
+        // above. Hard-coded for the same reason: this branch has no env to read.
+        rpmLimit: 30,
         priority: 1,
       });
     }
@@ -203,18 +220,35 @@ function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** Minute bucket key for a provider's per-minute token window. */
-function tpmKey(providerId: string, epochMs: number): string {
-  return `ai:tpm:${providerId}:${Math.floor(epochMs / WINDOW_MS)}`;
+/** Minute bucket key for one of a provider's per-minute windows. */
+function windowKey(kind: "tpm" | "rpm", providerId: string, epochMs: number): string {
+  return `ai:${kind}:${providerId}:${Math.floor(epochMs / WINDOW_MS)}`;
 }
 
-/** Tokens spent at this provider over the trailing minute. */
-async function observedTpm(providerId: string, now: number): Promise<number> {
-  const [previous, current] = await redis.mget(
-    tpmKey(providerId, now - WINDOW_MS),
-    tpmKey(providerId, now),
+/**
+ * What this provider has spent over the trailing minute: tokens AND requests.
+ *
+ * Both windows are read in ONE mget because they are always consulted together — a
+ * provider needs headroom on both ceilings to be preferred, and a second round trip
+ * per provider per pick is latency paid on every AI call to learn half an answer.
+ * The request counter reuses the token window's arithmetic unchanged: a two-bucket
+ * sliding count does not care what it is counting.
+ */
+async function observedWindows(
+  providerId: string,
+  now: number,
+): Promise<{ tokens: number; requests: number }> {
+  const [prevTokens, currentTokens, prevRequests, currentRequests] = await redis.mget(
+    windowKey("tpm", providerId, now - WINDOW_MS),
+    windowKey("tpm", providerId, now),
+    windowKey("rpm", providerId, now - WINDOW_MS),
+    windowKey("rpm", providerId, now),
   );
-  return slidingWindowTokens(Number(previous ?? 0), Number(current ?? 0), now % WINDOW_MS);
+  const elapsed = now % WINDOW_MS;
+  return {
+    tokens: slidingWindowTokens(Number(prevTokens ?? 0), Number(currentTokens ?? 0), elapsed),
+    requests: slidingWindowTokens(Number(prevRequests ?? 0), Number(currentRequests ?? 0), elapsed),
+  };
 }
 
 /**
@@ -227,7 +261,7 @@ async function observedTpm(providerId: string, now: number): Promise<number> {
  * and all firing is precisely the burst this exists to stop.
  */
 export async function reserveTpm(providerId: string, tokens: number): Promise<string> {
-  const key = tpmKey(providerId, Date.now());
+  const key = windowKey("tpm", providerId, Date.now());
   await redis.incrby(key, Math.round(tokens));
   // Two windows plus slack: the bucket only has to outlive its own use as the
   // "previous minute" of the next window.
@@ -239,6 +273,24 @@ export async function reserveTpm(providerId: string, tokens: number): Promise<st
 export async function reconcileTpm(bucketKey: string, delta: number): Promise<void> {
   if (Math.round(delta) === 0) return;
   await redis.incrby(bucketKey, Math.round(delta));
+}
+
+/**
+ * Book ONE request against a provider's per-minute request window.
+ *
+ * Booked before the call for the same reason tokens are — N concurrent callers all
+ * reading an empty window and all firing is the burst this exists to stop — but,
+ * unlike a token reservation, never given back. A token booking is an estimate of
+ * something that may not happen; this counts a request that definitely left, and the
+ * provider's own limiter counted it too whether it answered 200, 401 or 413. The
+ * retries a `lastResort` pick delegates to the SDK are not booked at all, so this
+ * window under-counts rather than over-counts, which is the direction that keeps a
+ * miscount from being the sole reason a task fails.
+ */
+export async function reserveRpm(providerId: string): Promise<void> {
+  const key = windowKey("rpm", providerId, Date.now());
+  await redis.incr(key);
+  await redis.expire(key, 180); // outlive its use as the next window's previous minute
 }
 
 /**
@@ -272,13 +324,22 @@ export function providersAcceptingSize(providers: Provider[], requestTokens: num
  * Two ceilings, and they are different kinds of thing. `requestTokens` against
  * `maxRequestTokens` is a WALL: a request bigger than it earns a guaranteed 413, so
  * such a provider is REMOVED — attempting it spends a failover slot to be told what
- * we already knew. The per-minute window is a RATE: a request that fits may still
+ * we already knew. The per-minute windows are RATES: a request that fits may still
  * arrive in a minute already spent, so such a provider is only DEPRIORITISED. We
  * prefer whoever has headroom and fall back to the best-priority usable provider
  * when nobody does, because the estimate is a ratio on a character count rather than
  * a tokenizer and must never be the sole reason a task fails. The floor stays exactly
  * the pre-pacing behaviour; the win is that a saturated provider is skipped BEFORE it
  * answers 429 and gets parked for two minutes, not after.
+ *
+ * There are two rates, not one, because a free tier meters two things. Tokens per
+ * minute was the only one counted until 2026-09-04, and it is not the one that binds:
+ * prod spent ~800k tokens/day against 30.5M/day of configured supply (2.6%) while
+ * 1,465 of that day's 1,600 calls never reached a provider. Mistral's free tier
+ * allows 1 request/second next to 500k tokens/minute, so an hourly fan-out firing
+ * everything at once is refused on a ceiling the pool had no counter for, and the
+ * refusal parks the provider for the whole backoff. Pacing requests turns that 429
+ * into a hop to the next provider, one step before it happens.
  *
  * `interactive` lets a call someone is watching draw on the share of each ceiling
  * that background work is held back from (AI_INTERACTIVE_RESERVE_FRACTION).
@@ -317,18 +378,29 @@ export async function pickProvider(
     if (breaker) continue;
     if (Number(used ?? 0) >= p.dailyTokenQuota * 0.95) continue;
     available.push(p);
-    if (
+    const observed = await observedWindows(p.id, now);
+    // Two rates, both of which a free tier enforces, and a provider is only preferred
+    // when it has room on both. `requestTokens === 0` skips the token test because a
+    // caller that did not size its prompt has nothing to test against; the request
+    // test has no such escape, since every call costs exactly one request whatever
+    // its size.
+    const tokensOk =
       requestTokens === 0 ||
       hasHeadroom({
-        observed: await observedTpm(p.id, now),
+        observed: observed.tokens,
         limit: p.tpmLimit,
         cost: requestTokens,
         reserveFraction,
         interactive,
-      })
-    ) {
-      withHeadroom.push(p);
-    }
+      });
+    const requestsOk = hasHeadroom({
+      observed: observed.requests,
+      limit: p.rpmLimit,
+      cost: 1,
+      reserveFraction,
+      interactive,
+    });
+    if (tokensOk && requestsOk) withHeadroom.push(p);
   }
   const pool = withHeadroom.length > 0 ? withHeadroom : available;
   if (pool.length === 0) return null;

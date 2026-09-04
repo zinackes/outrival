@@ -256,6 +256,27 @@ AI_PROVIDER_N_TPM_LIMIT=           # plafond TOKENS PAR MINUTE du provider (clou
                                    # concurrents lisent tous une fenêtre vide et partent tous),
                                    # réconciliée sur l'usage réel dans le MÊME bucket de minute.
                                    # 0 = pas de pacing pour ce provider
+AI_PROVIDER_N_RPM_LIMIT=           # plafond REQUÊTES PAR MINUTE du provider (mistral 60,
+                                   # groq 30 ; cloudflare ne publie rien → laisser vide).
+                                   # L'AUTRE moitié de la limite de débit d'un tier gratuit,
+                                   # et celle que rien ne comptait jusqu'au 2026-09-04.
+                                   # Mesuré ce jour-là en prod : 1 465 des 1 600 appels IA
+                                   # n'ont JAMAIS atteint un provider, pour une dépense
+                                   # réelle de ~800k tokens/jour contre 30,5M/jour
+                                   # configurés (2,6% du budget). Le pool n'était pas à
+                                   # court de tokens, il était à court de CADENCE : Mistral
+                                   # autorise 1 req/s à côté de ses 500k tokens/min, donc le
+                                   # fan-out horaire se fait refuser sur un plafond dont le
+                                   # pool n'avait aucun compteur, et le refus parque le
+                                   # provider pour tout le backoff. Même mécanique que le
+                                   # TPM : DÉPRIORISATION jamais exclusion, même fenêtre
+                                   # glissante à 2 buckets, même mget. La réservation se fait
+                                   # avant l'appel mais n'est JAMAIS rendue — une requête
+                                   # partie est comptée par le limiteur du provider quelle
+                                   # que soit sa réponse, 200 comme 401. Les retries que le
+                                   # SDK fait en dernier recours ne sont pas comptés : la
+                                   # fenêtre sous-estime, jamais l'inverse.
+                                   # 0 / vide = pas de pacing par requête pour ce provider
 AI_INTERACTIVE_RESERVE_FRACTION=0.2 # part de chaque plafond par minute réservée à l'INTERACTIF
                                    # (question Ask, brief signals, tout ce qu'un humain regarde).
                                    # Le background est plafonné aux 80% restants. Sans ça la

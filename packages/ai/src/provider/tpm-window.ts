@@ -30,6 +30,13 @@ export function slidingWindowTokens(
   return Math.round(Math.max(0, previousBucket) * carry + Math.max(0, currentBucket));
 }
 
+// Both functions here also serve the per-minute REQUEST window (rpmLimit): a
+// two-bucket sliding count does not care whether it counts tokens or calls, and
+// `hasHeadroom` with `cost: 1` is exactly "may this provider take one more request".
+// Do not add a parallel copy of either for requests — one shared implementation is
+// what keeps the two ceilings from drifting apart, the same argument the note below
+// makes for the estimate.
+//
 // What a request costs against this window is NOT computed here. provider-pool's
 // `estimateRequestTokens` already derives it for the per-request SIZE filter, from
 // the same characters and the same output budget, and one estimate serving both

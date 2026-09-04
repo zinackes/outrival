@@ -9,6 +9,7 @@ import {
   tripBreaker,
   reserveTpm,
   reconcileTpm,
+  reserveRpm,
   type Provider,
 } from "./provider/provider-pool";
 import {
@@ -454,6 +455,9 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
         const requestOptions = { maxRetries: lastResort ? LAST_RESORT_SDK_RETRIES : 0 };
         const client = clientFor(provider);
         bucketKey = await reserveTpm(provider.id, requestTokens);
+        // The request window is booked here and never unbooked: the SDK call below
+        // leaves whatever happens next, and the provider's own limiter counts it.
+        await reserveRpm(provider.id);
         const res = options.onPartial
           ? await streamReply(client, body, requestOptions, options.onPartial)
           : await wholeReply(client, body, requestOptions);

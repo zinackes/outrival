@@ -19,13 +19,13 @@ Prior audit: `docs/audits/2026-08-16/REPORT.md` (ids `code:SEC-NN`, `COR-NN`, `P
 | S-02 | P0 | fixed 54512f71 | M | Sign-in performed on GET with the OTP in the URL |
 | S-03 | P0 | fixed 54512f71 | M | Client IP taken from spoofable headers; every public rate limit bypassable |
 | D-01 | P0 | open | M | Known-vulnerable deps in prod (next, hono, sharp, undici); CI audit is `|| true` |
-| S-04 | P1 | open | S | RBAC is binary; billing has no role check |
-| S-05 | P1 | open | S | Hono API without secureHeaders/bodyLimit; localhost trusted in prod |
-| S-06 | P1 | open | S | Public report token URL cached `public`, links never expire |
+| S-04 | P1 | fixed cac2e50b | S | RBAC is binary; billing has no role check |
+| S-05 | P1 | fixed cac2e50b | S | Hono API without secureHeaders/bodyLimit; localhost trusted in prod |
+| S-06 | P1 | fixed cac2e50b | S | Public report token URL cached `public`, links never expire |
 | S-07 | P1 | open | M | At-rest encryption key optional, plaintext accepted, no rotation, empty-key HMAC |
-| S-08 | P1 | open | S | In-process session cache keyed by raw token; revocation lags 30 s |
+| S-08 | P1 | fixed cac2e50b | S | In-process session cache keyed by raw token; revocation lags 30 s |
 | S-09 | P1 | open | M | SSRF residual: no DNS pinning in safeFetch; unguarded fetch sites; queue DB on the same WireGuard net |
-| S-10 | P1 | open | S | Fail-open guards: NODE_ENV defaults to development; Sentry token as build ARG |
+| S-10 | P1 | partial cac2e50b | S | Fail-open guards: NODE_ENV defaults to development; Sentry token as build ARG |
 | P-01 | P1 | open | M | No index on Better Auth FK columns and 4 app columns |
 | P-02 | P1 | open | S | Queue: synchronous_commit=off and retryLimit 0 on key jobs |
 | D-02 | P1 | open | M | Mutable `:latest` tag, no post-deploy gate, Node/turbo drift, root legacy Dockerfile |
@@ -78,23 +78,32 @@ Prior audit: `docs/audits/2026-08-16/REPORT.md` (ids `code:SEC-NN`, `COR-NN`, `P
 - fix: drop `|| true`; add `aquasecurity/trivy-action` (fs, HIGH,CRITICAL, exit-code 1, ignore-unfixed) and `gitleaks/gitleaks-action@v2`; bump next ^16.2.11, hono ^4.12.34, sharp ^0.35.0, undici ^7.29.0 one PR each (edit range, `pnpm install --lockfile-only`); keep an `ignoreGhsas` entry only with a dated reason in `docs/security/audit-ignores.md`, monthly review.
 - verify: `pnpm audit --prod --audit-level=high` exits 0 in CI; `pnpm typecheck` green; web build in CI (not locally, OOM).
 
-### S-04 · P1 · open · RBAC is binary; billing has no role check
+### S-04 · P1 · fixed cac2e50b · RBAC is binary; billing has no role check
 - where: packages/db/src/schema/users.ts:4 (`owner|admin|member`); only role checks: apps/api/src/routes/settings.ts:134, routes/feedback.ts:87, routes/digest-feedback.ts:127; apps/api/src/routes/billing.ts (no `role`/`owner` anywhere; checkout L230-231, portal, cancel)
 - impact: any `member` upgrades, cancels or opens the Stripe portal; `admin` role exists in the enum only.
 - fix: `requireRole(...roles)` middleware in `apps/api/src/middleware/require-role.ts` (reads `users.role`, 403 otherwise); `billingRouter.use("*", authMiddleware, requireRole("owner", "admin"))`; same on `settingsRouter.patch("/")`.
 - verify: test: member token on `POST /api/billing/checkout` returns 403.
+- fixed cac2e50b: `requireRole()` in apps/api/src/middleware/require-role.ts, registered as `billingRouter.on(["POST"], "*", requireRole("owner", "admin"))` rather than per route, so a mutation added later inherits it. The two GETs stay open (the dashboard reads the plan on every page). Also on `settingsRouter.patch("/workspace")`, which is the workspace mutation the report meant by `patch("/")`.
+- deviation: a user with no `orgId` passes the guard. `users.role` defaults to `member` and only `ensureUserOrg` promotes, on org creation, so a fail-closed check would 403 every brand-new account out of its own onboarding. Prod probe: 45/45 org-attached users are `owner`, the 4 `member` rows have no org.
+- test: apps/api/test/require-role.test.ts, 4 cases (member 403, owner through, no-org through, GET open).
 
-### S-05 · P1 · open · Hono API without global hardening; localhost trusted in prod
+### S-05 · P1 · fixed cac2e50b · Hono API without global hardening; localhost trusted in prod
 - where: apps/api/src/index.ts (no `secureHeaders()`, no `csrf()`, no global `bodyLimit`; only routes/products.ts:112 and routes/onboarding.ts:329); index.ts:69-78 (CORS from raw `process.env.WEB_URL`); apps/api/src/lib/auth.ts:45-48 (`trustedOrigins` includes `http://localhost:3000` in prod); lib/auth.ts:62-63 (`process.env.BETTER_AUTH_SECRET!` bypasses env.ts)
 - impact: a 200 MB JSON body exhausts the single Bun process (API outage); a page on a user's `localhost:3000` can make authenticated cross-site requests to prod; missing secret crashes on first call instead of boot.
 - fix: `app.use("*", secureHeaders({ crossOriginResourcePolicy: "same-site" }))`; `app.use("*", bodyLimit({ maxSize: 1024 * 1024 }))` before mounts (upload routes keep their own); `trustedOrigins = env.NODE_ENV === "production" ? [env.WEB_URL] : ["http://localhost:3000", env.WEB_URL]`; read `secret`/`baseURL` from `env`.
 - verify: `curl -X POST $API/api/contact -H 'content-type: application/json' --data-binary @2mb.json` returns 413; response carries `X-Content-Type-Options: nosniff`.
+- fixed cac2e50b: `secureHeaders({ crossOriginResourcePolicy: "same-site" })` and a 1 MB `bodyLimit` on `*`, with `/api/products/analyze-document` and `/api/onboarding/analyze-document` exempted by path (both accept 10 MB uploads). `trustedOrigins` drops localhost when NODE_ENV is production.
+- deviation: `csrf()` not added, for the reason already recorded under Non-findings (JSON-only routes keep cross-site form POSTs out). `secret`/`baseURL` still read `process.env` in lib/auth.ts: that module is imported by the test suite, which runs without a DATABASE_URL, so pulling `env.ts` in would break CI. Boot-blocking is unchanged, index.ts imports `env` before lib/auth.
+- residual: no unit test. index.ts cannot be imported under `bun test` (it parses the full prod env schema at import). Verified by the curl lines above after deploy.
 
-### S-06 · P1 · open · Public report token URL cached `public`; share links never expire
+### S-06 · P1 · fixed cac2e50b · Public report token URL cached `public`; share links never expire
 - where: apps/api/src/routes/public-report.ts:35 (`Cache-Control: public, max-age=300`), no rate limit on the router; apps/api/src/routes/share.ts:23-24 (`mintToken` = 2 UUIDs, no expiry column)
 - impact: Cloudflare serves a revoked report for 5 min; a leaked link is valid forever; competitor and pricing data leave without trace.
 - fix: `Cache-Control: private, no-store` + `X-Robots-Tag: noindex`; add `expiresAt` (default now + 30 d) on the share row and return 410 when past.
 - verify: `curl -sI $API/api/public/report/<token> | grep -i cache-control` shows `no-store`.
+- fixed cac2e50b: `share_links.expires_at` NOT NULL, default `now() + interval '30 days'` (migration 0086); 410 past expiry; `private, no-store` + `X-Robots-Tag: noindex, nofollow`; `ipRateLimit("public-report", 60)` on the router. Every create-or-return in routes/share.ts now filters on `expiresAt > now()`, so "Share" never hands back a URL that already 410s; revoke deliberately does not, a lapsed link must still be killable.
+- migration: 0086 applied on prod 2026-09-04. 9 existing links took the default (expiry 2026-10-04), 0 null, 0 pending and no ledger drift before or after. Applied ahead of the deploy on purpose: the running API selects columns from its own compiled schema, which does not include `expires_at`, so the new column is invisible to it and inserts fall through to the default.
+- test: apps/api/test/share-expiry.test.ts, 7 cases.
 
 ### S-07 · P1 · open · At-rest key optional, plaintext accepted, no rotation, empty-key HMAC
 - where: apps/api/src/env.ts:38-41 (`OAUTH_TOKEN_ENCRYPTION_KEY` optional in prod); packages/shared/src/secrets/at-rest.ts:102-105 (`readStoredSecret` returns legacy plaintext); apps/api/src/lib/oauth/token-store.ts:193-197 (`stateSecret()` = `BETTER_AUTH_SECRET`); apps/api/src/routes/digest-feedback.ts:52 (`BETTER_AUTH_SECRET ?? ""`)
@@ -103,11 +112,15 @@ Prior audit: `docs/audits/2026-08-16/REPORT.md` (ids `code:SEC-NN`, `COR-NN`, `P
 - fix: superRefine in env.ts requires the key when `NODE_ENV === "production"`; versioned keys `v2` (current) and `v1` (`OAUTH_TOKEN_ENCRYPTION_KEY_PREVIOUS`) in at-rest.ts; throw on unknown version after a backfill of plaintext rows; digest-feedback reads the secret from `env`.
 - verify: boot with the var unset and `NODE_ENV=production` fails; `SELECT count(*) FROM oauth_connections WHERE access_token NOT LIKE 'v%.%'` is 0.
 
-### S-08 · P1 · open · In-process session cache keyed by raw token; revocation lags 30 s
+### S-08 · P1 · fixed cac2e50b · In-process session cache keyed by raw token; revocation lags 30 s
 - where: apps/api/src/middleware/auth.ts:27-31 (`TTL_MS` 30 s, `MAX_ENTRIES` 5000, `Map` keyed by token); auth.ts:89-98 (suspension read from the cached entry)
 - impact: sign-out everywhere, admin suspension and password change take up to 30 s per instance; two instances hold two truths; a heap dump holds 5000 valid tokens.
 - fix: key by `sha256(token)`; export `evictSession(token)` and call it from sign-out, admin suspend, set-password; multi-instance: Upstash `SETEX 30` with `DEL` on revoke.
 - verify: test: suspend user then hit an authed route with the same cookie returns 401 immediately.
+- fixed cac2e50b: cache moved to apps/api/src/lib/session-cache.ts, keyed by `sha256(token)`. `evictUserSessions(userId)` rather than `evictSession(token)`: the paths that revoke (admin suspend, sign-out, revoke-session(s), change/set-password, delete-user) know the user, not every token they hold, and dropping one device would leave the other tab signed in. Wired in routes/admin/users.ts and behind a `REVOCATION_PATHS` wrapper around the Better Auth handler in index.ts.
+- deviation: a Hono-level wrapper rather than a Better Auth `hooks.after`. The hook context shape could not be verified from the installed dist types and a silent no-op would be worse than an explicit, testable wrapper.
+- residual: still per process. The Upstash half of the fix stays open and becomes a prerequisite, not an optimisation, the day a second api container exists.
+- test: apps/api/test/session-cache.test.ts, 5 cases.
 
 ### S-09 · P1 · open · SSRF residual in workers on the queue DB's network
 - where: packages/scrapers/src/lib/guarded-fetch.ts and lib/quick-fetch.ts:39-46 (hostname check per hop, no DNS resolution; gap documented at quick-fetch.ts:35); raw `fetch` to fixed third-party hosts only: backfill/wayback.ts:59,89 (`redirect: "follow"` toward archive.org), backfill/cdx.ts:72, news.scraper.ts:30 (news.google.com), github.scraper.ts:50, appstore-reviews.scraper.ts:35,170, trustpilot.scraper.ts:77,110; `page.goto` at scrape-patchright.ts:310, pricing/calculator/probe.ts:262, spa/api-capture.ts:72; infra/queue-box/docker-compose.yml exposes Postgres on 10.10.0.1:5432
@@ -116,11 +129,13 @@ Prior audit: `docs/audits/2026-08-16/REPORT.md` (ids `code:SEC-NN`, `COR-NN`, `P
 - fix: in safeFetch resolve with `dns.lookup`, reject non-public IPs, connect through an undici Agent pinned to the resolved address; migrate the user-influenced raw fetches to safeFetch; worker container egress: iptables REJECT RFC1918 + 169.254/16 except 10.10.0.1/32 tcp/5432.
 - verify: unit test with a hostname resolving to 127.0.0.1 throws `SsrfBlocked`; from the worker container `curl 10.10.0.1:5432` from a non-app process is refused.
 
-### S-10 · P1 · open · Fail-open guards; Sentry token as build ARG
+### S-10 · P1 · partial cac2e50b · Fail-open guards; Sentry token as build ARG
 - where: apps/api/src/env.ts:9 (`NODE_ENV .default("development")`); apps/api/src/lib/turnstile.ts:8-12 (bypass when secret unset); apps/api/src/middleware/auth-rate-limit.ts:27-28 (no-op without Upstash); env.ts:24 (`INTERNAL_API_SECRET` optional); apps/web/Dockerfile:26 (`ARG SENTRY_AUTH_TOKEN`)
 - impact: an image started without `NODE_ENV=production` (manual compose, debugging on the box) runs with captcha, rate limit and internal secret disabled, silently; the Sentry token stays in builder layer history.
 - fix: `NODE_ENV` defaults to `production`; `RUN --mount=type=secret,id=sentry_token SENTRY_AUTH_TOKEN=$(cat /run/secrets/sentry_token) pnpm build`.
 - verify: `docker history` of the web image shows no token; `bun run src/index.ts` without NODE_ENV and without Upstash refuses to boot.
+- fixed cac2e50b: `NODE_ENV` defaults to `production` in apps/api/src/env.ts. Dockerfile, .env.local and bun-test all set it explicitly, so nothing observable changes; what changes is that an env which LOST the variable now fails closed instead of silently disabling captcha, rate limiting and the internal secret.
+- open: the Sentry half. `RUN --mount=type=secret` touches the Coolify build and needs its own verified deploy, so it is deliberately not shipped blind here.
 
 ### P-01 · P1 · open · No index on Better Auth FK columns and 4 app columns
 - where: packages/db/src/schema/auth.ts:82 `session.userId`, :91 `account.userId`, :107 `verification.identifier`, plus `twoFactor.userId`, `passkey.userId` (only `session.token` :77 is unique); packages/db/src/schema/feedback.ts:10-11 `orgId`,`userId`; `manual_snapshots.monitorId`; `organizations.stripeCustomerId` (looked up by stripe-webhook.ts:132,150,165)
@@ -247,10 +262,10 @@ Prior audit: `docs/audits/2026-08-16/REPORT.md` (ids `code:SEC-NN`, `COR-NN`, `P
 1. ~~S-01, S-02~~ done 54512f71. The auth-surface test (Q-05) stays open, see the S-01 note.
 2. ~~S-03~~ done 54512f71. The UFW/origin-pull half does not apply, see the S-03 residual note.
 3. D-01: CI gate, Trivy, gitleaks, 4 bumps. 1 day.
-4. S-05, S-04. 2 hours.
-5. P-01 migration (staging first) + S-06. Half a day.
+4. ~~S-05, S-04~~ done cac2e50b. The `csrf()` half does not apply, see the S-05 note.
+5. P-01 migration (staging first). ~~S-06~~ done cac2e50b, migration 0086 applied 2026-09-04. Half a day.
 6. S-07 key required + rotation + backfill. 1 day.
 7. D-02 sha tag, health gate, Node 22, turbo pin, delete legacy Dockerfile. Half a day.
-8. S-08, S-10. 2 hours.
+8. ~~S-08~~ done cac2e50b. S-10: NODE_ENV done, Sentry build secret open. 1 hour.
 9. P-02, S-09. 1 day.
 10. Q-01, Q-02, Q-04, S-11, then the rest of P2. 1 week, one PR each.

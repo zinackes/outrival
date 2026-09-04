@@ -9,7 +9,7 @@ verification of every top-severity finding against the current source. Findings 
 specific code and are high-confidence but not independently re-read.
 
 Static analysis only (WSL2 — no dev server / build / lighthouse run). The prior
-`docs/web-audit-2026-06-30.md` (130 findings, unverified) was used as a baseline: its
+`docs/archive/web-audit-2026-06-30.md` (130 findings, unverified) was used as a baseline: its
 findings are **not** repeated here except for a fixed/still-present status pass (§6).
 
 **Verdict**: the codebase's invariants hold — tenant isolation, SSRF guards at persisted

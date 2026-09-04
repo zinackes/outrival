@@ -43,8 +43,8 @@ Do NOT report any of the following. They are recorded decisions, not defects:
 - The web build being a real next build is known and intended.
 - Two user tables exist: "user" owned by Better Auth, "users" as the app mirror.
 - Prior audits already covered these areas. Read them and do not restate their
-  findings: docs/audits/interface-2026-07-25.md, docs/page-audit-2026-06-30.md,
-  docs/optimization-audit-2026-06.md, docs/ai-consumption-audit-2026-08.md.
+  findings: docs/audits/interface-2026-07-25.md, docs/archive/page-audit-2026-06-30.md,
+  docs/archive/optimization-audit-2026-06.md, docs/archive/ai-consumption-audit-2026-08.md.
 `
 
 const RECON = `

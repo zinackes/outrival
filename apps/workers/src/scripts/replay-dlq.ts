@@ -17,7 +17,7 @@
 // as 982 jobs nobody can route.
 //
 // Send first, complete second, in that order: a crash mid-run can replay a job
-// twice, never lose one. Handlers are idempotent by rule (.claude/rules/jobs.md) —
+// twice, never lose one. Handlers are idempotent by rule (apps/workers/CLAUDE.md) —
 // content hashes and the unique constraint on signals.change_id absorb a duplicate,
 // and nothing absorbs a change that was silently dropped.
 //

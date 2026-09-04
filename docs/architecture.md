@@ -22,6 +22,10 @@ Docs spécialisées les plus consultées :
 [docs-source](docs/docs-source.md) ·
 [trigger-to-pgboss-migration](docs/trigger-to-pgboss-migration.md) (historique).
 
+Les rapports datés et terminés sont sortis de `docs/` : voir
+[docs/archive/](docs/archive/README.md). Ils décrivent un état passé, jamais le
+code d'aujourd'hui.
+
 > Les chemins sont relatifs à la **racine du repo** : cliquables dans Claude Code et
 > utilisables tels quels dans un `Read`.
 
@@ -72,9 +76,15 @@ grille de plans ou la roadmap changent.
 | Insights IA       | Pool OpenAI-compat (`gpt-oss-120b`)      | Cloudflare Workers AI p2 → Groq p3 → Mistral p4, tous gratuits. Cerebras (p1) retiré le 2026-09-04, plus de crédit depuis le 2026-08-17. `tier:"fast"` → `gpt-oss-20b` (Groq + Cloudflare). Les llama-3.x sont arrêtés par Groq le 2026-08-16. `AI_CONFIG.model` est ignoré sur le chemin pool |
 | Déploiement       | OVH VPS + Coolify                        | Self-hosted, EU GDPR, €8/mois |
 
-> **Note** : Upstash Redis a été retiré du stack (Phase 6). Les alertes temps-réel
-> passent par SSE DB-backed (poll Postgres 3s + heartbeat), latence ~3s suffisante
-> pour de la veille. À ré-introduire uniquement si besoin de rate-limiting API.
+> **Note** : ce qui a été retiré en Phase 6, c'est le *transport* des alertes
+> temps-réel, pas Upstash. Les alertes passent par SSE DB-backed (poll Postgres 3s
+> + heartbeat), latence ~3s suffisante pour de la veille.
+>
+> Upstash Redis (REST) reste dans le stack et porte l'état qui doit être partagé
+> entre instances : rate limiters auth et AI-intensive, et le circuit breaker du
+> pool IA (`packages/shared/src/redis.ts`). `apps/api/src/env.ts` refuse de booter
+> en prod sans `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` : sans eux les
+> limiteurs no-opent en silence, donc plus d'anti-brute-force ni d'anti-abus IA.
 
 ## Infrastructure
 

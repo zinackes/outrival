@@ -1,4 +1,4 @@
-// Navigation wait strategy (F6, docs/optimization-audit-2026-06.md).
+// Navigation wait strategy (F6, docs/archive/optimization-audit-2026-06.md).
 //
 // `networkidle` waits for 500 ms of network silence, which never arrives on pages
 // with analytics / polling / ads / chat widgets — so it always burns the full

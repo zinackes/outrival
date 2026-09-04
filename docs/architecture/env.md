@@ -1,6 +1,16 @@
 # Variables d'environnement — Outrival
 
-> Liste complète + rationale de chaque flag. Voir aussi `.env.example`.
+> **`.env.example` est l'inventaire**, ce fichier est le *pourquoi*. Il ne prétend
+> pas être exhaustif : au 2026-09-04 il couvre 176 des 251 variables de
+> `.env.example` (audit 2026-09-04, C-02 : il annonçait une « liste complète » alors
+> que 75 manquaient, dont `AUTH_COOKIE_DOMAIN`, les `SENTRY_*`, les `POSTHOG_*` et
+> tout le bloc `AI_PROVIDER_2..4_*`). Les 75 restantes sont documentées par leur
+> commentaire dans `.env.example`, qui suffit quand la valeur parle d'elle-même.
+>
+> Une variable atterrit ici quand son *pourquoi* ne tient pas sur une ligne :
+> l'incident qui l'a créée, ce qui casse si elle est vide, ce qu'elle coûte.
+> Sinon, `.env.example` seul.
+>
 > Index : `docs/architecture.md`.
 
 ## Variables d'environnement
@@ -349,7 +359,6 @@ QUIET_HOURS_DEFAULT_END=8              # quiet hours fin (aussi heure d'envoi du
 QUIET_HOURS_WEEKEND_OFF=true           # samedi+dimanche muets par défaut
 RELEVANCE_THRESHOLD_DEFAULT=0.5        # seuil pertinence par défaut (0-1)
 RELEVANCE_AUTO_ADJUST_MIN_FEEDBACKS=10 # min feedbacks org avant auto-ajustement
-RELEVANCE_RECALC_INTERVAL_HOURS=168    # cadence recalc (hebdo)
 BATCHING_WINDOW_HOURS=24               # fenêtre de regroupement
 BATCHING_MIN_SIGNALS=3                 # min signals similaires pour un batch
 BATCHING_MAX_GROUPS=500                # max groupes batchés par run (1 appel IA chacun)
@@ -403,7 +412,7 @@ EXTRACTOR_HEAL_POOL_PAUSE_MINUTES=5    # durée pendant laquelle TOUS les heals 
                                        # cooldown ne s'armait jamais sur ce chemin). Court par
                                        # construction : les tiers gratuits se rechargent en
                                        # continu, un 429 Groq demande des secondes. 0 désactive la
-                                       # pause seule. 📄 docs/ai-consumption-audit-2026-08.md
+                                       # pause seule. 📄 docs/archive/ai-consumption-audit-2026-08.md
 EXTRACTOR_REVALIDATE_INTERVAL_DAYS=14  # R8 — âge max d'un parser caché avant régénération forcée contre le DOM courant (un sélecteur dérivé "plausible mais faux" ne peut plus être trusté indéfiniment). last_validated_at n'est plus stampé à chaque cache hit
 EXTRACTOR_MAX_CONSECUTIVE_FAILURES=5   # R8 — échecs de replay consécutifs après lesquels un parser caché est distrusté d'office
                                        # E9 — le cooldown de heal ci-dessus est désormais
@@ -456,8 +465,8 @@ AI_VISIBILITY_INTERVAL_DAYS=7          # âge à partir duquel un PRODUIT est d�
                                        # couvre, produit le plus ancien d'abord ; ce seuil est le
                                        # plancher qui empêche un budget en rab de re-poser une
                                        # question dont on a déjà la réponse
+AI_VISIBILITY_MIN_RUNS_FOR_SIGNAL=8    # runs détenus pour un couple (produit, moteur) avant qu'un shift de share-of-model soit signalable. En dessous, un prompt sans réponse fait passer un taux de 100% à 50% : c'est du quota gratuit épuisé, pas un mouvement de marché. Vide → VISIBILITY_MIN_RUNS (8, @outrival/shared)
 AI_VISIBILITY_MAX_PROMPTS=10           # cap prompts/produit/run (garde-fou coût)
-AI_VISIBILITY_MIN_PROMPTS_FOR_SIGNAL=4 # min prompts répondus (par moteur, sur les DEUX runs) avant qu'un shift SoV soit signalé — sinon skip (1-2 prompts = quota gratuit épuisé, bruit 100%/50%, pas un vrai mouvement)
 AI_VISIBILITY_MIN_REQUEST_GAP_MS=13000 # espacement min entre 2 appels au MÊME MODÈLE, tenu dans une
                                        # LIGNE Postgres (ai_visibility_engine_budget), plus en
                                        # mémoire de process : l'ancien pacer ne tenait pas face aux

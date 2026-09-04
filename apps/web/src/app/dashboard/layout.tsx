@@ -175,6 +175,7 @@ export default async function DashboardLayout({
       <HydrationBoundary state={dehydrate(queryClient)}>
         <DashboardShell
           user={user}
+          userId={userId}
           org={org}
           defaultOpen={defaultOpen}
           productScope={productScope}

@@ -4,7 +4,14 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckIcon, CircleIcon, LockIcon, XIcon } from "@/components/icons";
+import {
+  CaretRightIcon,
+  CheckCircleIcon,
+  CheckIcon,
+  CircleIcon,
+  LockIcon,
+  XIcon,
+} from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -26,21 +33,28 @@ const PANEL_ID = "get-started-panel";
 // Milestones the dock observes itself (a page visit, a dismiss). Each one also
 // goes to the API, which keeps it in the user's onboarding session when they have
 // one; an invited teammate has no session, so this copy is always read too.
+// Scoped per user: one shared key meant every account that had ever signed in on
+// this browser inherited the previous one's milestones — a fresh org landed on the
+// dashboard with "See where you stand" and "Choose your cadence" already ticked.
 const LOCAL_KEY = "outrival.getStarted";
 type Milestones = Partial<Record<GetStartedMilestone, number>>;
 
-function readLocal(): Milestones {
+function localKey(userId: string | undefined): string {
+  return `${LOCAL_KEY}:${userId ?? "anon"}`;
+}
+
+function readLocal(userId: string | undefined): Milestones {
   try {
-    const raw = localStorage.getItem(LOCAL_KEY);
+    const raw = localStorage.getItem(localKey(userId));
     return raw ? (JSON.parse(raw) as Milestones) : {};
   } catch {
     return {};
   }
 }
 
-function writeLocal(m: Milestones) {
+function writeLocal(m: Milestones, userId: string | undefined) {
   try {
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(m));
+    localStorage.setItem(localKey(userId), JSON.stringify(m));
   } catch {
     /* ignore */
   }
@@ -186,36 +200,61 @@ function Ring({ value }: { value: number }) {
   );
 }
 
-function StepRow({ step, onAsk }: { step: Step; onAsk: () => void }) {
+function StepRow({ step, next, onAsk }: { step: Step; next: boolean; onAsk: () => void }) {
   const body = (
     <>
       {step.done ? (
-        <CheckIcon size={16} className="mt-px shrink-0 text-link" aria-hidden />
+        <CheckCircleIcon size={16} className="mt-px shrink-0 text-link" aria-hidden />
       ) : step.locked ? (
         <LockIcon size={16} className="mt-px shrink-0 text-muted-foreground" aria-hidden />
       ) : (
-        <CircleIcon size={16} className="mt-px shrink-0 text-muted-foreground" aria-hidden />
+        <CircleIcon
+          size={16}
+          className={cn("mt-px shrink-0", next ? "text-link" : "text-muted-foreground")}
+          aria-hidden
+        />
       )}
       <span className="min-w-0 flex-1">
         <span
           className={cn(
             "block text-dense",
-            step.done && "text-muted-foreground line-through",
-            step.locked && "text-muted-foreground",
+            (step.done || step.locked) && "text-muted-foreground",
+            next && "font-medium",
           )}
         >
           {step.title}
         </span>
-        {!step.done && <span className="block text-meta text-muted-foreground">{step.why}</span>}
+        {/* The reason survives the tick. A done row that loses its line reads as a
+            different item than the one that was checked, and the dock is also how
+            the user finds these pages again. Strikethrough went with it: muted
+            plus a filled check already says done, twice was noise. */}
+        <span className="mt-0.5 block text-meta text-muted-foreground">{step.why}</span>
       </span>
-      {!step.done && (
-        <span className="shrink-0 text-meta text-muted-foreground tabular-nums">
-          {step.minutes} min
-        </span>
-      )}
+      <span className="flex shrink-0 items-center gap-1.5 pt-px">
+        {!step.done && (
+          <span className="text-meta text-muted-foreground tabular-nums">{step.minutes} min</span>
+        )}
+        {!step.locked && (
+          <CaretRightIcon
+            size={12}
+            aria-hidden
+            className={cn(
+              "transition-opacity",
+              next
+                ? "text-link opacity-100"
+                : "text-muted-foreground opacity-0 group-hover:opacity-100",
+            )}
+          />
+        )}
+      </span>
     </>
   );
-  const cls = "flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left";
+  // The next actionable step carries the emphasis: one row to start from, so the
+  // list answers "what now" without being read top to bottom.
+  const cls = cn(
+    "group flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left",
+    next && "bg-muted",
+  );
   // A done step keeps its destination: the dock is also how you find these pages
   // again. Only a locked one is inert, since there is nothing there yet.
   if (step.locked) return <li className={cls}>{body}</li>;
@@ -240,7 +279,7 @@ function StepRow({ step, onAsk }: { step: Step; onAsk: () => void }) {
 // Bottom-right, on every dashboard page: a flat bordered pill (not the shadowed
 // bubble this product rejects) that opens into the loop of moves. It collapses
 // on every navigation, so it never sits on the page it just sent the user to.
-export function GetStartedDock() {
+export function GetStartedDock({ userId }: { userId?: string }) {
   const pathname = usePathname();
   const qc = useQueryClient();
   const scope = useProductScope();
@@ -254,7 +293,7 @@ export function GetStartedDock() {
   // Null until the local copy is read, so nothing paints before the effect.
   const [local, setLocal] = React.useState<Milestones | null>(null);
 
-  React.useEffect(() => setLocal(readLocal()), []);
+  React.useEffect(() => setLocal(readLocal(userId)), [userId]);
 
   const milestones = React.useMemo<Milestones>(
     () => ({ ...local, ...checklistQ.data?.milestones }),
@@ -265,10 +304,10 @@ export function GetStartedDock() {
 
   const stamp = React.useCallback(
     (key: GetStartedMilestone, clear = false) => {
-      const next = { ...readLocal() };
+      const next = { ...readLocal(userId) };
       if (clear) delete next[key];
       else next[key] = Date.now();
-      writeLocal(next);
+      writeLocal(next, userId);
       setLocal(next);
       qc.setQueryData<OnboardingChecklist>(onboardingChecklistQuery().queryKey, (d) => {
         if (!d) return d;
@@ -279,7 +318,7 @@ export function GetStartedDock() {
       });
       void api.stampGetStartedMilestone(key, clear).catch(() => {});
     },
-    [qc],
+    [qc, userId],
   );
 
   // Collapse on every navigation, and refresh the facts: the step the user just
@@ -332,6 +371,7 @@ export function GetStartedDock() {
   const doneCount = steps.filter((s) => s.done).length;
   const pct = Math.round((doneCount / steps.length) * 100);
   const locked = steps.filter((s) => s.locked);
+  const nextKey = steps.find((s) => !s.done && !s.locked)?.key ?? null;
   const nextScan = horizon(checklistQ.data.nextScanAt);
 
   const corner = "fixed bottom-4 right-4 z-40";
@@ -407,7 +447,8 @@ export function GetStartedDock() {
       aria-label="Get started"
       className={cn(
         corner,
-        "w-[340px] max-w-[calc(100vw-2rem)] rounded-md border border-border bg-card shadow-e2",
+        "flex max-h-[calc(100vh-2rem)] w-[340px] max-w-[calc(100vw-2rem)] flex-col",
+        "rounded-md border border-border bg-card shadow-e2",
         "animate-in fade-in-0 slide-in-from-bottom-2 duration-200",
       )}
     >
@@ -421,40 +462,42 @@ export function GetStartedDock() {
         <Progress value={pct} aria-label="Get started progress" className="mt-2 h-1.5" />
       </div>
 
-      <ol className="px-2 py-1">
-        {MOVES.map((move) => {
-          const rows = steps.filter((s) => s.move === move && !s.locked);
-          if (rows.length === 0) return null;
-          return (
-            <li key={move}>
-              <div className="px-2 pb-0.5 pt-2 text-meta font-medium text-muted-foreground">
-                {move}
-              </div>
-              <ol>
-                {rows.map((s) => (
-                  <StepRow key={s.key} step={s} onAsk={openAsk} />
-                ))}
-              </ol>
-            </li>
-          );
-        })}
-      </ol>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <ol className="px-2 py-1">
+          {MOVES.map((move) => {
+            const rows = steps.filter((s) => s.move === move && !s.locked);
+            if (rows.length === 0) return null;
+            return (
+              <li key={move}>
+                <div className="px-2 pb-0.5 pt-2 text-meta font-medium text-muted-foreground">
+                  {move}
+                </div>
+                <ol>
+                  {rows.map((s) => (
+                    <StepRow key={s.key} step={s} next={s.key === nextKey} onAsk={openAsk} />
+                  ))}
+                </ol>
+              </li>
+            );
+          })}
+        </ol>
 
-      {locked.length > 0 && (
-        <div className="border-t border-border px-2 pb-2 pt-1">
-          <div className="px-2 pb-0.5 pt-2 text-meta font-medium text-muted-foreground">
-            When your first signal lands
+        {locked.length > 0 && (
+          <div className="border-t border-border px-2 pb-2 pt-1">
+            <div className="px-2 pb-0.5 pt-2 text-meta font-medium text-muted-foreground">
+              When your first signal lands
+            </div>
+            <ol>
+              {locked.map((s) => (
+                <StepRow key={s.key} step={s} next={false} onAsk={openAsk} />
+              ))}
+            </ol>
+            {nextScan && (
+              <p className="px-2 pt-1 text-meta text-muted-foreground tabular-nums">{nextScan}</p>
+            )}
           </div>
-          <ol>
-            {locked.map((s) => (
-              <StepRow key={s.key} step={s} onAsk={openAsk} />
-            ))}
-          </ol>
-          {nextScan && (
-            <p className="px-2 pt-1 text-meta text-muted-foreground tabular-nums">{nextScan}</p>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-border py-2 pl-4 pr-2">
         <span className="text-meta text-muted-foreground">Reopen it from your profile menu.</span>

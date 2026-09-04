@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import { shareLinks, products, competitors } from "@outrival/db";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
@@ -22,6 +22,14 @@ const publicUrl = (token: string) => `${WEB_URL}/report/${token}`;
 // 128-bit unguessable capability (two UUIDs, dashes stripped).
 const mintToken = () =>
   `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
+
+// Links expire (S-06, 30 days, defaulted in the share_links schema). Every
+// create-or-return below must therefore ignore expired rows: handing one back would
+// answer "Share" with a URL that already 410s. Missing an expired row mints a fresh
+// token instead, which is the behaviour the user wanted anyway. Revoke (bottom of
+// this file) deliberately does NOT filter on it: killing a link that has already
+// lapsed must still work.
+const live = () => gt(shareLinks.expiresAt, new Date());
 
 // Create or return the org's existing active share link for this (type, product).
 // Idempotent so re-clicking "Share" hands back the same URL instead of minting a pile
@@ -49,7 +57,7 @@ shareRouter.post("/", async (c) => {
       .select({ id: shareLinks.id, token: shareLinks.token, meta: shareLinks.meta })
       .from(shareLinks)
       .where(
-        and(eq(shareLinks.orgId, orgId), eq(shareLinks.type, "recap"), isNull(shareLinks.revokedAt)),
+        and(eq(shareLinks.orgId, orgId), eq(shareLinks.type, "recap"), isNull(shareLinks.revokedAt), live()),
       );
     const existing = recaps.find((r) => (r.meta as { month?: string } | null)?.month === month);
     if (existing) {
@@ -108,7 +116,7 @@ shareRouter.post("/", async (c) => {
           cardProductId
             ? eq(shareLinks.productId, cardProductId)
             : isNull(shareLinks.productId),
-          isNull(shareLinks.revokedAt),
+          isNull(shareLinks.revokedAt), live(),
         ),
       );
     const existingCard = cards.find(
@@ -161,7 +169,7 @@ shareRouter.post("/", async (c) => {
       eq(shareLinks.orgId, orgId),
       eq(shareLinks.type, "landscape"),
       productId ? eq(shareLinks.productId, productId) : isNull(shareLinks.productId),
-      isNull(shareLinks.revokedAt),
+      isNull(shareLinks.revokedAt), live(),
     ),
   });
   if (existing) {
@@ -188,9 +196,10 @@ shareRouter.get("/", async (c) => {
       productId: shareLinks.productId,
       token: shareLinks.token,
       createdAt: shareLinks.createdAt,
+      expiresAt: shareLinks.expiresAt,
     })
     .from(shareLinks)
-    .where(and(eq(shareLinks.orgId, orgId), isNull(shareLinks.revokedAt)))
+    .where(and(eq(shareLinks.orgId, orgId), isNull(shareLinks.revokedAt), live()))
     .orderBy(desc(shareLinks.createdAt));
   return c.json({
     links: rows.map((r) => ({ ...r, url: publicUrl(r.token) })),

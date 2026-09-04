@@ -35,6 +35,7 @@ import {
   defaultSourceGaps,
 } from "../lib/seed-monitors";
 import { authMiddleware } from "../middleware/auth";
+import { requireRole } from "../middleware/require-role";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, isChannelAllowed } from "../lib/plan";
 import { isSafeWebhookUrl } from "../lib/crm-webhook";
@@ -86,7 +87,9 @@ settingsRouter.get("/workspace", async (c) => {
   });
 });
 
-settingsRouter.patch("/workspace", async (c) => {
+// Renaming the workspace is an owner/admin action (S-04); deleting it already
+// required `owner` below.
+settingsRouter.patch("/workspace", requireRole("owner", "admin"), async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 

@@ -42,11 +42,19 @@ function passkeyRpId(): string {
   }
 }
 
+// NODE_ENV is read straight off process.env rather than through src/env.ts: that
+// module parses the whole production schema at import time and this file is loaded
+// by the test suite, which runs without a DATABASE_URL. The default matches the one
+// in env.ts on purpose, production, so an env that forgot the variable fails closed.
+const isProduction = (process.env.NODE_ENV ?? "production") === "production";
+
 // Web origins allowed for OAuth/magic-link redirects (callbackURL validation).
-const trustedOrigins = [
-  "http://localhost:3000",
-  ...(process.env.WEB_URL ? [process.env.WEB_URL] : []),
-];
+// `http://localhost:3000` used to be in this list in production too (audit
+// 2026-09-02, S-05): a page served from a developer's own localhost could then pass
+// callbackURL validation and drive an authenticated redirect against the live API.
+const trustedOrigins = isProduction
+  ? [process.env.WEB_URL ?? "https://outrival.app"]
+  : ["http://localhost:3000", ...(process.env.WEB_URL ? [process.env.WEB_URL] : [])];
 
 // Cross-subdomain session cookie. In production the web (outrival.io) and the
 // API (api.outrival.io) are distinct origins on the SAME registrable site. The

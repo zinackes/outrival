@@ -26,7 +26,7 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
 | P-01 | P0 | prod | `purge-retention` fails on every run (Date in raw sql) | fixed in #558, deploy pending |
 | P-02 | P0 | prod | `detect-hiring-footprint` fails once it reaches `evaluateFreeze` | fixed in #558, deploy pending |
 | P-03 | P0 | prod | `www.outrival.app` returns HTTP 526 | open, needs the Cloudflare dashboard |
-| P-04 | P0 | prod | 759 jobs in `outrival-dlq`, nobody replays; AI pool 61% errors | priority swap applied, root cause is free quota + no RPS limit, see below |
+| P-04 | P0 | prod | 759 jobs in `outrival-dlq`, nobody replays; AI pool 61% errors | partial: swap applied, failover fixed #568; free quota still short, see below |
 | P-05 | P1 | prod | 698 active monitors overdue > 24 h with no run since | fixed #567 + backfill: 791 overdue down to 35 |
 | P-06 | P1 | ops | Netcup box: kernel + libc6 pending, reboot required | done 2026-09-04 |
 | P-07 | P1 | ops | OVH: 17.9 GB docker build cache + 5.4 GB dangling images | open, but smaller: 9.8 GB reclaimable, disk at 36% |
@@ -213,6 +213,19 @@ of last week's changes have no signal. `www.outrival.app` answers HTTP 526.
   CONFIGURED provider, not the pool's pick, whenever the call never reaches a provider.
   That is why 485 error rows in 48 h are attributed to `cerebras`, which is not in the
   pool at all. The column misleads on precisely the rows a pool diagnosis needs.
+
+  Amplifier 1 fixed in PR #568. The pool already had the right mechanism —
+  `LAST_RESORT_SDK_RETRIES`, the SDK sleep taken only when a 429 cannot be routed
+  around — and it never fired, because `lastResort` counted providers whose
+  per-request ceiling admits the prompt instead of providers that can actually be
+  picked. With two of three out of daily quota the loop believed it had two failovers
+  left, declined the sleep, and parked the only live provider for 30 s. `pickProvider`
+  now returns `{ provider, sole }`, `sole` read off the available set so a provider
+  merely deprioritised by the per-minute window still counts as a failover target.
+  310 pass / 0 fail in `@outrival/ai`, 526 / 0 in `@outrival/workers`.
+
+  Amplifier 2 is NOT fixed and is not a code change: the pool's usable free supply is
+  480 k tokens/day against ~1.0 M/day of demand. Nothing in this PR buys tokens.
 
 ### P-05 698 monitors overdue with no run (P1)
 

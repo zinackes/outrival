@@ -33,12 +33,22 @@ afterAll(() => {
 
 test("pickProvider returns the top-priority (free) provider by default", async () => {
   const p = await pickProvider();
-  expect(p?.id).toBe("cerebras");
+  expect(p?.provider.id).toBe("cerebras");
 });
 
 test("an excluded provider is skipped — Redis-independent failover to the next", async () => {
   const p = await pickProvider(new Set(["cerebras"]));
-  expect(p?.id).toBe("groq");
+  expect(p?.provider.id).toBe("groq");
+});
+
+// `sole` is what tells callLLM it has nowhere to fail over to, so a 429 must be slept
+// on rather than parked. It has to follow what is actually pickable: with both
+// providers live the pick is not sole, with one excluded it is. Counting the config
+// instead is the bug this field exists to close — a pool of three where two are out
+// of quota looked like it had two failovers left.
+test("a pick is sole only when nobody else could be picked", async () => {
+  expect((await pickProvider())?.sole).toBe(false);
+  expect((await pickProvider(new Set(["cerebras"])))?.sole).toBe(true);
 });
 
 test("when every provider is excluded, returns null (loop exhausts cleanly)", async () => {

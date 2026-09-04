@@ -8,6 +8,14 @@
 > Source Notion : 🎯 Roadmap → « Patch — Pipeline d'extraction étagé ».
 > Branche : `patch-30-staged-extraction` (à brancher depuis `patch-29`).
 
+> **Note de relecture (2026-09-04)** : ce document a été écrit quand
+> l'observabilité vivait dans ClickHouse. ClickHouse a été retiré le 2026-06-06
+> (`19261f57`, « ClickHouse -> Neon ») : `scrape_runs`, `ai_runs` et
+> `extraction_runs` sont des tables Postgres de
+> `packages/db/src/schema/analytics.ts`, et les fichiers `clickhouse-schema.ts`,
+> `ch-setup.ts` et `clickhouse-safe.ts` n'existent plus. Le bloc SQL du §6 garde
+> les types ClickHouse d'origine, il décrit la forme voulue, pas le DDL appliqué.
+
 ## 1. Les 5 étages, du moins cher au plus cher
 
 | Étage | Quoi | IA ? | Statut actuel |
@@ -39,7 +47,8 @@
 - **Parse structuré homepage** : `parsers/homepage-structure.ts`
   (`parseHomepageStructure`) — DOM → sections, déterministe, 0 IA. Bespoke
   homepage, pas le structured-first générique.
-- **Observabilité** : `scrape_runs` / `ai_runs` (ClickHouse) + dashboards
+- **Observabilité** : `scrape_runs` / `ai_runs` (Postgres,
+  `packages/db/src/schema/analytics.ts`) + dashboards
   `/admin/scraping` et `/admin/ai`.
 
 ## 3. Cibles (où l'IA tourne au chemin chaud aujourd'hui)
@@ -129,7 +138,7 @@ Clé `(domain, source_type)` (pas competitor) : un extracteur est réutilisable
 survit à la suppression d'un competitor. Fichier
 `packages/db/src/schema/parser-extractors.ts`, export dans `schema/index.ts`.
 
-### ClickHouse — nouvelle table `extraction_runs` (la métrique d'arbitrage)
+### Nouvelle table `extraction_runs` (la métrique d'arbitrage)
 
 ```sql
 extraction_runs  competitor_id, source_type, domain,
@@ -140,7 +149,7 @@ extraction_runs  competitor_id, source_type, domain,
                  ENGINE = MergeTree() ORDER BY (recorded_at)
 ```
 
-Ajoutée dans `packages/db/src/clickhouse-schema.ts` + `ch-setup.ts`. C'est le
+Ajoutée dans `packages/db/src/schema/analytics.ts` (`extractionRuns`). C'est le
 **% de scrapes résolus par étage** demandé par le prompt (l'arbitre direct du
 coût IA). `ai_runs`/`scrape_runs` ne peuvent pas le capturer : structured/cache
 n'émettent aucun appel IA.
@@ -176,7 +185,7 @@ Algorithme :
 
 Le flag `STAGED_EXTRACTION_ENABLED=false` court-circuite directement à l'étape 4.
 Chaque retour logue une ligne `extraction_runs`. Les jobs gardent ensuite leur
-post-traitement inchangé (insert ClickHouse pricing/jobs/reviews, summary, etc.).
+post-traitement inchangé (insert Postgres pricing/jobs/reviews, summary, etc.).
 
 ## 8. Cas reviews (gain partiel — à assumer)
 
@@ -231,7 +240,7 @@ PRUNE_HTML_MAX_CHARS=40000         # cap de l'HTML envoyé au générateur de s�
   - `ExtractorSpec` (type + zod) + `validateExtraction`/`plausible` + remonter
     `normalizeDomain` dans `@outrival/shared`.
   - table Postgres `parser_extractors` + export schema.
-  - table ClickHouse `extraction_runs` (`clickhouse-schema.ts` + `ch-setup.ts`).
+  - table `extraction_runs` (`schema/analytics.ts`).
   - env flags (`.env.example` + lecture).
   - `db:push` (Railway) — ⚠️ backup d'abord, cf. mémoire patch-28.
   - ✔ vérif : `pnpm typecheck`.
@@ -258,7 +267,8 @@ PRUNE_HTML_MAX_CHARS=40000         # cap de l'HTML envoyé au générateur de s�
   - ✔ vérif : `bun test` homepage-diff.
 - **Phase 6 — dashboard `/admin`**
   - panneau « Extraction resolution » (% structured/cache/heal/ai_fallback sur
-    fenêtre) dans `admin/scraping` ou `admin/ai` via `clickhouse-safe`.
+    fenêtre) dans `admin/scraping` ou `admin/ai` via `db.execute`
+    (cf. `apps/api/src/routes/admin/scraping.ts`).
   - ✔ vérif : page rend, chiffres cohérents.
 - **Phase 7 — clôture**
   - MAJ `docs/architecture.md` (pipeline data + tables + env).

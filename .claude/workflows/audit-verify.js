@@ -62,8 +62,8 @@ WRONG and must be refuted:
   a higher tier or behind admin rights is gated BY DESIGN.
 - These prior audits already covered their ground; a finding that merely restates
   one of them is refuted as a duplicate:
-  docs/audits/interface-2026-07-25.md, docs/page-audit-2026-06-30.md,
-  docs/optimization-audit-2026-06.md, docs/ai-consumption-audit-2026-08.md.
+  docs/audits/interface-2026-07-25.md, docs/archive/page-audit-2026-06-30.md,
+  docs/archive/optimization-audit-2026-06.md, docs/archive/ai-consumption-audit-2026-08.md.
 `
 
 

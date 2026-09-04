@@ -1,6 +1,6 @@
 # AI Visibility / "Share of Model" — mini-spec
 
-Status: **proposed** (P1 in `docs/page-audit-2026-06-30.md`). Mini-spec, not a full
+Status: **proposed** (P1 in `docs/archive/page-audit-2026-06-30.md`). Mini-spec, not a full
 design. Goal: track how the org's own product and its tracked competitors appear in
 the answers of consumer LLM engines (ChatGPT, Perplexity, Claude, Gemini, Google AI
 Overviews) for buyer-intent prompts — a competitive surface that website-diffing
@@ -119,7 +119,7 @@ the feed, the weekly digest, and (if critical-ish) an alert.
 ## UI / nav
 
 - New primary nav item **AI Visibility** (see the target nav in
-  `docs/page-audit-2026-06-30.md` §8 — it takes one of the slots freed by the nav slim).
+  `docs/archive/page-audit-2026-06-30.md` §8 — it takes one of the slots freed by the nav slim).
 - Page: (1) SoV-over-time chart per engine (self vs top competitors), (2) a per-prompt
   table — each row = prompt, columns = engines, cell = mentioned/rank, expand → the
   actual answer excerpt (evidence, per the "show the work" principle), (3) a prompt
@@ -180,7 +180,7 @@ Each new var → `.env.example` + `docs/architecture.md` (production rule 4).
 
 ## References
 
-- Page audit & nav placement: `docs/page-audit-2026-06-30.md`
+- Page audit & nav placement: `docs/archive/page-audit-2026-06-30.md`
 - Tech-stack analog (independent off-cascade scraper that emits signals): patch-18,
   `apps/workers/src/jobs/scrape-tech-stack.job.ts`, `schedule-tech-stack.job.ts`
 - Moderation → digest → alert path the signals ride: patch-26

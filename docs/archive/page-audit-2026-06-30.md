@@ -2,7 +2,7 @@
 
 Product-level audit of Outrival's user-facing pages: coherence, usefulness, and
 relevance against the 2026 competitive-intelligence market. Distinct from
-`docs/web-audit-2026-06-30.md` (UX/a11y/perf of the same surfaces). This one asks
+`docs/archive/web-audit-2026-06-30.md` (UX/a11y/perf of the same surfaces). This one asks
 a higher-altitude question: **are these the right pages at all?**
 
 ## Method & data caveat

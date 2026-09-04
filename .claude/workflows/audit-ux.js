@@ -293,7 +293,7 @@ source for /privacy, /terms, /security, /accessibility, /bot and any trust or
 compliance copy on / and /pricing. Then check each claim against what the
 product actually does: does the stated data retention match the schema, does the
 stated scraping behaviour match the collection doctrine in
-${REPO}/.claude/rules/scraping.md, does the accessibility statement match the
+${REPO}/packages/scrapers/CLAUDE.md, does the accessibility statement match the
 axe results, is there a stated support or response commitment nobody owns? An
 unkeepable promise on a public page is a real finding.`,
   },

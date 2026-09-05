@@ -61,3 +61,30 @@ describe("hasHeadroom", () => {
     expect(hasHeadroom({ ...base, observed: 5400 })).toBe(true);
   });
 });
+
+// The same two functions meter the per-minute REQUEST window (rpmLimit). These pin
+// that reuse: a request costs 1, so the arithmetic that decides a token ceiling has
+// to decide a request ceiling correctly at that scale too.
+describe("the request window (same primitives, cost of 1)", () => {
+  const base = { observed: 0, limit: 60, cost: 1, reserveFraction: 0.2, interactive: false };
+
+  it("counts requests across the minute boundary like tokens", () => {
+    expect(slidingWindowTokens(60, 10, 30_000)).toBe(40);
+  });
+
+  // Mistral's free tier: 1 req/s = 60/min, background ceiling 48.
+  it("holds background work to the reserved share of the request ceiling", () => {
+    expect(hasHeadroom({ ...base, observed: 47 })).toBe(true);
+    expect(hasHeadroom({ ...base, observed: 48 })).toBe(false);
+  });
+
+  it("lets an interactive call use the reserve the fan-out cannot", () => {
+    expect(hasHeadroom({ ...base, observed: 48, interactive: true })).toBe(true);
+    expect(hasHeadroom({ ...base, observed: 60, interactive: true })).toBe(false);
+  });
+
+  // A provider with no published RPM must behave exactly as before this existed.
+  it("never paces requests at a provider with no configured limit", () => {
+    expect(hasHeadroom({ ...base, limit: 0, observed: 999 })).toBe(true);
+  });
+});

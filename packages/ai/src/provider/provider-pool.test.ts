@@ -1,5 +1,5 @@
 import { test, expect, afterAll } from "bun:test";
-import { pickProvider, checkProviderModels } from "./provider-pool";
+import { pickProvider, checkProviderModels, loadProviders } from "./provider-pool";
 
 // Configure a deterministic two-provider pool (cerebras p1, groq p2) via env. No
 // UPSTASH_* in the test env → the redis facade no-ops (mget → nulls), so this is
@@ -125,4 +125,18 @@ test("an unreachable provider is not accused", async () => {
 test("an empty model list is not accused", async () => {
   const checks = await checkProviderModels(stub(() => models([])));
   expect(checks.every((c) => c.ok)).toBe(true);
+});
+
+// The RPM ceiling is the half of a free tier's rate limit the pool did not count
+// until 2026-09-04. Unset must stay 0 (= unpaced), because that is the behaviour
+// every provider had before the field existed and most still have no published RPM.
+test("loadProviders reads the per-minute request ceiling, defaulting to unpaced", () => {
+  process.env.AI_PROVIDER_1_RPM_LIMIT = "60";
+  try {
+    const pool = loadProviders();
+    expect(pool.find((p) => p.id === "cerebras")?.rpmLimit).toBe(60);
+    expect(pool.find((p) => p.id === "groq")?.rpmLimit).toBe(0);
+  } finally {
+    delete process.env.AI_PROVIDER_1_RPM_LIMIT;
+  }
 });

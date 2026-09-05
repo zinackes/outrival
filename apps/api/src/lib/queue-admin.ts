@@ -222,7 +222,7 @@ export async function listDeadLetter(limit = 50): Promise<
             completed_on as "finishedAt",
             extract(milliseconds from (completed_on - started_on))::int as "durationMs",
             retry_count as "retryCount",
-            source_name as "sourceQueue",
+            coalesce(source_name, data #>> '{__dlq,queue}') as "sourceQueue",
             data as payload
        from pgboss.job
       where name = 'outrival-dlq'
@@ -232,11 +232,48 @@ export async function listDeadLetter(limit = 50): Promise<
   );
 }
 
+export const redriveDeadLetterSql = `
+  WITH candidates AS (
+    SELECT j.id
+      FROM pgboss.job j
+      JOIN pgboss.queue q
+        ON q.name = COALESCE(j.source_name, j.data #>> '{__dlq,queue}')
+     WHERE j.name = $1
+       AND j.state < 'active'
+     ORDER BY j.created_on
+     LIMIT $2
+     FOR UPDATE OF j SKIP LOCKED
+  ),
+  moved AS (
+    DELETE FROM pgboss.job
+     WHERE id IN (SELECT id FROM candidates)
+     RETURNING *
+  ),
+  inserted AS (
+    INSERT INTO pgboss.job
+      (name, data, priority, retry_limit, retry_backoff, retry_delay, retry_delay_max,
+       expire_seconds, keep_until, deletion_seconds, policy, singleton_key, heartbeat_seconds)
+    SELECT COALESCE(m.source_name, m.data #>> '{__dlq,queue}'),
+           CASE WHEN m.source_name IS NULL THEN m.data - '__dlq' ELSE m.data END,
+           m.priority, q.retry_limit, q.retry_backoff, q.retry_delay, q.retry_delay_max,
+           q.expire_seconds, now() + q.retention_seconds * interval '1s',
+           q.deletion_seconds, q.policy, m.singleton_key, m.heartbeat_seconds
+      FROM moved m
+      JOIN pgboss.queue q
+        ON q.name = COALESCE(m.source_name, m.data #>> '{__dlq,queue}')
+    RETURNING 1
+  )
+  SELECT count(*)::int AS moved FROM inserted
+`;
+
 /** Move dead-lettered jobs back onto their original queues. Returns how many moved. */
 export async function redriveDeadLetter(limit = 100): Promise<number | null> {
   try {
     await ensureQueue();
-    return await getBoss().redrive("outrival-dlq", { limit });
+    const result = await getBoss()
+      .getDb()
+      .executeSql(redriveDeadLetterSql, ["outrival-dlq", limit]);
+    return Number(result.rows[0]?.moved ?? 0);
   } catch (err) {
     logger.error({ err }, "pgboss redrive failed");
     return null;

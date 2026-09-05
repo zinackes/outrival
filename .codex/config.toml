@@ -1,0 +1,7 @@
+# Codex CLI, réglages projet. Complète ~/.codex/config.toml, ne le remplace pas.
+model_verbosity        = "low"
+model_reasoning_effort = "medium"
+
+[mcp_servers.codegraph]
+command = "codegraph"
+args = ["serve", "--mcp"]

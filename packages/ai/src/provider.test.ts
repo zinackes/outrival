@@ -7,6 +7,7 @@ import {
   isTooLarge,
   rateLimitBackoffSec,
   classifyExhaustion,
+  providerAttemptTimeoutMs,
   shouldFailover,
 } from "./provider";
 import {
@@ -134,6 +135,22 @@ test("every other per-provider fault still fails over", () => {
 test("a request WE built wrong still fails fast — it would fail identically everywhere", () => {
   expect(shouldFailover(apiError(400))).toBe(false);
   expect(shouldFailover(new Error("socket hang up"))).toBe(false);
+});
+
+test("SDK connection failures and timeouts fail over", () => {
+  expect(
+    shouldFailover(new OpenAI.APIConnectionError({ cause: new TypeError("fetch failed") })),
+  ).toBe(true);
+  expect(shouldFailover(new OpenAI.APIConnectionTimeoutError())).toBe(true);
+});
+
+test("provider attempt timeouts preserve the 110-second call budget", () => {
+  expect(providerAttemptTimeoutMs(110_000, false)).toBe(30_000);
+  expect(providerAttemptTimeoutMs(15_000, false)).toBe(15_000);
+  // The last-resort provider may make three SDK attempts, so each receives a third
+  // of what remains instead of three times the remaining end-to-end budget.
+  expect(providerAttemptTimeoutMs(90_000, true)).toBe(30_000);
+  expect(providerAttemptTimeoutMs(15_000, true)).toBe(5_000);
 });
 
 test("402 is its own diagnosis: no env var is wrong, an account needs topping up", () => {

@@ -2,10 +2,9 @@
 
 Date: 2026-09-05. Baseline: `af53bd1cf4f2a4fa414f5c074bf095d9d280852b`.
 
-**Gate remains open.** HTTP failover/recovery and signal replay passed isolated
-checks. Manual dead-letter redrive and SDK transport failover have confirmed gaps:
-[OUT-292](https://linear.app/zinacke/issue/OUT-292) and
-[OUT-293](https://linear.app/zinacke/issue/OUT-293). Completing this audit does not
+**Gate remains open.** HTTP and SDK transport failover/recovery and signal replay
+passed isolated checks. Manual dead-letter redrive still has a confirmed gap:
+[OUT-292](https://linear.app/zinacke/issue/OUT-292). Completing this audit does not
 unblock the product rollouts beneath OUT-277.
 
 ## Evidence matrix
@@ -16,13 +15,13 @@ unblock the product rollouts beneath OUT-277.
 | Billing exhaustion | Pass | Both providers return 402; `ai_out_of_credit` opens the global breaker. Another call performs no HTTP; expiry plus healthy response recovers. |
 | Full outage and recovery | Pass | Both providers return 503; one failed task counted. A subsequent no-provider task reaches the configured threshold. Expiry recovers and clears the streak. |
 | Rate-limit recovery | Pass | Both providers return 429; their short parks expire and the next task succeeds. |
-| SDK connection errors/timeouts | **Fail** | `shouldFailover(APIConnectionError)` and `shouldFailover(APIConnectionTimeoutError)` are false. No status means 0; a healthy next provider is not tried. OUT-293. |
+| SDK connection errors/timeouts | Pass | Real SDK + real pool, fake HTTP/Redis: a connection rejection and an abort-class timeout from failed A both reach healthy B. Each SDK attempt is capped at 30 seconds within a 110-second call budget, leaving ten seconds before job expiry. |
 | Native exhausted job redrive | Pass | Real pg-boss 12.26.1 on in-memory PGlite: failed classify-change job returns to its original queue with payload intact. |
 | Manually parked truncation redrive | **Fail** | The same redrive leaves a generate-signal envelope in the DLQ because its native `source_name` is null. OUT-292. |
 | Signal replay after provider failure | Pass, scoped | Real generate-signal body and migrated PGlite: injected AI error leaves the change and creates no signal. Two concurrent retries plus a third retry create exactly one signal. |
 | Organization isolation on replay | Pass, scoped | Foreign org/competitor fields added to the replay payload do not alter ownership resolved through the persisted change. The other seeded organization has zero signals. |
 | Classifier replay after signal creation | Pass | The real classifier returns the existing signal without generating another. |
-| Bounded retry / runtime budget | Partial | Queue retry/deferral counts are bounded by defaults below. End-to-end SDK timeout/retry time within the 120-second job expiry is not proven; OUT-293 includes this check. |
+| Bounded retry / runtime budget | Pass, scoped | Queue retry/deferral counts are bounded by defaults below. SDK attempts share a 110-second call budget inside the 120-second job expiry; a last-resort provider divides the remainder across its initial call and two retries. Queue and semaphore wait time remain outside that call-local bound. |
 | Terminal failure visibility | Partial | Native source metadata and job error output are inspectable. Manual envelopes retain reason/job ID in their payload, but source display/redrive is broken and their branch bypasses the normal error reporter. OUT-292 includes notification validation. |
 
 ## Current retry, visibility and recovery behavior
@@ -68,11 +67,12 @@ heartbeat was sent during this validation; delivery/configuration is not verifie
 
 Added tests:
 
-- `packages/ai/src/provider-reliability.test.ts`: six HTTP fault-injection and
-  recovery cases. Only HTTP and Redis are replaced; production SDK, provider
-  selection, accounting, circuit breaker and semaphore code execute. HTTP fixtures
-  set `x-should-retry: false` to test pool transitions without SDK sleep. These
-  tests deliberately do **not** prove the SDK retry timing budget.
+- `packages/ai/src/provider-reliability.test.ts`: HTTP and SDK transport
+  fault-injection and recovery cases. Only HTTP and Redis are replaced; production
+  SDK, provider selection, accounting, circuit breaker and semaphore code execute.
+  HTTP fixtures set `x-should-retry: false` to test pool transitions without SDK
+  sleep. Connection rejection and abort-class timeout fixtures verify that the SDK's
+  typed transport errors reach the pool and fail over.
 - `apps/workers/test/signal-replay.test.ts`: the real handler and real migrated
   Postgres schema, including the unique signal/change constraint. Only the insight
   generator is stubbed. Archive fixtures keep alert delivery, external calls and
@@ -89,7 +89,7 @@ pnpm typecheck
 pnpm check:lint
 ```
 
-Results: AI **316 pass / 0 fail**; workers **527 pass / 0 fail**;
+Results: AI **325 pass / 0 fail**; workers **527 pass / 0 fail**;
 repository typecheck **8 successful tasks**; lint **exit 0**, existing warnings
 only. No production build was run (the repository forbids the OOM-prone full
 build as a local validation step).
@@ -134,5 +134,5 @@ Remaining DLQ:   879f834f-eca4-458a-9596-771df48a31ea (manual entry unchanged)
 ```
 
 No jobs were deleted from a shared queue, replayed in production, or sent to real
-AI providers. OUT-292 and OUT-293 must be resolved and their missing scenarios
-verified before OUT-278 can close.
+AI providers. OUT-292 must be resolved and its missing scenarios verified before
+OUT-278 can close.

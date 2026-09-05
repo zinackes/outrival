@@ -77,6 +77,11 @@ un chantier à part, pas un prérequis pour passer le gate.
   jamais un throw nu qui remonte au client. `Result<T, E>`
   (`packages/shared/src/types/result.ts`) reste une option locale, pas une
   obligation transverse. Loguer avec contexte : `logger.error({ err, context })`.
+- **Commentaires sobres.** Ne pas commenter une constante, variable ou fonction
+  dont le rôle est évident à la lecture du code. Un commentaire explique un
+  *pourquoi* non évident, un invariant important, un piège ou un compromis — il ne
+  paraphrase jamais le code. Éviter les blocs de plusieurs lignes quand une phrase
+  suffit.
 
 ## Runtime : anglais uniquement
 

@@ -1,0 +1,6 @@
+# Codex CLI, réglages projet. Complète ~/.codex/config.toml, ne le remplace pas.
+# Rien de personnel ici (modèle, effort, verbosité) : ça vit dans le config global.
+
+[mcp_servers.codegraph]
+command = "codegraph"
+args = ["serve", "--mcp"]

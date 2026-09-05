@@ -2,10 +2,9 @@
 
 Date: 2026-09-05. Baseline: `af53bd1cf4f2a4fa414f5c074bf095d9d280852b`.
 
-**Gate remains open.** HTTP and SDK transport failover/recovery and signal replay
-passed isolated checks. Manual dead-letter redrive still has a confirmed gap:
-[OUT-292](https://linear.app/zinacke/issue/OUT-292). Completing this audit does not
-unblock the product rollouts beneath OUT-277.
+**Gate is ready to close when OUT-292 lands.** HTTP and SDK transport
+failover/recovery, signal replay, and both native and manual dead-letter redrive
+pass isolated checks. Product rollouts beneath OUT-277 can resume after merge.
 
 ## Evidence matrix
 
@@ -17,12 +16,12 @@ unblock the product rollouts beneath OUT-277.
 | Rate-limit recovery | Pass | Both providers return 429; their short parks expire and the next task succeeds. |
 | SDK connection errors/timeouts | Pass | Real SDK + real pool, fake HTTP/Redis: a connection rejection and an abort-class timeout from failed A both reach healthy B. Each SDK attempt is capped at 30 seconds within a 110-second call budget, leaving ten seconds before job expiry. |
 | Native exhausted job redrive | Pass | Real pg-boss 12.26.1 on in-memory PGlite: failed classify-change job returns to its original queue with payload intact. |
-| Manually parked truncation redrive | **Fail** | The same redrive leaves a generate-signal envelope in the DLQ because its native `source_name` is null. OUT-292. |
+| Manually parked truncation redrive | Pass | A transactional PGlite regression test moves the envelope to its registered `__dlq.queue`, strips the internal metadata, and leaves an unknown destination untouched. |
 | Signal replay after provider failure | Pass, scoped | Real generate-signal body and migrated PGlite: injected AI error leaves the change and creates no signal. Two concurrent retries plus a third retry create exactly one signal. |
 | Organization isolation on replay | Pass, scoped | Foreign org/competitor fields added to the replay payload do not alter ownership resolved through the persisted change. The other seeded organization has zero signals. |
 | Classifier replay after signal creation | Pass | The real classifier returns the existing signal without generating another. |
 | Bounded retry / runtime budget | Pass, scoped | Queue retry/deferral counts are bounded by defaults below. SDK attempts share a 110-second call budget inside the 120-second job expiry; a last-resort provider divides the remainder across its initial call and two retries. Queue and semaphore wait time remain outside that call-local bound. |
-| Terminal failure visibility | Partial | Native source metadata and job error output are inspectable. Manual envelopes retain reason/job ID in their payload, but source display/redrive is broken and their branch bypasses the normal error reporter. OUT-292 includes notification validation. |
+| Terminal failure visibility | Pass, scoped | Native metadata and manual `__dlq.queue` both populate the admin source display. Manual dead letters invoke the worker's error reporter with queue and job ID; the unit test verifies that handoff, not external Sentry delivery. |
 
 ## Current retry, visibility and recovery behavior
 
@@ -45,16 +44,14 @@ Malformed classification/insight JSON throws a retriable error. A truncated
 reply throws `DeadLetter(reason='truncated_reply')`; the queue wrapper immediately
 sends the original business payload plus `__dlq: { queue, reason, jobId }` into
 the DLQ and records a `deadLettered` output on the completed original job. It does
-not call the ordinary `_reportError` path. With no DLQ configured, it falls back
-to normal retry behavior.
+call the ordinary `_reportError` path so the terminal failure reaches Sentry. With
+no DLQ configured, it falls back to normal retry behavior.
 
-Admin job details expose payload/error output. The DLQ view reads `source_name`;
-the redrive endpoint calls `boss.redrive('outrival-dlq', { limit })`. Native
-pg-boss failures have source metadata; manual `boss.send` entries do not.
-The installed redrive SQL only selects rows with a valid destination resolved
-from that native column, so manual entries remain safely parked but unrecoverable
-through that button. A blanket destination override would be unsafe in the shared
-DLQ and is not a proposed repair.
+Admin job details expose payload/error output. The DLQ view resolves the source from
+native `source_name` or the manual envelope's `__dlq.queue`. Redrive locks the oldest
+eligible rows and moves them transactionally using the same resolution rule. The
+destination must exist in pg-boss's queue registry; unknown destinations remain
+parked. Manual envelope metadata is removed from the replayed business payload.
 
 The global AI breaker stores its reason/TTL in Redis and attempts a best-effort
 ops Slack notification. A task success resets the failure streak. The default
@@ -85,14 +82,19 @@ Run from the repository root:
 ```sh
 pnpm test:local --filter @outrival/ai
 pnpm test:local --filter @outrival/workers
+pnpm test:local --filter @outrival/queue
+cd apps/api && bun test test/queue-admin-redrive.test.ts
 pnpm typecheck
 pnpm check:lint
 ```
 
-Results: AI **325 pass / 0 fail**; workers **527 pass / 0 fail**;
-repository typecheck **8 successful tasks**; lint **exit 0**, existing warnings
-only. No production build was run (the repository forbids the OOM-prone full
-build as a local validation step).
+Results: AI **325 pass / 0 fail**; workers **527 pass / 0 fail**; queue
+**14 pass / 0 fail**; targeted API redrive **1 pass / 0 fail**; repository
+typecheck **8 successful tasks**; lint **exit 0**, existing warnings only. The
+full API run reached **518 pass / 2 fail** on two unrelated magic-link assertions
+that also fail in isolation on `main` (`400` instead of `503` / `200`). No
+production build was run (the repository forbids the OOM-prone full build as a
+local validation step).
 
 The first standalone worker run exceeded Bun's five-second setup timeout while
 initializing PGlite alongside the separate DLQ probe. Its setup allowance is now
@@ -134,5 +136,4 @@ Remaining DLQ:   879f834f-eca4-458a-9596-771df48a31ea (manual entry unchanged)
 ```
 
 No jobs were deleted from a shared queue, replayed in production, or sent to real
-AI providers. OUT-292 must be resolved and its missing scenarios verified before
-OUT-278 can close.
+AI providers. OUT-278 can close after OUT-292 is merged.

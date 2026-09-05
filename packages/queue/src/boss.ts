@@ -234,6 +234,15 @@ export function deadLetterPayload<P extends object>(
   return { ...data, __dlq: { queue, reason, jobId } };
 }
 
+export function reportDeadLetter(
+  err: DeadLetter,
+  job: string,
+  id: string,
+  report: ErrorReporter = _reportError,
+): void {
+  report(err, { job, id });
+}
+
 export interface JobConfig {
   /** pg-boss retryLimit = number of RETRIES. Trigger maxAttempts N → retryLimit N-1. */
   retryLimit?: number;
@@ -474,6 +483,7 @@ export function work<P extends object>(
           if (dlq) {
             const payload = deadLetterPayload(def.name, jobData(job.data), err.reason, job.id);
             await getBoss().send(dlq, payload, {});
+            reportDeadLetter(err, def.name, job.id);
             console.error(`[queue] ${def.name} dead-lettered (${err.reason}): ${err.message}`);
             last = {
               deadLettered: true,

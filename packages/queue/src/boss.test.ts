@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import type { Queue, QueueResult } from "pg-boss";
-import { planQueueReconciliation, queueErrorAlert } from "./boss";
+import { DeadLetter, planQueueReconciliation, queueErrorAlert, reportDeadLetter } from "./boss";
 import * as jobs from "./jobs";
 
 // The two pieces of boss.ts that decide something without a live pg-boss in front
@@ -159,5 +159,20 @@ describe("queueErrorAlert", () => {
       queueErrorAlert(new Error("noise"), t);
     }
     expect(queueErrorAlert(new Error("finally"), first + WINDOW_MS)).toContain("finally");
+  });
+});
+
+describe("reportDeadLetter", () => {
+  test("reports the terminal failure with its queue and job id", () => {
+    const seen: { err?: unknown; job?: string; id?: string } = {};
+    const err = new DeadLetter("truncated", "truncated_reply");
+
+    reportDeadLetter(err, "generate-signal", "job-9", (reported, ctx) => {
+      seen.err = reported;
+      seen.job = ctx.job;
+      seen.id = ctx.id;
+    });
+
+    expect(seen).toEqual({ err, job: "generate-signal", id: "job-9" });
   });
 });

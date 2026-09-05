@@ -44,6 +44,11 @@ const openaiClients = new Map<string, OpenAI>();
 // throttled provider is answered by asking someone else, immediately. The sleep is
 // only worth it when there IS nobody else, which is the one case it was written for.
 const LAST_RESORT_SDK_RETRIES = 2;
+// Leave ten seconds for pool bookkeeping and the worker to persist the outcome before
+// the 120-second queue expiry. A single provider gets at most 30 seconds; when it is
+// the last resort, divide what remains across the SDK's initial call plus two retries.
+const AI_CALL_BUDGET_MS = 110_000;
+const PROVIDER_ATTEMPT_TIMEOUT_MS = 30_000;
 
 function clientFor(p: Provider): OpenAI {
   let c = openaiClients.get(p.id);
@@ -102,9 +107,18 @@ export interface CompletionOptions {
 // belongs to ONE provider's billing must never be read as a verdict on the request.
 // Exported for unit testing this branch, like isConfigError and isTooLarge below.
 export function shouldFailover(err: unknown): boolean {
+  if (err instanceof OpenAI.APIConnectionError) return true;
   if (!(err instanceof OpenAI.APIError)) return false;
   const s = err.status ?? 0;
   return s === 429 || s === 413 || s === 401 || s === 402 || s === 403 || s === 404 || s >= 500;
+}
+
+export function providerAttemptTimeoutMs(remainingMs: number, lastResort: boolean): number {
+  const sdkAttempts = lastResort ? LAST_RESORT_SDK_RETRIES + 1 : 1;
+  return Math.max(
+    1,
+    Math.min(PROVIDER_ATTEMPT_TIMEOUT_MS, Math.floor(remainingMs / sdkAttempts)),
+  );
 }
 
 // 402 = this provider's account is out of credit (or its billing lapsed). Like a bad
@@ -387,6 +401,7 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
   // pool starves the very calls closest to succeeding. The global-breaker check above
   // stays outside the slot so a blackout still fails fast instead of queueing.
   return withAiSlot(async () => {
+    const deadline = Date.now() + AI_CALL_BUDGET_MS;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const pick = await pickProvider(tried, requestTokens, interactive);
       if (!pick) break; // every eligible provider exhausted, in breaker, or already tried
@@ -452,7 +467,10 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
           // Only sent for reasoning models (gpt-oss) — never for Llama (undefined).
           ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
         };
-        const requestOptions = { maxRetries: lastResort ? LAST_RESORT_SDK_RETRIES : 0 };
+        const requestOptions = {
+          maxRetries: lastResort ? LAST_RESORT_SDK_RETRIES : 0,
+          timeout: providerAttemptTimeoutMs(Math.max(1, deadline - Date.now()), lastResort),
+        };
         const client = clientFor(provider);
         bucketKey = await reserveTpm(provider.id, requestTokens);
         // The request window is booked here and never unbooked: the SDK call below

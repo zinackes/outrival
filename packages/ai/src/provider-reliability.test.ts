@@ -11,7 +11,7 @@ const savedEnv = new Map<string, string | undefined>();
 const store = new Map<string, { value: string; expires: number }>();
 let now = 0;
 let requests: string[] = [];
-let statuses: Record<string, number> = {};
+let statuses: Record<string, number | "connection" | "timeout"> = {};
 
 function live(key: string) {
   const row = store.get(key);
@@ -74,6 +74,8 @@ beforeEach(() => {
     if (!host.startsWith("out278-")) throw new Error(`Unexpected HTTP destination: ${host}`);
     requests.push(host);
     const status = statuses[host] ?? 200;
+    if (status === "connection") throw new TypeError("fetch failed");
+    if (status === "timeout") throw new DOMException("request timed out", "AbortError");
     return Response.json(status === 200 ? {
       choices: [{ message: { content: "recovered" }, finish_reason: "stop" }],
       usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
@@ -106,6 +108,14 @@ describe("OUT-278 HTTP fault injection and recovery", () => {
       expect(requests).toEqual(["out278-a.invalid", "out278-b.invalid"]);
       expect(live("ai:failures:global")).toBeNull();
       expect((await checkGlobalBreaker()).open).toBe(false);
+    });
+  }
+
+  for (const fault of ["connection", "timeout"] as const) {
+    test(`${fault} failure in the SDK fails over to a healthy provider`, async () => {
+      statuses["out278-a.invalid"] = fault;
+      expect(await request()).toBe("recovered");
+      expect(requests).toEqual(["out278-a.invalid", "out278-b.invalid"]);
     });
   }
 
